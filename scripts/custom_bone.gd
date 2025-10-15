@@ -26,7 +26,7 @@ static func create(new_capsule_dimensions: Vector3, new_initial_rotation: Vector
 	var cube_mesh := BoxMesh.new()
 	cube_mesh.size = bone.capsule_dimensions
 	mesh_instance.mesh = cube_mesh
-	mesh_instance.position = Vector3(0, bone.capsule_dimensions.y * 0.25, 0)
+	mesh_instance.position = Vector3(0, bone.capsule_dimensions.y * 0.5, 0)
 	var material := StandardMaterial3D.new()
 	material.albedo_color = new_color
 	material.albedo_color.a = 0.5

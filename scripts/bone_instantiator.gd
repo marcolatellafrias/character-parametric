@@ -42,9 +42,6 @@ extends Node3D
 		has_neck = value
 		initialize_skeleton()
 
-#IK raycasts
-var left_ray_cast: RayCast3D
-var right_ray_cast: RayCast3D
 
 var step_radius_walk := 0.1
 var step_radius_turn := 0.05
@@ -55,11 +52,14 @@ var target_height: float = -2.0
 var pole_color: Color = Color(1, 0, 0)      # rojo
 var target_color: Color = Color(0, 1, 0)    # verde
 var raycast_color: Color = Color(0, 0, 1)    # verde
-
+var raycast_lenght: float #la distancia del raycast desde la altura del rootbone
 var left_pole: Node3D
 var right_pole: Node3D
 var left_target: Node3D
 var right_target: Node3D
+#IK raycasts
+var left_raycast: RayCast3D
+var right_raycast: RayCast3D
 
 #NECK TO HEAD
 var neck_size: Vector3
@@ -84,6 +84,8 @@ var lower_arm_size: Vector3
 #HORIZONTAL BONES
 var shoulder_width: Vector3
 var hip_width: Vector3
+
+
 
 func calculate_sizes() -> void:
 	# Evitar división por cero
@@ -132,13 +134,14 @@ func calculate_sizes() -> void:
 	var arm_total := torso_height * arms_proportion
 	upper_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
 	lower_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
+	raycast_lenght = leg_height * 1.5
 
-func create_debug_line(color: Color) -> MeshInstance3D:
+func create_debug_line(color: Color, length: float) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var cube := BoxMesh.new()
-	cube.size = Vector3(0.01,10,0.01)
+	cube.size = Vector3(0.01,length,0.01)
 	mesh_instance.mesh = cube
-	mesh_instance.position = Vector3 (0.0,5,0.0)
+	mesh_instance.position = Vector3 (0.0,-length *0.5,0.0)
 	
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
@@ -197,20 +200,31 @@ func initialize_skeleton() -> void:
 	var left_upper_arm := CustomBone.createFromToDown(left_shoulder, upper_arm_size, 0.0,0.0, Color.VIOLET , true)
 	var left_lower_arm := CustomBone.createFromToDown(left_upper_arm, lower_arm_size, 0.0,0.0, Color.RED , true)
 	
-	left_ray_cast = RayCast3D.new()
-	left_ray_cast.position = lower_spine.position
-	left_ray_cast.translate(Vector3(hip_width.y,0,0))
-	left_ray_cast.rotation = Vector3.DOWN
-	add_child(left_ray_cast)
+	left_raycast = RayCast3D.new()
+	left_raycast.position = lower_spine.position
+	left_raycast.translate(Vector3(-hip_width.y,0,0))
+	left_raycast.rotation = Vector3.DOWN
+	add_child(left_raycast)
+
+	right_raycast = RayCast3D.new()
+	right_raycast.position = lower_spine.position
+	right_raycast.translate(Vector3(hip_width.y,0,0))
+	right_raycast.rotation = Vector3.DOWN
+	add_child(left_raycast)
 	
 	create_ik_controls(left_lower_leg, right_lower_leg)
 
 func create_ik_controls(left_lower_leg: CustomBone, right_lower_leg: CustomBone) -> void:
-	left_ray_cast = RayCast3D.new()
-	left_ray_cast.rotation = Vector3(deg_to_rad(180), 0, 0)
-	left_ray_cast.translate(Vector3(1,0,0))
-	left_ray_cast.add_child(create_debug_line(raycast_color))
-	add_child(left_ray_cast)
+	left_raycast = RayCast3D.new()
+	left_raycast.target_position = Vector3(0,-raycast_lenght,0)
+	left_raycast.add_child(create_debug_line(raycast_color, raycast_lenght))
+	left_raycast.translate(Vector3(hip_width.y,0,0))
+	add_child(left_raycast)
+	right_raycast = RayCast3D.new()
+	right_raycast.target_position = Vector3(0,-raycast_lenght,0)
+	right_raycast.add_child(create_debug_line(raycast_color, raycast_lenght))
+	right_raycast.translate(Vector3(-hip_width.y,0,0))
+	add_child(right_raycast)
 	
 	# Limpia controles previos
 	for node in [left_pole, right_pole, left_target, right_target]:
@@ -235,13 +249,17 @@ func create_ik_controls(left_lower_leg: CustomBone, right_lower_leg: CustomBone)
 	left_target.global_position = Vector3.ZERO
 	left_target.add_child(create_debug_sphere(target_color))
 
-	#right_target = Node3D.new()
-	#add_child(right_target)
-	#right_target.global_position = Vector3.ZERO
-	#right_target.add_child(create_debug_sphere(target_color))
+	right_target = Node3D.new()
+	add_child(right_target)
+	right_target.global_position = Vector3.ZERO
+	right_target.add_child(create_debug_sphere(target_color))
 	
-func _process(delta: float) -> void:
-	if left_ray_cast.is_colliding():
-		var collisionPoint : Vector3 = left_ray_cast.get_collision_point()
-		left_target.position = collisionPoint
-		
+func _physics_process(delta: float) -> void:
+	left_raycast.force_raycast_update()
+	if left_raycast.is_colliding():
+		var collisionPoint : Vector3 = left_raycast.get_collision_point()
+		left_target.global_position = collisionPoint
+	right_raycast.force_raycast_update()
+	if right_raycast.is_colliding():
+		var collisionPoint : Vector3 = right_raycast.get_collision_point()
+		right_target.global_position = collisionPoint

@@ -1,3 +1,4 @@
 res://Scenes/Demo.tscn
 res://scripts/bone_instantiator.gd
+res://Materials/Floor.tres
 res://scripts/custom_bone.gd
