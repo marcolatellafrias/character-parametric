@@ -1,0 +1,3 @@
+res://Scenes/Demo.tscn
+res://scripts/bone_instantiator.gd
+res://scripts/custom_bone.gd

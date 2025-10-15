@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://ckrqq415fubai"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_03f2i"]
+radius = 0.2
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_64e1u"]
+radius = 0.2
+
+[node name="TestSlab" type="RigidBody3D"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CapsuleShape3D_03f2i")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("CapsuleMesh_64e1u")
