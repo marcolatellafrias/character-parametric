@@ -135,11 +135,11 @@ script = ExtResource("6_ecetj")
 [node name="ik_targets" type="Node3D" parent="player_root"]
 
 [node name="Mirror3D" parent="." instance=ExtResource("8_ecetj")]
-transform = Transform3D(0.8666269, 0, -0.49895668, 0, 1, 0, 0.49895668, 0, 0.8666269, -3.8841076, 1.3730404, 7.675707)
+transform = Transform3D(0.8666269, 0, -0.49895668, 0, 1, 0, 0.49895668, 0, 0.8666269, -0.33899403, 1.3730404, -2.981861)
 size = Vector2(5, 3)
 
 [node name="jointTest" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.9771941, -0.21234822, 0, 0.21234822, 0.9771941, 0, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 0.9771941, -0.21234822, 0, 0.21234822, 0.9771941, 6.2752385, 0, 0)
 
 [node name="Generic6DOFJoint3D" type="Generic6DOFJoint3D" parent="jointTest"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.833518, -7.200518)

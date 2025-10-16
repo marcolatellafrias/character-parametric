@@ -36,26 +36,26 @@ extends Node3D
 		has_neck = value
 		initialize_skeleton()
 
-
 #Step sizes
 var step_radius_walk := 0.1
 var step_radius_turn := 0.05
 
 #IK variables
+@onready var ik_targets := $"../../ik_targets"
 var pole_distance: float = 0.8
 var target_height: float = -2.0
 var left_color: Color = Color(1, 0, 0)      # rojo
 var right_color: Color = Color(0, 1, 0)    # verde
 var raycast_color: Color = Color(0, 0, 1)    # verde
-var raycast_lenght: float #la distancia del raycast desde la altura del rootbone
-var left_pole: Node3D
-var right_pole: Node3D
-var left_target: Node3D
-var right_target: Node3D
-var current_left_target: Node3D
-var current_right_target: Node3D
-var left_raycast: RayCast3D
-var right_raycast: RayCast3D
+var raycast_leg_lenght: float #la distancia del raycast desde la altura del rootbone
+var left_leg_pole: Node3D
+var right_leg_pole: Node3D
+var left_leg_next_target: Node3D
+var right_leg_next_target: Node3D
+var left_leg_current_target: Node3D
+var right_leg_current_target: Node3D
+var left_leg_raycast: RayCast3D
+var right_leg_raycast: RayCast3D
 
 #Tamaños de huesos
 var head_size: Vector3
@@ -142,7 +142,7 @@ func update_sizes() -> void:
 	var arm_total := torso_height * arms_proportion
 	upper_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
 	lower_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
-	raycast_lenght = leg_height * 1.5
+	raycast_leg_lenght = leg_height * 1.5
 
 func _ready() -> void:
 	initialize_skeleton()
@@ -190,57 +190,56 @@ func initialize_skeleton() -> void:
 	create_ik_controls()
 
 func create_ik_controls() -> void:	
-	left_raycast = RayCast3D.new()
-	left_raycast.target_position = Vector3(0,-raycast_lenght,0)
-	left_raycast.add_child(DebugUtil.create_debug_line(raycast_color, raycast_lenght))
-	left_raycast.translate(Vector3(-hip_width.y,0,0))
-	add_child(left_raycast)
-	right_raycast = RayCast3D.new()
-	right_raycast.target_position = Vector3(0,-raycast_lenght,0)
-	right_raycast.add_child(DebugUtil.create_debug_line(raycast_color, raycast_lenght))
-	right_raycast.translate(Vector3(hip_width.y,0,0))
-	add_child(right_raycast)
+	left_leg_raycast = RayCast3D.new()
+	left_leg_raycast.target_position = Vector3(0,-raycast_leg_lenght,0)
+	left_leg_raycast.add_child(DebugUtil.create_debug_line(raycast_color, raycast_leg_lenght))
+	left_leg_raycast.translate(Vector3(-hip_width.y,0,0))
+	add_child(left_leg_raycast)
+	right_leg_raycast = RayCast3D.new()
+	right_leg_raycast.target_position = Vector3(0,-raycast_leg_lenght,0)
+	right_leg_raycast.add_child(DebugUtil.create_debug_line(raycast_color, raycast_leg_lenght))
+	right_leg_raycast.translate(Vector3(hip_width.y,0,0))
+	add_child(right_leg_raycast)
 	
 	# === LEFT POLE ===
-	left_pole = Node3D.new()
-	add_child(left_pole)
-	left_pole.global_position = left_lower_leg.global_position + left_lower_leg.global_transform.basis.z * pole_distance
-	left_pole.add_child(DebugUtil.create_debug_sphere(left_color))
+	left_leg_pole = Node3D.new()
+	add_child(left_leg_pole)
+	left_leg_pole.global_position = left_lower_leg.global_position + left_lower_leg.global_transform.basis.z * pole_distance
+	left_leg_pole.add_child(DebugUtil.create_debug_sphere(left_color))
 
 	# === RIGHT POLE ===
-	right_pole = Node3D.new()
-	add_child(right_pole)
-	right_pole.global_position = right_lower_leg.global_position + right_lower_leg.global_transform.basis.z * pole_distance
-	right_pole.add_child(DebugUtil.create_debug_sphere(right_color))
+	right_leg_pole = Node3D.new()
+	add_child(right_leg_pole)
+	right_leg_pole.global_position = right_lower_leg.global_position + right_lower_leg.global_transform.basis.z * pole_distance
+	right_leg_pole.add_child(DebugUtil.create_debug_sphere(right_color))
 
 	# === IK TARGETS ===
-	left_target = Node3D.new()
-	add_child(left_target)
-	left_target.position = Vector3(-hip_width.y,-raycast_lenght,0)
-	left_target.add_child(DebugUtil.create_debug_sphere(left_color))
+	left_leg_next_target = Node3D.new()
+	add_child(left_leg_next_target)
+	left_leg_next_target.position = Vector3(-hip_width.y,-raycast_leg_lenght,0)
+	left_leg_next_target.add_child(DebugUtil.create_debug_sphere(left_color))
 
-	right_target = Node3D.new()
-	add_child(right_target)
-	right_target.position = Vector3(hip_width.y,-raycast_lenght,0)
-	right_target.add_child(DebugUtil.create_debug_sphere(right_color))
+	right_leg_next_target = Node3D.new()
+	add_child(right_leg_next_target)
+	right_leg_next_target.position = Vector3(hip_width.y,-raycast_leg_lenght,0)
+	right_leg_next_target.add_child(DebugUtil.create_debug_sphere(right_color))
    
-func _physics_process(delta: float) -> void:
-	left_raycast.force_raycast_update()
-	if left_raycast.is_colliding():
-		var collisionPoint : Vector3 = left_raycast.get_collision_point()
-		left_target.global_position = collisionPoint
-		#if (!current_left_target):
-			#current_left_target = Node3D.new()
-			#current_left_target.global_position = collisionPoint
-			#current_left_target.add_child(DebugUtil.create_debug_cube(right_color))
-			#custom_add_sibling(current_left_target)
-	right_raycast.force_raycast_update()
-	if right_raycast.is_colliding():
-		var collisionPoint : Vector3 = right_raycast.get_collision_point()
-		right_target.global_position = collisionPoint
-	
-func custom_add_sibling(sibling: Node) -> void:
-	var parent = get_parent()
-	if parent:
-		parent.add_child(sibling)
-		
+func _physics_process(_delta: float) -> void:
+	left_leg_raycast.force_raycast_update()
+	if left_leg_raycast.is_colliding():
+		var collisionPoint : Vector3 = left_leg_raycast.get_collision_point()
+		left_leg_next_target.global_position = collisionPoint
+		if (!left_leg_current_target):
+			left_leg_current_target = Node3D.new()
+			left_leg_current_target.add_child(DebugUtil.create_debug_cube(left_color))
+			ik_targets.add_child(left_leg_current_target)
+			left_leg_current_target.global_position = collisionPoint
+	right_leg_raycast.force_raycast_update()
+	if right_leg_raycast.is_colliding():
+		var collisionPoint : Vector3 = right_leg_raycast.get_collision_point()
+		right_leg_next_target.global_position = collisionPoint
+		if (!right_leg_current_target):
+			right_leg_current_target = Node3D.new()
+			right_leg_current_target.add_child(DebugUtil.create_debug_cube(right_color))
+			ik_targets.add_child(right_leg_current_target)
+			right_leg_current_target.global_position = collisionPoint
