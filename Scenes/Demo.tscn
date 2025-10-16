@@ -5,7 +5,7 @@
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
 [ext_resource type="Material" uid="uid://da33e5tos7dp0" path="res://Materials/blue.tres" id="4_oilx1"]
 [ext_resource type="Material" uid="uid://dnj4yx07gux3o" path="res://Materials/green.tres" id="5_4i7ud"]
-[ext_resource type="PackedScene" uid="uid://boveec04kyjx7" path="res://Scenes/bone_instantiator.tscn" id="6_ecetj"]
+[ext_resource type="Script" uid="uid://rp6tci1gjxpq" path="res://scripts/bone_instantiator.gd" id="6_ecetj"]
 [ext_resource type="Script" uid="uid://cq25yhl2dfmgv" path="res://scripts/character_body_3d.gd" id="6_oilx1"]
 [ext_resource type="PackedScene" uid="uid://delu2qjrw6teu" path="res://addons/Mirror3D/Mirror3D.tscn" id="8_ecetj"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
@@ -114,21 +114,25 @@ mesh = SubResource("CapsuleMesh_d6ua1")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 mesh = SubResource("CapsuleMesh_umjme")
 
-[node name="ProcChar" type="Node3D" parent="."]
+[node name="player_root" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2827277, -5.5539103)
 
-[node name="targetSkeleton" type="CharacterBody3D" parent="ProcChar"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.333072, 0)
+[node name="player_controller" type="CharacterBody3D" parent="player_root"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.3526645, 0)
 script = ExtResource("6_oilx1")
 
-[node name="BoneInstantiator" parent="ProcChar/targetSkeleton" instance=ExtResource("6_ecetj")]
-
-[node name="Camera3D" type="Camera3D" parent="ProcChar/targetSkeleton"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.88135624, 0)
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="ProcChar/targetSkeleton"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="player_root/player_controller"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 shape = SubResource("CapsuleShape3D_3xrpy")
 
-[node name="ikTargets" type="Node3D" parent="ProcChar"]
+[node name="Camera3D" type="Camera3D" parent="player_root/player_controller"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7772312, 0)
+
+[node name="BoneInstantiator" type="Node3D" parent="player_root/player_controller"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9597645, 0)
+script = ExtResource("6_ecetj")
+
+[node name="ik_targets" type="Node3D" parent="player_root"]
 
 [node name="Mirror3D" parent="." instance=ExtResource("8_ecetj")]
 transform = Transform3D(0.8666269, 0, -0.49895668, 0, 1, 0, 0.49895668, 0, 0.8666269, -3.8841076, 1.3730404, 7.675707)

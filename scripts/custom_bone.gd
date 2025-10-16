@@ -30,8 +30,8 @@ static func create(new_capsule_dimensions: Vector3, new_initial_rotation: Vector
 	var material := StandardMaterial3D.new()
 	material.albedo_color = new_color
 	material.albedo_color.a = 0.5
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.flags_transparent = true
+	#material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	#material.flags_transparent = true
 	mesh_instance.material_override = material
 	bone.add_child(mesh_instance)
 	
