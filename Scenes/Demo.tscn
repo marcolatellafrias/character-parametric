@@ -129,13 +129,13 @@ shape = SubResource("CapsuleShape3D_3xrpy")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7772312, 0)
 
 [node name="BoneInstantiator" type="Node3D" parent="player_root/player_controller"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9597645, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6820402, 0)
 script = ExtResource("6_ecetj")
 
 [node name="ik_targets" type="Node3D" parent="player_root"]
 
 [node name="Mirror3D" parent="." instance=ExtResource("8_ecetj")]
-transform = Transform3D(0.8666269, 0, -0.49895668, 0, 1, 0, 0.49895668, 0, 0.8666269, -0.33899403, 1.3730404, -2.981861)
+transform = Transform3D(0.9997644, 0, -0.021710187, 0, 1, 0, 0.021710187, 0, 0.9997644, -1.1451263, 1.4841802, -7.865616)
 size = Vector2(5, 3)
 
 [node name="jointTest" type="Node3D" parent="."]
@@ -155,7 +155,3 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8390794, -7.2039795)
 
 [node name="TestSlab2" parent="jointTest" instance=ExtResource("9_oilx1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8081498, -7.2051997)
-
-[node name="RayCast3D" type="RayCast3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.0701647, 0, 0)
-target_position = Vector3(0, 4, 0)

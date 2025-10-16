@@ -28,9 +28,31 @@ static func create_debug_cube(color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var cube := BoxMesh.new()
 	mesh_instance.mesh = cube
-	mesh_instance.scale = Vector3(0.1,0.1,0.1)
+	mesh_instance.scale = Vector3(0.05,0.05,0.05)
 
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
 	mesh_instance.material_override = material
+	return mesh_instance
+	
+static func create_debug_ring(color: Color, radius: float, segments: int = 64) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_LINE_STRIP)
+
+	for i in range(segments + 1):
+		var angle := TAU * float(i) / float(segments)
+		var x := cos(angle) * radius
+		var z := sin(angle) * radius
+		st.set_color(color)
+		st.add_vertex(Vector3(x, 0, z))
+
+	var mesh := st.commit()
+	mesh_instance.mesh = mesh
+
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh_instance.material_override = material
+
 	return mesh_instance

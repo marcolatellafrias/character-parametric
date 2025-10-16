@@ -1,3 +1,5 @@
+BoneAttachment3D
+Skeleton3D
 Node3D
 CharacterBody3D
 RayCast3D
@@ -7,7 +9,6 @@ RigidBody3D
 Generic6DOFJoint3D
 CanvasLayer
 StaticBody3D
-Skeleton3D
 Node
 Label
 Camera3D

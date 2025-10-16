@@ -37,7 +37,7 @@ extends Node3D
 		initialize_skeleton()
 
 #Step sizes
-var step_radius_walk := 0.1
+var step_radius_walk := 0.4
 var step_radius_turn := 0.05
 
 #IK variables
@@ -148,10 +148,12 @@ func _ready() -> void:
 	initialize_skeleton()
 
 func initialize_skeleton() -> void:
+	for bone in get_children():
+		bone.queue_free()
+	for target in ik_targets.get_children():
+		target.queue_free()
+
 	update_sizes()
-	
-	for child in get_children():
-		child.queue_free()
 
 	# Hueso raíz
 	lower_spine = CustomBone.create(lower_spine_size, Vector3.ZERO, Color.WHITE_SMOKE)
@@ -230,8 +232,7 @@ func _physics_process(_delta: float) -> void:
 		var collisionPoint : Vector3 = left_leg_raycast.get_collision_point()
 		left_leg_next_target.global_position = collisionPoint
 		if (!left_leg_current_target):
-			left_leg_current_target = Node3D.new()
-			left_leg_current_target.add_child(DebugUtil.create_debug_cube(left_color))
+			left_leg_current_target = create_ik_target(left_color, step_radius_walk)
 			ik_targets.add_child(left_leg_current_target)
 			left_leg_current_target.global_position = collisionPoint
 	right_leg_raycast.force_raycast_update()
@@ -239,7 +240,99 @@ func _physics_process(_delta: float) -> void:
 		var collisionPoint : Vector3 = right_leg_raycast.get_collision_point()
 		right_leg_next_target.global_position = collisionPoint
 		if (!right_leg_current_target):
-			right_leg_current_target = Node3D.new()
-			right_leg_current_target.add_child(DebugUtil.create_debug_cube(right_color))
+			right_leg_current_target = create_ik_target(right_color, step_radius_walk)
 			ik_targets.add_child(right_leg_current_target)
 			right_leg_current_target.global_position = collisionPoint
+	if(left_leg_current_target):
+		solve_leg_ik(left_upper_leg,left_lower_leg,left_leg_current_target.global_position,left_leg_pole.position)
+	if(right_leg_current_target):
+		solve_leg_ik(right_upper_leg,right_lower_leg,right_leg_current_target.global_position,right_leg_pole.position)
+
+func create_ik_target(color: Color, radius: float) -> Node3D:
+	var _ik_target = Node3D.new()
+	_ik_target.add_child(DebugUtil.create_debug_cube(color))
+	_ik_target.add_child(DebugUtil.create_debug_ring(color,radius))
+	return _ik_target
+
+func solve_leg_ik(
+	upper_bone: CustomBone,
+	lower_bone: CustomBone,
+	ik_target: Vector3,
+	pole_target: Vector3
+) -> void:
+	var root_pos  : Vector3 = upper_bone.global_position
+	var target_pos: Vector3 = ik_target
+	var upper_len : float   = upper_bone.length
+	var lower_len : float   = lower_bone.length
+
+	# ---- Direction & reach ----
+	var root_to_target = target_pos - root_pos
+	var total_len = root_to_target.length()
+	var clamped_len = clamp(total_len, 0.001, upper_len + lower_len)
+	var dir_to_target = root_to_target.normalized()
+
+	# ---- Bend plane using pole ----
+	var raw_pole = (pole_target - root_pos).normalized()
+	var right_vec = dir_to_target.cross(raw_pole)
+	if right_vec.length() < 1e-6:
+		right_vec = dir_to_target.orthogonal()
+	var bend_plane_normal = right_vec.normalized()
+	var pole_on_plane = (bend_plane_normal.cross(dir_to_target)).normalized()
+
+	# ---- Knee position (law of cosines) ----
+	var a = upper_len
+	var b = lower_len
+	var c = clamped_len
+	var cosA = clamp((a*a + c*c - b*b) / (2.0 * a * c), -1.0, 1.0)
+	var sinA = sqrt(max(0.0, 1.0 - cosA * cosA))
+	var knee_pos = root_pos + dir_to_target * (cosA * a) + pole_on_plane * (sinA * a)
+
+	# ---- Segment directions ----
+	var upper_dir = (knee_pos - root_pos).normalized()
+	var lower_dir = (target_pos - knee_pos).normalized()
+
+	# ---- Positions (if your rig expects them) ----
+	upper_bone.global_position = root_pos
+	lower_bone.global_position = knee_pos
+
+	# ---- Build world bases directly from REST -> POSE mapping ----
+	var upper_rest = Basis.from_euler(upper_bone.rest_rotation)
+	var lower_rest = Basis.from_euler(lower_bone.rest_rotation)
+
+	upper_bone.global_transform.basis = _pose_from_rest_to(upper_dir, pole_on_plane, upper_rest)
+	lower_bone.global_transform.basis = _pose_from_rest_to(lower_dir, pole_on_plane, lower_rest)
+
+	# (Optional) Sanity check
+	# print(upper_bone.global_transform.basis.y.dot(upper_dir))
+	# print(lower_bone.global_transform.basis.y.dot(lower_dir))
+
+func _pose_from_rest_to(dir: Vector3, pole: Vector3, rest_basis: Basis) -> Basis:
+	var y = dir.normalized()
+
+	# 1) Shortest-arc rotation that moves REST +Y onto desired direction
+	var rest_y = rest_basis.y.normalized()
+	var c = clamp(rest_y.dot(y), -1.0, 1.0)
+	var align: Basis
+	if c > 0.999999:
+		align = Basis() # already aligned
+	elif c < -0.999999:
+		var axis = rest_y.orthogonal().normalized()
+		align = Basis(axis, PI) # 180° flip
+	else:
+		var axis = rest_y.cross(y).normalized()
+		var angle = acos(c)
+		align = Basis(axis, angle)
+
+	# 2) Twist around the direction so REST X matches the pole projection
+	var projected_pole = (pole - y * pole.dot(y)).normalized()
+	if projected_pole.length() < 1e-6:
+		projected_pole = y.orthogonal().normalized()
+
+	var after_align = (align * rest_basis).x.normalized() # reference axis for twist
+	var s = after_align.cross(projected_pole).dot(y)
+	var t = after_align.dot(projected_pole)
+	var twist_angle = atan2(s, t)
+	var twist = Basis(y, twist_angle)
+
+	# Final world basis
+	return twist * align * rest_basis
