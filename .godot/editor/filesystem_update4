@@ -3,3 +3,4 @@ res://scripts/bone_instantiator.gd
 res://scripts/custom_bone.gd
 res://scripts/debug_util.gd
 res://Scenes/custom_bone.tscn
+res://scripts/character_body_3d.gd

@@ -37,7 +37,7 @@ extends Node3D
 		initialize_skeleton()
 
 #PARAMETROS DE CAMINATA
-var step_radius_walk := 0.4
+var step_radius_walk := 0.35
 var step_radius_turn := 0.2
 @export var distance_from_ground_factor := 0.7
 var distance_from_ground: float
@@ -240,9 +240,6 @@ func create_ik_controls() -> void:
 	right_leg_current_target = create_ik_target(right_color)
 	ik_targets.add_child(right_leg_current_target)
    
-func _physics_process(_delta: float) -> void:
-	left_leg_current_target = update_ik_raycast(left_leg_raycast,left_leg_next_target,left_leg_current_target,left_upper_leg,left_lower_leg,left_leg_pole)
-	right_leg_current_target = update_ik_raycast(right_leg_raycast,right_leg_next_target,right_leg_current_target,right_upper_leg,right_lower_leg,right_leg_pole)
 
 func create_ik_target(color: Color) -> Node3D:
 	var _ik_target = Node3D.new()
@@ -330,20 +327,57 @@ func _pose_from_rest_to(dir: Vector3, pole: Vector3, rest_basis: Basis) -> Basis
 	# Final world basis
 	return twist * align * rest_basis
 
+func _is_stepping(n: Node) -> bool:
+	return n.has_meta("stepping") and bool(n.get_meta("stepping"))
 
-func update_ik_raycast (raycast: RayCast3D, next_target: Node3D, current_target: Node3D, upper_leg: CustomBone, lower_leg: CustomBone, pole: Node3D) -> Node3D:
+func _mark_stepping(n: Node, stepping: bool) -> void:
+	n.set_meta("stepping", stepping)
+
+# --- Main loop (pass the opposite current_target) ---------------
+func _physics_process(_delta: float) -> void:
+	left_leg_current_target = update_ik_raycast(
+		left_leg_raycast, left_leg_next_target, left_leg_current_target,
+		left_upper_leg, left_lower_leg, left_leg_pole,
+		right_leg_current_target  # 👈 pass the opposite leg
+	)
+	right_leg_current_target = update_ik_raycast(
+		right_leg_raycast, right_leg_next_target, right_leg_current_target,
+		right_upper_leg, right_lower_leg, right_leg_pole,
+		left_leg_current_target   # 👈 pass the opposite leg
+	)
+
+# --- IK update with "opposite leg is stepping" gate -------------
+func update_ik_raycast(
+	raycast: RayCast3D, next_target: Node3D, current_target: Node3D,
+	upper_leg: CustomBone, lower_leg: CustomBone, pole: Node3D,
+	opposite_target: Node3D
+) -> Node3D:
 	raycast.force_raycast_update()
 	if raycast.is_colliding():
-		var collisionPoint : Vector3 = raycast.get_collision_point()
-		next_target.global_position = collisionPoint
-		var dist_traveled_xz := (Vector2(next_target.global_position.x,next_target.global_position.z) - Vector2(current_target.global_position.x,current_target.global_position.z) ).length_squared() 
-		if(dist_traveled_xz>step_radius_walk):
-			var dist : float = current_target.global_position.distance_to(next_target.global_position)
-			var duration : float = clamp(dist / STEP_SPEED_MPS, 0.06, 0.25)
-			_tween_foot_to(current_target, current_target.global_position, collisionPoint, duration, STEP_HEIGHT)
+		var collision_point: Vector3 = raycast.get_collision_point()
+		next_target.global_position = collision_point
+
+		var dist_traveled_xz := (
+			Vector2(next_target.global_position.x, next_target.global_position.z) -
+			Vector2(current_target.global_position.x, current_target.global_position.z)
+		).length_squared()
+
+		# Only step if:
+		# 1) we exceeded the radius,
+		# 2) the opposite leg is NOT tweening,
+		# 3) this leg is NOT already tweening
+		if dist_traveled_xz > step_radius_walk \
+		and not _is_stepping(opposite_target) \
+		and not _is_stepping(current_target):
+			var dist: float = current_target.global_position.distance_to(next_target.global_position)
+			var duration: float = clamp(dist / STEP_SPEED_MPS, 0.06, 0.25)
+			_tween_foot_to(current_target, current_target.global_position, collision_point, duration, STEP_HEIGHT)
 	else:
-		_tween_foot_to(current_target, current_target.global_position, next_target.global_position, 0.0, STEP_HEIGHT)
-	solve_leg_ik(upper_leg,lower_leg,current_target.global_position,pole.global_position)
+		# Snap only if we’re not mid-step
+		if not _is_stepping(current_target):
+			_tween_foot_to(current_target, current_target.global_position, next_target.global_position, 0.0, STEP_HEIGHT)
+
+	solve_leg_ik(upper_leg, lower_leg, current_target.global_position, pole.global_position)
 	return current_target
 
 
@@ -352,21 +386,28 @@ const STEP_SPEED_MPS  := 6.0      # how fast the foot travels toward its new spo
 const STEP_HEIGHT     := 0.4     # how high the foot lifts during the step
 
 func _tween_foot_to(node: Node3D, from_pos: Vector3, to_pos: Vector3, duration: float, height: float = STEP_HEIGHT) -> void:
-	# Stop an in-flight tween for this node (if any)
+	# Kill any in-flight tween for this node
 	if node.has_meta("ik_tween"):
 		var old: Tween = node.get_meta("ik_tween")
 		if old and old.is_running():
 			old.kill()
 
+	# Instant snap: no tween, clear flags
+	if duration <= 0.0 or from_pos.is_equal_approx(to_pos):
+		node.global_position = to_pos
+		node.set_meta("ik_tween", null)
+		node.set_meta("stepping", false)
+		return
+
 	var tween := get_tree().create_tween()
-	# If this runs from _physics_process, keep the tween in physics for stability
 	tween.set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
 	node.set_meta("ik_tween", tween)
+	node.set_meta("stepping", true) # mark as stepping while tween runs
 
-	# Tween with a small vertical arc using tween_method
 	var from := from_pos
 	var to   := to_pos
 
+	# Tween with a small vertical arc using tween_method
 	tween.tween_method(
 		func(p: float) -> void:
 			# p goes 0..1 — lerp on XZ and add a soft arc on Y
@@ -375,5 +416,8 @@ func _tween_foot_to(node: Node3D, from_pos: Vector3, to_pos: Vector3, duration: 
 			node.global_position = pos
 	, 0.0, 1.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
-	# Cleanup meta when finished (optional)
-	tween.finished.connect(func(): node.set_meta("ik_tween", null))
+	# Cleanup metas when finished
+	tween.finished.connect(func() -> void:
+		node.set_meta("ik_tween", null)
+		node.set_meta("stepping", false)
+	)
