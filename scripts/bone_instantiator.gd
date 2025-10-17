@@ -231,16 +231,21 @@ func create_ik_controls() -> void:
 	
 	#var lef := create_ik_target(left_color, step_radius_walk, step_radius_turn)
 	#ik_targets.add_child(current_target)
+
+	left_leg_current_target = create_ik_target(left_color)
+	ik_targets.add_child(left_leg_current_target)
+	right_leg_current_target = create_ik_target(right_color)
+	ik_targets.add_child(right_leg_current_target)
    
 func _physics_process(_delta: float) -> void:
-	left_leg_current_target = update_ik_raycast(left_leg_raycast,left_leg_next_target,left_leg_current_target,left_upper_leg,left_lower_leg,left_leg_pole, left_color)
-	right_leg_current_target = update_ik_raycast(right_leg_raycast,right_leg_next_target,right_leg_current_target,right_upper_leg,right_lower_leg,right_leg_pole, right_color)
+	left_leg_current_target = update_ik_raycast(left_leg_raycast,left_leg_next_target,left_leg_current_target,left_upper_leg,left_lower_leg,left_leg_pole)
+	right_leg_current_target = update_ik_raycast(right_leg_raycast,right_leg_next_target,right_leg_current_target,right_upper_leg,right_lower_leg,right_leg_pole)
 
-func create_ik_target(color: Color, walk_radius: float, turn_radius: float) -> Node3D:
+func create_ik_target(color: Color) -> Node3D:
 	var _ik_target = Node3D.new()
 	_ik_target.add_child(DebugUtil.create_debug_cube(color))
-	_ik_target.add_child(DebugUtil.create_debug_ring(color,walk_radius))
-	_ik_target.add_child(DebugUtil.create_debug_ring(color,turn_radius))
+	_ik_target.add_child(DebugUtil.create_debug_ring(color,step_radius_walk))
+	_ik_target.add_child(DebugUtil.create_debug_ring(color,step_radius_turn))
 	return _ik_target
 
 func solve_leg_ik(
@@ -320,21 +325,15 @@ func _pose_from_rest_to(dir: Vector3, pole: Vector3, rest_basis: Basis) -> Basis
 	return twist * align * rest_basis
 
 
-func update_ik_raycast (raycast: RayCast3D, next_target: Node3D, current_target: Node3D, upper_leg: CustomBone, lower_leg: CustomBone, pole: Node3D, color: Color) -> Node3D:
+func update_ik_raycast (raycast: RayCast3D, next_target: Node3D, current_target: Node3D, upper_leg: CustomBone, lower_leg: CustomBone, pole: Node3D) -> Node3D:
 	raycast.force_raycast_update()
 	if raycast.is_colliding():
 		var collisionPoint : Vector3 = raycast.get_collision_point()
 		next_target.global_position = collisionPoint
-		if (current_target == null):
-			current_target = create_ik_target(color, step_radius_walk, step_radius_turn)
-			ik_targets.add_child(current_target)
+		var dist_traveled_xz := (Vector2(next_target.global_position.x,next_target.global_position.z) - Vector2(current_target.global_position.x,current_target.global_position.z) ).length_squared() 
+		if(dist_traveled_xz>step_radius_walk):
 			current_target.global_position = collisionPoint
-		else:
-			var dist_traveled_xz := (Vector2(next_target.global_position.x,next_target.global_position.z) - Vector2(current_target.global_position.x,current_target.global_position.z) ).length_squared() 
-			if(dist_traveled_xz>step_radius_walk):
-				current_target.global_position = collisionPoint
-	elif current_target:
+	else:
 		current_target.global_position = next_target.global_position
-	if(current_target):
-		solve_leg_ik(upper_leg,lower_leg,current_target.global_position,pole.global_position)
+	solve_leg_ik(upper_leg,lower_leg,current_target.global_position,pole.global_position)
 	return current_target
