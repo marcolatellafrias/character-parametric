@@ -5,7 +5,8 @@ extends Node3D
 	set(value):
 		feet_to_head_height = value
 		initialize_skeleton()
-
+@export var distance_from_ground_factor := 0.7
+var distance_from_ground: float
 #PROPORCIONES/INTERFAZ
 @export var neck_to_head_proportion := 0.1:
 	set(value):
@@ -38,7 +39,7 @@ extends Node3D
 
 #Step sizes
 var step_radius_walk := 0.4
-var step_radius_turn := 0.05
+var step_radius_turn := 0.2
 
 #IK variables
 @onready var ik_targets := $"../../ik_targets"
@@ -128,7 +129,7 @@ func update_sizes() -> void:
 
 	# Anchuras laterales
 	hip_width = Vector3( 0.1,hips_width_proportion * feet_to_head_height, 0.1)
-	shoulder_width = Vector3( 0.1,shoulder_width_proportion * feet_to_head_height, 0.3)
+	shoulder_width = Vector3( 0.1,shoulder_width_proportion * feet_to_head_height, 0.1)
 
 	# --------- CABEZA Y CUELLO ---------
 	if has_neck:
@@ -142,7 +143,8 @@ func update_sizes() -> void:
 	var arm_total := torso_height * arms_proportion
 	upper_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
 	lower_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
-	raycast_leg_lenght = leg_height * 1.5
+	raycast_leg_lenght = leg_height 
+	distance_from_ground = leg_height * (1- distance_from_ground_factor)
 
 func _ready() -> void:
 	initialize_skeleton()
@@ -190,6 +192,7 @@ func initialize_skeleton() -> void:
 	left_lower_arm = CustomBone.createFromToDown(left_upper_arm, lower_arm_size, 0.0,0.0, Color.RED , true)
 	
 	create_ik_controls()
+	translate(Vector3(0,-distance_from_ground,0))
 
 func create_ik_controls() -> void:	
 	left_leg_raycast = RayCast3D.new()
@@ -225,15 +228,19 @@ func create_ik_controls() -> void:
 	add_child(right_leg_next_target)
 	right_leg_next_target.position = Vector3(hip_width.y,-raycast_leg_lenght,0)
 	right_leg_next_target.add_child(DebugUtil.create_debug_sphere(right_color))
+	
+	#var lef := create_ik_target(left_color, step_radius_walk, step_radius_turn)
+	#ik_targets.add_child(current_target)
    
 func _physics_process(_delta: float) -> void:
 	left_leg_current_target = update_ik_raycast(left_leg_raycast,left_leg_next_target,left_leg_current_target,left_upper_leg,left_lower_leg,left_leg_pole, left_color)
 	right_leg_current_target = update_ik_raycast(right_leg_raycast,right_leg_next_target,right_leg_current_target,right_upper_leg,right_lower_leg,right_leg_pole, right_color)
 
-func create_ik_target(color: Color, radius: float) -> Node3D:
+func create_ik_target(color: Color, walk_radius: float, turn_radius: float) -> Node3D:
 	var _ik_target = Node3D.new()
 	_ik_target.add_child(DebugUtil.create_debug_cube(color))
-	_ik_target.add_child(DebugUtil.create_debug_ring(color,radius))
+	_ik_target.add_child(DebugUtil.create_debug_ring(color,walk_radius))
+	_ik_target.add_child(DebugUtil.create_debug_ring(color,turn_radius))
 	return _ik_target
 
 func solve_leg_ik(
@@ -259,7 +266,7 @@ func solve_leg_ik(
 	if right_vec.length() < 1e-6:
 		right_vec = dir_to_target.orthogonal()
 	var bend_plane_normal = right_vec.normalized()
-	var pole_on_plane = -(bend_plane_normal.cross(dir_to_target)).normalized()
+	var pole_on_plane = (bend_plane_normal.cross(dir_to_target)).normalized()
 
 	# ---- Knee position (law of cosines) ----
 	var a = upper_len
@@ -319,13 +326,15 @@ func update_ik_raycast (raycast: RayCast3D, next_target: Node3D, current_target:
 		var collisionPoint : Vector3 = raycast.get_collision_point()
 		next_target.global_position = collisionPoint
 		if (current_target == null):
-			current_target = create_ik_target(color, step_radius_walk)
+			current_target = create_ik_target(color, step_radius_walk, step_radius_turn)
 			ik_targets.add_child(current_target)
 			current_target.global_position = collisionPoint
 		else:
 			var dist_traveled_xz := (Vector2(next_target.global_position.x,next_target.global_position.z) - Vector2(current_target.global_position.x,current_target.global_position.z) ).length_squared() 
 			if(dist_traveled_xz>step_radius_walk):
 				current_target.global_position = collisionPoint
+	elif current_target:
+		current_target.global_position = next_target.global_position
 	if(current_target):
-		solve_leg_ik(upper_leg,lower_leg,current_target.global_position,pole.position)
+		solve_leg_ik(upper_leg,lower_leg,current_target.global_position,pole.global_position)
 	return current_target

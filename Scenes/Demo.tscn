@@ -56,6 +56,7 @@ radius = 0.01
 height = 1.0
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_3xrpy"]
+radius = 0.25
 
 [node name="Demo" type="Node3D"]
 
@@ -121,14 +122,12 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.3526645, 0)
 script = ExtResource("6_oilx1")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="player_root/player_controller"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 shape = SubResource("CapsuleShape3D_3xrpy")
 
 [node name="Camera3D" type="Camera3D" parent="player_root/player_controller"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7772312, 2.7568374)
 
 [node name="BoneInstantiator" type="Node3D" parent="player_root/player_controller"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6820402, 0)
 script = ExtResource("6_ecetj")
 
 [node name="ik_targets" type="Node3D" parent="player_root"]

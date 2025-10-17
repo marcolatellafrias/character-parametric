@@ -25,17 +25,17 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	bone.add_child(pivot_mesh_instance)
 	
 	#Añado mesh
-	var mesh_instance := DebugUtil.create_debug_colored_cube(bone.capsule_dimensions) #MeshInstance3D.new()
-	#var cube_mesh :=  PrismMesh.new()
-	#cube_mesh.size = bone.capsule_dimensions
-	#mesh_instance.mesh = cube_mesh
+	var mesh_instance := MeshInstance3D.new() #DebugUtil.create_debug_colored_cube(bone.capsule_dimensions) 
+	var cube_mesh :=  BoxMesh.new()
+	cube_mesh.size = bone.capsule_dimensions
+	mesh_instance.mesh = cube_mesh
 	mesh_instance.position = Vector3(0, bone.capsule_dimensions.y * 0.5, 0)
-	#var material := StandardMaterial3D.new()
-	#material.albedo_color = new_color
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color.WHITE_SMOKE #new_color
 	#material.albedo_color.a = 0.5
 	#material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	#material.flags_transparent = true
-	#mesh_instance.material_override = material
+	mesh_instance.material_override = material
 	bone.add_child(mesh_instance)
 	
 	# Hago que el pivot del hueso, este donde termina o empieza el hueso padre
