@@ -5,8 +5,7 @@ extends Node3D
 	set(value):
 		feet_to_head_height = value
 		initialize_skeleton()
-@export var distance_from_ground_factor := 0.7
-var distance_from_ground: float
+
 #PROPORCIONES/INTERFAZ
 @export var neck_to_head_proportion := 0.1:
 	set(value):
@@ -37,9 +36,11 @@ var distance_from_ground: float
 		has_neck = value
 		initialize_skeleton()
 
-#Step sizes
+#PARAMETROS DE CAMINATA
 var step_radius_walk := 0.4
 var step_radius_turn := 0.2
+@export var distance_from_ground_factor := 0.7
+var distance_from_ground: float
 
 #IK variables
 @onready var ik_targets := $"../../ik_targets"
@@ -145,6 +146,8 @@ func update_sizes() -> void:
 	lower_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
 	raycast_leg_lenght = leg_height 
 	distance_from_ground = leg_height * (1- distance_from_ground_factor)
+
+
 
 func _ready() -> void:
 	initialize_skeleton()
@@ -302,8 +305,11 @@ func _pose_from_rest_to(dir: Vector3, pole: Vector3, rest_basis: Basis) -> Basis
 	if c > 0.999999:
 		align = Basis() # already aligned
 	elif c < -0.999999:
-		var axis = rest_y.orthogonal().normalized()
-		align = Basis(axis, PI) # 180° flip
+		var axis = rest_y.cross(Vector3.RIGHT)
+		if axis.length_squared() < 0.0001:
+			axis = rest_y.cross(Vector3.UP)
+			axis = axis.normalized()
+			align = Basis(axis, PI) # 180° flip
 	else:
 		var axis = rest_y.cross(y).normalized()
 		var angle = acos(c)
@@ -325,15 +331,64 @@ func _pose_from_rest_to(dir: Vector3, pole: Vector3, rest_basis: Basis) -> Basis
 	return twist * align * rest_basis
 
 
-func update_ik_raycast (raycast: RayCast3D, next_target: Node3D, current_target: Node3D, upper_leg: CustomBone, lower_leg: CustomBone, pole: Node3D) -> Node3D:
+func update_ik_raycast(raycast: RayCast3D,next_target: Node3D,current_target: Node3D,upper_leg: CustomBone,lower_leg: CustomBone,pole: Node3D) -> Node3D:
 	raycast.force_raycast_update()
+	var want_step := false
+	var target_point := current_target.global_position
+
 	if raycast.is_colliding():
-		var collisionPoint : Vector3 = raycast.get_collision_point()
-		next_target.global_position = collisionPoint
-		var dist_traveled_xz := (Vector2(next_target.global_position.x,next_target.global_position.z) - Vector2(current_target.global_position.x,current_target.global_position.z) ).length_squared() 
-		if(dist_traveled_xz>step_radius_walk):
-			current_target.global_position = collisionPoint
+		target_point = raycast.get_collision_point()
+		next_target.global_position = target_point
+
+		# Compare XZ-only distance against your threshold
+		var dxz := Vector2(target_point.x, target_point.z) - Vector2(current_target.global_position.x, current_target.global_position.z)
+		# If `step_radius_walk` is a radius (not squared), compare to its square:
+		# if dxz.length_squared() > step_radius_walk * step_radius_walk:
+		if dxz.length_squared() > step_radius_walk:
+			want_step = true
 	else:
-		current_target.global_position = next_target.global_position
-	solve_leg_ik(upper_leg,lower_leg,current_target.global_position,pole.global_position)
+		# No ground hit — move toward where we think the next target is
+		target_point = next_target.global_position
+		# Only step if there's actually some distance to cover
+		want_step = current_target.global_position.distance_to(target_point) > 0.001
+
+	# Trigger tween only when we actually want a step
+	if want_step:
+		var dist : float = current_target.global_position.distance_to(target_point)
+		# Convert distance to time; clamp so tiny/huge steps still feel good
+		var duration : float = clamp(dist / STEP_SPEED_MPS, 0.06, 0.25)
+		_tween_foot_to(current_target, current_target.global_position, target_point, duration, STEP_HEIGHT)
+	solve_leg_ik(upper_leg, lower_leg, current_target.global_position, pole.global_position)
 	return current_target
+
+
+# Adjustable step settings
+const STEP_SPEED_MPS  := 6.0      # how fast the foot travels toward its new spot
+const STEP_HEIGHT     := 0.4     # how high the foot lifts during the step
+
+func _tween_foot_to(node: Node3D, from_pos: Vector3, to_pos: Vector3, duration: float, height: float = STEP_HEIGHT) -> void:
+	# Stop an in-flight tween for this node (if any)
+	if node.has_meta("ik_tween"):
+		var old: Tween = node.get_meta("ik_tween")
+		if old and old.is_running():
+			old.kill()
+
+	var tween := get_tree().create_tween()
+	# If this runs from _physics_process, keep the tween in physics for stability
+	tween.set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
+	node.set_meta("ik_tween", tween)
+
+	# Tween with a small vertical arc using tween_method
+	var from := from_pos
+	var to   := to_pos
+
+	tween.tween_method(
+		func(p: float) -> void:
+			# p goes 0..1 — lerp on XZ and add a soft arc on Y
+			var pos := from.lerp(to, p)
+			pos.y += sin(p * PI) * height
+			node.global_position = pos
+	, 0.0, 1.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+	# Cleanup meta when finished (optional)
+	tween.finished.connect(func(): node.set_meta("ik_tween", null))
