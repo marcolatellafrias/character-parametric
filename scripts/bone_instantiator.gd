@@ -7,19 +7,19 @@ extends Node3D
 		initialize_skeleton()
 
 #PROPORCIONES/INTERFAZ
-@export var neck_to_head_proportion := 0.1:
+@export var neck_to_head_proportion := 0.2:
 	set(value):
 		neck_to_head_proportion = value
 		initialize_skeleton()
-@export var chest_to_low_spine_proportion := 0.4:
+@export var chest_to_low_spine_proportion := 0.3:
 	set(value):
 		chest_to_low_spine_proportion = value
 		initialize_skeleton()
-@export var legs_to_feet_proportion := 0.6:
+@export var legs_to_feet_proportion := 0.5:
 	set(value):
 		legs_to_feet_proportion = value
 		initialize_skeleton()
-@export var hips_width_proportion := 0.15:
+@export var hips_width_proportion := 0.11:
 	set(value):
 		hips_width_proportion = value
 		initialize_skeleton()	
@@ -37,9 +37,9 @@ extends Node3D
 		initialize_skeleton()
 
 #PARAMETROS DE CAMINATA
-var step_radius_walk := 0.35
+var step_radius_walk := 0.32
 var step_radius_turn := 0.2
-@export var distance_from_ground_factor := 0.7
+@export var distance_from_ground_factor := 0.1 #10% del tamaño de sus piernas desde el suelo
 var distance_from_ground: float
 
 #IK variables
@@ -97,6 +97,10 @@ var right_lower_arm : CustomBone
 var left_upper_arm : CustomBone
 var left_lower_arm : CustomBone
 
+@onready var character_controller := $"../../player_controller"
+@onready var collision_shape : CollisionShape3D = $"../CollisionShape3D"
+var previous_transform : Transform3D 
+
 func update_sizes() -> void:
 	# Evitar división por cero
 	var total := legs_to_feet_proportion + chest_to_low_spine_proportion + neck_to_head_proportion
@@ -114,11 +118,11 @@ func update_sizes() -> void:
 	var head_height := feet_to_head_height * head_ratio
 
 	# --------- PIERNAS ---------
-	upper_leg_size = Vector3(0.1, leg_height * 0.55, 0.1)
-	lower_leg_size = Vector3(0.1, leg_height * 0.45, 0.1)
+	upper_leg_size = Vector3(0.1, leg_height * 0.45, 0.1)
+	lower_leg_size = Vector3(0.1, leg_height * 0.55, 0.1)
 
 	# Separar el pie de la pierna
-	upper_feet_size = Vector3(0.1, leg_height * 0.28, 0.1)
+	upper_feet_size = Vector3(0.1, leg_height * 0.2, 0.1)
 	lower_feet_size = Vector3(0.1, leg_height * 0.02, 0.1)
 
 	# --------- TORSO ---------
@@ -134,19 +138,33 @@ func update_sizes() -> void:
 
 	# --------- CABEZA Y CUELLO ---------
 	if has_neck:
-		neck_size = Vector3(0.1, head_height * 0.8, 0.1)
-		head_size = Vector3(0.3, head_height * 1.0, 0.3)
+		neck_size = Vector3(0.1, head_height * 0.4, 0.1)
+		head_size = Vector3(0.3, head_height * 0.6, 0.3)
 	else:
 		neck_size = Vector3.ZERO
 		head_size = Vector3(0.3, head_height, 0.3)
 
 	# --------- BRAZOS ---------
-	var arm_total := torso_height * arms_proportion
-	upper_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
-	lower_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
-	raycast_leg_lenght = leg_height 
-	distance_from_ground = leg_height * (1- distance_from_ground_factor)
-
+	var arm_total := leg_height #torso_height * arms_proportion
+	upper_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
+	lower_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
+	raycast_leg_lenght = leg_height + 0.05
+	distance_from_ground = leg_height * (distance_from_ground_factor)
+	#var ground_collision_mesh = CapsuleMesh.new()
+	#ground_collision_mesh.height = feet_to_head_height
+	#ground_collision_mesh.radius = hip_width.y * 2
+	#collision_shape.shape = ground_collision_mesh
+	#collision_shape.translate(Vector3(0, leg_height - (leg_height - distance_from_ground) ,0))
+	if collision_shape is CollisionShape3D:
+		if collision_shape.shape is CapsuleShape3D:
+			var radius :=  hip_width.y * 2
+			var height := feet_to_head_height
+			var y_offset :=  leg_height - (leg_height - distance_from_ground)
+			collision_shape.shape.height = height
+			collision_shape.shape.radius = radius
+			collision_shape.position = (Vector3(0, y_offset ,0))
+			character_controller.add_child.call_deferred(DebugUtil.create_debug_capsule(radius,  height, y_offset))
+			print("added capsule debug")
 
 
 func _ready() -> void:
@@ -190,12 +208,11 @@ func initialize_skeleton() -> void:
 
 	# Arms
 	right_upper_arm = CustomBone.createFromToDown(right_shoulder, upper_arm_size, 0.0,0.0, Color.VIOLET , true)
-	right_lower_arm = CustomBone.createFromToDown(right_upper_arm, lower_arm_size, 0.0,0.0, Color.RED , true)
+	right_lower_arm = CustomBone.createFromToDown(right_upper_arm, lower_arm_size, 0.0,0.5, Color.RED , true)
 	left_upper_arm = CustomBone.createFromToDown(left_shoulder, upper_arm_size, 0.0,0.0, Color.VIOLET , true)
-	left_lower_arm = CustomBone.createFromToDown(left_upper_arm, lower_arm_size, 0.0,0.0, Color.RED , true)
+	left_lower_arm = CustomBone.createFromToDown(left_upper_arm, lower_arm_size, 0.0,0.5, Color.RED , true)
 	
 	create_ik_controls()
-	translate(Vector3(0,-distance_from_ground,0))
 
 func create_ik_controls() -> void:	
 	left_leg_raycast = RayCast3D.new()
@@ -231,9 +248,6 @@ func create_ik_controls() -> void:
 	add_child(right_leg_next_target)
 	right_leg_next_target.position = Vector3(hip_width.y,-raycast_leg_lenght,0)
 	right_leg_next_target.add_child(DebugUtil.create_debug_sphere(right_color))
-	
-	#var lef := create_ik_target(left_color, step_radius_walk, step_radius_turn)
-	#ik_targets.add_child(current_target)
 
 	left_leg_current_target = create_ik_target(left_color)
 	ik_targets.add_child(left_leg_current_target)
@@ -335,6 +349,10 @@ func _mark_stepping(n: Node, stepping: bool) -> void:
 
 # --- Main loop (pass the opposite current_target) ---------------
 func _physics_process(_delta: float) -> void:
+	var isRotating := false
+	var isTranslating := false
+	if character_controller:
+		previous_transform = character_controller.transform
 	left_leg_current_target = update_ik_raycast(
 		left_leg_raycast, left_leg_next_target, left_leg_current_target,
 		left_upper_leg, left_lower_leg, left_leg_pole,
@@ -360,7 +378,7 @@ func update_ik_raycast(
 		var dist_traveled_xz := (
 			Vector2(next_target.global_position.x, next_target.global_position.z) -
 			Vector2(current_target.global_position.x, current_target.global_position.z)
-		).length_squared()
+		).length_squared() * 2
 
 		# Only step if:
 		# 1) we exceeded the radius,

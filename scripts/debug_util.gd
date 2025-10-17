@@ -34,7 +34,27 @@ static func create_debug_cube(color: Color) -> MeshInstance3D:
 	material.albedo_color = color
 	mesh_instance.material_override = material
 	return mesh_instance
+
+static func create_debug_capsule(radius: float, height: float, y_offset: float) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
 	
+	# Crear una cápsula con los parámetros dados
+	var capsule := CapsuleMesh.new()
+	capsule.radius = radius
+	capsule.height = height
+	mesh_instance.mesh = capsule
+
+	# Crear un material blanco semitransparente
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(1, 1, 1, 0.5) # Blanco con opacidad 0.5
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.flags_transparent = true
+
+	mesh_instance.material_override = material
+	mesh_instance.position= Vector3(0,y_offset,0)
+	
+	return mesh_instance
+
 static func create_debug_ring(color: Color, radius: float, segments: int = 64) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var st := SurfaceTool.new()
