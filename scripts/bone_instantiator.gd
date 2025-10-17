@@ -331,34 +331,19 @@ func _pose_from_rest_to(dir: Vector3, pole: Vector3, rest_basis: Basis) -> Basis
 	return twist * align * rest_basis
 
 
-func update_ik_raycast(raycast: RayCast3D,next_target: Node3D,current_target: Node3D,upper_leg: CustomBone,lower_leg: CustomBone,pole: Node3D) -> Node3D:
+func update_ik_raycast (raycast: RayCast3D, next_target: Node3D, current_target: Node3D, upper_leg: CustomBone, lower_leg: CustomBone, pole: Node3D) -> Node3D:
 	raycast.force_raycast_update()
-	var want_step := false
-	var target_point := current_target.global_position
-
 	if raycast.is_colliding():
-		target_point = raycast.get_collision_point()
-		next_target.global_position = target_point
-
-		# Compare XZ-only distance against your threshold
-		var dxz := Vector2(target_point.x, target_point.z) - Vector2(current_target.global_position.x, current_target.global_position.z)
-		# If `step_radius_walk` is a radius (not squared), compare to its square:
-		# if dxz.length_squared() > step_radius_walk * step_radius_walk:
-		if dxz.length_squared() > step_radius_walk:
-			want_step = true
+		var collisionPoint : Vector3 = raycast.get_collision_point()
+		next_target.global_position = collisionPoint
+		var dist_traveled_xz := (Vector2(next_target.global_position.x,next_target.global_position.z) - Vector2(current_target.global_position.x,current_target.global_position.z) ).length_squared() 
+		if(dist_traveled_xz>step_radius_walk):
+			var dist : float = current_target.global_position.distance_to(next_target.global_position)
+			var duration : float = clamp(dist / STEP_SPEED_MPS, 0.06, 0.25)
+			_tween_foot_to(current_target, current_target.global_position, collisionPoint, duration, STEP_HEIGHT)
 	else:
-		# No ground hit — move toward where we think the next target is
-		target_point = next_target.global_position
-		# Only step if there's actually some distance to cover
-		want_step = current_target.global_position.distance_to(target_point) > 0.001
-
-	# Trigger tween only when we actually want a step
-	if want_step:
-		var dist : float = current_target.global_position.distance_to(target_point)
-		# Convert distance to time; clamp so tiny/huge steps still feel good
-		var duration : float = clamp(dist / STEP_SPEED_MPS, 0.06, 0.25)
-		_tween_foot_to(current_target, current_target.global_position, target_point, duration, STEP_HEIGHT)
-	solve_leg_ik(upper_leg, lower_leg, current_target.global_position, pole.global_position)
+		_tween_foot_to(current_target, current_target.global_position, next_target.global_position, 0.0, STEP_HEIGHT)
+	solve_leg_ik(upper_leg,lower_leg,current_target.global_position,pole.global_position)
 	return current_target
 
 
