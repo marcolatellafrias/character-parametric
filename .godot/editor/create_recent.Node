@@ -1,3 +1,4 @@
+Camera3D
 BoneAttachment3D
 Skeleton3D
 Node3D
@@ -11,4 +12,3 @@ CanvasLayer
 StaticBody3D
 Node
 Label
-Camera3D

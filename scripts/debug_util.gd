@@ -56,3 +56,58 @@ static func create_debug_ring(color: Color, radius: float, segments: int = 64) -
 	mesh_instance.material_override = material
 
 	return mesh_instance
+
+# Creates a MeshInstance3D cube with axis-colored faces:
+#  +X: light red,  -X: dark red
+#  +Y: light green,-Y: dark green
+#  +Z: light blue, -Z: dark blue
+# size can be a float (uniform) or Vector3.
+static func create_debug_colored_cube(size, light_amount: float = 0.35) -> MeshInstance3D:
+	var s: Vector3 = size if typeof(size) == TYPE_VECTOR3 else Vector3(size, size, size)
+	var hx := s.x * 0.5
+	var hy := s.y * 0.5
+	var hz := s.z * 0.5
+
+	var mesh := ArrayMesh.new()
+	var mesh_instance := MeshInstance3D.new()
+
+	# Base colors + shades
+	light_amount = clamp(light_amount, 0.0, 0.9)
+	var red_pos   := Color(1, 0, 0).lightened(light_amount)
+	var red_neg   := Color(1, 0, 0).darkened(light_amount)
+	var green_pos := Color(0, 1, 0).lightened(light_amount)
+	var green_neg := Color(0, 1, 0).darkened(light_amount)
+	var blue_pos  := Color(0, 0, 1).lightened(light_amount)
+	var blue_neg  := Color(0, 0, 1).darkened(light_amount)
+
+	# Faces (CCW from outside). Order: +X, -X, +Y, -Y, +Z, -Z
+	var faces = [
+		{ "n": Vector3( 1, 0, 0), "v": [Vector3( hx,-hy,-hz), Vector3( hx, hy,-hz), Vector3( hx, hy, hz), Vector3( hx,-hy, hz)], "c": red_pos   }, # +X
+		{ "n": Vector3(-1, 0, 0), "v": [Vector3(-hx,-hy, hz), Vector3(-hx, hy, hz), Vector3(-hx, hy,-hz), Vector3(-hx,-hy,-hz)], "c": red_neg   }, # -X
+		{ "n": Vector3( 0, 1, 0), "v": [Vector3(-hx, hy,-hz), Vector3(-hx, hy, hz), Vector3( hx, hy, hz), Vector3( hx, hy,-hz)], "c": green_pos }, # +Y
+		{ "n": Vector3( 0,-1, 0), "v": [Vector3(-hx,-hy, hz), Vector3(-hx,-hy,-hz), Vector3( hx,-hy,-hz), Vector3( hx,-hy, hz)], "c": green_neg }, # -Y
+		{ "n": Vector3( 0, 0, 1), "v": [Vector3(-hx,-hy, hz), Vector3( hx,-hy, hz), Vector3( hx, hy, hz), Vector3(-hx, hy, hz)], "c": blue_pos  }, # +Z
+		{ "n": Vector3( 0, 0,-1), "v": [Vector3( hx,-hy,-hz), Vector3(-hx,-hy,-hz), Vector3(-hx, hy,-hz), Vector3( hx, hy,-hz)], "c": blue_neg  }  # -Z
+	]
+
+	for i in faces.size():
+		var f = faces[i]
+		var verts: PackedVector3Array = PackedVector3Array(f["v"])
+		var norms: PackedVector3Array = PackedVector3Array([f["n"], f["n"], f["n"], f["n"]])
+		var indices := PackedInt32Array([0, 1, 2, 0, 2, 3])
+
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_NORMAL] = norms
+		arrays[Mesh.ARRAY_INDEX] = indices
+
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = f["c"]
+		mesh.surface_set_material(mesh.get_surface_count() - 1, mat)
+
+	mesh_instance.mesh = mesh
+	return mesh_instance

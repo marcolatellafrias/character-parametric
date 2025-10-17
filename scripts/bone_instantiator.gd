@@ -227,26 +227,8 @@ func create_ik_controls() -> void:
 	right_leg_next_target.add_child(DebugUtil.create_debug_sphere(right_color))
    
 func _physics_process(_delta: float) -> void:
-	left_leg_raycast.force_raycast_update()
-	if left_leg_raycast.is_colliding():
-		var collisionPoint : Vector3 = left_leg_raycast.get_collision_point()
-		left_leg_next_target.global_position = collisionPoint
-		if (!left_leg_current_target):
-			left_leg_current_target = create_ik_target(left_color, step_radius_walk)
-			ik_targets.add_child(left_leg_current_target)
-			left_leg_current_target.global_position = collisionPoint
-	right_leg_raycast.force_raycast_update()
-	if right_leg_raycast.is_colliding():
-		var collisionPoint : Vector3 = right_leg_raycast.get_collision_point()
-		right_leg_next_target.global_position = collisionPoint
-		if (!right_leg_current_target):
-			right_leg_current_target = create_ik_target(right_color, step_radius_walk)
-			ik_targets.add_child(right_leg_current_target)
-			right_leg_current_target.global_position = collisionPoint
-	if(left_leg_current_target):
-		solve_leg_ik(left_upper_leg,left_lower_leg,left_leg_current_target.global_position,left_leg_pole.position)
-	if(right_leg_current_target):
-		solve_leg_ik(right_upper_leg,right_lower_leg,right_leg_current_target.global_position,right_leg_pole.position)
+	left_leg_current_target = update_ik_raycast(left_leg_raycast,left_leg_next_target,left_leg_current_target,left_upper_leg,left_lower_leg,left_leg_pole, left_color)
+	right_leg_current_target = update_ik_raycast(right_leg_raycast,right_leg_next_target,right_leg_current_target,right_upper_leg,right_lower_leg,right_leg_pole, right_color)
 
 func create_ik_target(color: Color, radius: float) -> Node3D:
 	var _ik_target = Node3D.new()
@@ -277,7 +259,7 @@ func solve_leg_ik(
 	if right_vec.length() < 1e-6:
 		right_vec = dir_to_target.orthogonal()
 	var bend_plane_normal = right_vec.normalized()
-	var pole_on_plane = (bend_plane_normal.cross(dir_to_target)).normalized()
+	var pole_on_plane = -(bend_plane_normal.cross(dir_to_target)).normalized()
 
 	# ---- Knee position (law of cosines) ----
 	var a = upper_len
@@ -291,20 +273,12 @@ func solve_leg_ik(
 	var upper_dir = (knee_pos - root_pos).normalized()
 	var lower_dir = (target_pos - knee_pos).normalized()
 
-	# ---- Positions (if your rig expects them) ----
-	upper_bone.global_position = root_pos
-	lower_bone.global_position = knee_pos
-
 	# ---- Build world bases directly from REST -> POSE mapping ----
 	var upper_rest = Basis.from_euler(upper_bone.rest_rotation)
 	var lower_rest = Basis.from_euler(lower_bone.rest_rotation)
 
 	upper_bone.global_transform.basis = _pose_from_rest_to(upper_dir, pole_on_plane, upper_rest)
 	lower_bone.global_transform.basis = _pose_from_rest_to(lower_dir, pole_on_plane, lower_rest)
-
-	# (Optional) Sanity check
-	# print(upper_bone.global_transform.basis.y.dot(upper_dir))
-	# print(lower_bone.global_transform.basis.y.dot(lower_dir))
 
 func _pose_from_rest_to(dir: Vector3, pole: Vector3, rest_basis: Basis) -> Basis:
 	var y = dir.normalized()
@@ -328,11 +302,30 @@ func _pose_from_rest_to(dir: Vector3, pole: Vector3, rest_basis: Basis) -> Basis
 	if projected_pole.length() < 1e-6:
 		projected_pole = y.orthogonal().normalized()
 
-	var after_align = (align * rest_basis).x.normalized() # reference axis for twist
-	var s = after_align.cross(projected_pole).dot(y)
-	var t = after_align.dot(projected_pole)
+# NEW: make the leg's local -Z align with the pole direction on the bend plane
+	var ref_axis = (align * rest_basis).z.normalized()  # treat -Z as "forward"
+	var s = ref_axis.cross(projected_pole).dot(y)
+	var t = ref_axis.dot(projected_pole)
 	var twist_angle = atan2(s, t)
 	var twist = Basis(y, twist_angle)
 
 	# Final world basis
 	return twist * align * rest_basis
+
+
+func update_ik_raycast (raycast: RayCast3D, next_target: Node3D, current_target: Node3D, upper_leg: CustomBone, lower_leg: CustomBone, pole: Node3D, color: Color) -> Node3D:
+	raycast.force_raycast_update()
+	if raycast.is_colliding():
+		var collisionPoint : Vector3 = raycast.get_collision_point()
+		next_target.global_position = collisionPoint
+		if (current_target == null):
+			current_target = create_ik_target(color, step_radius_walk)
+			ik_targets.add_child(current_target)
+			current_target.global_position = collisionPoint
+		else:
+			var dist_traveled_xz := (Vector2(next_target.global_position.x,next_target.global_position.z) - Vector2(current_target.global_position.x,current_target.global_position.z) ).length_squared() 
+			if(dist_traveled_xz>step_radius_walk):
+				current_target.global_position = collisionPoint
+	if(current_target):
+		solve_leg_ik(upper_leg,lower_leg,current_target.global_position,pole.position)
+	return current_target
