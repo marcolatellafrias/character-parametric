@@ -3,3 +3,4 @@ res://Scenes/Demo.tscn
 res://scripts/debug_util.gd
 res://scripts/ik_util.gd
 res://scripts/custom_bone.gd
+res://scripts/character_body_3d.gd

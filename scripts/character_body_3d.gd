@@ -5,6 +5,8 @@ extends CharacterBody3D
 @export var jump_force: float = 4.5
 @export var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 @export var mouse_sensitivity: float = 0.3
+# NEW: sprint
+@export var sprint_multiplier: float = 1.8  # tweak to taste
 
 var input_dir: Vector3
 var velocity_y: float = 0.0
@@ -39,11 +41,18 @@ func _handle_movement(delta: float):
 	var right = camera.global_transform.basis.x
 	input_dir = (forward * input_vec.y + right * input_vec.x).normalized()
 
-	var target_velocity = input_dir * speed
+	# NEW: sprint when holding Shift (action: "sprint")
+	var is_sprinting := Input.is_action_pressed("sprint") \
+		and input_vec != Vector2.ZERO \
+		and is_on_floor() # remove this check if you want to sprint mid-air
+
+	var move_speed := speed * (sprint_multiplier if is_sprinting else 1.0)
+	var target_velocity = input_dir * move_speed
+
 	var horizontal_velocity = velocity
 	horizontal_velocity.y = 0.0
-
 	horizontal_velocity = horizontal_velocity.lerp(target_velocity, acceleration * delta)
+
 	velocity.x = horizontal_velocity.x
 	velocity.z = horizontal_velocity.z
 

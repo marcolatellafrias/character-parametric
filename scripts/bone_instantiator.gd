@@ -1,21 +1,21 @@
 extends Node3D
 
 #ALTURA DEL PERSONAJE
-@export var feet_to_head_height := 1.8: #This excludes arms and horizontal bones,
+@export var feet_to_head_height := 3.8: #This excludes arms and horizontal bones,
 	set(value):
 		feet_to_head_height = value
 		initialize_skeleton()
 
 #PROPORCIONES/INTERFAZ
-@export var neck_to_head_proportion := 0.2:
+@export var neck_to_head_proportion := 0.15:
 	set(value):
 		neck_to_head_proportion = value
 		initialize_skeleton()
-@export var chest_to_low_spine_proportion := 0.3:
+@export var chest_to_low_spine_proportion := 0.15:
 	set(value):
 		chest_to_low_spine_proportion = value
 		initialize_skeleton()
-@export var legs_to_feet_proportion := 0.5:
+@export var legs_to_feet_proportion := 0.7:
 	set(value):
 		legs_to_feet_proportion = value
 		initialize_skeleton()
@@ -156,7 +156,7 @@ func update_sizes() -> void:
 		head_size = Vector3(0.3, head_height, 0.3)
 
 	# --------- BRAZOS ---------
-	var arm_total := leg_height #torso_height * arms_proportion
+	var arm_total := leg_height *0.5#torso_height * arms_proportion
 	upper_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
 	lower_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
 	raycast_leg_lenght = leg_height
@@ -165,7 +165,7 @@ func update_sizes() -> void:
 		if collision_shape.shape is CapsuleShape3D:
 			var radius :=  hip_width.y * 2
 			var height := feet_to_head_height
-			var y_offset :=  leg_height - (leg_height - distance_from_ground)
+			var y_offset := torso_height + head_height + height/2 - height + distance_from_ground
 			collision_shape.shape.height = height
 			collision_shape.shape.radius = radius
 			collision_shape.position = (Vector3(0, y_offset ,0))
@@ -176,7 +176,7 @@ func update_sizes() -> void:
 	step_radius_walk = leg_height * 0.32
 	step_radius_turn = leg_height * 0.2
 	step_speed_mps  = 3.0      # how fast the foot travels toward its new spot
-	step_height = leg_height * 0.4  
+	step_height = leg_height * 0.4
 
 func initialize_skeleton() -> void:
 	for bone in get_children():
