@@ -6,7 +6,7 @@ extends CharacterBody3D
 @export var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 @export var mouse_sensitivity: float = 0.3
 # NEW: sprint
-@export var sprint_multiplier: float = 1.8  # tweak to taste
+@export var sprint_multiplier: float = 2.2  # tweak to taste
 
 var input_dir: Vector3
 var velocity_y: float = 0.0

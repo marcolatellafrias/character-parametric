@@ -1,7 +1,7 @@
 extends Node3D
 
 #ALTURA DEL PERSONAJE
-@export var feet_to_head_height := 3.8: #This excludes arms and horizontal bones,
+@export var feet_to_head_height := 2.2: #This excludes arms and horizontal bones,
 	set(value):
 		feet_to_head_height = value
 		initialize_skeleton()
@@ -43,16 +43,22 @@ var step_radius_walk : float
 var step_radius_turn : float
 var step_speed_mps : float      # how fast the foot travels toward its new spot
 var step_height : float     # how high the foot lifts during the step
-var RAYCAST_AMOUNT := 6.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
-var SPEED_FOR_MAX := 6.0          # velocidad a la que llega al offset máximo
-var AXIS_WEIGHTS := Vector2(1.0, 1.0)                    # x (lateral), z (adelante) para atenuar por eje
+var raycast_amount := 4.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
+var speed_for_max := 6.0          # velocidad a la que llega al offset máximo
+var axis_weights := Vector2(1.0, 1.0)                    # x (lateral), z (adelante) para atenuar por eje
 # Opcional: curva de respuesta velocidad->offset (si querés una no lineal)
-var SPEED_CURVE: Curve                                   # X=0..1 (vel normalizada), Y=0..1 (ganancia)
-
+var speed_curve: Curve                                   # X=0..1 (vel normalizada), Y=0..1 (ganancia)
+var raycast_max_offset : float        # meters; "up to a point"
+const raycast_accel_gain := 0.06        # meters per (m/s^2)
+const raycast_vel_gain   := 0.02        # meters per (m/s)  -> keeps offset while moving
+const raycast_smooth     := 8.0        # 1/sec; higher = snappier
+var raycast_offset: Vector2 = Vector2.ZERO     # smoothed current offset (x,z)
+var left_neutral_local: Vector3
+var right_neutral_local: Vector3
 
 #IK variables
 @onready var ik_targets := $"../../ik_targets"
-var pole_distance: float = 0.8
+var pole_distance: float 
 var target_height: float = -2.0
 var left_color: Color = Color(1, 0, 0)      # rojo
 var right_color: Color = Color(0, 1, 0)    # verde
@@ -159,7 +165,7 @@ func update_sizes() -> void:
 	var arm_total := leg_height *0.5#torso_height * arms_proportion
 	upper_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
 	lower_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
-	raycast_leg_lenght = leg_height
+	raycast_leg_lenght = leg_height * 2
 	distance_from_ground = leg_height * (distance_from_ground_factor)
 	if collision_shape is CollisionShape3D:
 		if collision_shape.shape is CapsuleShape3D:
@@ -171,12 +177,15 @@ func update_sizes() -> void:
 			collision_shape.position = (Vector3(0, y_offset ,0))
 			character_controller.add_child.call_deferred(DebugUtil.create_debug_capsule(radius,  height, y_offset))
 			print("added capsule debug")
-			
-
+	
+	var horizontal_speed = Vector2(character_controller.velocity.x, character_controller.velocity.z).length()
+	character_controller.speed = leg_height * 0.7 + 1
 	step_radius_walk = leg_height * 0.32
 	step_radius_turn = leg_height * 0.2
-	step_speed_mps  = 3.0      # how fast the foot travels toward its new spot
+	step_speed_mps = 6  # how fast the foot travels toward its new spot
 	step_height = leg_height * 0.4
+	pole_distance = leg_height
+	raycast_max_offset = leg_height * 0.2
 
 func initialize_skeleton() -> void:
 	for bone in get_children():
@@ -236,8 +245,8 @@ func create_ik_controls() -> void:
 	add_child(left_leg_next_target)
 	add_child(right_leg_next_target)
 	
-	_left_neutral_local  = left_leg_raycast.transform.origin
-	_right_neutral_local = right_leg_raycast.transform.origin
+	left_neutral_local  = left_leg_raycast.transform.origin
+	right_neutral_local  = right_leg_raycast.transform.origin
 	
 	#Agrego cosas q se mueven con el mundo, en ik_targets
 	left_leg_current_target = IkUtil.create_ik_target(left_color, step_radius_walk, step_radius_turn)
@@ -245,71 +254,22 @@ func create_ik_controls() -> void:
 	ik_targets.add_child(left_leg_current_target)
 	ik_targets.add_child(right_leg_current_target)
 
-# --- Foot raycast offset tuning ---
-const RAYCAST_MAX_OFFSET := 0.35        # meters; "up to a point"
-const RAYCAST_ACCEL_GAIN := 0.06        # meters per (m/s^2)
-const RAYCAST_VEL_GAIN   := 0.02        # meters per (m/s)  -> keeps offset while moving
-const RAYCAST_SMOOTH     := 8.0        # 1/sec; higher = snappier
-var _raycast_offset: Vector2 = Vector2.ZERO     # smoothed current offset (x,z)
-
-var _left_neutral_local: Vector3
-var _right_neutral_local: Vector3
-
 func _physics_process(_delta: float) -> void:
-	var isRotating := false
 	var isTranslating := false
 	if character_controller:
 		previous_transform = character_controller.transform
-	_update_leg_raycast_offsets(character_controller,_delta)
+	raycast_offset = IkUtil.update_leg_raycast_offsets(character_controller, _delta, left_leg_raycast, speed_for_max, speed_curve, raycast_amount, raycast_max_offset, axis_weights, raycast_smooth, left_neutral_local, raycast_offset) 
+	raycast_offset = IkUtil.update_leg_raycast_offsets(character_controller, _delta, right_leg_raycast, speed_for_max, speed_curve, raycast_amount, raycast_max_offset, axis_weights, raycast_smooth, right_neutral_local, raycast_offset) 
 	
-	left_leg_current_target = IkUtil.update_ik_raycast(
-		left_leg_raycast, left_leg_next_target, left_leg_current_target,
-		left_upper_leg, left_lower_leg, left_leg_pole,
-		right_leg_current_target,  # la pierna opuesta
-		step_radius_walk, step_height, step_speed_mps,
-	)
-	right_leg_current_target = IkUtil.update_ik_raycast(
-		right_leg_raycast, right_leg_next_target, right_leg_current_target,
-		right_upper_leg, right_lower_leg, right_leg_pole,
-		left_leg_current_target,   # la pierna opuesta
-		step_radius_walk, step_height, step_speed_mps,
-	)
-
-func _update_leg_raycast_offsets(character: CharacterBody3D, delta: float) -> void:
-	# Velocidad horizontal
-	var hvel := character.velocity
-	hvel.y = 0.0
-
-	# A espacio local del padre de raycasts
-	var ray_parent := left_leg_raycast.get_parent() as Node3D
-	var basis_owner := (ray_parent if ray_parent != null else self) as Node3D
-	var local_vel: Vector3 = basis_owner.global_transform.basis.inverse() * hvel
-
-	var v2 := Vector2(local_vel.x, local_vel.z)
-	var speed := v2.length()
-	var dir := (v2 / speed) if (speed > 0.0) else Vector2.ZERO
-
-	# Velocidad normalizada (0..1) y ganancia total
-	var n : float = clamp(speed / SPEED_FOR_MAX, 0.0, 1.0)
-	var curve_gain : = SPEED_CURVE.sample_baked(n) if (SPEED_CURVE != null) else n
-	var amount := RAYCAST_AMOUNT * curve_gain
-
-	# Offset objetivo limitado por el radio máximo
-	var target_off := dir * (amount * RAYCAST_MAX_OFFSET)
-	target_off = Vector2(target_off.x * AXIS_WEIGHTS.x, target_off.y * AXIS_WEIGHTS.y)
-
-	# Deadzone mínima
-	if target_off.length() < 0.002:
-		target_off = Vector2.ZERO
-
-	# Suavizado
-	var k : float = clamp(delta * RAYCAST_SMOOTH, 0.0, 1.0)
-	_raycast_offset = _raycast_offset.lerp(target_off, k)
-
-	# Volver al centro en el aire
-	if not character.is_on_floor():
-		_raycast_offset = _raycast_offset.lerp(Vector2.ZERO, k)
-
-	# Aplicar alrededor de las posiciones locales neutras
-	left_leg_raycast.transform.origin  = _left_neutral_local  + Vector3(_raycast_offset.x, 0.0, _raycast_offset.y)
-	right_leg_raycast.transform.origin = _right_neutral_local + Vector3(_raycast_offset.x, 0.0, _raycast_offset.y)
+	#left_leg_current_target = IkUtil.update_ik_raycast(
+		#left_leg_raycast, left_leg_next_target, left_leg_current_target,
+		#left_upper_leg, left_lower_leg, left_leg_pole,
+		#right_leg_current_target,  # la pierna opuesta
+		#step_radius_walk, step_height, step_speed_mps,
+	#)
+	#right_leg_current_target = IkUtil.update_ik_raycast(
+		#right_leg_raycast, right_leg_next_target, right_leg_current_target,
+		#right_upper_leg, right_lower_leg, right_leg_pole,
+		#left_leg_current_target,   # la pierna opuesta
+		#step_radius_walk, step_height, step_speed_mps,
+	#)

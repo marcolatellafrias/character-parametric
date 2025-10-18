@@ -220,3 +220,39 @@ static func _is_stepping(n: Node) -> bool:
 
 static func _mark_stepping(n: Node, stepping: bool) -> void:
 	n.set_meta("stepping", stepping)
+
+
+
+static func update_leg_raycast_offsets(character: CharacterBody3D, delta: float, leg_raycast : RayCast3D, speed_for_max: float, speed_curve: Curve, raycast_amount: float, raycast_max_offset: float, axis_weights: Vector2, raycast_smooth: float, neutral_local: Vector3, raycast_offset: Vector2) -> Vector2:
+	# Velocidad horizontal
+	var hvel := character.velocity
+	hvel.y = 0.0
+
+	# A espacio local del padre de raycasts
+	var basis_owner := leg_raycast.get_parent() as Node3D
+	var local_vel: Vector3 = basis_owner.global_transform.basis.inverse() * hvel
+
+	var v2 := Vector2(local_vel.x, local_vel.z)
+	var speed := v2.length()
+	var dir := (v2 / speed) if (speed > 0.0) else Vector2.ZERO
+
+	# Velocidad normalizada (0..1) y ganancia total
+	var n : float = clamp(speed / speed_for_max, 0.0, 1.0)
+	var curve_gain : = speed_curve.sample_baked(n) if (speed_curve != null) else n
+	var amount := raycast_amount * curve_gain
+
+	# Offset objetivo limitado por el radio máximo
+	var target_off := dir * (amount * raycast_max_offset)
+	target_off = Vector2(target_off.x * axis_weights.x, target_off.y * axis_weights.y)
+
+	# Suavizado
+	var k : float = clamp(delta * raycast_smooth, 0.0, 1.0)
+	raycast_offset = raycast_offset.lerp(target_off, k)
+
+	# Volver al centro en el aire
+	if not character.is_on_floor():
+		raycast_offset = raycast_offset.lerp(Vector2.ZERO, k)
+
+	# Aplicar alrededor de las posiciones locales neutras
+	leg_raycast.transform.origin  = neutral_local  + Vector3(raycast_offset.x, 0.0, raycast_offset.y)
+	return raycast_offset
