@@ -70,13 +70,77 @@ static var _last_step_frame: int = -1
 static var _last_step_leg_id: int = -1  # usamos instance_id() del current_target
 
 # --- IK update con arbitraje por frame + alternancia -------------
+# --- NUEVO: helpers para medir por pierna y arbitrar por distancia ---
+
+static func _store_leg_measure(target: Node3D, dist2: float, wants_step: bool, next_pos: Vector3) -> void:
+	var frame := Engine.get_physics_frames()
+	target.set_meta("_ik_frame", frame)
+	target.set_meta("_ik_dist2", dist2)
+	target.set_meta("_ik_wants", wants_step)
+	target.set_meta("_ik_next_pos", next_pos)
+
+static func _fresh_measure(target: Node3D) -> bool:
+	return target.has_meta("_ik_frame") and int(target.get_meta("_ik_frame")) == Engine.get_physics_frames()
+
+static func _try_start_farther_leg(
+	a: Node3D, b: Node3D,
+	step_height: float, step_speed: float,
+	step_cooldown: float, alternate: bool
+) -> void:
+	# 1) Reglas globales: solo una pierna a la vez + cooldown + 1 inicio por frame
+	if _is_stepping(a) or _is_stepping(b):
+		return
+	var frame := Engine.get_physics_frames()
+	if frame == _last_step_frame:
+		return
+	var now := Time.get_ticks_msec() / 1000.0
+	if _last_step_time >= 0.0 and (now - _last_step_time) < step_cooldown:
+		return
+
+	# 2) Necesitamos que AMBAS piernas hayan medido en este frame
+	if not _fresh_measure(a) or not _fresh_measure(b):
+		return
+
+	var wa := bool(a.get_meta("_ik_wants"))
+	var wb := bool(b.get_meta("_ik_wants"))
+	if not wa and not wb:
+		return
+
+	var chosen := a
+	if wa and not wb:
+		chosen = a
+	elif wb and not wa:
+		chosen = b
+	else:
+		var da := float(a.get_meta("_ik_dist2"))
+		var db := float(b.get_meta("_ik_dist2"))
+		var eps := 1e-6
+		if db > da + eps:
+			chosen = b
+		elif abs(da - db) <= eps and alternate and _last_step_leg_id == chosen.get_instance_id():
+			# desempate opcional: alternar si quedaron casi iguales
+			chosen = b if (chosen == a) else a
+
+	var start_pos: Vector3 = chosen.global_position
+	var target_pos: Vector3 = chosen.get_meta("_ik_next_pos")
+	var dist := start_pos.distance_to(target_pos)
+	var duration : float = clamp(dist / step_speed, 0.06, 0.25)
+
+	_register_step(chosen)
+	_tween_foot_to(chosen, start_pos, target_pos, duration, step_height)
+
+static func _register_step(current_target: Node3D) -> void:
+	_last_step_time = Time.get_ticks_msec() / 1000.0
+	_last_step_frame = Engine.get_physics_frames()
+	_last_step_leg_id = current_target.get_instance_id()
+
+# --- Reemplazo de tu update_ik_raycast (solo cambió el “arranque del paso”) ---
 static func update_ik_raycast(
 	raycast: RayCast3D, next_target: Node3D, current_target: Node3D,
 	upper_leg: CustomBone, lower_leg: CustomBone, pole: Node3D,
 	opposite_target: Node3D, step_radius: float, step_height: float, step_speed: float,
-	# knobs nuevos (opcionales)
 	step_cooldown: float = 0.01,           # seg mínimos entre inicios de pasos
-	alternate: bool = true                 # alternar prioridad entre piernas
+	alternate: bool = false                # alternar prioridad entre piernas (solo para empates)
 ) -> Node3D:
 	raycast.force_raycast_update()
 
@@ -92,50 +156,25 @@ static func update_ik_raycast(
 
 		var wants_step := dist2 > (step_radius * step_radius)
 
-		if wants_step and _can_start_step(current_target, opposite_target, step_cooldown, alternate):
-			var dist: float = current_target.global_position.distance_to(next_target.global_position)
-			var duration: float = clamp(dist / step_speed, 0.06, 0.25)
-
-			_register_step(current_target) # registra arbitraje (frame/tiempo/leg)
-
-			_tween_foot_to(current_target, current_target.global_position, collision_point, duration, step_height)
+		# 👉 Guardamos la "propuesta" de esta pierna para arbitrar más tarde en el mismo frame
+		_store_leg_measure(current_target, dist2, wants_step, collision_point)
 
 	else:
+		# Si no hay colisión, marcamos que esta pierna NO quiere paso en este frame,
+		# pero igual guardamos datos frescos para que el árbitro pueda decidir.
+		_store_leg_measure(current_target, 0.0, false, next_target.global_position)
+
 		# Snap solo si no estamos en medio del paso
 		if not _is_stepping(current_target):
 			_tween_foot_to(current_target, current_target.global_position, next_target.global_position, 0.0, step_height)
 
+	# 👉 Intentamos iniciar UN paso (como mucho) eligiendo la pierna más "atrasada"
+	#    Este llamado puede ocurrir dos veces por frame (una por pierna),
+	#    pero solo el segundo tendrá ambas mediciones frescas y disparará, a lo sumo, un paso.
+	_try_start_farther_leg(current_target, opposite_target, step_height, step_speed, step_cooldown, alternate)
+
 	solve_leg_ik(upper_leg, lower_leg, current_target.global_position, pole.global_position)
 	return current_target
-
-
-# --- Helpers de arbitraje ---
-static func _can_start_step(current_target: Node3D, opposite_target: Node3D, step_cooldown: float, alternate: bool) -> bool:
-	# Si cualquiera está pisando, no arranques otro
-	if _is_stepping(current_target) or _is_stepping(opposite_target):
-		return false
-
-	# Solo un inicio de paso por frame de física (evita doble disparo por orden de update)
-	var frame := Engine.get_physics_frames()
-	if frame == _last_step_frame:
-		return false
-
-	# Respetar cooldown mínimo global (ritmo más parejo)
-	var now := Time.get_ticks_msec() / 1000.0
-	if _last_step_time >= 0.0 and (now - _last_step_time) < step_cooldown:
-		return false
-
-	# Alternar prioridad: si la última pierna que inició fue esta misma, cedé el turno
-	if alternate and _last_step_leg_id == current_target.get_instance_id():
-		return false
-
-	return true
-
-
-static func _register_step(current_target: Node3D) -> void:
-	_last_step_time = Time.get_ticks_msec() / 1000.0
-	_last_step_frame = Engine.get_physics_frames()
-	_last_step_leg_id = current_target.get_instance_id()
 
 
 static func _tween_foot_to(node: Node3D, from_pos: Vector3, to_pos: Vector3, duration: float, step_height: float) -> void:
@@ -181,112 +220,3 @@ static func _is_stepping(n: Node) -> bool:
 
 static func _mark_stepping(n: Node, stepping: bool) -> void:
 	n.set_meta("stepping", stepping)
-
-
-# ---------------- BIPED IK ARBITER ----------------
-# Call this once per physics frame.
-# Notes:
-# - Left/Right "current" are your planted foot targets (the tweened ones).
-# - Left/Right "next" are the instantaneous raycast hits you already compute.
-# - `solve_leg_ik` is your solver. `_tween_foot_to` / _is_stepping are the ones you posted.
-
-static func update_biped_center_gate(
-	char: CharacterBody3D,
-	left_raycast: RayCast3D, left_next: Node3D, left_current: Node3D,
-	right_raycast: RayCast3D, right_next: Node3D, right_current: Node3D,
-	upperL: CustomBone, lowerL: CustomBone, poleL: Node3D,
-	upperR: CustomBone, lowerR: CustomBone, poleR: Node3D,
-	avg_start_radius: float,         # when avg(feet) is farther than this -> request a step
-	avg_release_radius: float,       # when avg(feet) comes back within this -> release the gate (hysteresis)
-	per_foot_trigger_radius: float,  # foot must be at least this far from its next hit to justify stepping
-	step_height: float,
-	step_speed: float,
-	cooldown_s: float = 0.08
-) -> void:
-	# 1) Update both raycasts -> next targets
-	left_raycast.force_raycast_update()
-	right_raycast.force_raycast_update()
-
-	if left_raycast.is_colliding():
-		left_next.global_position = left_raycast.get_collision_point()
-	if right_raycast.is_colliding():
-		right_next.global_position = right_raycast.get_collision_point()
-
-
-
-	var body_xz := xz(char.global_position)
-	var lc_xz   := xz(left_current.global_position)
-	var rc_xz   := xz(right_current.global_position)
-	var ln_xz   := xz(left_next.global_position)
-	var rn_xz   := xz(right_next.global_position)
-
-	# Center of planted feet
-	var center_xz := (lc_xz + rc_xz) * 0.5
-	var center_dev := center_xz.distance_to(body_xz)
-
-	# 3) Hysteresis gate stored on the character
-	var gate_active := bool(char.get_meta("avg_gate_active")) if char.has_meta("avg_gate_active") else false
-	if not gate_active and center_dev > avg_start_radius:
-		gate_active = true
-	elif gate_active and center_dev < avg_release_radius:
-		gate_active = false
-	char.set_meta("avg_gate_active", gate_active)
-
-	# 4) Simple global cooldown so steps don't chain too tightly
-	var now_frames := Engine.get_physics_frames()
-	var tps := float(Engine.get_physics_ticks_per_second())
-	var cd_frames := int(ceil(cooldown_s * tps))
-	var next_ok_frame := int(char.get_meta("next_step_ok_frame")) if char.has_meta("next_step_ok_frame") else 0
-	var cooldown_ok := now_frames >= next_ok_frame
-
-	# 5) Decide if we should step and which foot
-	var left_stepping := _is_stepping(left_current)
-	var right_stepping := _is_stepping(right_current)
-
-	if gate_active and cooldown_ok and not left_stepping and not right_stepping:
-		# distances of each planted foot to the body
-		var dl := lc_xz.distance_to(body_xz)
-		var dr := rc_xz.distance_to(body_xz)
-
-		# also require that the selected foot has a meaningful delta to its next target
-		var left_move_dist  := lc_xz.distance_to(ln_xz)
-		var right_move_dist := rc_xz.distance_to(rn_xz)
-
-		var pick_left := false
-		if dl > dr:
-			pick_left = left_move_dist > per_foot_trigger_radius
-		else:
-			pick_left = false
-			if right_move_dist <= per_foot_trigger_radius and left_move_dist > per_foot_trigger_radius:
-				pick_left = true
-
-		if pick_left or right_move_dist <= per_foot_trigger_radius:
-			# If both small, do nothing this frame (prevents micro steps)
-			pass
-		else:
-			# 6) Launch the step tween for the chosen foot
-			if pick_left:
-				var dist := left_current.global_position.distance_to(left_next.global_position)
-				var dur : float = clamp(dist / step_speed, 0.06, 0.25)
-				_tween_foot_to(left_current, left_current.global_position, left_next.global_position, dur, step_height)
-				char.set_meta("next_step_ok_frame", now_frames + cd_frames)
-				char.set_meta("last_stepped", "L")
-			else:
-				var dist := right_current.global_position.distance_to(right_next.global_position)
-				var dur : float = clamp(dist / step_speed, 0.06, 0.25)
-				_tween_foot_to(right_current, right_current.global_position, right_next.global_position, dur, step_height)
-				char.set_meta("next_step_ok_frame", now_frames + cd_frames)
-				char.set_meta("last_stepped", "R")
-
-	# 7) If a raycast loses ground, snap only when not mid-step (your behavior)
-	if not left_raycast.is_colliding() and not _is_stepping(left_current):
-		_tween_foot_to(left_current, left_current.global_position, left_next.global_position, 0.0, step_height)
-	if not right_raycast.is_colliding() and not _is_stepping(right_current):
-		_tween_foot_to(right_current, right_current.global_position, right_next.global_position, 0.0, step_height)
-
-	# 8) Solve IK for both legs to the *planted* targets
-	solve_leg_ik(upperL, lowerL, left_current.global_position, poleL.global_position)
-	solve_leg_ik(upperR, lowerR, right_current.global_position, poleR.global_position)
-	
-		# 2) Compute XZ helpers
-static func xz(v: Vector3) -> Vector2: return Vector2(v.x, v.z)

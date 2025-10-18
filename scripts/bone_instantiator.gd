@@ -1,7 +1,7 @@
 extends Node3D
 
 #ALTURA DEL PERSONAJE
-@export var feet_to_head_height := 1.4: #This excludes arms and horizontal bones,
+@export var feet_to_head_height := 1.8: #This excludes arms and horizontal bones,
 	set(value):
 		feet_to_head_height = value
 		initialize_skeleton()
