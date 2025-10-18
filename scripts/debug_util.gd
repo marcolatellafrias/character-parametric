@@ -46,7 +46,7 @@ static func create_debug_capsule(radius: float, height: float, y_offset: float) 
 
 	# Crear un material blanco semitransparente
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(1, 1, 1, 0.5) # Blanco con opacidad 0.5
+	material.albedo_color = Color(1, 1, 1, 0.2) # Blanco con opacidad 0.5
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	material.flags_transparent = true
 

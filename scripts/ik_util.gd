@@ -84,7 +84,7 @@ static func _fresh_measure(target: Node3D) -> bool:
 
 static func _try_start_farther_leg(
 	a: Node3D, b: Node3D,
-	step_height: float, step_speed: float,
+	step_height: float, step_duration: float,
 	step_cooldown: float, alternate: bool
 ) -> void:
 	# 1) Reglas globales: solo una pierna a la vez + cooldown + 1 inicio por frame
@@ -123,8 +123,8 @@ static func _try_start_farther_leg(
 
 	var start_pos: Vector3 = chosen.global_position
 	var target_pos: Vector3 = chosen.get_meta("_ik_next_pos")
-	var dist := start_pos.distance_to(target_pos)
-	var duration : float = clamp(dist / step_speed, 0.06, 0.25)
+	# ANTES: var duration : float = clamp(dist / step_speed, 0.06, 0.25)
+	var duration: float = max(step_duration, 0.01)  # fija; evitamos 0.0
 
 	_register_step(chosen)
 	_tween_foot_to(chosen, start_pos, target_pos, duration, step_height)
@@ -138,7 +138,7 @@ static func _register_step(current_target: Node3D) -> void:
 static func update_ik_raycast(
 	raycast: RayCast3D, next_target: Node3D, current_target: Node3D,
 	upper_leg: CustomBone, lower_leg: CustomBone, pole: Node3D,
-	opposite_target: Node3D, step_radius: float, step_height: float, step_speed: float,
+	opposite_target: Node3D, step_radius: float, step_height: float, step_duration: float,
 	step_cooldown: float = 0.01,           # seg mínimos entre inicios de pasos
 	alternate: bool = false                # alternar prioridad entre piernas (solo para empates)
 ) -> Node3D:
@@ -171,7 +171,7 @@ static func update_ik_raycast(
 	# 👉 Intentamos iniciar UN paso (como mucho) eligiendo la pierna más "atrasada"
 	#    Este llamado puede ocurrir dos veces por frame (una por pierna),
 	#    pero solo el segundo tendrá ambas mediciones frescas y disparará, a lo sumo, un paso.
-	_try_start_farther_leg(current_target, opposite_target, step_height, step_speed, step_cooldown, alternate)
+	_try_start_farther_leg(current_target, opposite_target, step_height, step_duration, step_cooldown, alternate)
 
 	solve_leg_ik(upper_leg, lower_leg, current_target.global_position, pole.global_position)
 	return current_target

@@ -19,6 +19,13 @@ config/features=PackedStringArray("4.5")
 window/size/viewport_width=2000
 window/size/viewport_height=1200
 
+[file_customization]
+
+folder_colors={
+"res://Scenes/": "red",
+"res://scripts/": "green"
+}
+
 [input]
 
 "Left Click"={

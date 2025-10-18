@@ -1,3 +1,4 @@
+class_name BoneInstantiator
 extends Node3D
 
 #ALTURA DEL PERSONAJE
@@ -5,7 +6,6 @@ extends Node3D
 	set(value):
 		feet_to_head_height = value
 		initialize_skeleton()
-
 #PROPORCIONES/INTERFAZ
 @export var neck_to_head_proportion := 0.15:
 	set(value):
@@ -37,17 +37,17 @@ extends Node3D
 		initialize_skeleton()
 
 #PARAMETROS DE CAMINATA
-var distance_from_ground_factor := 0.1  #tiene las piernas 10% flexionadas
+const distance_from_ground_factor := 0.1  #tiene las piernas 10% flexionadas cuando esta en el piso
 var distance_from_ground: float
 var step_radius_walk : float
 var step_radius_turn : float
-var step_speed_mps : float      # how fast the foot travels toward its new spot
+var step_duration : float      # how fast the foot travels toward its new spot
+var base_step_duration: float 
 var step_height : float     # how high the foot lifts during the step
 var raycast_amount := 4.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
 var speed_for_max := 6.0          # velocidad a la que llega al offset máximo
 var axis_weights := Vector2(1.0, 1.0)                    # x (lateral), z (adelante) para atenuar por eje
-# Opcional: curva de respuesta velocidad->offset (si querés una no lineal)
-var speed_curve: Curve                                   # X=0..1 (vel normalizada), Y=0..1 (ganancia)
+var speed_curve: Curve     
 var raycast_max_offset : float        # meters; "up to a point"
 const raycast_accel_gain := 0.06        # meters per (m/s^2)
 const raycast_vel_gain   := 0.02        # meters per (m/s)  -> keeps offset while moving
@@ -55,11 +55,15 @@ const raycast_smooth     := 8.0        # 1/sec; higher = snappier
 var raycast_offset: Vector2 = Vector2.ZERO     # smoothed current offset (x,z)
 var left_neutral_local: Vector3
 var right_neutral_local: Vector3
+const leg_ref := 1.0     # altura de pierna "promedio" (tus unidades)
+const speed_ref := 3.0     # vel. a la que querés que la duración se reduzca ~a la mitad si BETA=1
+const alpha := 1.0   # cuánto influye el tamaño de pierna (↑ piernas ⇒ ↑ duración). 1 = lineal (como ahora)
+const beta := 1.0   # cuánto influye la velocidad (↑ vel ⇒ ↓ duración). 1 = lineal en la razón
+var dynamic_sizes_util : DynamicSizesUtil
 
 #IK variables
 @onready var ik_targets := $"../../ik_targets"
-var pole_distance: float 
-var target_height: float = -2.0
+var pole_distance: float
 var left_color: Color = Color(1, 0, 0)      # rojo
 var right_color: Color = Color(0, 1, 0)    # verde
 var raycast_color: Color = Color(0, 0, 1)    # verde
@@ -88,6 +92,7 @@ var upper_arm_size: Vector3
 var lower_arm_size: Vector3
 var shoulder_width: Vector3
 var hip_width: Vector3
+var stable_sizes_util: StableSizesUtil
 
 # Huesos
 var lower_spine : CustomBone
@@ -123,69 +128,22 @@ func update_sizes() -> void:
 	var total := legs_to_feet_proportion + chest_to_low_spine_proportion + neck_to_head_proportion
 	if total == 0.0:
 		total = 1.0
-
 	# Calcular proporciones relativas
 	var leg_ratio := legs_to_feet_proportion / total
 	var torso_ratio := chest_to_low_spine_proportion / total
 	var head_ratio := neck_to_head_proportion / total
-
 	# Calcular alturas absolutas
 	var leg_height := feet_to_head_height * leg_ratio
 	var torso_height := feet_to_head_height * torso_ratio
 	var head_height := feet_to_head_height * head_ratio
-
-	# --------- PIERNAS ---------
-	upper_leg_size = Vector3(0.1, leg_height * 0.45, 0.1)
-	lower_leg_size = Vector3(0.1, leg_height * 0.55, 0.1)
-
-	# Separar el pie de la pierna
-	upper_feet_size = Vector3(0.1, leg_height * 0.2, 0.1)
-	lower_feet_size = Vector3(0.1, leg_height * 0.02, 0.1)
-
-	# --------- TORSO ---------
-	# Proporciones ajustadas internamente para coherencia anatómica
-	lower_spine_size = Vector3(0.1, torso_height * 0.1, 0.1)
-	middle_spine_size = Vector3(0.1, torso_height * 0.2, 0.1)
-	upper_spine_size = Vector3(0.1, torso_height * 0.3, 0.1)
-	chest_size = Vector3(0.2, torso_height * 0.4, 0.2)
-
-	# Anchuras laterales
-	hip_width = Vector3( 0.1,hips_width_proportion * feet_to_head_height, 0.1)
-	shoulder_width = Vector3( 0.1,shoulder_width_proportion * feet_to_head_height, 0.1)
-
-	# --------- CABEZA Y CUELLO ---------
-	if has_neck:
-		neck_size = Vector3(0.1, head_height * 0.4, 0.1)
-		head_size = Vector3(0.3, head_height * 0.6, 0.3)
-	else:
-		neck_size = Vector3.ZERO
-		head_size = Vector3(0.3, head_height, 0.3)
-
-	# --------- BRAZOS ---------
-	var arm_total := leg_height *0.5#torso_height * arms_proportion
-	upper_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
-	lower_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
-	raycast_leg_lenght = leg_height * 2
-	distance_from_ground = leg_height * (distance_from_ground_factor)
-	if collision_shape is CollisionShape3D:
-		if collision_shape.shape is CapsuleShape3D:
-			var radius :=  hip_width.y * 2
-			var height := feet_to_head_height
-			var y_offset := torso_height + head_height + height/2 - height + distance_from_ground
-			collision_shape.shape.height = height
-			collision_shape.shape.radius = radius
-			collision_shape.position = (Vector3(0, y_offset ,0))
-			character_controller.add_child.call_deferred(DebugUtil.create_debug_capsule(radius,  height, y_offset))
-			print("added capsule debug")
-	
-	var horizontal_speed = Vector2(character_controller.velocity.x, character_controller.velocity.z).length()
-	character_controller.speed = leg_height * 0.7 + 1
-	step_radius_walk = leg_height * 0.32
-	step_radius_turn = leg_height * 0.2
-	step_speed_mps = 6  # how fast the foot travels toward its new spot
-	step_height = leg_height * 0.4
-	pole_distance = leg_height
-	raycast_max_offset = leg_height * 0.2
+	var hips_width := hips_width_proportion * feet_to_head_height
+	var shoulders_width := shoulder_width_proportion * feet_to_head_height
+	# Primero calculo los tamaños estables
+	stable_sizes_util = StableSizesUtil.create(self,leg_height,torso_height,head_height,hips_width,shoulders_width)
+	stable_sizes_util.set_sizes()
+	# Luego calculo los tamaños dinamicos
+	dynamic_sizes_util = DynamicSizesUtil.create(self,leg_height)
+	dynamic_sizes_util.set_base()
 
 func initialize_skeleton() -> void:
 	for bone in get_children():
@@ -255,21 +213,24 @@ func create_ik_controls() -> void:
 	ik_targets.add_child(right_leg_current_target)
 
 func _physics_process(_delta: float) -> void:
+	dynamic_sizes_util.update()
+	
 	var isTranslating := false
 	if character_controller:
 		previous_transform = character_controller.transform
+		
 	raycast_offset = IkUtil.update_leg_raycast_offsets(character_controller, _delta, left_leg_raycast, speed_for_max, speed_curve, raycast_amount, raycast_max_offset, axis_weights, raycast_smooth, left_neutral_local, raycast_offset) 
 	raycast_offset = IkUtil.update_leg_raycast_offsets(character_controller, _delta, right_leg_raycast, speed_for_max, speed_curve, raycast_amount, raycast_max_offset, axis_weights, raycast_smooth, right_neutral_local, raycast_offset) 
 	
-	#left_leg_current_target = IkUtil.update_ik_raycast(
-		#left_leg_raycast, left_leg_next_target, left_leg_current_target,
-		#left_upper_leg, left_lower_leg, left_leg_pole,
-		#right_leg_current_target,  # la pierna opuesta
-		#step_radius_walk, step_height, step_speed_mps,
-	#)
-	#right_leg_current_target = IkUtil.update_ik_raycast(
-		#right_leg_raycast, right_leg_next_target, right_leg_current_target,
-		#right_upper_leg, right_lower_leg, right_leg_pole,
-		#left_leg_current_target,   # la pierna opuesta
-		#step_radius_walk, step_height, step_speed_mps,
-	#)
+	left_leg_current_target = IkUtil.update_ik_raycast(
+		left_leg_raycast, left_leg_next_target, left_leg_current_target,
+		left_upper_leg, left_lower_leg, left_leg_pole,
+		right_leg_current_target,  # la pierna opuesta
+		step_radius_walk, step_height, step_duration,
+	)
+	right_leg_current_target = IkUtil.update_ik_raycast(
+		right_leg_raycast, right_leg_next_target, right_leg_current_target,
+		right_upper_leg, right_lower_leg, right_leg_pole,
+		left_leg_current_target,   # la pierna opuesta
+		step_radius_walk, step_height, step_duration,
+	)
