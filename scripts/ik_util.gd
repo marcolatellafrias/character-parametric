@@ -181,3 +181,112 @@ static func _is_stepping(n: Node) -> bool:
 
 static func _mark_stepping(n: Node, stepping: bool) -> void:
 	n.set_meta("stepping", stepping)
+
+
+# ---------------- BIPED IK ARBITER ----------------
+# Call this once per physics frame.
+# Notes:
+# - Left/Right "current" are your planted foot targets (the tweened ones).
+# - Left/Right "next" are the instantaneous raycast hits you already compute.
+# - `solve_leg_ik` is your solver. `_tween_foot_to` / _is_stepping are the ones you posted.
+
+static func update_biped_center_gate(
+	char: CharacterBody3D,
+	left_raycast: RayCast3D, left_next: Node3D, left_current: Node3D,
+	right_raycast: RayCast3D, right_next: Node3D, right_current: Node3D,
+	upperL: CustomBone, lowerL: CustomBone, poleL: Node3D,
+	upperR: CustomBone, lowerR: CustomBone, poleR: Node3D,
+	avg_start_radius: float,         # when avg(feet) is farther than this -> request a step
+	avg_release_radius: float,       # when avg(feet) comes back within this -> release the gate (hysteresis)
+	per_foot_trigger_radius: float,  # foot must be at least this far from its next hit to justify stepping
+	step_height: float,
+	step_speed: float,
+	cooldown_s: float = 0.08
+) -> void:
+	# 1) Update both raycasts -> next targets
+	left_raycast.force_raycast_update()
+	right_raycast.force_raycast_update()
+
+	if left_raycast.is_colliding():
+		left_next.global_position = left_raycast.get_collision_point()
+	if right_raycast.is_colliding():
+		right_next.global_position = right_raycast.get_collision_point()
+
+
+
+	var body_xz := xz(char.global_position)
+	var lc_xz   := xz(left_current.global_position)
+	var rc_xz   := xz(right_current.global_position)
+	var ln_xz   := xz(left_next.global_position)
+	var rn_xz   := xz(right_next.global_position)
+
+	# Center of planted feet
+	var center_xz := (lc_xz + rc_xz) * 0.5
+	var center_dev := center_xz.distance_to(body_xz)
+
+	# 3) Hysteresis gate stored on the character
+	var gate_active := bool(char.get_meta("avg_gate_active")) if char.has_meta("avg_gate_active") else false
+	if not gate_active and center_dev > avg_start_radius:
+		gate_active = true
+	elif gate_active and center_dev < avg_release_radius:
+		gate_active = false
+	char.set_meta("avg_gate_active", gate_active)
+
+	# 4) Simple global cooldown so steps don't chain too tightly
+	var now_frames := Engine.get_physics_frames()
+	var tps := float(Engine.get_physics_ticks_per_second())
+	var cd_frames := int(ceil(cooldown_s * tps))
+	var next_ok_frame := int(char.get_meta("next_step_ok_frame")) if char.has_meta("next_step_ok_frame") else 0
+	var cooldown_ok := now_frames >= next_ok_frame
+
+	# 5) Decide if we should step and which foot
+	var left_stepping := _is_stepping(left_current)
+	var right_stepping := _is_stepping(right_current)
+
+	if gate_active and cooldown_ok and not left_stepping and not right_stepping:
+		# distances of each planted foot to the body
+		var dl := lc_xz.distance_to(body_xz)
+		var dr := rc_xz.distance_to(body_xz)
+
+		# also require that the selected foot has a meaningful delta to its next target
+		var left_move_dist  := lc_xz.distance_to(ln_xz)
+		var right_move_dist := rc_xz.distance_to(rn_xz)
+
+		var pick_left := false
+		if dl > dr:
+			pick_left = left_move_dist > per_foot_trigger_radius
+		else:
+			pick_left = false
+			if right_move_dist <= per_foot_trigger_radius and left_move_dist > per_foot_trigger_radius:
+				pick_left = true
+
+		if pick_left or right_move_dist <= per_foot_trigger_radius:
+			# If both small, do nothing this frame (prevents micro steps)
+			pass
+		else:
+			# 6) Launch the step tween for the chosen foot
+			if pick_left:
+				var dist := left_current.global_position.distance_to(left_next.global_position)
+				var dur : float = clamp(dist / step_speed, 0.06, 0.25)
+				_tween_foot_to(left_current, left_current.global_position, left_next.global_position, dur, step_height)
+				char.set_meta("next_step_ok_frame", now_frames + cd_frames)
+				char.set_meta("last_stepped", "L")
+			else:
+				var dist := right_current.global_position.distance_to(right_next.global_position)
+				var dur : float = clamp(dist / step_speed, 0.06, 0.25)
+				_tween_foot_to(right_current, right_current.global_position, right_next.global_position, dur, step_height)
+				char.set_meta("next_step_ok_frame", now_frames + cd_frames)
+				char.set_meta("last_stepped", "R")
+
+	# 7) If a raycast loses ground, snap only when not mid-step (your behavior)
+	if not left_raycast.is_colliding() and not _is_stepping(left_current):
+		_tween_foot_to(left_current, left_current.global_position, left_next.global_position, 0.0, step_height)
+	if not right_raycast.is_colliding() and not _is_stepping(right_current):
+		_tween_foot_to(right_current, right_current.global_position, right_next.global_position, 0.0, step_height)
+
+	# 8) Solve IK for both legs to the *planted* targets
+	solve_leg_ik(upperL, lowerL, left_current.global_position, poleL.global_position)
+	solve_leg_ik(upperR, lowerR, right_current.global_position, poleR.global_position)
+	
+		# 2) Compute XZ helpers
+static func xz(v: Vector3) -> Vector2: return Vector2(v.x, v.z)

@@ -119,6 +119,7 @@ mesh = SubResource("CapsuleMesh_umjme")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2827277, -5.5539103)
 
 [node name="player_controller" type="CharacterBody3D" parent="player_root"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.3526645, 0)
 script = ExtResource("6_oilx1")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="player_root/player_controller"]

@@ -249,7 +249,7 @@ func create_ik_controls() -> void:
 const RAYCAST_MAX_OFFSET := 0.35        # meters; "up to a point"
 const RAYCAST_ACCEL_GAIN := 0.06        # meters per (m/s^2)
 const RAYCAST_VEL_GAIN   := 0.02        # meters per (m/s)  -> keeps offset while moving
-const RAYCAST_SMOOTH     := 10.0        # 1/sec; higher = snappier
+const RAYCAST_SMOOTH     := 8.0        # 1/sec; higher = snappier
 var _raycast_offset: Vector2 = Vector2.ZERO     # smoothed current offset (x,z)
 
 var _left_neutral_local: Vector3
