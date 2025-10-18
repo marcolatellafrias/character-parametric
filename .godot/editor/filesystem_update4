@@ -1,12 +1,4 @@
-res://scripts/bone_instantiator.gd
 res://Scenes/Demo.tscn
-res://scripts/debug_util.gd
-res://scripts/ik_util.gd
-res://scripts/custom_bone.gd
-res://scripts/character_body_3d.gd
-res://Scenes/custom_bone.tscn
-res://scripts/character_sizes.gd
-res://scripts/step_duration_util.gd
-res://scripts/skeleton_size.util.gd
-res://scripts/stables_sizes_util.gd
+res://scripts/control.gd
+res://scripts/bone_instantiator.gd
 res://scripts/dynamic_sizes_util.gd

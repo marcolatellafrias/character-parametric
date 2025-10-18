@@ -2,7 +2,7 @@ class_name BoneInstantiator
 extends Node3D
 
 #ALTURA DEL PERSONAJE
-@export var feet_to_head_height := 2.2: #This excludes arms and horizontal bones,
+@export var feet_to_head_height := 3.2: #This excludes arms and horizontal bones,
 	set(value):
 		feet_to_head_height = value
 		initialize_skeleton()
@@ -42,7 +42,7 @@ var distance_from_ground: float
 var step_radius_walk : float
 var step_radius_turn : float
 var step_duration : float      # how fast the foot travels toward its new spot
-var base_step_duration: float 
+var base_step_duration: float = 0.3
 var step_height : float     # how high the foot lifts during the step
 var raycast_amount := 4.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
 var speed_for_max := 6.0          # velocidad a la que llega al offset máximo
@@ -57,8 +57,8 @@ var left_neutral_local: Vector3
 var right_neutral_local: Vector3
 const leg_ref := 1.0     # altura de pierna "promedio" (tus unidades)
 const speed_ref := 3.0     # vel. a la que querés que la duración se reduzca ~a la mitad si BETA=1
-const alpha := 1.0   # cuánto influye el tamaño de pierna (↑ piernas ⇒ ↑ duración). 1 = lineal (como ahora)
-const beta := 1.0   # cuánto influye la velocidad (↑ vel ⇒ ↓ duración). 1 = lineal en la razón
+const alpha := 1.2   # cuánto influye el tamaño de pierna (↑ piernas ⇒ ↑ duración). 1 = lineal (como ahora)
+const beta := 0.6   # cuánto influye la velocidad (↑ vel ⇒ ↓ duración). 1 = lineal en la razón
 var dynamic_sizes_util : DynamicSizesUtil
 
 #IK variables
@@ -116,7 +116,7 @@ var right_lower_arm : CustomBone
 var left_upper_arm : CustomBone
 var left_lower_arm : CustomBone
 
-@onready var character_controller := $"../../player_controller"
+@onready var character_controller : CustomCharacterBody = $"../../player_controller"
 @onready var collision_shape : CollisionShape3D = $"../CollisionShape3D"
 var previous_transform : Transform3D 
 
@@ -188,6 +188,7 @@ func initialize_skeleton() -> void:
 	left_lower_arm = CustomBone.createFromToDown(left_upper_arm, lower_arm_size, 0.0,0.5, Color.RED , true)
 	
 	create_ik_controls()
+	self.position = Vector3.ZERO
 	
 func create_ik_controls() -> void:
 	#Agrego cosas q se mueven con el pj, como hijos
@@ -213,7 +214,7 @@ func create_ik_controls() -> void:
 	ik_targets.add_child(right_leg_current_target)
 
 func _physics_process(_delta: float) -> void:
-	dynamic_sizes_util.update()
+	dynamic_sizes_util.update(_delta)
 	
 	var isTranslating := false
 	if character_controller:
