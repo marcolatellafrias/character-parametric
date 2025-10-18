@@ -116,7 +116,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 mesh = SubResource("CapsuleMesh_umjme")
 
 [node name="player_root" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.593111, -5.5539103)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2827277, -5.5539103)
 
 [node name="player_controller" type="CharacterBody3D" parent="player_root"]
 script = ExtResource("6_oilx1")

@@ -1,3 +1,5 @@
 res://scripts/bone_instantiator.gd
 res://Scenes/Demo.tscn
 res://scripts/debug_util.gd
+res://scripts/ik_util.gd
+res://scripts/custom_bone.gd

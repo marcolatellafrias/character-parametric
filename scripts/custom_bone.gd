@@ -85,3 +85,45 @@ static func createFromToForward(new_parent: CustomBone, new_capsule_dimensions: 
 	var offset_rotation := Vector3(0.0, y_offset_rotation, z_offset_rotation)
 	var final_rest_rotation := base_rotation + offset_rotation
 	return create(new_capsule_dimensions, final_rest_rotation, new_color, new_parent, use_parent_end_as_pivot)
+
+func pose_from_rest_to(dir: Vector3, pole: Vector3) -> Basis:
+	# Compute the rest basis from the bone's stored rest_rotation
+	var rest_basis := Basis.from_euler(rest_rotation) # rest_rotation must be in radians
+
+	# Normalize target direction
+	var y = dir.normalized()
+
+	# --- 1) Align REST +Y to desired direction ---
+	var rest_y = rest_basis.y.normalized()
+	var c = clamp(rest_y.dot(y), -1.0, 1.0)
+	var align := Basis()
+
+	if c > 0.999999:
+		# Already aligned
+		align = Basis()
+	elif c < -0.999999:
+		# Opposite direction -> 180° flip
+		var axis = rest_y.cross(Vector3.RIGHT)
+		if axis.length_squared() < 0.0001:
+			axis = rest_y.cross(Vector3.UP)
+		axis = axis.normalized()
+		align = Basis(axis, PI)
+	else:
+		var axis = rest_y.cross(y).normalized()
+		var angle = acos(c)
+		align = Basis(axis, angle)
+
+	# --- 2) Twist so REST X matches pole projection ---
+	var projected_pole = (pole - y * pole.dot(y)).normalized()
+	if projected_pole.length() < 1e-6:
+		projected_pole = y.orthogonal().normalized()
+
+	# Align local -Z with pole direction (bend plane)
+	var ref_axis = (align * rest_basis).z.normalized()  # treat -Z as "forward"
+	var s = ref_axis.cross(projected_pole).dot(y)
+	var t = ref_axis.dot(projected_pole)
+	var twist_angle = atan2(s, t)
+	var twist = Basis(y, twist_angle)
+
+	# --- Combine ---
+	return twist * align * rest_basis

@@ -41,6 +41,9 @@ var step_radius_walk := 0.32
 var step_radius_turn := 0.2
 @export var distance_from_ground_factor := 0.1 #10% del tamaño de sus piernas desde el suelo
 var distance_from_ground: float
+# Adjustable step settings
+const STEP_SPEED_MPS  := 6.0      # how fast the foot travels toward its new spot
+const STEP_HEIGHT     := 0.4     # how high the foot lifts during the step
 
 #IK variables
 @onready var ik_targets := $"../../ik_targets"
@@ -101,6 +104,9 @@ var left_lower_arm : CustomBone
 @onready var collision_shape : CollisionShape3D = $"../CollisionShape3D"
 var previous_transform : Transform3D 
 
+func _ready() -> void:
+	initialize_skeleton()
+
 func update_sizes() -> void:
 	# Evitar división por cero
 	var total := legs_to_feet_proportion + chest_to_low_spine_proportion + neck_to_head_proportion
@@ -148,13 +154,8 @@ func update_sizes() -> void:
 	var arm_total := leg_height #torso_height * arms_proportion
 	upper_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
 	lower_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
-	raycast_leg_lenght = leg_height + 0.05
+	raycast_leg_lenght = leg_height
 	distance_from_ground = leg_height * (distance_from_ground_factor)
-	#var ground_collision_mesh = CapsuleMesh.new()
-	#ground_collision_mesh.height = feet_to_head_height
-	#ground_collision_mesh.radius = hip_width.y * 2
-	#collision_shape.shape = ground_collision_mesh
-	#collision_shape.translate(Vector3(0, leg_height - (leg_height - distance_from_ground) ,0))
 	if collision_shape is CollisionShape3D:
 		if collision_shape.shape is CapsuleShape3D:
 			var radius :=  hip_width.y * 2
@@ -165,10 +166,6 @@ func update_sizes() -> void:
 			collision_shape.position = (Vector3(0, y_offset ,0))
 			character_controller.add_child.call_deferred(DebugUtil.create_debug_capsule(radius,  height, y_offset))
 			print("added capsule debug")
-
-
-func _ready() -> void:
-	initialize_skeleton()
 
 func initialize_skeleton() -> void:
 	for bone in get_children():
@@ -213,229 +210,42 @@ func initialize_skeleton() -> void:
 	left_lower_arm = CustomBone.createFromToDown(left_upper_arm, lower_arm_size, 0.0,0.5, Color.RED , true)
 	
 	create_ik_controls()
-
-func create_ik_controls() -> void:	
-	left_leg_raycast = RayCast3D.new()
-	left_leg_raycast.target_position = Vector3(0,-raycast_leg_lenght,0)
-	left_leg_raycast.add_child(DebugUtil.create_debug_line(raycast_color, raycast_leg_lenght))
-	left_leg_raycast.translate(Vector3(-hip_width.y,0,0))
-	add_child(left_leg_raycast)
-	right_leg_raycast = RayCast3D.new()
-	right_leg_raycast.target_position = Vector3(0,-raycast_leg_lenght,0)
-	right_leg_raycast.add_child(DebugUtil.create_debug_line(raycast_color, raycast_leg_lenght))
-	right_leg_raycast.translate(Vector3(hip_width.y,0,0))
-	add_child(right_leg_raycast)
 	
-	# === LEFT POLE ===
-	left_leg_pole = Node3D.new()
+func create_ik_controls() -> void:
+	#Agrego cosas q se mueven con el pj, como hijos
+	left_leg_raycast = IkUtil.create_leg_raycast(-hip_width.y, raycast_color, raycast_leg_lenght)
+	right_leg_raycast = IkUtil.create_leg_raycast(hip_width.y, raycast_color, raycast_leg_lenght)
+	add_child(left_leg_raycast)
+	add_child(right_leg_raycast)
+	left_leg_pole = IkUtil.create_pole(left_lower_leg, pole_distance, left_color,self)
+	right_leg_pole = IkUtil.create_pole(right_lower_leg, pole_distance, right_color,self)
 	add_child(left_leg_pole)
-	left_leg_pole.global_position = left_lower_leg.global_position + left_lower_leg.global_transform.basis.z * pole_distance
-	left_leg_pole.add_child(DebugUtil.create_debug_sphere(left_color))
-
-	# === RIGHT POLE ===
-	right_leg_pole = Node3D.new()
 	add_child(right_leg_pole)
-	right_leg_pole.global_position = right_lower_leg.global_position + right_lower_leg.global_transform.basis.z * pole_distance
-	right_leg_pole.add_child(DebugUtil.create_debug_sphere(right_color))
-
-	# === IK TARGETS ===
-	left_leg_next_target = Node3D.new()
+	left_leg_next_target = IkUtil.create_next_target(-hip_width.y, left_color, raycast_leg_lenght)
+	right_leg_next_target = IkUtil.create_next_target(hip_width.y, right_color, raycast_leg_lenght)
 	add_child(left_leg_next_target)
-	left_leg_next_target.position = Vector3(-hip_width.y,-raycast_leg_lenght,0)
-	left_leg_next_target.add_child(DebugUtil.create_debug_sphere(left_color))
-
-	right_leg_next_target = Node3D.new()
 	add_child(right_leg_next_target)
-	right_leg_next_target.position = Vector3(hip_width.y,-raycast_leg_lenght,0)
-	right_leg_next_target.add_child(DebugUtil.create_debug_sphere(right_color))
-
-	left_leg_current_target = create_ik_target(left_color)
+	
+	#Agrego cosas q se mueven con el mundo, en ik_targets
+	left_leg_current_target = IkUtil.create_ik_target(left_color, step_radius_walk, step_radius_turn)
+	right_leg_current_target = IkUtil.create_ik_target(right_color, step_radius_walk, step_radius_turn)
 	ik_targets.add_child(left_leg_current_target)
-	right_leg_current_target = create_ik_target(right_color)
 	ik_targets.add_child(right_leg_current_target)
-   
 
-func create_ik_target(color: Color) -> Node3D:
-	var _ik_target = Node3D.new()
-	_ik_target.add_child(DebugUtil.create_debug_cube(color))
-	_ik_target.add_child(DebugUtil.create_debug_ring(color,step_radius_walk))
-	_ik_target.add_child(DebugUtil.create_debug_ring(color,step_radius_turn))
-	return _ik_target
-
-func solve_leg_ik(
-	upper_bone: CustomBone,
-	lower_bone: CustomBone,
-	ik_target: Vector3,
-	pole_target: Vector3
-) -> void:
-	var root_pos  : Vector3 = upper_bone.global_position
-	var target_pos: Vector3 = ik_target
-	var upper_len : float   = upper_bone.length
-	var lower_len : float   = lower_bone.length
-
-	# ---- Direction & reach ----
-	var root_to_target = target_pos - root_pos
-	var total_len = root_to_target.length()
-	var clamped_len = clamp(total_len, 0.001, upper_len + lower_len)
-	var dir_to_target = root_to_target.normalized()
-
-	# ---- Bend plane using pole ----
-	var raw_pole = (pole_target - root_pos).normalized()
-	var right_vec = dir_to_target.cross(raw_pole)
-	if right_vec.length() < 1e-6:
-		right_vec = dir_to_target.orthogonal()
-	var bend_plane_normal = right_vec.normalized()
-	var pole_on_plane = (bend_plane_normal.cross(dir_to_target)).normalized()
-
-	# ---- Knee position (law of cosines) ----
-	var a = upper_len
-	var b = lower_len
-	var c = clamped_len
-	var cosA = clamp((a*a + c*c - b*b) / (2.0 * a * c), -1.0, 1.0)
-	var sinA = sqrt(max(0.0, 1.0 - cosA * cosA))
-	var knee_pos = root_pos + dir_to_target * (cosA * a) + pole_on_plane * (sinA * a)
-
-	# ---- Segment directions ----
-	var upper_dir = (knee_pos - root_pos).normalized()
-	var lower_dir = (target_pos - knee_pos).normalized()
-
-	# ---- Build world bases directly from REST -> POSE mapping ----
-	var upper_rest = Basis.from_euler(upper_bone.rest_rotation)
-	var lower_rest = Basis.from_euler(lower_bone.rest_rotation)
-
-	upper_bone.global_transform.basis = _pose_from_rest_to(upper_dir, pole_on_plane, upper_rest)
-	lower_bone.global_transform.basis = _pose_from_rest_to(lower_dir, pole_on_plane, lower_rest)
-
-func _pose_from_rest_to(dir: Vector3, pole: Vector3, rest_basis: Basis) -> Basis:
-	var y = dir.normalized()
-
-	# 1) Shortest-arc rotation that moves REST +Y onto desired direction
-	var rest_y = rest_basis.y.normalized()
-	var c = clamp(rest_y.dot(y), -1.0, 1.0)
-	var align: Basis
-	if c > 0.999999:
-		align = Basis() # already aligned
-	elif c < -0.999999:
-		var axis = rest_y.cross(Vector3.RIGHT)
-		if axis.length_squared() < 0.0001:
-			axis = rest_y.cross(Vector3.UP)
-			axis = axis.normalized()
-			align = Basis(axis, PI) # 180° flip
-	else:
-		var axis = rest_y.cross(y).normalized()
-		var angle = acos(c)
-		align = Basis(axis, angle)
-
-	# 2) Twist around the direction so REST X matches the pole projection
-	var projected_pole = (pole - y * pole.dot(y)).normalized()
-	if projected_pole.length() < 1e-6:
-		projected_pole = y.orthogonal().normalized()
-
-# NEW: make the leg's local -Z align with the pole direction on the bend plane
-	var ref_axis = (align * rest_basis).z.normalized()  # treat -Z as "forward"
-	var s = ref_axis.cross(projected_pole).dot(y)
-	var t = ref_axis.dot(projected_pole)
-	var twist_angle = atan2(s, t)
-	var twist = Basis(y, twist_angle)
-
-	# Final world basis
-	return twist * align * rest_basis
-
-func _is_stepping(n: Node) -> bool:
-	return n.has_meta("stepping") and bool(n.get_meta("stepping"))
-
-func _mark_stepping(n: Node, stepping: bool) -> void:
-	n.set_meta("stepping", stepping)
-
-# --- Main loop (pass the opposite current_target) ---------------
 func _physics_process(_delta: float) -> void:
 	var isRotating := false
 	var isTranslating := false
 	if character_controller:
 		previous_transform = character_controller.transform
-	left_leg_current_target = update_ik_raycast(
+	left_leg_current_target = IkUtil.update_ik_raycast(
 		left_leg_raycast, left_leg_next_target, left_leg_current_target,
 		left_upper_leg, left_lower_leg, left_leg_pole,
-		right_leg_current_target  # 👈 pass the opposite leg
+		right_leg_current_target,  # 👈 pass the opposite leg
+		step_radius_walk, STEP_HEIGHT, STEP_SPEED_MPS,
 	)
-	right_leg_current_target = update_ik_raycast(
+	right_leg_current_target = IkUtil.update_ik_raycast(
 		right_leg_raycast, right_leg_next_target, right_leg_current_target,
 		right_upper_leg, right_lower_leg, right_leg_pole,
-		left_leg_current_target   # 👈 pass the opposite leg
-	)
-
-# --- IK update with "opposite leg is stepping" gate -------------
-func update_ik_raycast(
-	raycast: RayCast3D, next_target: Node3D, current_target: Node3D,
-	upper_leg: CustomBone, lower_leg: CustomBone, pole: Node3D,
-	opposite_target: Node3D
-) -> Node3D:
-	raycast.force_raycast_update()
-	if raycast.is_colliding():
-		var collision_point: Vector3 = raycast.get_collision_point()
-		next_target.global_position = collision_point
-
-		var dist_traveled_xz := (
-			Vector2(next_target.global_position.x, next_target.global_position.z) -
-			Vector2(current_target.global_position.x, current_target.global_position.z)
-		).length_squared() * 2
-
-		# Only step if:
-		# 1) we exceeded the radius,
-		# 2) the opposite leg is NOT tweening,
-		# 3) this leg is NOT already tweening
-		if dist_traveled_xz > step_radius_walk \
-		and not _is_stepping(opposite_target) \
-		and not _is_stepping(current_target):
-			var dist: float = current_target.global_position.distance_to(next_target.global_position)
-			var duration: float = clamp(dist / STEP_SPEED_MPS, 0.06, 0.25)
-			_tween_foot_to(current_target, current_target.global_position, collision_point, duration, STEP_HEIGHT)
-	else:
-		# Snap only if we’re not mid-step
-		if not _is_stepping(current_target):
-			_tween_foot_to(current_target, current_target.global_position, next_target.global_position, 0.0, STEP_HEIGHT)
-
-	solve_leg_ik(upper_leg, lower_leg, current_target.global_position, pole.global_position)
-	return current_target
-
-
-# Adjustable step settings
-const STEP_SPEED_MPS  := 6.0      # how fast the foot travels toward its new spot
-const STEP_HEIGHT     := 0.4     # how high the foot lifts during the step
-
-func _tween_foot_to(node: Node3D, from_pos: Vector3, to_pos: Vector3, duration: float, height: float = STEP_HEIGHT) -> void:
-	# Kill any in-flight tween for this node
-	if node.has_meta("ik_tween"):
-		var old: Tween = node.get_meta("ik_tween")
-		if old and old.is_running():
-			old.kill()
-
-	# Instant snap: no tween, clear flags
-	if duration <= 0.0 or from_pos.is_equal_approx(to_pos):
-		node.global_position = to_pos
-		node.set_meta("ik_tween", null)
-		node.set_meta("stepping", false)
-		return
-
-	var tween := get_tree().create_tween()
-	tween.set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
-	node.set_meta("ik_tween", tween)
-	node.set_meta("stepping", true) # mark as stepping while tween runs
-
-	var from := from_pos
-	var to   := to_pos
-
-	# Tween with a small vertical arc using tween_method
-	tween.tween_method(
-		func(p: float) -> void:
-			# p goes 0..1 — lerp on XZ and add a soft arc on Y
-			var pos := from.lerp(to, p)
-			pos.y += sin(p * PI) * height
-			node.global_position = pos
-	, 0.0, 1.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-
-	# Cleanup metas when finished
-	tween.finished.connect(func() -> void:
-		node.set_meta("ik_tween", null)
-		node.set_meta("stepping", false)
+		left_leg_current_target,   # 👈 pass the opposite leg
+		step_radius_walk, STEP_HEIGHT, STEP_SPEED_MPS,
 	)
