@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://ixwy0x8557c2"]
 
-[ext_resource type="Script" uid="uid://dcb7s64cnh8gt" path="res://scripts/custom_bone.gd" id="1_ya8rk"]
+[ext_resource type="Script" uid="uid://dcb7s64cnh8gt" path="res://Scripts/custom_bone.gd" id="1_ya8rk"]
 
 [node name="custom_bone" type="Node3D"]
 script = ExtResource("1_ya8rk")

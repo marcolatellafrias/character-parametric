@@ -1,10 +1,43 @@
 class_name IkUtil
 
-static func create_pole(lower_leg: CustomBone, distance: float, color: Color, parent: Node) -> Node3D:
+var left_leg_raycast: RayCast3D
+var right_leg_raycast: RayCast3D
+var left_leg_pole = Node3D
+var right_leg_pole = Node3D
+const left_color: Color = Color(1, 0, 0)      # rojo
+const right_color: Color = Color(0, 1, 0)    # verde
+const raycast_color: Color = Color(0, 0, 1)    # verde
+var left_leg_next_target: Node3D
+var right_leg_next_target: Node3D
+var left_leg_current_target: Node3D
+var right_leg_current_target: Node3D
+var left_neutral_local: Vector3
+var right_neutral_local: Vector3
+
+static func create(sizes: SkeletonSizesUtil, bones: CustomBonesUtil) -> IkUtil:
+	var new_ik_util = IkUtil.new()
+	#Creo raycasts
+	new_ik_util.left_leg_raycast = create_leg_raycast(-sizes.hip_width.y, raycast_color, sizes.raycast_leg_lenght)
+	new_ik_util.right_leg_raycast = create_leg_raycast(sizes.hip_width.y, raycast_color, sizes.raycast_leg_lenght)
+	#Creo poles
+	new_ik_util.left_leg_pole = IkUtil.create_pole(bones.left_lower_leg, sizes.pole_distance, left_color)
+	new_ik_util.right_leg_pole = IkUtil.create_pole(bones.right_lower_leg, sizes.pole_distance, right_color)
+	#Creo next targets
+	new_ik_util.left_leg_next_target = IkUtil.create_next_target(-sizes.hip_width.y, left_color, sizes.raycast_leg_lenght)
+	new_ik_util.right_leg_next_target = IkUtil.create_next_target(sizes.hip_width.y, right_color, sizes.raycast_leg_lenght)
+	#Actualizo posicion neutra de iks
+	new_ik_util.left_neutral_local  = new_ik_util.left_leg_raycast.transform.origin
+	new_ik_util.right_neutral_local  = new_ik_util.right_leg_raycast.transform.origin
+	#Creo current targets
+	new_ik_util.left_leg_current_target = IkUtil.create_ik_target(left_color, sizes.step_radius_walk, sizes.step_radius_turn)
+	new_ik_util.right_leg_current_target = IkUtil.create_ik_target(right_color, sizes.step_radius_walk, sizes.step_radius_turn)
+	return new_ik_util
+
+static func create_pole(lower_leg: CustomBone, distance: float, color: Color) -> Node3D:
 	var pole := Node3D.new()
-	parent.add_child(pole) # parent first so global == what you expect
-	var fwd := (lower_leg.global_basis.z).normalized() # Godot forward is -Z
-	pole.global_position = lower_leg.global_transform.origin + fwd * distance
+	#parent.add_child(pole) # parent first so global == what you expect
+	#var fwd := (lower_leg.global_basis.z).normalized() # Godot forward is -Z
+	#pole.global_position = lower_leg.global_transform.origin + fwd * distance
 	pole.add_child(DebugUtil.create_debug_sphere(color))
 	return pole
 
@@ -223,9 +256,9 @@ static func _mark_stepping(n: Node, stepping: bool) -> void:
 
 
 
-static func update_leg_raycast_offsets(character: CharacterBody3D, delta: float, leg_raycast : RayCast3D, speed_for_max: float, speed_curve: Curve, raycast_amount: float, raycast_max_offset: float, axis_weights: Vector2, raycast_smooth: float, neutral_local: Vector3, raycast_offset: Vector2) -> Vector2:
+static func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, leg_raycast : RayCast3D, speed_for_max: float, speed_curve: Curve, raycast_amount: float, raycast_max_offset: float, axis_weights: Vector2, raycast_smooth: float, neutral_local: Vector3, raycast_offset: Vector2) -> Vector2:
 	# Velocidad horizontal
-	var hvel := character.velocity
+	var hvel := root_rigidbody.linear_velocity
 	hvel.y = 0.0
 
 	# A espacio local del padre de raycasts
@@ -249,10 +282,11 @@ static func update_leg_raycast_offsets(character: CharacterBody3D, delta: float,
 	var k : float = clamp(delta * raycast_smooth, 0.0, 1.0)
 	raycast_offset = raycast_offset.lerp(target_off, k)
 
-	# Volver al centro en el aire
-	if not character.is_on_floor():
-		raycast_offset = raycast_offset.lerp(Vector2.ZERO, k)
+	## Volver al centro en el aire
+	#if not character.is_on_floor():
+		#raycast_offset = raycast_offset.lerp(Vector2.ZERO, k)
 
 	# Aplicar alrededor de las posiciones locales neutras
 	leg_raycast.transform.origin  = neutral_local  + Vector3(raycast_offset.x, 0.0, raycast_offset.y)
 	return raycast_offset
+	

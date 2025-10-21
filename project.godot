@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="Line and Sphere Drawing Tutorial"
+config/name="procedural character"
 run/main_scene="res://Scenes/Demo.tscn"
 config/features=PackedStringArray("4.5")
 
@@ -23,7 +23,7 @@ window/size/viewport_height=1200
 
 folder_colors={
 "res://Scenes/": "red",
-"res://scripts/": "green"
+"res://Scripts/": "green"
 }
 
 [input]
@@ -77,6 +77,10 @@ sprint={
 [layer_names]
 
 3d_render/layer_1="Visible"
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
 
 [rendering]
 

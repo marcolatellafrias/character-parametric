@@ -1,4 +1,4 @@
 res://Scenes/Demo.tscn
-res://scripts/control.gd
-res://scripts/bone_instantiator.gd
-res://scripts/dynamic_sizes_util.gd
+res://Scripts/basic_char.gd
+res://Scripts/hover_test.gd
+res://Scripts/simple.gd

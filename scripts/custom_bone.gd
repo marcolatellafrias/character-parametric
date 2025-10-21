@@ -7,6 +7,42 @@ var length :float = capsule_dimensions.y :
 		get:  return capsule_dimensions.y
 		set(val): capsule_dimensions.y = val
 
+func _get_mesh_instance3d() -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new() #DebugUtil.create_debug_colored_cube(bone.capsule_dimensions) 
+	var cube_mesh := BoxMesh.new()
+	cube_mesh.size = capsule_dimensions
+	mesh_instance.mesh = cube_mesh
+	mesh_instance.position = Vector3(0, length * 0.5, 0)
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color.WHITE_SMOKE #new_color
+	mesh_instance.material_override = material
+	return mesh_instance
+	
+func _get_collision_shape3d() -> CollisionShape3D:
+	var collision_shape :=  CollisionShape3D.new()
+	var cube_shape := BoxShape3D.new()
+	cube_shape.size = capsule_dimensions
+	collision_shape.shape = cube_shape
+	collision_shape.position = Vector3(0, length * 0.5, 0)
+	return collision_shape
+
+func get_rigidbody() -> RigidBody3D:
+	var rigid_body = RigidBody3D.new()
+	rigid_body.rotation = rest_rotation
+	var collision_shape3d = _get_collision_shape3d()
+	rigid_body.add_child(collision_shape3d)
+	var mesh_instance3d = _get_mesh_instance3d()
+	rigid_body.add_child(mesh_instance3d)
+	return rigid_body
+
+func set_rigidbody(rigid_body: RigidBody3D) -> void:
+	rigid_body.rotation = rest_rotation
+	var collision_shape3d = _get_collision_shape3d()
+	rigid_body.add_child(collision_shape3d)
+	var mesh_instance3d = _get_mesh_instance3d()
+	rigid_body.add_child(mesh_instance3d)
+	rigid_body.camera.position = Vector3(0, 1.7, 2.7)
+
 static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, new_color: Color,father_bone: CustomBone=null, use_father_end: bool= true) -> CustomBone:
 	#Instancio
 	var bone := preload("res://Scenes/custom_bone.tscn").instantiate() as CustomBone

@@ -1,0 +1,25 @@
+[gd_scene load_steps=5 format=3 uid="uid://depimbd5eofjb"]
+
+[ext_resource type="Script" uid="uid://xaap58qp57ub" path="res://Scripts/simple.gd" id="1_go66d"]
+[ext_resource type="PackedScene" uid="uid://do3col5kqad5q" path="res://Scenes/3d_creative_showcase.glb" id="2_1sfmx"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_4i7ud"]
+size = Vector3(1.1148682, 0.531, 3.0972753)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ymvx6"]
+size = Vector3(1, 0.74523926, 1)
+
+[node name="RigidBody3D" type="RigidBody3D"]
+script = ExtResource("1_go66d")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.007006049, -0.061401367, 0.020652771)
+shape = SubResource("BoxShape3D_4i7ud")
+debug_color = Color(14.532998, 2.0071282, 12.356447, 1)
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.24746346, 0.29278564)
+shape = SubResource("BoxShape3D_ymvx6")
+
+[node name="Sketchfab_Scene" parent="." instance=ExtResource("2_1sfmx")]
+transform = Transform3D(-1.7484556e-08, 0, 0.4, 0, 0.4, 0, -0.4, 0, -1.7484556e-08, 0, 0.13864613, 0)

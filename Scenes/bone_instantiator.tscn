@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://boveec04kyjx7"]
 
-[ext_resource type="Script" uid="uid://rp6tci1gjxpq" path="res://scripts/bone_instantiator.gd" id="1_ghven"]
+[ext_resource type="Script" uid="uid://rp6tci1gjxpq" path="res://Scripts/bone_instantiator.gd" id="1_ghven"]
 
 [node name="BoneInstantiator" type="CharacterBody3D"]
 script = ExtResource("1_ghven")
