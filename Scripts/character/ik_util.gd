@@ -34,14 +34,14 @@ static func create(sizes: SkeletonSizesUtil, bones: CustomBonesUtil, skeleton: B
 	new_ik_util.right_leg_current_target = IkUtil.create_ik_target(right_color, sizes.step_radius_walk, sizes.step_radius_turn)
 	return new_ik_util
 
-static func create_pole(bones: CustomBonesUtil, left: bool, sizes: SkeletonSizesUtil, father: Node3D) -> Node3D:
+static func create_pole(bones: CustomBonesUtil, left: bool, sizes: SkeletonSizesUtil, local_targets: Node3D) -> Node3D:
 	var lower_leg : CustomBone = bones.left_lower_leg if left else bones.right_lower_leg
 	var color : Color = left_color if left else right_color
 	var horizontal_offset : float = -sizes.hips_width if left else sizes.hips_width
 	var pole := Node3D.new()
-	father.add_child(pole) # parent first so global == what you expect
-	var fwd : Vector3 = (lower_leg.global_basis.z).normalized() # Godot forward is -Z
-	pole.global_position = Vector3(horizontal_offset,0,0) + fwd * sizes.pole_distance
+	local_targets.add_child(pole) # parent first so global == what you expect
+	var fwd : Vector3 =  Vector3(0,0,-1) #(lower_leg.global_basis.z).normalized() # Godot forward is -Z
+	pole.global_position = local_targets.global_position + Vector3(horizontal_offset,0,0) + fwd * sizes.pole_distance
 	pole.add_child(DebugUtil.create_debug_sphere(color))
 	return pole
 

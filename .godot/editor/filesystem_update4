@@ -1,3 +1,4 @@
 res://Scenes/Demo.tscn
 res://Scripts/common/hoverable.gd
 res://Scripts/character/ik_util.gd
+res://Scripts/character/bone_instantiator.gd

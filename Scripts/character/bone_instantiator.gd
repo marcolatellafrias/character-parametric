@@ -123,8 +123,9 @@ func _physics_process(_delta: float) -> void:
 
 
 func _update_local_targets_positions()-> void:
+	pass
 	local_targets.global_position = char_rigidbody.global_position
-	#local_targets.global_rotation = Vector3(0,char_rigidbody.global_rotation.y,0)
+	local_targets.global_rotation = Vector3(0,char_rigidbody.global_rotation.y,0)
 
 #func _place_rays() -> void:
 	## Bottom-left/right of the box in collider local space.
