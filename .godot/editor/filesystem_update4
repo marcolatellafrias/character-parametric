@@ -1,4 +1,3 @@
 res://Scenes/Demo.tscn
-res://Scripts/basic_char.gd
-res://Scripts/hover_test.gd
-res://Scripts/simple.gd
+res://Scripts/common/hoverable.gd
+res://Scripts/character/ik_util.gd

@@ -18,12 +18,14 @@ config/features=PackedStringArray("4.5")
 
 window/size/viewport_width=2000
 window/size/viewport_height=1200
+window/size/mode=2
 
 [file_customization]
 
 folder_colors={
-"res://Scenes/": "red",
-"res://Scripts/": "green"
+"res://Models/": "green",
+"res://Scenes/": "purple",
+"res://Scripts/": "pink"
 }
 
 [input]
