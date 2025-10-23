@@ -144,6 +144,7 @@ surface_material_override/0 = ExtResource("2_fnnck")
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 0.99999994, -3.374179, 1.0039177, -6.8743)
 script = ExtResource("8_oilx1")
+grab_ray_length = 30.0
 
 [node name="RigidBody3D" parent="." instance=ExtResource("9_4i7ud")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6187816, 2.2957344)

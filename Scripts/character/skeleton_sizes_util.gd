@@ -97,7 +97,7 @@ static func create(skel: BoneInstantiator) -> SkeletonSizesUtil:
 	skelSizes.shoulder_width = Vector3( 0.1, new_shoulders_width, 0.1)
 	#TAMAÑOS MISCELANEOS
 	skelSizes.raycast_leg_lenght = new_leg_height
-	skelSizes.distance_from_ground = new_leg_height * (skel.distance_from_ground_factor)
+	skelSizes.distance_from_ground = new_leg_height * (1-skel.distance_from_ground_factor)
 	skelSizes.speed = new_leg_height * 1.8
 	skelSizes.step_radius_walk   = new_leg_height * 0.5
 	skelSizes.step_radius_turn   = new_leg_height * 0.20

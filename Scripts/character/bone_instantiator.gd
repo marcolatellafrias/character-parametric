@@ -2,7 +2,7 @@ class_name BoneInstantiator
 extends Node3D
 
 #ALTURA DEL PERSONAJE
-@export var feet_to_head_height := 2.2: #This excludes arms and horizontal bones,
+@export var feet_to_head_height := 3.2: #This excludes arms and horizontal bones,
 	set(value):
 		feet_to_head_height = value
 		initialize_skeleton()
@@ -66,7 +66,7 @@ func initialize_skeleton() -> void:
 	#var camera3d = Camera3D.new()
 	#camera3d.position = Vector3(0, 1.7, 2.7)
 	var charRb = Vector3(1,2,1)
-	char_rigidbody = CharacterRigidBody3D.create(charRb,ik_util.left_leg_raycast,ik_util.right_leg_raycast)
+	char_rigidbody = CharacterRigidBody3D.create(charRb,ik_util.left_leg_raycast,ik_util.right_leg_raycast,skel_sizes_util.distance_from_ground)
 	#Agrego el esqueleto target y la camara como hijo de el rigidbody
 	char_rigidbody.add_child(custom_bones_util.lower_spine)
 	#char_rigidbody.add_child(camera3d)
@@ -105,8 +105,9 @@ func _physics_process(_delta: float) -> void:
 	#if root_rigidbody:
 		#previous_transform = root_rigidbody.transform
 		#
-	#raycast_offset = IkUtil.update_leg_raycast_offsets(char_rigidbody, _delta, left_leg_raycast, speed_for_max, speed_curve, raycast_amount, raycast_max_offset, axis_weights, raycast_smooth, left_neutral_local, raycast_offset) 
-	#raycast_offset = IkUtil.update_leg_raycast_offsets(root_rigidbody, _delta, right_leg_raycast, speed_for_max, speed_curve, raycast_amount, raycast_max_offset, axis_weights, raycast_smooth, right_neutral_local, raycast_offset) 
+	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, true, skel_sizes_util) 
+	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, false, skel_sizes_util) 
+	#raycast_offset = ik_util.update_leg_raycast_offsets(root_rigidbody, _delta, false, speed_for_max, speed_curve, raycast_amount, raycast_max_offset, axis_weights, raycast_smooth, right_neutral_local, raycast_offset) 
 	##
 	ik_util.update_ik_raycast(
 		true, custom_bones_util, skel_sizes_util, false, false,

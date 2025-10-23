@@ -85,7 +85,7 @@ func _physics_process(_delta: float) -> void:
 	apply_torque(torque)
 
 
-static func create(root_size: Vector3, new_left_leg_raycast: RayCast3D, new_right_leg_raycast: RayCast3D) -> CharacterRigidBody3D:
+static func create(root_size: Vector3, new_left_leg_raycast: RayCast3D, new_right_leg_raycast: RayCast3D, distance_from_ground: float) -> CharacterRigidBody3D:
 	var character_rigidbody := CharacterRigidBody3D.new()
 	var new_mesh_instance := MeshInstance3D.new()
 	var cube_mesh := BoxMesh.new()
@@ -109,4 +109,5 @@ static func create(root_size: Vector3, new_left_leg_raycast: RayCast3D, new_righ
 	character_rigidbody.right_ray = new_right_leg_raycast
 	character_rigidbody.collider = new_collision_shape
 	character_rigidbody.mesh_instance = new_mesh_instance
+	character_rigidbody.hover_height = distance_from_ground
 	return character_rigidbody
