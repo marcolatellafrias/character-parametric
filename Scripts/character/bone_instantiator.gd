@@ -1,10 +1,7 @@
 class_name BoneInstantiator
 extends Node3D
 
-@export var archetype: EntityStats.Archetype = EntityStats.Archetype.kid:
-	set(value):
-		archetype = value
-		initialize_skeleton()
+@export var archetype: EntityStats.Archetype = EntityStats.Archetype.fat_man
 
 var entity_stats : EntityStats
 var skel_sizes_util: SkeletonSizesUtil
@@ -20,8 +17,7 @@ var ik_util : IkUtil
 var previous_transform : Transform3D 
 
 func _ready() -> void:
-	pass
-	#initialize_skeleton()
+	initialize_skeleton()
 
 func initialize_skeleton() -> void:
 	#Primero limpio todas las generaciones anteriores

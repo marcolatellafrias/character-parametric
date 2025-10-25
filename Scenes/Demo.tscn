@@ -154,8 +154,12 @@ grab_ray_length = 30.0
 
 [node name="chars" type="Node3D" parent="."]
 
-[node name="player_root" parent="chars" instance=ExtResource("11_ymvx6")]
+[node name="fat" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.7216759, -12.740562)
 
-[node name="player_root2" parent="chars" instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.7392845, 0.02957344, -24.71506)
+[node name="tall" parent="chars" instance=ExtResource("11_ymvx6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.7346802, 0.8951359, -21.19106)
+
+[node name="kid" parent="chars" instance=ExtResource("11_ymvx6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.94421, 0.02957344, -34.64692)
+archetype = 1

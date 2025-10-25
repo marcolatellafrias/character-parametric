@@ -48,16 +48,6 @@ var hips_width_proportion : float
 var shoulder_width_proportion : float
 var distance_from_ground_factor := 0.1  #tiene las piernas 10% flexionadas cuando esta en el piso
 
-
-
-func as_alien(seed: float) -> EntityStats:
-	return
-func as_human(seed: float) -> EntityStats:
-	return
-func as_robot(seed: float) -> EntityStats:
-	return
-
-
 static func create(archetype: Archetype) -> EntityStats:
 	if(archetype == Archetype.fat_man):
 		return fat_man_arch()
@@ -67,6 +57,13 @@ static func create(archetype: Archetype) -> EntityStats:
 		return kid_arch()
 	else:
 		return giga_arch()
+
+func as_alien(seed: float) -> EntityStats:
+	return
+func as_human(seed: float) -> EntityStats:
+	return
+func as_robot(seed: float) -> EntityStats:
+	return
 
 static func fat_man_arch() -> EntityStats:
 	var arch = EntityStats.new()
