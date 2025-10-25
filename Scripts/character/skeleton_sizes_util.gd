@@ -78,12 +78,18 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	#TAMAÑO DE HUESOS
 	if entityStats.has_neck:
 		skelSizes.neck_size = Vector3(0.1, new_head_height * 0.4, 0.1)
-		skelSizes.head_size = Vector3(0.3, new_head_height * 0.6, 0.3)
+		skelSizes.head_size = Vector3(0.2, new_head_height * 0.6, 0.2)
 	else:
 		skelSizes.neck_size = Vector3.ZERO
-		skelSizes.head_size = Vector3(0.3, new_head_height, 0.3)
+		skelSizes.head_size = Vector3(0.2, new_head_height, 0.2)
+		
+	#PARA VISUALES CAMBIAR ESTO
 	skelSizes.lower_spine_size = Vector3(0.1, new_torso_height * 0.1, 0.1)
-	skelSizes.middle_spine_size = Vector3(0.1, new_torso_height * 0.2, 0.1)
+	
+	var upper_belly_radius : float = lerp_range(0.1,0.7,entityStats.fatness)
+	var lower_belly_radius : float = lerp_range(0.1,0.5,entityStats.fatness)
+	
+	skelSizes.middle_spine_size = Vector3(upper_belly_radius, new_torso_height * 0.2, lower_belly_radius)
 	skelSizes.upper_spine_size = Vector3(0.1, new_torso_height * 0.3, 0.1)
 	skelSizes.chest_size = Vector3(0.2, new_torso_height * 0.4, 0.2)
 	skelSizes.upper_leg_size = Vector3(0.1, new_leg_height * 0.45, 0.1)
@@ -95,6 +101,9 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	skelSizes.lower_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
 	skelSizes.hip_size = Vector3( 0.1, new_hips_width, 0.1)
 	skelSizes.shoulder_width = Vector3( 0.1, new_shoulders_width, 0.1)
+	
+	
+	
 	#TAMAÑOS MISCELANEOS
 	skelSizes.raycast_leg_lenght = new_leg_height
 	skelSizes.distance_from_ground = new_leg_height * (1-entityStats.distance_from_ground_factor)
@@ -146,3 +155,12 @@ func _update_step_duration(delta: float, char_rigidbody: CharacterRigidBody3D) -
 	step_duration = base * speed_term
 
 	_prev_origin = origin
+
+
+
+
+
+
+
+static func lerp_range(min_val: float, max_val: float, t: float) -> float:
+	return min_val + (max_val - min_val) * clamp(t, 0.0, 1.0)

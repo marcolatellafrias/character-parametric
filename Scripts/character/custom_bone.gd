@@ -65,7 +65,7 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	#var cube_mesh := get_bone_mesh(bone.capsule_dimensions) #BoxMesh.new()
 	#cube_mesh.size = bone.capsule_dimensions
 	#mesh_instance.mesh = cube_mesh
-	mesh_instance.position = Vector3(0, bone.capsule_dimensions.y * 0.5, 0)
+	#mesh_instance.position = Vector3(0, bone.capsule_dimensions.y * 0.5, 0)
 	var material := StandardMaterial3D.new()
 	material.albedo_color = Color.WHITE_SMOKE #new_color
 	#material.albedo_color.a = 0.5
@@ -181,10 +181,17 @@ static func get_bone_mesh(size: Vector3) -> MeshInstance3D:
 	if mesh_instance == null:
 		push_error("MeshInstance3D not found")
 		return null
-	var index := mesh_instance.find_blend_shape_by_name("height")
-	mesh_instance.set_blend_shape_value(index, size.y/2)
+	var height_index := mesh_instance.find_blend_shape_by_name("height")
+	mesh_instance.set_blend_shape_value(height_index, size.y/2)
+	var top_radius_index := mesh_instance.find_blend_shape_by_name("top_radius")
+	mesh_instance.set_blend_shape_value(top_radius_index, size.x)
+	var bottom_radius_index := mesh_instance.find_blend_shape_by_name("bottom_radius")
+	mesh_instance.set_blend_shape_value(bottom_radius_index, size.z)
 	
-	
-	
+	var top_dome_height_index := mesh_instance.find_blend_shape_by_name("top_dome_height")
+	mesh_instance.set_blend_shape_value(top_dome_height_index, size.x)
+	var bottom_dome_height_index := mesh_instance.find_blend_shape_by_name("bottom_dome_height")
+	mesh_instance.set_blend_shape_value(bottom_dome_height_index, size.z)
+		
 	root.remove_child(mesh_instance)
 	return mesh_instance
