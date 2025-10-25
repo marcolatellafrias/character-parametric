@@ -1,4 +1,4 @@
-[gd_scene load_steps=23 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=24 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://by0al5irc1r60" path="res://Materials/Floor.tres" id="1_lpcab"]
 [ext_resource type="Material" uid="uid://bq5ujksxl5avb" path="res://Materials/Shapes.tres" id="2_fnnck"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://s04a8ue62sk4" path="res://Scripts/character/basic_char.gd" id="8_oilx1"]
 [ext_resource type="PackedScene" uid="uid://depimbd5eofjb" path="res://Scenes/car.tscn" id="9_4i7ud"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
+[ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_hfvyn"]
@@ -155,11 +156,15 @@ grab_ray_length = 30.0
 [node name="chars" type="Node3D" parent="."]
 
 [node name="fat" parent="chars" instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.7216759, -12.740562)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.235, 0.3, -10.597)
 
 [node name="tall" parent="chars" instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.7346802, 0.8951359, -21.19106)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8281984, 0.5, -10.493808)
+archetype = 2
 
 [node name="kid" parent="chars" instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.94421, 0.02957344, -34.64692)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.446537, 0.3, -10.347981)
 archetype = 1
+
+[node name="bone" parent="chars" instance=ExtResource("11_v3boh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.0371246, 0.47957346, -19.87078)

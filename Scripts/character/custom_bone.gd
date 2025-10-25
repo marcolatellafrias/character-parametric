@@ -49,22 +49,22 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	bone.capsule_dimensions = new_capsule_dimensions
 	bone.rest_rotation = new_rest_rotation
 	
-	#Añado esfera en el pivot para debug
-	var pivot_mesh_instance := MeshInstance3D.new()
-	var sphere_mesh := SphereMesh.new()
-	pivot_mesh_instance.scale = Vector3(0.05,0.05,0.05)
-	pivot_mesh_instance.mesh = sphere_mesh
-	pivot_mesh_instance.position = Vector3.ZERO
-	var sphere_material := StandardMaterial3D.new()
-	sphere_material.albedo_color = Color.BLACK
-	pivot_mesh_instance.material_override = sphere_material
-	bone.add_child(pivot_mesh_instance)
+	##Añado esfera en el pivot para debug
+	#var pivot_mesh_instance := MeshInstance3D.new()
+	#var sphere_mesh := SphereMesh.new()
+	#pivot_mesh_instance.scale = Vector3(0.05,0.05,0.05)
+	#pivot_mesh_instance.mesh = sphere_mesh
+	#pivot_mesh_instance.position = Vector3.ZERO
+	#var sphere_material := StandardMaterial3D.new()
+	#sphere_material.albedo_color = Color.BLACK
+	#pivot_mesh_instance.material_override = sphere_material
+	#bone.add_child(pivot_mesh_instance)
 	
 	#Añado mesh
-	var mesh_instance := MeshInstance3D.new() #DebugUtil.create_debug_colored_cube(bone.capsule_dimensions) 
-	var cube_mesh :=  BoxMesh.new()
-	cube_mesh.size = bone.capsule_dimensions
-	mesh_instance.mesh = cube_mesh
+	var mesh_instance := get_bone_mesh(bone.capsule_dimensions) #DebugUtil.create_debug_colored_cube(bone.capsule_dimensions) 
+	#var cube_mesh := get_bone_mesh(bone.capsule_dimensions) #BoxMesh.new()
+	#cube_mesh.size = bone.capsule_dimensions
+	#mesh_instance.mesh = cube_mesh
 	mesh_instance.position = Vector3(0, bone.capsule_dimensions.y * 0.5, 0)
 	var material := StandardMaterial3D.new()
 	material.albedo_color = Color.WHITE_SMOKE #new_color
@@ -72,7 +72,12 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	#material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	#material.flags_transparent = true
 	mesh_instance.material_override = material
+	
+
+	
+	
 	bone.add_child(mesh_instance)
+		
 	
 	# Hago que el pivot del hueso, este donde termina o empieza el hueso padre
 	if father_bone:
@@ -163,3 +168,23 @@ func pose_from_rest_to(dir: Vector3, pole: Vector3) -> Basis:
 
 	# --- Combine ---
 	return twist * align * rest_basis
+
+
+static func get_bone_mesh(size: Vector3) -> MeshInstance3D:
+	var scene: PackedScene = load("res://Models/bone.glb")
+	if scene == null:
+		push_error("Could not load bone.glb")
+		return null
+
+	var root: Node3D = scene.instantiate()
+	var mesh_instance: MeshInstance3D = root.get_node_or_null("Sphere") as MeshInstance3D
+	if mesh_instance == null:
+		push_error("MeshInstance3D not found")
+		return null
+	var index := mesh_instance.find_blend_shape_by_name("height")
+	mesh_instance.set_blend_shape_value(index, size.y/2)
+	
+	
+	
+	root.remove_child(mesh_instance)
+	return mesh_instance

@@ -103,8 +103,8 @@ static func fat_man_arch() -> EntityStats:
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.35
 	arch.legs_to_feet_proportion = 0.45
-	arch.hips_width_proportion = 1.5
-	arch.shoulder_width_proportion = 1.2
+	arch.hips_width_proportion = 0.2
+	arch.shoulder_width_proportion = 0.2
 	
 	arch.has_neck = true
 	
@@ -148,8 +148,8 @@ static func kid_arch() -> EntityStats:
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.3
 	arch.legs_to_feet_proportion = 0.5
-	arch.hips_width_proportion = 1.5
-	arch.shoulder_width_proportion = 1.2
+	arch.hips_width_proportion = 0.15
+	arch.shoulder_width_proportion = 0.2
 	
 	arch.has_neck = true
 	
@@ -193,8 +193,8 @@ static func tall_lanky_arch() -> EntityStats:
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55
-	arch.hips_width_proportion = 1.5
-	arch.shoulder_width_proportion = 1.2
+	arch.hips_width_proportion = 0.12
+	arch.shoulder_width_proportion = 0.18
 	
 	arch.has_neck = true
 	
