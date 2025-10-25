@@ -1,43 +1,12 @@
 class_name BoneInstantiator
 extends Node3D
 
-#ALTURA DEL PERSONAJE
-@export var feet_to_head_height := 3.2: #This excludes arms and horizontal bones,
+@export var archetype: EntityStats.Archetype = EntityStats.Archetype.kid:
 	set(value):
-		feet_to_head_height = value
+		archetype = value
 		initialize_skeleton()
-#PROPORCIONES/INTERFAZ
-@export var neck_to_head_proportion := 0.15:
-	set(value):
-		neck_to_head_proportion = value
-		initialize_skeleton()
-@export var chest_to_low_spine_proportion := 0.15:
-	set(value):
-		chest_to_low_spine_proportion = value
-		initialize_skeleton()
-@export var legs_to_feet_proportion := 0.7:
-	set(value):
-		legs_to_feet_proportion = value
-		initialize_skeleton()
-@export var hips_width_proportion := 0.11:
-	set(value):
-		hips_width_proportion = value
-		initialize_skeleton()	
-@export var shoulder_width_proportion := 0.2:
-	set(value):
-		shoulder_width_proportion = value
-		initialize_skeleton()
-@export var arms_proportion := 0.7:
-	set(value):
-		arms_proportion = value
-		initialize_skeleton()
-@export var has_neck := true:
-	set(value):
-		has_neck = value
-		initialize_skeleton()
-#PARAMETROS DE CAMINATA
-@export var distance_from_ground_factor := 0.1  #tiene las piernas 10% flexionadas cuando esta en el piso
 
+var entity_stats : EntityStats
 var skel_sizes_util: SkeletonSizesUtil
 var custom_bones_util: CustomBonesUtil
 var char_rigidbody : CharacterRigidBody3D
@@ -51,15 +20,17 @@ var ik_util : IkUtil
 var previous_transform : Transform3D 
 
 func _ready() -> void:
-	initialize_skeleton()
+	pass
+	#initialize_skeleton()
 
 func initialize_skeleton() -> void:
 	#Primero limpio todas las generaciones anteriores
 	_clear_prior_generations()
+	entity_stats = EntityStats.create(archetype)
 	#Luego calculo los tamaños de todos los huesos a partir de las proporciones y medidas de alto nivel
-	skel_sizes_util = SkeletonSizesUtil.create(self)
+	skel_sizes_util = SkeletonSizesUtil.create(entity_stats)
 	#Luego ensamblo los huesos en una jerarquia con sus respectivos angulos de reposo, en clases de custombones
-	custom_bones_util = CustomBonesUtil.create(skel_sizes_util, has_neck)
+	custom_bones_util = CustomBonesUtil.create(skel_sizes_util, entity_stats)
 	#Luego creo los local targets, global targets y raycasts
 	ik_util = IkUtil.create(skel_sizes_util, custom_bones_util, self)
 	#Luego creo el character rigidbody
@@ -127,21 +98,3 @@ func _update_local_targets_positions()-> void:
 	pass
 	local_targets.global_position = char_rigidbody.global_position
 	local_targets.global_rotation = Vector3(0,char_rigidbody.global_rotation.y,0)
-
-#func _place_rays() -> void:
-	## Bottom-left/right of the box in collider local space.
-	#var half_w := _box.size.x * 0.5
-	#var bottom_y := -_box.size.y * 0.5
-	#var left_local := Vector3(-half_w, bottom_y, 0.0)
-	#var right_local := Vector3(half_w, bottom_y, 0.0)
-#
-	#var start_left := _collider.to_global(left_local)
-	#var start_right := _collider.to_global(right_local)
-#
-	#var end_left := start_left + Vector3.DOWN * ray_length
-	#var end_right := start_right + Vector3.DOWN * ray_length
-#
-	#_left_ray.global_transform.origin = start_left
-	#_right_ray.global_transform.origin = start_right
-	#_left_ray.target_position = _left_ray.to_local(end_left)
-	#_right_ray.target_position = _right_ray.to_local(end_right)

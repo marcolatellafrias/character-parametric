@@ -21,7 +21,7 @@ var right_lower_arm : CustomBone
 var left_upper_arm : CustomBone
 var left_lower_arm : CustomBone
 
-static func create(sizes: SkeletonSizesUtil, has_neck: bool) -> CustomBonesUtil:
+static func create(sizes: SkeletonSizesUtil, entity_stats: EntityStats) -> CustomBonesUtil:
 	var bones_util = CustomBonesUtil.new()
 	# Hueso raíz
 	bones_util.lower_spine = CustomBone.create(sizes.lower_spine_size, Vector3.ZERO, Color.WHITE_SMOKE)
@@ -39,7 +39,7 @@ static func create(sizes: SkeletonSizesUtil, has_neck: bool) -> CustomBonesUtil:
 	bones_util.right_lower_leg = CustomBone.createFromToDown(bones_util.right_upper_leg, sizes.lower_leg_size, 0.0,0.0, Color.ORANGE , true)
 	bones_util.right_upper_feet = CustomBone.createFromToForward(bones_util.right_lower_leg, sizes.upper_feet_size, 0.0,0.0, Color.ORANGE , true)
 	bones_util.left_upper_feet = CustomBone.createFromToForward(bones_util.left_lower_leg, sizes.upper_feet_size, 0.0,0.0, Color.ORANGE , true)
-	if has_neck:
+	if entity_stats.has_neck:
 		bones_util.neck = CustomBone.createFromToUp(bones_util.chest, sizes.neck_size, 0.0,0.0, Color.RED , true)
 	bones_util.head = CustomBone.createFromToUp(bones_util.neck if bones_util.neck else bones_util.chest, sizes.head_size, 0.0,0.0, Color.GREEN , true)
 	# Shoulders

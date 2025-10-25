@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://boveec04kyjx7"]
+[gd_scene load_steps=2 format=3 uid="uid://dwkdjdcdpx4v1"]
 
 [ext_resource type="Script" uid="uid://rp6tci1gjxpq" path="res://Scripts/character/bone_instantiator.gd" id="1_ghven"]
 

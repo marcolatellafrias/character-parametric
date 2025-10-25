@@ -26,9 +26,9 @@ var shoulder_width: Vector3
 var hip_size: Vector3
 
 #MISCELANEO: Argumentos de caminata, velocidad y iks, dependiendes de medidas
+var speed : float
 var distance_from_ground : float
 var raycast_leg_lenght: float
-var speed: float
 var step_radius_turn: float
 var step_radius_walk: float
 var step_height: float
@@ -43,9 +43,9 @@ const raycast_accel_gain := 0.06        # meters per (m/s^2)
 const raycast_vel_gain   := 0.02        # meters per (m/s)  -> keeps offset while moving
 const raycast_smooth     := 8.0        # 1/sec; higher = snappier
 const leg_ref := 1.0     # altura de pierna "promedio" (tus unidades)
-const speed_ref := 3.0     # vel. a la que querés que la duración se reduzca ~a la mitad si BETA=1
-const alpha := 1.2   # cuánto influye el tamaño de pierna (↑ piernas ⇒ ↑ duración). 1 = lineal (como ahora)
-const beta := 0.6   # cuánto influye la velocidad (↑ vel ⇒ ↓ duración). 1 = lineal en la razón
+
+const alpha := 1.1   # cuánto influye el tamaño de pierna (↑ piernas ⇒ ↑ duración). 1 = lineal (como ahora)
+const beta := 1.0   # cuánto influye la velocidad (↑ vel ⇒ ↓ duración). 1 = lineal en la razón
 var base_step_duration_ref: float = 0.3  # baseline (inspector-friendly)
 var base_step_duration: float
 var step_cooldown: float = 0.05
@@ -56,27 +56,27 @@ const SPEED_TAU := 0.15 # s, suavizado (más chico = más reactivo)
 
 
 
-static func create(skel: BoneInstantiator) -> SkeletonSizesUtil:
+static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	var skelSizes = SkeletonSizesUtil.new()
 	#MEDIDAS DE MEDIANO NIVEL
-	var total := skel.legs_to_feet_proportion + skel.chest_to_low_spine_proportion + skel.neck_to_head_proportion
+	var total := entityStats.legs_to_feet_proportion + entityStats.chest_to_low_spine_proportion + entityStats.neck_to_head_proportion
 	if total == 0.0:
 		total = 1.0
-	var leg_ratio := skel.legs_to_feet_proportion / total
-	var torso_ratio := skel.chest_to_low_spine_proportion / total
-	var head_ratio := skel.neck_to_head_proportion / total
-	var new_leg_height := skel.feet_to_head_height * leg_ratio
-	var new_torso_height := skel.feet_to_head_height * torso_ratio
-	var new_head_height := skel.feet_to_head_height * head_ratio
-	var new_hips_width := skel.hips_width_proportion * skel.feet_to_head_height
-	var new_shoulders_width := skel.shoulder_width_proportion * skel.feet_to_head_height
+	var leg_ratio := entityStats.legs_to_feet_proportion / total
+	var torso_ratio := entityStats.chest_to_low_spine_proportion / total
+	var head_ratio := entityStats.neck_to_head_proportion / total
+	var new_leg_height := entityStats.height * leg_ratio
+	var new_torso_height := entityStats.height * torso_ratio
+	var new_head_height := entityStats.height * head_ratio
+	var new_hips_width := entityStats.hips_width_proportion * entityStats.height
+	var new_shoulders_width := entityStats.shoulder_width_proportion * entityStats.height
 	skelSizes.leg_height = new_leg_height
 	skelSizes.torso_height = new_torso_height
 	skelSizes.head_height = new_head_height
 	skelSizes.hips_width = new_hips_width
 	skelSizes.shoulders_width = new_shoulders_width
 	#TAMAÑO DE HUESOS
-	if skel.has_neck:
+	if entityStats.has_neck:
 		skelSizes.neck_size = Vector3(0.1, new_head_height * 0.4, 0.1)
 		skelSizes.head_size = Vector3(0.3, new_head_height * 0.6, 0.3)
 	else:
@@ -97,7 +97,7 @@ static func create(skel: BoneInstantiator) -> SkeletonSizesUtil:
 	skelSizes.shoulder_width = Vector3( 0.1, new_shoulders_width, 0.1)
 	#TAMAÑOS MISCELANEOS
 	skelSizes.raycast_leg_lenght = new_leg_height
-	skelSizes.distance_from_ground = new_leg_height * (1-skel.distance_from_ground_factor)
+	skelSizes.distance_from_ground = new_leg_height * (1-entityStats.distance_from_ground_factor)
 	skelSizes.speed = new_leg_height * 1.8
 	skelSizes.step_radius_walk   = new_leg_height * 0.5
 	skelSizes.step_radius_turn   = new_leg_height * 0.20
@@ -136,20 +136,13 @@ func _update_step_duration(delta: float, char_rigidbody: CharacterRigidBody3D) -
 	var dxz := Vector2(origin.x - _prev_origin.x, origin.z - _prev_origin.z)
 	var instant_speed: float = dxz.length() / max(delta, 0.0001)
 
-	var sprint_mult := 1.0
-	var _sm = node.get("sprint_multiplier") # Object.get() always exists; returns null if no prop
-	if typeof(_sm) == TYPE_FLOAT or typeof(_sm) == TYPE_INT:
-		sprint_mult = max(1.0, float(_sm))
-
-	var effective_speed: float = instant_speed * sprint_mult
-
 	var ema_alpha := 1.0 - exp(-delta / SPEED_TAU) # renamed to avoid shadowing
-	_ema_speed += (effective_speed - _ema_speed) * ema_alpha
+	_ema_speed += (instant_speed - _ema_speed) * ema_alpha
 
 	var clamped_speed_ref : float = max(0.001, self.speed_ref) # use class const
 	var speed_term := pow(1.0 + (_ema_speed / clamped_speed_ref), self.beta) # use class const
 
 	var base : float = max(0.001, base_step_duration)
-	step_duration = base / speed_term
+	step_duration = base * speed_term
 
 	_prev_origin = origin

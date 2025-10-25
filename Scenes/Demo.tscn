@@ -119,7 +119,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8390794, -7.2039795)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8081498, -7.2051997)
 
 [node name="Mirror3D" parent="world" instance=ExtResource("8_ecetj")]
-transform = Transform3D(-0.88493073, 0, -0.46572256, 0, 1, 0, 0.46572256, 0, -0.88493073, -4.2783775, 1.9868951, -1.952939)
+transform = Transform3D(-0.88493073, 0, -0.46572256, 0, 1, 0, 0.46572256, 0, -0.88493073, -4.2783775, 1.9868951, 8.103675)
 size = Vector2(10, 4)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="world"]
@@ -141,16 +141,21 @@ mesh = SubResource("BoxMesh_8wo38")
 skeleton = NodePath("../../..")
 surface_material_override/0 = ExtResource("2_fnnck")
 
+[node name="RigidBody3D" parent="world" instance=ExtResource("9_4i7ud")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6187816, 2.2957344)
+
+[node name="RigidBody3D2" parent="world" instance=ExtResource("9_4i7ud")]
+transform = Transform3D(0.6417977, 0, 0.76687396, 0, 1, 0, -0.76687396, 0, 0.6417977, 2.2019553, 0.3249837, 1.0182643)
+
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 0.99999994, -3.374179, 1.0039177, -6.8743)
 script = ExtResource("8_oilx1")
 grab_ray_length = 30.0
 
-[node name="RigidBody3D" parent="." instance=ExtResource("9_4i7ud")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6187816, 2.2957344)
+[node name="chars" type="Node3D" parent="."]
 
-[node name="player_root" parent="." instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1096368, 0.029574871, -3.0704966)
+[node name="player_root" parent="chars" instance=ExtResource("11_ymvx6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.7216759, -12.740562)
 
-[node name="RigidBody3D2" parent="." instance=ExtResource("9_4i7ud")]
-transform = Transform3D(0.6417977, 0, 0.76687396, 0, 1, 0, -0.76687396, 0, 0.6417977, 2.2019553, 0.3249837, 1.0182643)
+[node name="player_root2" parent="chars" instance=ExtResource("11_ymvx6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.7392845, 0.02957344, -24.71506)
