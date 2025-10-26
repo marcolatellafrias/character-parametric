@@ -1,15 +1,19 @@
 # res://utils/debug_utils.gd
 class_name DebugUtil
 
-static func create_debug_line(color: Color, length: float) -> MeshInstance3D:
+static func create_debug_line(color: Color, length: float, on_top: bool = false, to_down: bool = true) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var cube := BoxMesh.new()
 	cube.size = Vector3(0.01, length, 0.01)
 	mesh_instance.mesh = cube
-	mesh_instance.position = Vector3(0.0, -length * 0.5, 0.0)
+	mesh_instance.position = Vector3(0.0, (-length * 0.5) if to_down else (length * 0.5), 0.0)
 
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
+	
+	if on_top:
+		material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS 
+		material.depth_test = 1
 	mesh_instance.material_override = material
 	return mesh_instance
 

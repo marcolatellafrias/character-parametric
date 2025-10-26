@@ -73,11 +73,15 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	#material.flags_transparent = true
 	mesh_instance.material_override = material
 	
-
+	
 	
 	
 	bone.add_child(mesh_instance)
 		
+	
+	#var debug_mesh := MeshInstance3D.new()
+	var debug_line := DebugUtil.create_debug_line(Color.RED,bone.capsule_dimensions.y,true,false)
+	bone.add_child(debug_line)
 	
 	# Hago que el pivot del hueso, este donde termina o empieza el hueso padre
 	if father_bone:

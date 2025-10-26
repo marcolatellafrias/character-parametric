@@ -279,6 +279,7 @@ func _update_grab(delta: float) -> void:
 		_grabbed = null
 		return
 	# Keep the target point along the camera’s center ray at the stored distance
+	var mass := _grabbed.mass
 	var vp_size := get_viewport().get_visible_rect().size
 	var screen_center := vp_size * 0.5
 	var from := _camera.project_ray_origin(screen_center)
@@ -294,8 +295,11 @@ func _update_grab(delta: float) -> void:
 	var v_point := _grabbed.linear_velocity + _grabbed.angular_velocity.cross(r)
 
 	# PD spring force toward desired point
+	var scaled_kp := grab_kp * mass
+	var scaled_kd := grab_kd * mass
+	
 	var error := desired - world_pt
-	var force := error * grab_kp + (-v_point) * grab_kd
+	var force := error * scaled_kp + (-v_point) * scaled_kd
 
 	# Clamp for stability
 	var f_len := force.length()
