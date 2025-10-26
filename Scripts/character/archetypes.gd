@@ -91,7 +91,7 @@ static func fat_man_arch() -> EntityStats:
 	arch.time_to_standup = 2.0
 	arch.strenght = 1.0
 	arch.throw_strenght = 0.7
-	arch.reach = 0.5
+	arch.reach = 0.65
 	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.3
 	arch.jump_multiplier = 2.0
@@ -107,18 +107,18 @@ static func fat_man_arch() -> EntityStats:
 	arch.fatness = 1.0
 	arch.muscularity = 0.7
 	
-	arch.height = 1.7
+	arch.height = 1.9
 	
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.35
 	arch.legs_to_feet_proportion = 0.45
-	arch.hips_width_proportion = 0.18
-	arch.shoulder_width_proportion = 0.2
+	arch.hips_width_proportion = 0.12
+	arch.shoulder_width_proportion = 0.16
 	
 	arch.has_neck = true
 	
 	arch.slouch = 0.0
-	arch.shoulders_height = -1.0
+	arch.shoulders_height = 1.0
 	arch.shoulders_back = 0.8
 	arch.arms_openness = 1.0
 	
@@ -141,7 +141,7 @@ static func kid_arch() -> EntityStats:
 	arch.time_to_standup = 1.0
 	arch.strenght = 0.3
 	arch.throw_strenght = 0.2
-	arch.reach = 0.3
+	arch.reach = 0.35
 	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.6
 	arch.jump_multiplier = 2.0
@@ -159,18 +159,18 @@ static func kid_arch() -> EntityStats:
 	
 	arch.height = 1.2
 	
-	arch.neck_to_head_proportion = 0.2
+	arch.neck_to_head_proportion = 0.25
 	arch.chest_to_low_spine_proportion = 0.3
-	arch.legs_to_feet_proportion = 0.5
-	arch.hips_width_proportion = 0.13
-	arch.shoulder_width_proportion = 0.2
+	arch.legs_to_feet_proportion = 0.45
+	arch.hips_width_proportion = 0.1
+	arch.shoulder_width_proportion = 0.15
 	
 	arch.has_neck = true
 	
 	arch.slouch = 0.0
-	arch.shoulders_height = -0.3
+	arch.shoulders_height = 0.0
 	arch.shoulders_back = 0.0
-	arch.arms_openness = 0.0
+	arch.arms_openness = 0.8
 	
 	return arch
 	
@@ -207,7 +207,7 @@ static func tall_lanky_arch() -> EntityStats:
 	arch.fatness = 0.0
 	arch.muscularity = 0.5
 	
-	arch.height = 2.1
+	arch.height = 2.2
 
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.25
@@ -218,8 +218,8 @@ static func tall_lanky_arch() -> EntityStats:
 	arch.has_neck = true
 	
 	
-	arch.slouch = 0.4
-	arch.shoulders_height = -1.0
+	arch.slouch = 0.3
+	arch.shoulders_height = 0.0
 	arch.shoulders_back = 0.0
 	arch.arms_openness = 0.2
 	
@@ -255,10 +255,10 @@ static func giga_arch() -> EntityStats:
 	arch.horizontal_turn_spring = 0.8
 	arch.horizontal_turn_damp = 0.8
 	
-	arch.fatness = 0.0
+	arch.fatness = 0.35
 	arch.muscularity = 1.0
 	
-	arch.height = 2.2
+	arch.height = 1.8
 
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.35
@@ -269,7 +269,7 @@ static func giga_arch() -> EntityStats:
 	arch.has_neck = true
 	
 	arch.slouch = 0.0
-	arch.shoulders_height = -0.4
+	arch.shoulders_height = 1.0
 	arch.shoulders_back = 1.0
 	arch.arms_openness = 0.6
 	
@@ -308,20 +308,20 @@ static func old_arch() -> EntityStats:
 	arch.fatness = 0.0
 	arch.muscularity = 0.0
 	
-	arch.height = 1.8
+	arch.height = 1.7
 
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55
 	arch.hips_width_proportion = 0.08
-	arch.shoulder_width_proportion = 0.14
+	arch.shoulder_width_proportion = 0.13
 	
 	arch.has_neck = true
 	
 	arch.slouch = 1.0
-	arch.shoulders_height = -1.0
+	arch.shoulders_height = 0.5
 	arch.shoulders_back = 0.0
-	arch.arms_openness = 0.6
+	arch.arms_openness = 0.4
 	
 	return arch
 	

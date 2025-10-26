@@ -53,7 +53,8 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	#Añado mesh
 	var bone_mesh_instance := get_bone_mesh(bone.capsule_dimensions, offsets) #DebugUtil.create_debug_colored_cube(bone.capsule_dimensions)
 	var bone_material := StandardMaterial3D.new()
-	bone_material.albedo_color = Color.WHITE_SMOKE #new_color
+	bone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bone_material.albedo_color = new_color
 	bone_mesh_instance.material_override = bone_material
 	var min_side : float = min(bone.capsule_dimensions.x,bone.capsule_dimensions.z)
 	bone_mesh_instance.position = Vector3(0.0, 0.0,min_side * (offsets.z/2))
@@ -61,8 +62,8 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	var debug_sphere := DebugUtil.create_debug_sphere(Color.RED,0.03,true)
 	
 	bone.add_child(bone_mesh_instance)
-	bone.add_child(debug_line)
-	bone.add_child(debug_sphere)
+	#bone.add_child(debug_line)
+	#bone.add_child(debug_sphere)
 	
 	# Hago que el pivot del hueso, este donde termina o empieza el hueso padre
 	if father_bone:

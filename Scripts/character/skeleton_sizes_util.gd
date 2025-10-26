@@ -92,39 +92,70 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	#TAMAÑO DE HUESOS
 	if entityStats.has_neck:
 		skelSizes.neck_size = Vector3(0.1, new_head_height * 0.4, 0.1)
-		skelSizes.head_size = Vector3(0.2, new_head_height * 0.6, 0.2)
+		skelSizes.head_size = Vector3(0.2, new_head_height * 0.6, 0.15)
 	else:
 		skelSizes.neck_size = Vector3.ZERO
 		skelSizes.head_size = Vector3(0.2, new_head_height, 0.2)
-	skelSizes.head_offset = Vector3(0.6, 1.0,-0.8)
+	skelSizes.head_offset = Vector3(0.8, 1.0,-0.8)
 		
-	#PARA VISUALES CAMBIAR ESTO
-	skelSizes.lower_spine_size = Vector3(0.1, new_torso_height * 0.1, 0.1)
+	#TORSO-------------------------------------------------------------------------
+	var chest_u_radius : float = lerp_range(0.08, 0.45, entityStats.muscularity)
+	var chest_l_radius : float = lerp_range(0.08, 0.45, entityStats.muscularity)
+	var chest_new_offset : float = lerp_range( 0.0, -0.35, entityStats.muscularity)
+	skelSizes.chest_offset = Vector3(0.4, 0.4, chest_new_offset)
+	skelSizes.chest_size = Vector3(chest_u_radius, new_torso_height * 0.25, chest_l_radius)
 	
-	var upper_belly_radius : float = lerp_range(0.1,0.7,entityStats.fatness)
-	var lower_belly_radius : float = lerp_range(0.1,0.5,entityStats.fatness)	
-	skelSizes.middle_spine_size = Vector3(upper_belly_radius, new_torso_height * 0.2, lower_belly_radius)
+	var upper_spine_u_radius : float = lerp_range(0.1,0.3,entityStats.fatness)
+	var upper_spine_l_radius : float = lerp_range(0.1,0.3,entityStats.fatness)
+	var upper_spine_new_offset : float = lerp_range (0.0, -0.55, entityStats.fatness)
+	skelSizes.upper_spine_size = Vector3(upper_spine_u_radius, new_torso_height * 0.25, upper_spine_l_radius) 
+	skelSizes.upper_spine_offset = Vector3(0.0, 0.0, upper_spine_new_offset)
 	
-	skelSizes.upper_spine_size = Vector3(0.1, new_torso_height * 0.3, 0.1)
-	skelSizes.chest_size = Vector3(0.2, new_torso_height * 0.4, 0.2)
+	var middle_spine_u_radius : float = lerp_range(0.1,0.45,entityStats.fatness)
+	var middle_spine_l_radius : float = lerp_range(0.1,0.45,entityStats.fatness)
+	var middle_spine_new_offset : float = lerp_range( 0.0, -0.55, entityStats.fatness)
+	skelSizes.middle_spine_size = Vector3(middle_spine_u_radius, new_torso_height * 0.25, middle_spine_l_radius)
+	skelSizes.middle_spine_offset = Vector3(0.0, 0.0, middle_spine_new_offset)
 	
-	var upper_shoulder_radius : float = lerp_range(0.08,0.2,entityStats.muscularity)
-	var lower_shoulder_radius : float = lerp_range(0.08,0.25,entityStats.muscularity)	
-	skelSizes.shoulder_width = Vector3( upper_shoulder_radius, new_shoulders_width, lower_shoulder_radius)
+	var lower_spine_u_radius : float = lerp_range(0.1,0.1,entityStats.fatness)
+	var lower_spine_l_radius : float = lerp_range(0.1,0.1,entityStats.fatness)
+	var lower_spine_new_offset : float = lerp_range( 0.0, -0.55, entityStats.fatness)
+	skelSizes.lower_spine_size = Vector3(lower_spine_u_radius, new_torso_height * 0.25, lower_spine_l_radius)
+	skelSizes.lower_spine_offset = Vector3(0.0, 0.0, lower_spine_new_offset)
+	
+	#HOMBROS-------------------------------------------------------------------------
+	var shoulder_u_radius : float = lerp_range(0.08,0.2,entityStats.muscularity)
+	var shoulder_l_radius : float = lerp_range(0.08,0.25,entityStats.muscularity)	
+	skelSizes.shoulder_width = Vector3(shoulder_u_radius, new_shoulders_width, shoulder_l_radius)
+	
+	#BRAZOS-------------------------------------------------------------------------
 	var arm_total := entityStats.reach
 	var upper_arm_u_radius : float = lerp_range(0.06,0.2,entityStats.muscularity)
 	var upper_arm_l_radius : float = lerp_range(0.06,0.23, entityStats.muscularity)	
 	skelSizes.upper_arm_size = Vector3(upper_arm_u_radius, arm_total * 0.45, upper_arm_l_radius)
-	skelSizes.upper_arm_offset = Vector3(0.0, 1.0,0.0)
-	skelSizes.lower_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
-	skelSizes.upper_leg_size = Vector3(0.1, new_leg_height * 0.45, 0.1)
-	skelSizes.lower_leg_size = Vector3(0.1, new_leg_height * 0.55, 0.1)
+	skelSizes.upper_arm_offset = Vector3(1.0, 1.0,0.0)
+	var lower_arm_u_radius : float = lerp_range(0.06,0.13,entityStats.muscularity)
+	var lower_arm_l_radius : float = lerp_range(0.06,0.18, entityStats.muscularity)	
+	skelSizes.lower_arm_size = Vector3(lower_arm_u_radius, arm_total * 0.55, lower_arm_l_radius)
+	skelSizes.lower_arm_offset = Vector3(0.0, 1.0,0.0)
 	
+	#PIERNAS-------------------------------------------------------------------------
+	var upper_leg_u_radius : float = lerp_range(0.06,0.2,entityStats.fatness)
+	var upper_leg_l_radius : float = lerp_range(0.06,0.23, entityStats.fatness)	
+	skelSizes.upper_leg_size = Vector3(upper_leg_u_radius, new_leg_height * 0.45, upper_leg_l_radius)
+	skelSizes.upper_leg_offset = Vector3(1.0, 0.0,0.0)
+	
+	var lower_leg_u_radius : float = lerp_range(0.06,0.2,entityStats.fatness)
+	var lower_leg_l_radius : float = lerp_range(0.06,0.23, entityStats.fatness)	
+	skelSizes.lower_leg_size = Vector3(lower_leg_u_radius, new_leg_height * 0.55, lower_leg_l_radius)
+	skelSizes.lower_leg_offset = Vector3(1.0, 1.0,0.0)
 	
 	skelSizes.upper_feet_size = Vector3(0.1, new_leg_height * 0.2, 0.1)
 	skelSizes.lower_feet_size = Vector3(0.1, new_leg_height * 0.02, 0.1)
 
+	
 	skelSizes.hip_size = Vector3( 0.1, new_hips_width, 0.1)
+	skelSizes.hip_offset = Vector3(1.0, 1.0,0.0)
 
 	
 	
