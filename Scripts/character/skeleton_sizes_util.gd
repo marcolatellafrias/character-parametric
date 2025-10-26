@@ -11,19 +11,33 @@ var shoulders_width : float
 
 #Tamaños de huesos
 var head_size: Vector3
+var head_offset: Vector3
 var neck_size: Vector3
+var neck_offset: Vector3
 var chest_size: Vector3
+var chest_offset: Vector3
 var upper_spine_size: Vector3
+var upper_spine_offset: Vector3
 var middle_spine_size: Vector3
+var middle_spine_offset: Vector3
 var lower_spine_size: Vector3 #this is the root
+var lower_spine_offset: Vector3
 var upper_leg_size: Vector3
+var upper_leg_offset: Vector3
 var lower_leg_size: Vector3
+var lower_leg_offset: Vector3
 var upper_feet_size: Vector3
+var upper_feet_offset: Vector3
 var lower_feet_size: Vector3
+var lower_feet_offset: Vector3
 var upper_arm_size: Vector3
+var upper_arm_offset: Vector3
 var lower_arm_size: Vector3
+var lower_arm_offset: Vector3
 var shoulder_width: Vector3
+var shoulder_offset: Vector3
 var hip_size: Vector3
+var hip_offset: Vector3
 
 #MISCELANEO: Argumentos de caminata, velocidad y iks, dependiendes de medidas
 var speed : float
@@ -82,6 +96,7 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	else:
 		skelSizes.neck_size = Vector3.ZERO
 		skelSizes.head_size = Vector3(0.2, new_head_height, 0.2)
+	skelSizes.head_offset = Vector3(0.6, 1.0,-0.8)
 		
 	#PARA VISUALES CAMBIAR ESTO
 	skelSizes.lower_spine_size = Vector3(0.1, new_torso_height * 0.1, 0.1)
@@ -93,9 +108,14 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	skelSizes.upper_spine_size = Vector3(0.1, new_torso_height * 0.3, 0.1)
 	skelSizes.chest_size = Vector3(0.2, new_torso_height * 0.4, 0.2)
 	
-	
+	var upper_shoulder_radius : float = lerp_range(0.08,0.2,entityStats.muscularity)
+	var lower_shoulder_radius : float = lerp_range(0.08,0.25,entityStats.muscularity)	
+	skelSizes.shoulder_width = Vector3( upper_shoulder_radius, new_shoulders_width, lower_shoulder_radius)
 	var arm_total := entityStats.reach
-	skelSizes.upper_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
+	var upper_arm_u_radius : float = lerp_range(0.06,0.2,entityStats.muscularity)
+	var upper_arm_l_radius : float = lerp_range(0.06,0.23, entityStats.muscularity)	
+	skelSizes.upper_arm_size = Vector3(upper_arm_u_radius, arm_total * 0.45, upper_arm_l_radius)
+	skelSizes.upper_arm_offset = Vector3(0.0, 1.0,0.0)
 	skelSizes.lower_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
 	skelSizes.upper_leg_size = Vector3(0.1, new_leg_height * 0.45, 0.1)
 	skelSizes.lower_leg_size = Vector3(0.1, new_leg_height * 0.55, 0.1)
@@ -105,7 +125,7 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	skelSizes.lower_feet_size = Vector3(0.1, new_leg_height * 0.02, 0.1)
 
 	skelSizes.hip_size = Vector3( 0.1, new_hips_width, 0.1)
-	skelSizes.shoulder_width = Vector3( 0.1, new_shoulders_width, 0.1)
+
 	
 	
 	

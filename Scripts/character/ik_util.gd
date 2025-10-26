@@ -302,7 +302,7 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	return raycast_offset
 	
 	
-func get_orthogonal(v: Vector3) -> Vector3:
+static func get_orthogonal(v: Vector3) -> Vector3:
 	if abs(v.x) < abs(v.y):
 		return Vector3(0, -v.z, v.y).normalized()
 	else:

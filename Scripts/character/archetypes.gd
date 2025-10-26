@@ -48,6 +48,13 @@ var hips_width_proportion : float
 var shoulder_width_proportion : float
 var distance_from_ground_factor := 0.1  #tiene las piernas 10% flexionadas cuando esta en el piso
 
+#POSTURE
+var slouch : float
+var shoulders_height : float
+var shoulders_back : float
+var arms_openness : float
+
+
 static func create(archetype: Archetype) -> EntityStats:
 	if(archetype == Archetype.fat_man):
 		return fat_man_arch()
@@ -110,6 +117,11 @@ static func fat_man_arch() -> EntityStats:
 	
 	arch.has_neck = true
 	
+	arch.slouch = 0.0
+	arch.shoulders_height = -1.0
+	arch.shoulders_back = 0.8
+	arch.arms_openness = 1.0
+	
 	return arch
 	
 static func kid_arch() -> EntityStats:
@@ -154,6 +166,11 @@ static func kid_arch() -> EntityStats:
 	arch.shoulder_width_proportion = 0.2
 	
 	arch.has_neck = true
+	
+	arch.slouch = 0.0
+	arch.shoulders_height = -0.3
+	arch.shoulders_back = 0.0
+	arch.arms_openness = 0.0
 	
 	return arch
 	
@@ -200,6 +217,12 @@ static func tall_lanky_arch() -> EntityStats:
 	
 	arch.has_neck = true
 	
+	
+	arch.slouch = 0.4
+	arch.shoulders_height = -1.0
+	arch.shoulders_back = 0.0
+	arch.arms_openness = 0.2
+	
 	return arch
 	
 static func giga_arch() -> EntityStats:
@@ -245,6 +268,11 @@ static func giga_arch() -> EntityStats:
 	
 	arch.has_neck = true
 	
+	arch.slouch = 0.0
+	arch.shoulders_height = -0.4
+	arch.shoulders_back = 1.0
+	arch.arms_openness = 0.6
+	
 	return arch
 	
 static func old_arch() -> EntityStats:
@@ -278,7 +306,7 @@ static func old_arch() -> EntityStats:
 	arch.horizontal_turn_damp = 0.8
 	
 	arch.fatness = 0.0
-	arch.muscularity = 1.0
+	arch.muscularity = 0.0
 	
 	arch.height = 1.8
 
@@ -289,6 +317,11 @@ static func old_arch() -> EntityStats:
 	arch.shoulder_width_proportion = 0.14
 	
 	arch.has_neck = true
+	
+	arch.slouch = 1.0
+	arch.shoulders_height = -1.0
+	arch.shoulders_back = 0.0
+	arch.arms_openness = 0.6
 	
 	return arch
 	

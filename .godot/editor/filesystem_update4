@@ -5,3 +5,5 @@ res://Scripts/character/custom_bone.gd
 res://Scripts/misc/vector5.gd
 res://Scripts/character/custom_bones_util.gd
 res://Scripts/character/debug_util.gd
+res://Scripts/character/bone_instantiator.gd
+res://Scripts/character/ik_util.gd
