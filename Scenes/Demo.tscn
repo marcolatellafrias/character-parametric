@@ -158,6 +158,14 @@ grab_ray_length = 30.0
 [node name="fat" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.235, 0.3, -10.597)
 
+[node name="giga" parent="chars" instance=ExtResource("11_ymvx6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3612877, 0.3, -10.597)
+archetype = 3
+
+[node name="old" parent="chars" instance=ExtResource("11_ymvx6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.6626201, 0.3, -10.597)
+archetype = 4
+
 [node name="tall" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8281984, 0.5, -10.493808)
 archetype = 2

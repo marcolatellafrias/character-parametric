@@ -1,6 +1,6 @@
 class_name EntityStats
 
-enum Archetype {fat_man, kid, tall_lanky, giga}
+enum Archetype {fat_man, kid, tall_lanky, giga, old}
 enum Specie {human, alien, robot}
 
 #STATS
@@ -55,8 +55,10 @@ static func create(archetype: Archetype) -> EntityStats:
 		return tall_lanky_arch()
 	if(archetype == Archetype.kid):
 		return kid_arch()
-	else:
+	if(archetype == Archetype.giga):
 		return giga_arch()
+	else:
+		return old_arch()
 
 func as_alien(seed: float) -> EntityStats:
 	return
@@ -127,7 +129,7 @@ static func kid_arch() -> EntityStats:
 	arch.time_to_standup = 1.0
 	arch.strenght = 0.3
 	arch.throw_strenght = 0.2
-	arch.reach = 0.2
+	arch.reach = 0.3
 	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.6
 	arch.jump_multiplier = 2.0
@@ -233,16 +235,60 @@ static func giga_arch() -> EntityStats:
 	arch.fatness = 0.0
 	arch.muscularity = 1.0
 	
-	arch.height = 1.8
+	arch.height = 2.2
 
 	arch.neck_to_head_proportion = 0.2
-	arch.chest_to_low_spine_proportion = 0.25
-	arch.legs_to_feet_proportion = 0.55
-	arch.hips_width_proportion = 1.5
-	arch.shoulder_width_proportion = 1.2
+	arch.chest_to_low_spine_proportion = 0.35
+	arch.legs_to_feet_proportion = 0.45
+	arch.hips_width_proportion = 0.08
+	arch.shoulder_width_proportion = 0.22
 	
 	arch.has_neck = true
 	
 	return arch
 	
+static func old_arch() -> EntityStats:
+	var arch = EntityStats.new()
+	
+	arch.weight = 120.0
+	arch.speed_forw = 2.0
+	arch.speed_back = 2.0
+	arch.speed_side = 2.0
+	arch.speed_multiplier = 2.0
+	arch.time_to_max_speed = 3.0
+	arch.vertical_forw_stability = 0.5
+	arch.vertical_back_stability = 0.5
+	arch.vertical_side_stability = 0.5
+	arch.vertical_stability_spring = 0.7
+	arch.vertical_stability_damp = 0.7
+	arch.time_to_standup = 1.0
+	arch.strenght = 0.55
+	arch.throw_strenght = 0.8
+	arch.reach = 0.5
+	arch.reach_multiplier = 1.0
+	arch.jump_strenght = 0.6
+	arch.jump_multiplier = 2.0
+	arch.time_to_max_jump = 0.5
+
+	arch.vertical_turn_speed = 0.8
+	arch.vertical_turn_spring = 0.8
+	arch.vertical_turn_damp = 0.8
+	arch.horizontal_turn_speed = 0.8
+	arch.horizontal_turn_spring = 0.8
+	arch.horizontal_turn_damp = 0.8
+	
+	arch.fatness = 0.0
+	arch.muscularity = 1.0
+	
+	arch.height = 1.8
+
+	arch.neck_to_head_proportion = 0.2
+	arch.chest_to_low_spine_proportion = 0.25
+	arch.legs_to_feet_proportion = 0.55
+	arch.hips_width_proportion = 0.08
+	arch.shoulder_width_proportion = 0.14
+	
+	arch.has_neck = true
+	
+	return arch
 	

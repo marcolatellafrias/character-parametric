@@ -6,6 +6,7 @@ var rest_rotation: Vector3
 var length :float = capsule_dimensions.y :
 		get:  return capsule_dimensions.y
 		set(val): capsule_dimensions.y = val
+var visual_offsets : Vector2
 
 func _get_mesh_instance3d() -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new() #DebugUtil.create_debug_colored_cube(bone.capsule_dimensions) 
@@ -43,7 +44,7 @@ func set_rigidbody(rigid_body: RigidBody3D) -> void:
 	rigid_body.add_child(mesh_instance3d)
 	rigid_body.camera.position = Vector3(0, 1.7, 2.7)
 
-static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, new_color: Color,father_bone: CustomBone=null, use_father_end: bool= true) -> CustomBone:
+static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, new_color: Color, offsets: Vector2, father_bone: CustomBone=null, use_father_end: bool= true) -> CustomBone:
 	#Instancio
 	var bone := preload("res://Scenes/custom_bone.tscn").instantiate() as CustomBone
 	bone.capsule_dimensions = new_capsule_dimensions
@@ -82,6 +83,8 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	#var debug_mesh := MeshInstance3D.new()
 	var debug_line := DebugUtil.create_debug_line(Color.RED,bone.capsule_dimensions.y,true,false)
 	bone.add_child(debug_line)
+	var debug_sphere := DebugUtil.create_debug_sphere(Color.RED,0.03,true)
+	bone.add_child(debug_sphere)
 	
 	# Hago que el pivot del hueso, este donde termina o empieza el hueso padre
 	if father_bone:
@@ -101,35 +104,35 @@ func _ready() -> void:
 	pass
 
 
-static func createFromToLeft(new_parent: CustomBone, new_capsule_dimensions: Vector3, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
+static func createFromToLeft(new_parent: CustomBone, new_capsule_dimensions: Vector3,offsets: Vector2, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
 	var base_rotation := Vector3(0, 0, deg_to_rad(90))
 	var offset_rotation := Vector3(0.0, y_offset_rotation, z_offset_rotation)
 	var final_rest_rotation := base_rotation + offset_rotation
-	return create(new_capsule_dimensions, final_rest_rotation, new_color, new_parent, use_parent_end_as_pivot)
+	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot)
 
-static func createFromToRight(new_parent: CustomBone, new_capsule_dimensions: Vector3, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
+static func createFromToRight(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector2, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
 	var base_rotation := Vector3(0, 0, deg_to_rad(-90))
 	var offset_rotation := Vector3(0.0, y_offset_rotation, z_offset_rotation)
 	var final_rest_rotation := base_rotation + offset_rotation
-	return create(new_capsule_dimensions, final_rest_rotation, new_color, new_parent, use_parent_end_as_pivot)
+	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot)
 
-static func createFromToDown(new_parent: CustomBone, new_capsule_dimensions: Vector3, z_offset_rotation: float, x_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
+static func createFromToDown(new_parent: CustomBone, new_capsule_dimensions: Vector3,offsets: Vector2, z_offset_rotation: float, x_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
 	var base_rotation := Vector3(deg_to_rad(180), 0, 0)
 	var offset_rotation := Vector3(x_offset_rotation, 0.0, z_offset_rotation)
 	var final_rest_rotation :=  base_rotation + offset_rotation
-	return create(new_capsule_dimensions, final_rest_rotation, new_color, new_parent, use_parent_end_as_pivot)
+	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot)
 
-static func createFromToUp(new_parent: CustomBone, new_capsule_dimensions: Vector3, z_offset_rotation: float, x_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
+static func createFromToUp(new_parent: CustomBone, new_capsule_dimensions: Vector3,offsets: Vector2, z_offset_rotation: float, x_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
 	var base_rotation := Vector3(0, 0, 0)
 	var offset_rotation := Vector3(x_offset_rotation, 0.0, z_offset_rotation)
 	var final_rest_rotation := base_rotation + offset_rotation
-	return create(new_capsule_dimensions, final_rest_rotation, new_color, new_parent, use_parent_end_as_pivot)
+	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot)
 
-static func createFromToForward(new_parent: CustomBone, new_capsule_dimensions: Vector3, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
+static func createFromToForward(new_parent: CustomBone, new_capsule_dimensions: Vector3,offsets: Vector2, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
 	var base_rotation := Vector3(-deg_to_rad(90), 0, 0)
 	var offset_rotation := Vector3(0.0, y_offset_rotation, z_offset_rotation)
 	var final_rest_rotation := base_rotation + offset_rotation
-	return create(new_capsule_dimensions, final_rest_rotation, new_color, new_parent, use_parent_end_as_pivot)
+	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot)
 
 func pose_from_rest_to(dir: Vector3, pole: Vector3) -> Basis:
 	# Compute the rest basis from the bone's stored rest_rotation

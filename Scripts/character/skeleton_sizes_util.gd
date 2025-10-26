@@ -87,18 +87,23 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	skelSizes.lower_spine_size = Vector3(0.1, new_torso_height * 0.1, 0.1)
 	
 	var upper_belly_radius : float = lerp_range(0.1,0.7,entityStats.fatness)
-	var lower_belly_radius : float = lerp_range(0.1,0.5,entityStats.fatness)
-	
+	var lower_belly_radius : float = lerp_range(0.1,0.5,entityStats.fatness)	
 	skelSizes.middle_spine_size = Vector3(upper_belly_radius, new_torso_height * 0.2, lower_belly_radius)
+	
 	skelSizes.upper_spine_size = Vector3(0.1, new_torso_height * 0.3, 0.1)
 	skelSizes.chest_size = Vector3(0.2, new_torso_height * 0.4, 0.2)
-	skelSizes.upper_leg_size = Vector3(0.1, new_leg_height * 0.45, 0.1)
-	skelSizes.lower_leg_size = Vector3(0.1, new_leg_height * 0.55, 0.1)
-	skelSizes.upper_feet_size = Vector3(0.1, new_leg_height * 0.2, 0.1)
-	skelSizes.lower_feet_size = Vector3(0.1, new_leg_height * 0.02, 0.1)
-	var arm_total := new_leg_height *0.5#torso_height * arms_proportion
+	
+	
+	var arm_total := entityStats.reach
 	skelSizes.upper_arm_size = Vector3(0.1, arm_total * 0.45, 0.1)
 	skelSizes.lower_arm_size = Vector3(0.1, arm_total * 0.55, 0.1)
+	skelSizes.upper_leg_size = Vector3(0.1, new_leg_height * 0.45, 0.1)
+	skelSizes.lower_leg_size = Vector3(0.1, new_leg_height * 0.55, 0.1)
+	
+	
+	skelSizes.upper_feet_size = Vector3(0.1, new_leg_height * 0.2, 0.1)
+	skelSizes.lower_feet_size = Vector3(0.1, new_leg_height * 0.02, 0.1)
+
 	skelSizes.hip_size = Vector3( 0.1, new_hips_width, 0.1)
 	skelSizes.shoulder_width = Vector3( 0.1, new_shoulders_width, 0.1)
 	
@@ -155,11 +160,6 @@ func _update_step_duration(delta: float, char_rigidbody: CharacterRigidBody3D) -
 	step_duration = base * speed_term
 
 	_prev_origin = origin
-
-
-
-
-
 
 
 static func lerp_range(min_val: float, max_val: float, t: float) -> float:

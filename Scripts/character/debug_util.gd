@@ -9,6 +9,7 @@ static func create_debug_line(color: Color, length: float, on_top: bool = false,
 	mesh_instance.position = Vector3(0.0, (-length * 0.5) if to_down else (length * 0.5), 0.0)
 
 	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.albedo_color = color
 	
 	if on_top:
@@ -17,15 +18,18 @@ static func create_debug_line(color: Color, length: float, on_top: bool = false,
 	mesh_instance.material_override = material
 	return mesh_instance
 
-static func create_debug_sphere(color: Color) -> MeshInstance3D:
+static func create_debug_sphere(color: Color, size: float = 0.1, on_top: bool = false) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	mesh_instance.mesh = sphere
-	mesh_instance.scale = Vector3(0.1,0.1,0.1)
+	mesh_instance.scale = Vector3(size,size,size)
 
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if on_top:
+		material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS 
+		material.depth_test = 1
 	mesh_instance.material_override = material
 	return mesh_instance
 
