@@ -41,8 +41,8 @@ static func create(sizes: SkeletonSizesUtil, entity_stats: EntityStats) -> Custo
 	bones_util.left_lower_leg = CustomBone.createFromToDown(bones_util.left_upper_leg, sizes.lower_leg_size, sizes.lower_leg_offset, 0.0,0.0, Color.ORANGE , true)
 	bones_util.right_upper_leg = CustomBone.createFromToDown(bones_util.right_hip, sizes.upper_leg_size, sizes.upper_leg_offset, 0.0,0.0, Color.YELLOW , true)
 	bones_util.right_lower_leg = CustomBone.createFromToDown(bones_util.right_upper_leg, sizes.lower_leg_size, sizes.lower_leg_offset, 0.0,0.0, Color.ORANGE , true)
-	bones_util.right_upper_feet = CustomBone.createFromToForward(bones_util.right_lower_leg, sizes.upper_feet_size, sizes.upper_feet_offset, 0.0,0.0, Color.ORANGE , true)
-	bones_util.left_upper_feet = CustomBone.createFromToForward(bones_util.left_lower_leg, sizes.upper_feet_size, sizes.upper_feet_offset, 0.0,0.0, Color.ORANGE , true)
+	bones_util.right_upper_feet = CustomBone.createFromToForward(bones_util.right_lower_leg, sizes.upper_feet_size, sizes.upper_feet_offset, 0.0,0.0, Color.SADDLE_BROWN , true)
+	bones_util.left_upper_feet = CustomBone.createFromToForward(bones_util.left_lower_leg, sizes.upper_feet_size, sizes.upper_feet_offset, 0.0,0.0, Color.SADDLE_BROWN , true)
 	
 	var slouchiness_neck =  SkeletonSizesUtil.lerp_range(0.2,0.6,entity_stats.slouch)
 	if entity_stats.has_neck:

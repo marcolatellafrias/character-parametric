@@ -75,13 +75,13 @@ func _physics_process(_delta: float) -> void:
 	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, true, skel_sizes_util) 
 	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, false, skel_sizes_util) 
 	#raycast_offset = ik_util.update_leg_raycast_offsets(root_rigidbody, _delta, false, speed_for_max, speed_curve, raycast_amount, raycast_max_offset, axis_weights, raycast_smooth, right_neutral_local, raycast_offset) 
-	##
-	ik_util.update_ik_raycast(
-		true, custom_bones_util, skel_sizes_util, false, false,
-	)
-	ik_util.update_ik_raycast(
-		false, custom_bones_util, skel_sizes_util, false, false,
-	)
+	
+	skel_sizes_util.update(_delta,char_rigidbody,entity_stats,ik_util)
+	
+	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util)
+	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util)
+	
+	
 	#right_leg_current_target = IkUtil.update_ik_raycast(
 		#right_leg_raycast, right_leg_next_target, right_leg_current_target,
 		#right_upper_leg, right_lower_leg, right_leg_pole,

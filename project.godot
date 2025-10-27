@@ -14,12 +14,6 @@ config/name="procedural character"
 run/main_scene="res://Scenes/Demo.tscn"
 config/features=PackedStringArray("4.5")
 
-[display]
-
-window/size/viewport_width=2000
-window/size/viewport_height=1200
-window/size/mode=2
-
 [file_customization]
 
 folder_colors={

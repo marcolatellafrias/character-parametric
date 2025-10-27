@@ -191,7 +191,7 @@ static func tall_lanky_arch() -> EntityStats:
 	arch.time_to_standup = 1.0
 	arch.strenght = 0.55
 	arch.throw_strenght = 0.4
-	arch.reach = 1.0
+	arch.reach = 1.2
 	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.6
 	arch.jump_multiplier = 2.0
@@ -272,7 +272,7 @@ static func giga_arch() -> EntityStats:
 	arch.shoulders_height = 1.0
 	arch.shoulders_back = 1.0
 	arch.arms_openness = 0.6
-	
+	arch.distance_from_ground_factor = 0.06
 	return arch
 	
 static func old_arch() -> EntityStats:
@@ -314,14 +314,14 @@ static func old_arch() -> EntityStats:
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55
 	arch.hips_width_proportion = 0.08
-	arch.shoulder_width_proportion = 0.13
+	arch.shoulder_width_proportion = 0.11
 	
 	arch.has_neck = true
 	
 	arch.slouch = 1.0
 	arch.shoulders_height = 0.5
 	arch.shoulders_back = 0.0
-	arch.arms_openness = 0.4
+	arch.arms_openness = 0.5
 	
 	return arch
 	

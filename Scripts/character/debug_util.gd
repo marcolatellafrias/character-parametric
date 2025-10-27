@@ -81,10 +81,43 @@ static func create_debug_ring(color: Color, radius: float, segments: int = 64) -
 
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.flags_transparent = true
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh_instance.material_override = material
+	return mesh_instance
+
+static func create_debug_disc(color: Color, radius: float, segments: int = 64) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+
+		var x1 := cos(angle1) * radius
+		var z1 := sin(angle1) * radius
+		var x2 := cos(angle2) * radius
+		var z2 := sin(angle2) * radius
+
+		st.set_color(color)
+		st.add_vertex(Vector3(0, 0, 0)) # centro
+		st.set_color(color)
+		st.add_vertex(Vector3(x1, 0, z1))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2, 0, z2))
+
+	var mesh := st.commit()
+	mesh_instance.mesh = mesh
+
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mesh_instance.material_override = material
 
 	return mesh_instance
+
 
 # Creates a MeshInstance3D cube with axis-colored faces:
 #  +X: light red,  -X: dark red

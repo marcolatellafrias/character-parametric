@@ -40,16 +40,18 @@ var hip_size: Vector3
 var hip_offset: Vector3
 
 #MISCELANEO: Argumentos de caminata, velocidad y iks, dependiendes de medidas
-var speed : float
+
+var step_radius_min: float
+var step_radius_max: float
+var step_height: float
+
+
 var distance_from_ground : float
 var raycast_leg_lenght: float
-var step_radius_turn: float
-var step_radius_walk: float
-var step_height: float
 var pole_distance: float
 var raycast_max_offset: float
 var step_duration : float      # how fast the foot travels toward its new spot
-var raycast_amount := 4.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
+var raycast_amount := 12.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
 var speed_for_max := 6.0          # velocidad a la que llega al offset máximo
 var axis_weights := Vector2(1.0, 1.0)                    # x (lateral), z (adelante) para atenuar por eje
 var speed_curve: Curve     
@@ -62,7 +64,6 @@ const alpha := 1.1   # cuánto influye el tamaño de pierna (↑ piernas ⇒ ↑
 const beta := 1.0   # cuánto influye la velocidad (↑ vel ⇒ ↓ duración). 1 = lineal en la razón
 var base_step_duration_ref: float = 0.3  # baseline (inspector-friendly)
 var base_step_duration: float
-var step_cooldown: float = 0.05
 
 var _prev_origin: Vector3 = Vector3.INF
 var _ema_speed: float = 0.0
@@ -156,16 +157,13 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	
 	skelSizes.hip_size = Vector3( 0.1, new_hips_width, 0.1)
 	skelSizes.hip_offset = Vector3(1.0, 1.0,0.0)
-
-	
 	
 	
 	#TAMAÑOS MISCELANEOS
 	skelSizes.raycast_leg_lenght = new_leg_height
 	skelSizes.distance_from_ground = new_leg_height * (1-entityStats.distance_from_ground_factor)
-	skelSizes.speed = new_leg_height * 1.8
-	skelSizes.step_radius_walk   = new_leg_height * 0.5
-	skelSizes.step_radius_turn   = new_leg_height * 0.20
+	skelSizes.step_radius_max   = new_leg_height * 0.5
+	skelSizes.step_radius_min   = new_leg_height * 0.20
 	skelSizes.step_height = new_leg_height * 0.40
 	skelSizes.pole_distance = new_leg_height
 	skelSizes.raycast_max_offset = new_leg_height * 0.20
@@ -186,31 +184,56 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	return skelSizes
 
 
-func update(delta: float, char_rigidbody: CharacterRigidBody3D) -> void:
-	_update_step_duration(delta,char_rigidbody)
+func update(delta: float, char_rigidbody: CharacterRigidBody3D, entityStats: EntityStats, ik_util: IkUtil) -> void:
+	#_update_step_duration(delta,char_rigidbody,entityStats)
+	_update_step_radius(delta,char_rigidbody,entityStats,ik_util)
 
-func _update_step_duration(delta: float, char_rigidbody: CharacterRigidBody3D) -> void:
+func _update_step_radius(delta: float, char_rigidbody: CharacterRigidBody3D, entity_stats: EntityStats, ik_util: IkUtil) -> void:
+	var min_speed = entity_stats.speed_forw
+	var max_speed = min_speed * entity_stats.speed_multiplier
+	var min_step_radius = step_radius_min
+	var max_step_radius = step_radius_max
+
 	var node := char_rigidbody
 	var origin: Vector3 = node.global_transform.origin
 
 	if _prev_origin == Vector3.INF:
 		_prev_origin = origin
-		step_duration = max(0.001, base_step_duration)
+		ik_util.current_step_radius = min_step_radius
 		return
 
 	var dxz := Vector2(origin.x - _prev_origin.x, origin.z - _prev_origin.z)
 	var instant_speed: float = dxz.length() / max(delta, 0.0001)
-
-	var ema_alpha := 1.0 - exp(-delta / SPEED_TAU) # renamed to avoid shadowing
-	_ema_speed += (instant_speed - _ema_speed) * ema_alpha
-
-	var clamped_speed_ref : float = max(0.001, self.speed_ref) # use class const
-	var speed_term := pow(1.0 + (_ema_speed / clamped_speed_ref), self.beta) # use class const
-
-	var base : float = max(0.001, base_step_duration)
-	step_duration = base * speed_term
-
 	_prev_origin = origin
+
+	var t : float = clamp((instant_speed - min_speed) / (max_speed - min_speed), 0.0, 1.0)
+	ik_util.current_step_radius = lerp(min_step_radius, max_step_radius, t)
+
+func _update_step_duration(delta: float, char_rigidbody: CharacterRigidBody3D, entityStats: EntityStats) -> void:
+	pass
+	#var min_speed = entityStats.speed_forw
+	#var max_speed = min_speed * entityStats.speed_multiplier
+	#
+	#var node := char_rigidbody
+	#var origin: Vector3 = node.global_transform.origin
+#
+	#if _prev_origin == Vector3.INF:
+		#_prev_origin = origin
+		#step_duration = base_step_duration
+		#return
+#
+	#var dxz := Vector2(origin.x - _prev_origin.x, origin.z - _prev_origin.z)
+	#var instant_speed: float = dxz.length() / max(delta, 0.0001)
+#
+	#var ema_alpha := 1.0 - exp(-delta / SPEED_TAU) # renamed to avoid shadowing
+	#_ema_speed += (instant_speed - _ema_speed) * ema_alpha
+#
+	#var speed_term := pow(1.0 + (_ema_speed / self.speed), self.beta) # use class const
+#
+	#var base : float = max(0.001, base_step_duration)
+	#step_duration = base * speed_term
+#
+	#_prev_origin = origin
 
 
 static func lerp_range(min_val: float, max_val: float, t: float) -> float:
