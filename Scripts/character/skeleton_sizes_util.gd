@@ -50,8 +50,8 @@ var distance_from_ground : float
 var raycast_leg_lenght: float
 var pole_distance: float
 var raycast_max_offset: float
-var step_duration : float      # how fast the foot travels toward its new spot
-var raycast_amount := 12.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
+
+var raycast_amount := 10.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
 var speed_for_max := 6.0          # velocidad a la que llega al offset máximo
 var axis_weights := Vector2(1.0, 1.0)                    # x (lateral), z (adelante) para atenuar por eje
 var speed_curve: Curve     
@@ -62,6 +62,7 @@ const leg_ref := 1.0     # altura de pierna "promedio" (tus unidades)
 
 const alpha := 1.1   # cuánto influye el tamaño de pierna (↑ piernas ⇒ ↑ duración). 1 = lineal (como ahora)
 const beta := 1.0   # cuánto influye la velocidad (↑ vel ⇒ ↓ duración). 1 = lineal en la razón
+var step_duration : float      # how fast the foot travels toward its new spot
 var base_step_duration_ref: float = 0.3  # baseline (inspector-friendly)
 var base_step_duration: float
 
@@ -210,30 +211,31 @@ func _update_step_radius(delta: float, char_rigidbody: CharacterRigidBody3D, ent
 	ik_util.current_step_radius = lerp(min_step_radius, max_step_radius, t)
 
 func _update_step_duration(delta: float, char_rigidbody: CharacterRigidBody3D, entityStats: EntityStats) -> void:
-	pass
-	#var min_speed = entityStats.speed_forw
-	#var max_speed = min_speed * entityStats.speed_multiplier
-	#
-	#var node := char_rigidbody
-	#var origin: Vector3 = node.global_transform.origin
-#
-	#if _prev_origin == Vector3.INF:
-		#_prev_origin = origin
-		#step_duration = base_step_duration
-		#return
-#
-	#var dxz := Vector2(origin.x - _prev_origin.x, origin.z - _prev_origin.z)
-	#var instant_speed: float = dxz.length() / max(delta, 0.0001)
-#
-	#var ema_alpha := 1.0 - exp(-delta / SPEED_TAU) # renamed to avoid shadowing
-	#_ema_speed += (instant_speed - _ema_speed) * ema_alpha
-#
-	#var speed_term := pow(1.0 + (_ema_speed / self.speed), self.beta) # use class const
-#
-	#var base : float = max(0.001, base_step_duration)
-	#step_duration = base * speed_term
-#
-	#_prev_origin = origin
+	var sensitivity: float = 1.0
+	var node := char_rigidbody
+	var origin: Vector3 = node.global_transform.origin
+
+	# Initialize previous position
+	if _prev_origin == Vector3.INF:
+		_prev_origin = origin
+		step_duration = base_step_duration
+		return
+
+	# Calculate horizontal distance traveled since last frame
+	var dxz := Vector2(origin.x - _prev_origin.x, origin.z - _prev_origin.z)
+	var distance := dxz.length()
+
+	# Determine how much faster or slower to step based on movement
+	# sensitivity < 1.0 → less reactive
+	# sensitivity > 1.0 → more reactive
+	var move_factor : float = clamp(distance * sensitivity / max(delta, 0.0001), 0.0, 10.0)
+
+	# Map movement factor to step duration
+	# Higher movement speed = shorter step duration
+	var speed_ratio : float = 1.0 / (1.0 + move_factor)
+	step_duration = base_step_duration * speed_ratio
+
+	_prev_origin = origin
 
 
 static func lerp_range(min_val: float, max_val: float, t: float) -> float:

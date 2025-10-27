@@ -200,7 +200,7 @@ func update_ik_raycast(
     var opposite_current_target = right_leg_current_target if left else left_leg_current_target #la pierna opuesta
     var upper_leg = bones.left_upper_leg if left else bones.right_upper_leg
     var lower_leg = bones.left_lower_leg if left else bones.right_lower_leg
-    var step_radius =  0.5 # current_step_radius
+    var step_radius =  current_step_radius
     
     raycast.force_raycast_update()
 
