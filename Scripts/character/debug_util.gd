@@ -87,6 +87,20 @@ static func create_debug_ring(color: Color, radius: float, segments: int = 64) -
 	mesh_instance.material_override = material
 	return mesh_instance
 
+
+static func create_debug_ring_mesh(radius: float, segments: int = 64) -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_LINE_STRIP)
+
+	for i in range(segments + 1):
+		var angle := TAU * float(i) / float(segments)
+		var x := cos(angle) * radius
+		var z := sin(angle) * radius
+		st.add_vertex(Vector3(x, 0, z))
+
+	var mesh := st.commit()
+	return mesh
+
 static func create_debug_disc(color: Color, radius: float, segments: int = 64) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var st := SurfaceTool.new()

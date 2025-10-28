@@ -17,8 +17,8 @@ var raycast_offset: Vector2 = Vector2.ZERO
 var current_step_radius: float:
     set(value):
         current_step_radius = value
-        current_step_left_mesh_instance.mesh = DebugUtil.create_debug_ring(Color.ALICE_BLUE, current_step_radius).mesh
-        current_step_right_mesh_instance.mesh = DebugUtil.create_debug_ring(Color.ALICE_BLUE, current_step_radius).mesh
+        current_step_left_mesh_instance.mesh = DebugUtil.create_debug_ring_mesh(current_step_radius)
+        current_step_right_mesh_instance.mesh = DebugUtil.create_debug_ring_mesh(current_step_radius)
     get:
         return current_step_radius
 
@@ -212,8 +212,13 @@ func update_ik_raycast(
             Vector2(current_target.global_position.x, current_target.global_position.z)
         ).length_squared()
         
+        var dist2Exp : float = (
+            Vector2(next_target.global_position.x, next_target.global_position.z) -
+            Vector2(char_rigidbody.global_position.x, char_rigidbody.global_position.z)
+        ).length_squared()
+        
         # 👉 Calcular la distancia real (raíz cuadrada de dist2)
-        var step_distance : float = sqrt(dist2)
+        var step_distance : float = sqrt(dist2Exp)
         
         var wants_step : bool = dist2 > (step_radius * step_radius)
         
@@ -332,7 +337,7 @@ func get_step_duration(char_rigidbody: CharacterRigidBody3D, sizes: SkeletonSize
     
     # El pie debe completar el paso antes de que el cuerpo avance step_distance
     # Usamos un factor < 1.0 para que el pie llegue "antes" y no se quede atrás
-    var safety_factor = 0.6 # El paso se completa en el 70% del tiempo teórico
+    var safety_factor = 0.8 # El paso se completa en el 70% del tiempo teórico
     
     if horizontal_speed < 0.01:
         return 0.3
@@ -340,7 +345,7 @@ func get_step_duration(char_rigidbody: CharacterRigidBody3D, sizes: SkeletonSize
     var step_duration = (step_distance / horizontal_speed) * safety_factor
     
     # Clamp basado en la longitud de pierna para mantener movimientos naturales
-    var min_duration = 0.08 * leg_height  # Pasos muy rápidos para piernas pequeñas
+    var min_duration = 0.04 * leg_height  # Pasos muy rápidos para piernas pequeñas
     var max_duration = 0.4 * leg_height   # Límite superior para piernas grandes
     
     return clamp(step_duration, min_duration, max_duration)

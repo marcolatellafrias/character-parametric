@@ -58,8 +58,8 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	bone_mesh_instance.material_override = bone_material
 	var min_side : float = min(bone.capsule_dimensions.x,bone.capsule_dimensions.z)
 	bone_mesh_instance.position = Vector3(0.0, 0.0,min_side * (offsets.z/2))
-	var debug_line := DebugUtil.create_debug_line(Color.RED,bone.capsule_dimensions.y,true,false)
-	var debug_sphere := DebugUtil.create_debug_sphere(Color.RED,0.03,true)
+	#var debug_line := DebugUtil.create_debug_line(Color.RED,bone.capsule_dimensions.y,true,false)
+	#var debug_sphere := DebugUtil.create_debug_sphere(Color.RED,0.03,true)
 	
 	bone.add_child(bone_mesh_instance)
 	#bone.add_child(debug_line)
