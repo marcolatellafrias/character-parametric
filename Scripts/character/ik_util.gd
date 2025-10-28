@@ -188,51 +188,51 @@ static func _register_step(current_target: Node3D) -> void:
     _last_step_frame = Engine.get_physics_frames()
     _last_step_leg_id = current_target.get_instance_id()
 
-# --- Reemplazo de tu update_ik_raycast (solo cambió el “arranque del paso”) ---
 func update_ik_raycast(
-    left: bool, bones: CustomBonesUtil, sizes: SkeletonSizesUtil,
+    left: bool, bones: CustomBonesUtil, sizes: SkeletonSizesUtil, char_rigidbody: CharacterRigidBody3D,
 ) -> void:
     
     var raycast = left_leg_raycast if left else right_leg_raycast
     var next_target = left_leg_next_target if left else right_leg_next_target
     var current_target = left_leg_current_target if left else right_leg_current_target
     var pole = left_leg_pole if left else right_leg_pole
-    var opposite_current_target = right_leg_current_target if left else left_leg_current_target #la pierna opuesta
+    var opposite_current_target = right_leg_current_target if left else left_leg_current_target
     var upper_leg = bones.left_upper_leg if left else bones.right_upper_leg
     var lower_leg = bones.left_lower_leg if left else bones.right_lower_leg
-    var step_radius =  current_step_radius
+    var step_radius = current_step_radius
     
     raycast.force_raycast_update()
-
     if raycast.is_colliding():
         var collision_point: Vector3 = raycast.get_collision_point()
         next_target.global_position = collision_point
-
+        
         # Distancia al target en XZ (cuadrada)
         var dist2 : float = (
             Vector2(next_target.global_position.x, next_target.global_position.z) -
             Vector2(current_target.global_position.x, current_target.global_position.z)
         ).length_squared()
-
+        
+        # 👉 Calcular la distancia real (raíz cuadrada de dist2)
+        var step_distance : float = sqrt(dist2)
+        
         var wants_step : bool = dist2 > (step_radius * step_radius)
-
-        # 👉 Guardamos la "propuesta" de esta pierna para arbitrar más tarde en el mismo frame
+        
+        # Guardamos la "propuesta" de esta pierna
         _store_leg_measure(current_target, dist2, wants_step, collision_point)
-
+        
+        # 👉 Calcular duración del paso CON la distancia real
+        var step_duration : float = get_step_duration(char_rigidbody, sizes, step_distance)
+        
+        # Intentar iniciar paso
+        _try_start_farther_leg(current_target, opposite_current_target, sizes.step_height, step_duration, 0.05, false)
+        
     else:
-        # Si no hay colisión, marcamos que esta pierna NO quiere paso en este frame,
-        # pero igual guardamos datos frescos para que el árbitro pueda decidir.
+        # Si no hay colisión
         _store_leg_measure(current_target, 0.0, false, next_target.global_position)
-
-        # Snap solo si no estamos en medio del paso
+        
         if not _is_stepping(current_target):
             _tween_foot_to(current_target, current_target.global_position, next_target.global_position, 0.0, sizes.step_height)
-
-    # 👉 Intentamos iniciar UN paso (como mucho) eligiendo la pierna más "atrasada"
-    #    Este llamado puede ocurrir dos veces por frame (una por pierna),
-    #    pero solo el segundo tendrá ambas mediciones frescas y disparará, a lo sumo, un paso.
-    _try_start_farther_leg(current_target, opposite_current_target, sizes.step_height, sizes.base_step_duration_ref, 0.05, false)
-
+    
     solve_leg_ik(upper_leg, lower_leg, current_target.global_position, pole.global_position)
     
 
@@ -325,3 +325,22 @@ static func get_orthogonal(v: Vector3) -> Vector3:
     else:
         return Vector3(-v.z, 0, v.x).normalized()
     
+func get_step_duration(char_rigidbody: CharacterRigidBody3D, sizes: SkeletonSizesUtil, step_distance: float) -> float:
+    var leg_height = sizes.leg_height
+    var dxz := Vector2(char_rigidbody.linear_velocity.x, char_rigidbody.linear_velocity.z)
+    var horizontal_speed = dxz.length()
+    
+    # El pie debe completar el paso antes de que el cuerpo avance step_distance
+    # Usamos un factor < 1.0 para que el pie llegue "antes" y no se quede atrás
+    var safety_factor = 0.6 # El paso se completa en el 70% del tiempo teórico
+    
+    if horizontal_speed < 0.01:
+        return 0.3
+    
+    var step_duration = (step_distance / horizontal_speed) * safety_factor
+    
+    # Clamp basado en la longitud de pierna para mantener movimientos naturales
+    var min_duration = 0.08 * leg_height  # Pasos muy rápidos para piernas pequeñas
+    var max_duration = 0.4 * leg_height   # Límite superior para piernas grandes
+    
+    return clamp(step_duration, min_duration, max_duration)

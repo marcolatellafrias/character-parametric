@@ -78,8 +78,8 @@ func _physics_process(_delta: float) -> void:
 	
 	skel_sizes_util.update(_delta,char_rigidbody,entity_stats,ik_util)
 	
-	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util)
-	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util)
+	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util,char_rigidbody)
+	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util,char_rigidbody)
 	
 	
 	#right_leg_current_target = IkUtil.update_ik_raycast(

@@ -7,3 +7,4 @@ res://Scripts/character/bone_instantiator.gd
 res://Scenes/Demo.tscn
 res://Scripts/character/ik_util.gd
 res://Scripts/character/debug_util.gd
+res://Scripts/character/test.gd

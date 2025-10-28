@@ -50,7 +50,6 @@ var distance_from_ground : float
 var raycast_leg_lenght: float
 var pole_distance: float
 var raycast_max_offset: float
-
 var raycast_amount := 10.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
 var speed_for_max := 6.0          # velocidad a la que llega al offset máximo
 var axis_weights := Vector2(1.0, 1.0)                    # x (lateral), z (adelante) para atenuar por eje
@@ -58,18 +57,6 @@ var speed_curve: Curve
 const raycast_accel_gain := 0.06        # meters per (m/s^2)
 const raycast_vel_gain   := 0.02        # meters per (m/s)  -> keeps offset while moving
 const raycast_smooth     := 8.0        # 1/sec; higher = snappier
-const leg_ref := 1.0     # altura de pierna "promedio" (tus unidades)
-
-const alpha := 1.1   # cuánto influye el tamaño de pierna (↑ piernas ⇒ ↑ duración). 1 = lineal (como ahora)
-const beta := 1.0   # cuánto influye la velocidad (↑ vel ⇒ ↓ duración). 1 = lineal en la razón
-var step_duration : float      # how fast the foot travels toward its new spot
-var base_step_duration_ref: float = 0.3  # baseline (inspector-friendly)
-var base_step_duration: float
-
-var _prev_origin: Vector3 = Vector3.INF
-var _ema_speed: float = 0.0
-const SPEED_TAU := 0.15 # s, suavizado (más chico = más reactivo)
-
 
 
 static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
@@ -168,75 +155,27 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	skelSizes.step_height = new_leg_height * 0.40
 	skelSizes.pole_distance = new_leg_height
 	skelSizes.raycast_max_offset = new_leg_height * 0.20
-	# --- duración base del paso (SIN velocidad) ---
-	# Guardamos una referencia inmutable del valor "de fábrica" (para leg_ref)
-	# la primera vez que se llama, para no re-escalarla en cada cambio.
-	var bsd_ref: float
-	if skelSizes.has_meta("bsd_ref"):
-		bsd_ref = float(skelSizes.get_meta("bsd_ref"))
-	else:
-		# Asumimos que skel.base_step_duration contiene el valor de referencia (p.ej. 0.2s) para leg_ref
-		bsd_ref = float(skelSizes.base_step_duration)
-		skelSizes.set_meta("bsd_ref", bsd_ref)
-
-	var leg_term: float = pow(new_leg_height / skelSizes.leg_ref, skelSizes.alpha)
-	skelSizes.base_step_duration = bsd_ref * leg_term
-	skelSizes.step_duration = skelSizes.base_step_duration
 	return skelSizes
 
 
 func update(delta: float, char_rigidbody: CharacterRigidBody3D, entityStats: EntityStats, ik_util: IkUtil) -> void:
-	#_update_step_duration(delta,char_rigidbody,entityStats)
-	_update_step_radius(delta,char_rigidbody,entityStats,ik_util)
+	_update_step_radius(char_rigidbody,entityStats,ik_util)
 
-func _update_step_radius(delta: float, char_rigidbody: CharacterRigidBody3D, entity_stats: EntityStats, ik_util: IkUtil) -> void:
-	var min_speed = entity_stats.speed_forw
-	var max_speed = min_speed * entity_stats.speed_multiplier
-	var min_step_radius = step_radius_min
-	var max_step_radius = step_radius_max
-
-	var node := char_rigidbody
-	var origin: Vector3 = node.global_transform.origin
-
-	if _prev_origin == Vector3.INF:
-		_prev_origin = origin
-		ik_util.current_step_radius = min_step_radius
-		return
-
-	var dxz := Vector2(origin.x - _prev_origin.x, origin.z - _prev_origin.z)
-	var instant_speed: float = dxz.length() / max(delta, 0.0001)
-	_prev_origin = origin
-
-	var t : float = clamp((instant_speed - min_speed) / (max_speed - min_speed), 0.0, 1.0)
-	ik_util.current_step_radius = lerp(min_step_radius, max_step_radius, t)
-
-func _update_step_duration(delta: float, char_rigidbody: CharacterRigidBody3D, entityStats: EntityStats) -> void:
-	var sensitivity: float = 1.0
-	var node := char_rigidbody
-	var origin: Vector3 = node.global_transform.origin
-
-	# Initialize previous position
-	if _prev_origin == Vector3.INF:
-		_prev_origin = origin
-		step_duration = base_step_duration
-		return
-
-	# Calculate horizontal distance traveled since last frame
-	var dxz := Vector2(origin.x - _prev_origin.x, origin.z - _prev_origin.z)
-	var distance := dxz.length()
-
-	# Determine how much faster or slower to step based on movement
-	# sensitivity < 1.0 → less reactive
-	# sensitivity > 1.0 → more reactive
-	var move_factor : float = clamp(distance * sensitivity / max(delta, 0.0001), 0.0, 10.0)
-
-	# Map movement factor to step duration
-	# Higher movement speed = shorter step duration
-	var speed_ratio : float = 1.0 / (1.0 + move_factor)
-	step_duration = base_step_duration * speed_ratio
-
-	_prev_origin = origin
-
+func _update_step_radius(char_rigidbody: CharacterRigidBody3D, entity_stats: EntityStats, ik_util: IkUtil) -> void:
+	var dxz := Vector2(char_rigidbody.linear_velocity.x, char_rigidbody.linear_velocity.z)
+	var instant_speed = dxz.length()
+	
+	# Velocidades
+	var min_speed = 0.01
+	var max_speed = entity_stats.speed_forw /3#entity_stats.speed_multiplier
+	 
+	# Interpolación segura
+	var speed_range = max(max_speed - min_speed, 0.01)
+	var t = clamp((instant_speed - min_speed) / speed_range, 0.0, 1.0)
+	
+	# Aplicar con smoothstep para transiciones naturales
+	var t_smooth = smoothstep(0.0, 1.0, t)  # GDScript tiene smoothstep built-in
+	ik_util.current_step_radius = lerp(step_radius_min , step_radius_max, t)
 
 static func lerp_range(min_val: float, max_val: float, t: float) -> float:
 	return min_val + (max_val - min_val) * clamp(t, 0.0, 1.0)

@@ -173,7 +173,11 @@ static func kid_arch() -> EntityStats:
 	arch.arms_openness = 0.8
 	
 	return arch
-	
+
+static func max_leg_lenght() -> float:
+	var leg_lenght : float = tall_lanky_arch().legs_to_feet_proportion * tall_lanky_arch().height
+	return leg_lenght
+
 static func tall_lanky_arch() -> EntityStats:
 	var arch = EntityStats.new()
 	
