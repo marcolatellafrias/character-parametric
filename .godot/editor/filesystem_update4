@@ -1,10 +1,1 @@
-res://Scripts/character/skeleton_sizes_util.gd
-res://Scripts/character/custom_bone.gd
-res://Scripts/character/archetypes.gd
-res://Scripts/character/custom_bones_util.gd
-res://Scripts/common/hoverable.gd
-res://Scripts/character/bone_instantiator.gd
-res://Scenes/Demo.tscn
 res://Scripts/character/ik_util.gd
-res://Scripts/character/debug_util.gd
-res://Scripts/character/test.gd
