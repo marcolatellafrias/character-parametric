@@ -2,6 +2,8 @@ class_name IkUtil
 
 var left_leg_raycast: RayCast3D
 var right_leg_raycast: RayCast3D
+var left_leg_raycast_indicator: MeshInstance3D
+var right_leg_raycast_indicator: MeshInstance3D
 var left_leg_pole = Node3D
 var right_leg_pole = Node3D
 const left_color: Color = Color(1, 0, 0)      # rojo
@@ -29,9 +31,15 @@ var current_step_right_mesh_instance: MeshInstance3D
 
 static func create(sizes: SkeletonSizesUtil, bones: CustomBonesUtil, skeleton: BoneInstantiator) -> IkUtil:
 	var new_ik_util = IkUtil.new()
+	
 	#Creo raycasts
-	new_ik_util.left_leg_raycast = create_leg_raycast(-sizes.hip_size.y, raycast_color, sizes.raycast_leg_lenght)
-	new_ik_util.right_leg_raycast = create_leg_raycast(sizes.hip_size.y, raycast_color, sizes.raycast_leg_lenght)
+	new_ik_util.left_leg_raycast = create_leg_raycast(true,sizes)
+	new_ik_util.right_leg_raycast = create_leg_raycast(false,sizes)
+	#Creo indicadores de raycasts
+	new_ik_util.left_leg_raycast_indicator = create_leg_raycast_indicator(sizes)
+	new_ik_util.left_leg_raycast.add_child(new_ik_util.left_leg_raycast_indicator)
+	new_ik_util.right_leg_raycast_indicator = create_leg_raycast_indicator(sizes)
+	new_ik_util.right_leg_raycast.add_child(new_ik_util.right_leg_raycast_indicator)
 	#Creo poles
 	new_ik_util.left_leg_pole = create_pole(bones, true, sizes, skeleton.local_targets)
 	new_ik_util.right_leg_pole = create_pole(bones, false, sizes, skeleton.local_targets)
@@ -60,12 +68,18 @@ static func create_pole(bones: CustomBonesUtil, left: bool, sizes: SkeletonSizes
 	pole.add_child(DebugUtil.create_debug_sphere(color))
 	return pole
 
-static func create_leg_raycast(x_offset: float, color: Color, length: float) -> RayCast3D:
+static func create_leg_raycast(left: bool, sizes: SkeletonSizesUtil) -> RayCast3D:
+	var length = sizes.raycast_leg_lenght
+	var x_offset = -sizes.hip_size.y if left else sizes.hip_size.y
 	var raycast = RayCast3D.new()
 	raycast.target_position = Vector3(0, -length, 0)
-	raycast.add_child(DebugUtil.create_debug_line(color, length))
 	raycast.translate(Vector3(x_offset, 0, 0))
 	return raycast
+	
+static func create_leg_raycast_indicator(sizes: SkeletonSizesUtil) -> MeshInstance3D:
+	var length = sizes.raycast_leg_lenght
+	var ray_mesh_instance : MeshInstance3D = DebugUtil.create_debug_line(Color.BLUE, length)
+	return ray_mesh_instance
 
 static func create_next_target(x_offset: float, color: Color, length: float) -> Node3D:
 	var target = Node3D.new()
@@ -204,46 +218,119 @@ func update_ik_raycast(
 	var lower_leg = bones.left_lower_leg if left else bones.right_lower_leg
 	var step_radius = current_step_radius
 	
-	# 👉 NUEVO: Actualizar paso en curso ANTES de calcular nuevo paso
+	# Actualizar paso en curso ANTES de calcular nuevo paso
 	_update_stepping_foot(current_target)
+	
+	# Recordar si estaba en el aire en la frame anterior
+	var was_airborne : bool = current_target.get_meta("was_airborne", false)
+	
+	# 🔹 NUEVO: Ajustar longitud del raycast según velocidad vertical
+	var min_raycast_length : float = sizes.leg_height
+	var vertical_velocity : float = char_rigidbody.linear_velocity.y
+	var additional_length : float = 0.0
+	
+	# Si está cayendo (velocidad negativa), extender el raycast
+	if vertical_velocity < 0.0:
+		# Multiplicador para controlar cuánto se extiende por velocidad
+		# Ajusta este valor según necesites más o menos anticipación
+		var velocity_to_distance_factor : float = 0.3
+		additional_length = abs(vertical_velocity) * velocity_to_distance_factor
+		
+		## Opcional: limitar la extensión máxima para evitar raycasts demasiado largos
+		#var max_additional_length : float = sizes.leg_height * 2.0
+		#additional_length = min(additional_length, max_additional_length)
+	
+	# Aplicar la nueva longitud al raycast
+	var total_raycast_length : float = min_raycast_length + additional_length
+	if left:
+		left_leg_raycast_indicator = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator,total_raycast_length)
+	else:
+		right_leg_raycast_indicator = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator,total_raycast_length)
+	raycast.target_position.y = -total_raycast_length  # Negativo porque apunta hacia abajo
+	
+	
+	var max_raycast_distance : float = raycast.target_position.length()
+	var leg_reach_raycast_distance : float = sizes.leg_height
 	
 	raycast.force_raycast_update()
 	if raycast.is_colliding():
 		var collision_point: Vector3 = raycast.get_collision_point()
-		next_target.global_position = collision_point
 		
-		var dist2 : float = (
-			Vector2(next_target.global_position.x, next_target.global_position.z) -
-			Vector2(current_target.global_position.x, current_target.global_position.z)
-		).length_squared()
+		# 🔹 NUEVO: Calcular distancia real de colisión
+		var collision_distance : float = raycast.global_position.distance_to(collision_point)
 		
-		var dist2Exp : float = (
-			Vector2(next_target.global_position.x, next_target.global_position.z) -
-			Vector2(char_rigidbody.global_position.x, char_rigidbody.global_position.z)
-		).length_squared()
+		# 🔹 NUEVO: Tres zonas de comportamiento según distancia
+		if collision_distance >= leg_reach_raycast_distance:
+			# ZONA 2: Entre mitad y máximo del raycast
+			# Interpolar entre airborne_target y collision_point
+			var t : float = (collision_distance - leg_reach_raycast_distance) / (max_raycast_distance - leg_reach_raycast_distance)
+			t = clamp(t, 0.0, 1.0)
+			
+			# t=0 cuando está en la mitad (más cerca de collision_point)
+			# t=1 cuando está en el máximo (más cerca de airborne_target)
+			var interpolated_position : Vector3 = collision_point.lerp(airborne_target.global_position, t)
+			next_target.global_position = interpolated_position
+			
+			# Marcar como semi-airborne (opcional, para transiciones suaves)
+			current_target.set_meta("was_airborne", true)
+			
+			# Guardar métricas pero sin intentar stepping en esta zona
+			var dist2 : float = (
+				Vector2(next_target.global_position.x, next_target.global_position.z) -
+				Vector2(current_target.global_position.x, current_target.global_position.z)
+			).length_squared()
+			
+			_store_leg_measure(current_target, dist2, false, interpolated_position)
+			
+			# Transición suave hacia la posición interpolada
+			if not _is_stepping(current_target):
+				_tween_foot_to(current_target, current_target.global_position, interpolated_position, 0.0, sizes.step_height * 0.5)
 		
-		var step_distance : float = sqrt(dist2Exp)
-		var wants_step : bool = dist2 > (step_radius * step_radius)
-		
-		_store_leg_measure(current_target, dist2, wants_step, collision_point)
-		
-		var step_duration : float = get_step_duration(char_rigidbody, sizes, step_distance)
-		
-		# 👉 NUEVO: Si está pisando, actualizar la duración dinámicamente
-		if _is_stepping(current_target):
-			_update_step_duration(current_target, step_duration)
-		
-		_try_start_farther_leg(current_target, opposite_current_target, sizes.step_height, step_duration, 0.05, false)
+		else:
+			# ZONA 3: Entre inicio y mitad del raycast
+			# Comportamiento normal de grounded
+			next_target.global_position = collision_point
+			
+			# Si estaba en el aire y ahora toca el piso, hacer snap inmediato
+			if was_airborne:
+				_clear_step_data(current_target)
+				current_target.global_position = collision_point
+				current_target.set_meta("was_airborne", false)
+			
+			var dist2 : float = (
+				Vector2(next_target.global_position.x, next_target.global_position.z) -
+				Vector2(current_target.global_position.x, current_target.global_position.z)
+			).length_squared()
+			
+			var dist2Exp : float = (
+				Vector2(next_target.global_position.x, next_target.global_position.z) -
+				Vector2(char_rigidbody.global_position.x, char_rigidbody.global_position.z)
+			).length_squared()
+			
+			var step_distance : float = sqrt(dist2Exp)
+			var wants_step : bool = dist2 > (step_radius * step_radius)
+			
+			_store_leg_measure(current_target, dist2, wants_step, collision_point)
+			
+			var step_duration : float = get_step_duration(char_rigidbody, sizes, step_distance)
+			
+			# Si está pisando, actualizar la duración dinámicamente
+			if _is_stepping(current_target):
+				_update_step_duration(current_target, step_duration)
+			
+			_try_start_farther_leg(current_target, opposite_current_target, sizes.step_height, step_duration, 0.05, false)
 		
 	else:
-		_store_leg_measure(current_target, 0.0, false, next_target.global_position)
+		# ZONA 1: No hay colisión - usar airborne_target
+		_store_leg_measure(current_target, 0.0, false, airborne_target.global_position)
+		
+		# Marcar que está en el aire
+		current_target.set_meta("was_airborne", true)
 		
 		if not _is_stepping(current_target):
 			_tween_foot_to(current_target, current_target.global_position, airborne_target.global_position, 0.0, sizes.step_height)
-			#_tween_foot_to(current_target, current_target.global_position, next_target.global_position, 0.0, sizes.step_height)
 	
 	solve_leg_ik(upper_leg, lower_leg, current_target.global_position, pole.global_position)
-	
 
 static func _tween_foot_to(node: Node3D, from_pos: Vector3, to_pos: Vector3, duration: float, step_height: float) -> void:
 	# Si ya hay un paso en curso, lo cancelamos pero guardamos el progreso
@@ -360,7 +447,7 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	var ground_leg_y_position = sizes.leg_height - (sizes.leg_height * entity_stats.distance_from_ground_factor)
 	var falling_leg_max_y_position = sizes.leg_height * 0.5
 	var jumping_leg_max_y_position = sizes.leg_height
-	var falling_max_y_speed = -3.0
+	var falling_max_y_speed = -5.0
 	var jumping_max_y_speed = 1.0
 	
 	# Calcular posición Y según velocidad vertical

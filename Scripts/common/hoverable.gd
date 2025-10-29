@@ -2,7 +2,6 @@ class_name CharacterRigidBody3D
 extends RigidBody3D
 
 @export var hover_height := 1.0          # meters (target: bottom of collider to ground)
-@export var ray_length := 2.0            # meters
 @export var height_kp := 800.0           # spring (N per meter)
 @export var height_kd := 24.0           # damper (N per m/s)
 @export var upright_kp := 30.0           # torque gain

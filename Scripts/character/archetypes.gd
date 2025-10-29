@@ -195,7 +195,7 @@ static func tall_lanky_arch() -> EntityStats:
 	arch.time_to_standup = 1.0
 	arch.strenght = 0.55
 	arch.throw_strenght = 0.4
-	arch.reach = 1.2
+	arch.reach = 1.0
 	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.6
 	arch.jump_multiplier = 2.0
@@ -208,8 +208,8 @@ static func tall_lanky_arch() -> EntityStats:
 	arch.horizontal_turn_spring = 0.8
 	arch.horizontal_turn_damp = 0.8
 	
-	arch.fatness = 0.0
-	arch.muscularity = 0.5
+	arch.fatness = 0.1
+	arch.muscularity = 0.4
 	
 	arch.height = 2.2
 
@@ -259,7 +259,7 @@ static func giga_arch() -> EntityStats:
 	arch.horizontal_turn_spring = 0.8
 	arch.horizontal_turn_damp = 0.8
 	
-	arch.fatness = 0.35
+	arch.fatness = 0.4
 	arch.muscularity = 1.0
 	
 	arch.height = 1.8

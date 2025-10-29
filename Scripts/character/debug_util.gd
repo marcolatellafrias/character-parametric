@@ -18,6 +18,15 @@ static func create_debug_line(color: Color, length: float, on_top: bool = false,
 	mesh_instance.material_override = material
 	return mesh_instance
 
+static func update_debug_line_mesh(mesh_instance: MeshInstance3D,length: float, to_down: bool = true) -> MeshInstance3D:
+	if mesh_instance == null:
+		return mesh_instance
+	var cube := BoxMesh.new()
+	cube.size = Vector3(0.01, length, 0.01)
+	mesh_instance.mesh = cube
+	mesh_instance.position = Vector3(0.0, (-length * 0.5) if to_down else (length * 0.5), 0.0)
+	return mesh_instance
+	
 static func create_debug_sphere(color: Color, size: float = 0.1, on_top: bool = false) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var sphere := SphereMesh.new()

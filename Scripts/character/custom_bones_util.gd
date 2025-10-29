@@ -47,7 +47,7 @@ static func create(sizes: SkeletonSizesUtil, entity_stats: EntityStats) -> Custo
 	var slouchiness_neck =  SkeletonSizesUtil.lerp_range(0.2,0.6,entity_stats.slouch)
 	if entity_stats.has_neck:
 		bones_util.neck = CustomBone.createFromToUp(bones_util.chest, sizes.neck_size, sizes.neck_offset, 0.0,-slouchiness_neck, Color.CORAL , true)
-	bones_util.head = CustomBone.createFromToUp(bones_util.neck if bones_util.neck else bones_util.chest, sizes.head_size, sizes.head_offset, 0.0,0.0, Color.LIGHT_CORAL , true)
+	bones_util.head = CustomBone.createFromToUp(bones_util.neck if bones_util.neck else bones_util.chest, sizes.head_size, sizes.head_offset, 0.0,0.0, Color.DEEP_PINK , true)
 	
 	# Shoulders
 	var shoulder_height =  SkeletonSizesUtil.lerp_range(-0.3,0.3,entity_stats.shoulders_height)
@@ -61,6 +61,6 @@ static func create(sizes: SkeletonSizesUtil, entity_stats: EntityStats) -> Custo
 	bones_util.left_upper_arm = CustomBone.createFromToDown(bones_util.left_shoulder, sizes.upper_arm_size, sizes.upper_arm_offset, upper_arms_openness,0.0, Color.VIOLET , true)
 	
 	var lower_arms_openness =  SkeletonSizesUtil.lerp_range(0.0,0.3, entity_stats.arms_openness)
-	bones_util.right_lower_arm = CustomBone.createFromToDown(bones_util.right_upper_arm, sizes.lower_arm_size, sizes.lower_arm_offset, -lower_arms_openness,0.0, Color.LIGHT_CORAL , true)
-	bones_util.left_lower_arm = CustomBone.createFromToDown(bones_util.left_upper_arm, sizes.lower_arm_size, sizes.lower_arm_offset, lower_arms_openness,0.0, Color.LIGHT_CORAL , true)
+	bones_util.right_lower_arm = CustomBone.createFromToDown(bones_util.right_upper_arm, sizes.lower_arm_size, sizes.lower_arm_offset, -lower_arms_openness,0.0, Color.DEEP_PINK , true)
+	bones_util.left_lower_arm = CustomBone.createFromToDown(bones_util.left_upper_arm, sizes.lower_arm_size, sizes.lower_arm_offset, lower_arms_openness,0.0, Color.DEEP_PINK , true)
 	return bones_util
