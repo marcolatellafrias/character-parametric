@@ -226,23 +226,8 @@ func update_ik_raycast(
 	
 	# 🔹 NUEVO: Ajustar longitud del raycast según velocidad vertical
 	var min_raycast_length : float = sizes.raycast_leg_lenght
-	var vertical_velocity : float = char_rigidbody.linear_velocity.y
-	var minimal_additional_length : float = sizes.raycast_leg_lenght * 0.2
-	var additional_length : float = minimal_additional_length 
+	var additional_length : float = sizes.raycast_leg_lenght/2
 
-	
-	# Si está cayendo (velocidad negativa), extender el raycast
-	if vertical_velocity < 0.0:
-		# Multiplicador para controlar cuánto se extiende por velocidad
-		# Ajusta este valor según necesites más o menos anticipación
-		var velocity_to_distance_factor : float = 0.3
-		additional_length = abs(vertical_velocity) * velocity_to_distance_factor
-		additional_length = clamp(additional_length, minimal_additional_length, 9999)
-		
-		## Opcional: limitar la extensión máxima para evitar raycasts demasiado largos
-		#var max_additional_length : float = sizes.leg_height * 2.0
-		#additional_length = min(additional_length, max_additional_length)
-	
 	# Aplicar la nueva longitud al raycast
 	var total_raycast_length : float = min_raycast_length + additional_length
 	raycast.target_position.y = -total_raycast_length  # Negativo porque apunta hacia abajo
@@ -254,11 +239,8 @@ func update_ik_raycast(
 	else:
 		right_leg_raycast_indicator = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator,total_raycast_length)
 
-	
-	
-
-	
 	raycast.force_raycast_update()
+	
 	if raycast.is_colliding():
 		var collision_point: Vector3 = raycast.get_collision_point()
 		
