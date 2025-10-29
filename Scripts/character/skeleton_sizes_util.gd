@@ -50,7 +50,7 @@ var distance_from_ground : float
 var raycast_leg_lenght: float
 var pole_distance: float
 var raycast_max_offset: float
-var raycast_amount := 10.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
+var raycast_amount := 6.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
 var speed_for_max := 6.0          # velocidad a la que llega al offset máximo
 var axis_weights := Vector2(1.0, 1.0)                    # x (lateral), z (adelante) para atenuar por eje
 var speed_curve: Curve     

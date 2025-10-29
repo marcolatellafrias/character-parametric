@@ -225,9 +225,11 @@ func update_ik_raycast(
 	var was_airborne : bool = current_target.get_meta("was_airborne", false)
 	
 	# 🔹 NUEVO: Ajustar longitud del raycast según velocidad vertical
-	var min_raycast_length : float = sizes.leg_height
+	var min_raycast_length : float = sizes.raycast_leg_lenght
 	var vertical_velocity : float = char_rigidbody.linear_velocity.y
-	var additional_length : float = 0.0
+	var minimal_additional_length : float = sizes.raycast_leg_lenght * 0.2
+	var additional_length : float = minimal_additional_length 
+
 	
 	# Si está cayendo (velocidad negativa), extender el raycast
 	if vertical_velocity < 0.0:
@@ -235,6 +237,7 @@ func update_ik_raycast(
 		# Ajusta este valor según necesites más o menos anticipación
 		var velocity_to_distance_factor : float = 0.3
 		additional_length = abs(vertical_velocity) * velocity_to_distance_factor
+		additional_length = clamp(additional_length, minimal_additional_length, 9999)
 		
 		## Opcional: limitar la extensión máxima para evitar raycasts demasiado largos
 		#var max_additional_length : float = sizes.leg_height * 2.0
@@ -242,15 +245,18 @@ func update_ik_raycast(
 	
 	# Aplicar la nueva longitud al raycast
 	var total_raycast_length : float = min_raycast_length + additional_length
+	raycast.target_position.y = -total_raycast_length  # Negativo porque apunta hacia abajo
+	var max_raycast_distance : float = raycast.target_position.length()
+	var leg_reach_raycast_distance : float = sizes.leg_height
+	
 	if left:
 		left_leg_raycast_indicator = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator,total_raycast_length)
 	else:
 		right_leg_raycast_indicator = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator,total_raycast_length)
-	raycast.target_position.y = -total_raycast_length  # Negativo porque apunta hacia abajo
+
 	
 	
-	var max_raycast_distance : float = raycast.target_position.length()
-	var leg_reach_raycast_distance : float = sizes.leg_height
+
 	
 	raycast.force_raycast_update()
 	if raycast.is_colliding():
@@ -286,7 +292,7 @@ func update_ik_raycast(
 			if not _is_stepping(current_target):
 				_tween_foot_to(current_target, current_target.global_position, interpolated_position, 0.0, sizes.step_height * 0.5)
 		
-		else:
+		else: #else false
 			# ZONA 3: Entre inicio y mitad del raycast
 			# Comportamiento normal de grounded
 			next_target.global_position = collision_point
@@ -450,18 +456,16 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	var falling_max_y_speed = -5.0
 	var jumping_max_y_speed = 1.0
 	
-	# Calcular posición Y según velocidad vertical
+	# Calcular posición Y según velocidad vertical ABSOLUTA
 	var y_vel = root_rigidbody.linear_velocity.y
-	var target_y_position: float
+	var abs_y_vel = abs(y_vel)
 	
-	if y_vel < 0.0:
-		# Cayendo
-		var fall_factor = clamp(abs(y_vel) / abs(falling_max_y_speed), 0.0, 1.0)
-		target_y_position = lerp(ground_leg_y_position, falling_leg_max_y_position, fall_factor)
-	else:
-		# Saltando o en el suelo
-		var jump_factor = clamp(y_vel / jumping_max_y_speed, 0.0, 1.0)
-		target_y_position = lerp(ground_leg_y_position, jumping_leg_max_y_position, jump_factor)
+	# Usar el máximo de ambas velocidades para normalizar
+	var max_y_speed = max(abs(falling_max_y_speed), jumping_max_y_speed)
+	var velocity_factor = clamp(abs_y_vel / max_y_speed, 0.0, 1.0)
+	
+	# Interpolar: vel=0 está en falling_leg_max_y_position, vel máxima en jumping_leg_max_y_position
+	var target_y_position = lerp(falling_leg_max_y_position, jumping_leg_max_y_position, velocity_factor)
 	
 	# Aplicar alrededor de las posiciones locales neutras
 	leg_raycast.transform.origin = neutral_local + Vector3(raycast_offset.x, 0.0, raycast_offset.y)
