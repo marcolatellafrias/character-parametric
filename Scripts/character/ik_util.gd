@@ -432,9 +432,8 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	raycast_offset = raycast_offset.lerp(target_off, k)
 	
 	# Configuración de posiciones Y
-	var ground_leg_y_position = sizes.leg_height - (sizes.leg_height * entity_stats.distance_from_ground_factor)
-	var falling_leg_max_y_position = sizes.leg_height * 0.5
-	var jumping_leg_max_y_position = sizes.leg_height
+	var folded_legs_y_position = sizes.leg_height * 0.5
+	var extended_legs_y_position = sizes.leg_height
 	var falling_max_y_speed = -5.0
 	var jumping_max_y_speed = 1.0
 	
@@ -446,15 +445,38 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	var max_y_speed = max(abs(falling_max_y_speed), jumping_max_y_speed)
 	var velocity_factor = clamp(abs_y_vel / max_y_speed, 0.0, 1.0)
 	
-	# Interpolar: vel=0 está en falling_leg_max_y_position, vel máxima en jumping_leg_max_y_position
-	var target_y_position = lerp(falling_leg_max_y_position, jumping_leg_max_y_position, velocity_factor)
+	# Interpolar: vel=0 está en folded_legs_y_position, vel máxima en extended_legs_y_position
+	var target_y_position = lerp(folded_legs_y_position, extended_legs_y_position, velocity_factor)
 	
-	# Aplicar alrededor de las posiciones locales neutras
+	# === NUEVO: Factor de transición para posiciones X/Z ===
+	# Define la velocidad a partir de la cual empieza la transición
+	var transition_start_speed = 0.0  # Empieza en velocidad 0
+	var transition_end_speed = -4.0   # Termina en -2 m/s (ajusta según necesites)
+	
+	# Calcular factor de caída (0 = no cayendo, 1 = cayendo rápido)
+	var fall_factor : float
+	if y_vel >= transition_start_speed:
+		fall_factor = 0.0
+	elif y_vel <= transition_end_speed:
+		fall_factor = 1.0
+	else:
+		# Interpolación suave entre 0 y 1
+		fall_factor = (transition_start_speed - y_vel) / (transition_start_speed - transition_end_speed)
+	
+	# Offset X/Z para cuando NO está cayendo (velocidad >= 0)
+	var offset_not_falling = -raycast_offset * 0.3
+	# Offset X/Z para cuando SÍ está cayendo (velocidad muy negativa)
+	var offset_falling = raycast_offset
+	
+	# Interpolar entre ambos estados según el factor de caída
+	var final_xz_offset = offset_not_falling.lerp(offset_falling, fall_factor)
+	
+	# Aplicar posiciones
 	leg_raycast.transform.origin = neutral_local + Vector3(raycast_offset.x, 0.0, raycast_offset.y)
 	leg_airborne_target.transform.origin = Vector3(
-		neutral_local.x - raycast_offset.x * 0.3,
+		neutral_local.x + final_xz_offset.x,
 		neutral_local.y - target_y_position,
-		neutral_local.z - raycast_offset.y * 0.3
+		neutral_local.z + final_xz_offset.y
 	)
 	
 static func get_orthogonal(v: Vector3) -> Vector3:

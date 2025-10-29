@@ -46,7 +46,7 @@ var chest_to_low_spine_proportion : float
 var legs_to_feet_proportion : float
 var hips_width_proportion : float
 var shoulder_width_proportion : float
-var distance_from_ground_factor := 0.1  #tiene las piernas 10% flexionadas cuando esta en el piso
+var distance_from_ground_factor := 0.15  #tiene las piernas 10% flexionadas cuando esta en el piso
 
 #POSTURE
 var slouch : float
