@@ -1,1 +1,3 @@
 res://Scripts/character/ik_util.gd
+res://Scripts/character/bone_instantiator.gd
+res://Scenes/Demo.tscn

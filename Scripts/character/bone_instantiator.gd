@@ -48,6 +48,8 @@ func initialize_skeleton() -> void:
 	local_targets.add_child(ik_util.right_leg_pole)
 	local_targets.add_child(ik_util.left_leg_next_target)
 	local_targets.add_child(ik_util.right_leg_next_target)
+	local_targets.add_child(ik_util.left_leg_airborne_target)
+	local_targets.add_child(ik_util.right_leg_airborne_target)
 	#Global objects
 	global_targets.add_child(ik_util.left_leg_current_target)
 	global_targets.add_child(ik_util.right_leg_current_target)
@@ -66,28 +68,12 @@ func _clear_prior_generations()-> void:
 
 func _physics_process(_delta: float) -> void:
 	_update_local_targets_positions()
-	#dynamic_sizes_util.update(_delta)
-	#
-	#var isTranslating := false
-	#if root_rigidbody:
-		#previous_transform = root_rigidbody.transform
-		#
-	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, true, skel_sizes_util) 
-	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, false, skel_sizes_util) 
-	#raycast_offset = ik_util.update_leg_raycast_offsets(root_rigidbody, _delta, false, speed_for_max, speed_curve, raycast_amount, raycast_max_offset, axis_weights, raycast_smooth, right_neutral_local, raycast_offset) 
-	
+	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, true, skel_sizes_util, entity_stats) 
+	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, false, skel_sizes_util, entity_stats) 
 	skel_sizes_util.update(_delta,char_rigidbody,entity_stats,ik_util)
-	
 	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util,char_rigidbody)
 	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util,char_rigidbody)
-	
-	
-	#right_leg_current_target = IkUtil.update_ik_raycast(
-		#right_leg_raycast, right_leg_next_target, right_leg_current_target,
-		#right_upper_leg, right_lower_leg, right_leg_pole,
-		#left_leg_current_target,   # la pierna opuesta
-		#step_radius_walk, step_height, step_duration,
-	#)
+		
 
 
 func _update_local_targets_positions()-> void:

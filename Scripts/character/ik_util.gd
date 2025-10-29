@@ -21,7 +21,8 @@ var current_step_radius: float:
 		current_step_right_mesh_instance.mesh = DebugUtil.create_debug_ring_mesh(current_step_radius)
 	get:
 		return current_step_radius
-
+var left_leg_airborne_target: Node3D
+var right_leg_airborne_target: Node3D
 
 var current_step_left_mesh_instance: MeshInstance3D 
 var current_step_right_mesh_instance: MeshInstance3D 
@@ -43,6 +44,9 @@ static func create(sizes: SkeletonSizesUtil, bones: CustomBonesUtil, skeleton: B
 	#Creo current targets
 	new_ik_util.left_leg_current_target = IkUtil.create_ik_target(true, sizes.step_radius_min, sizes.step_radius_max, new_ik_util)
 	new_ik_util.right_leg_current_target = IkUtil.create_ik_target(false, sizes.step_radius_min, sizes.step_radius_max, new_ik_util)
+	
+	new_ik_util.left_leg_airborne_target = IkUtil.create_simple_ik_target(true)
+	new_ik_util.right_leg_airborne_target = IkUtil.create_simple_ik_target(false)
 	return new_ik_util
 
 static func create_pole(bones: CustomBonesUtil, left: bool, sizes: SkeletonSizesUtil, local_targets: Node3D) -> Node3D:
@@ -68,6 +72,12 @@ static func create_next_target(x_offset: float, color: Color, length: float) -> 
 	target.position = Vector3(x_offset, -length, 0)
 	target.add_child(DebugUtil.create_debug_sphere(color))
 	return target
+
+static func create_simple_ik_target(left: bool) -> Node3D:
+	var color := left_color if left else right_color
+	var _ik_target = Node3D.new()
+	_ik_target.add_child(DebugUtil.create_debug_cube(color))
+	return _ik_target
 
 static func create_ik_target(left: bool, min_radius: float, max_radius: float, ik_util: IkUtil) -> Node3D:
 	var color := left_color if left else right_color
@@ -187,6 +197,7 @@ func update_ik_raycast(
 	var raycast = left_leg_raycast if left else right_leg_raycast
 	var next_target = left_leg_next_target if left else right_leg_next_target
 	var current_target = left_leg_current_target if left else right_leg_current_target
+	var airborne_target = left_leg_airborne_target if left else right_leg_airborne_target
 	var pole = left_leg_pole if left else right_leg_pole
 	var opposite_current_target = right_leg_current_target if left else left_leg_current_target
 	var upper_leg = bones.left_upper_leg if left else bones.right_upper_leg
@@ -228,7 +239,8 @@ func update_ik_raycast(
 		_store_leg_measure(current_target, 0.0, false, next_target.global_position)
 		
 		if not _is_stepping(current_target):
-			_tween_foot_to(current_target, current_target.global_position, next_target.global_position, 0.0, sizes.step_height)
+			_tween_foot_to(current_target, current_target.global_position, airborne_target.global_position, 0.0, sizes.step_height)
+			#_tween_foot_to(current_target, current_target.global_position, next_target.global_position, 0.0, sizes.step_height)
 	
 	solve_leg_ik(upper_leg, lower_leg, current_target.global_position, pole.global_position)
 	
@@ -318,42 +330,59 @@ static func _mark_stepping(n: Node, stepping: bool) -> void:
 
  #speed_for_max: float, speed_curve: Curve, raycast_amount: float, raycast_max_offset: float, axis_weights: Vector2, raycast_smooth: float, neutral_local: Vector3, raycast_offset: Vector2
 
-func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left: bool, sizes: SkeletonSizesUtil) -> Vector2:
+func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left: bool, sizes: SkeletonSizesUtil, entity_stats: EntityStats) -> void:
 	# Velocidad horizontal
 	var hvel := root_rigidbody.linear_velocity
 	hvel.y = 0.0
 	
 	var leg_raycast = left_leg_raycast if left else right_leg_raycast
+	var leg_airborne_target = left_leg_airborne_target if left else right_leg_airborne_target
 	var neutral_local = left_neutral_local if left else right_neutral_local
+	
 	# A espacio local del padre de raycasts
 	var basis_owner := leg_raycast.get_parent() as Node3D
 	var local_vel: Vector3 = basis_owner.global_transform.basis.inverse() * hvel
-
 	var v2 := Vector2(local_vel.x, local_vel.z)
 	var speed := v2.length()
 	var dir := (v2 / speed) if (speed > 0.0) else Vector2.ZERO
-
 	# Velocidad normalizada (0..1) y ganancia total
 	var n : float = clamp(speed / sizes.speed_for_max, 0.0, 1.0)
 	var curve_gain : = sizes.speed_curve.sample_baked(n) if (sizes.speed_curve != null) else n
 	var amount := sizes.raycast_amount * curve_gain
-
 	# Offset objetivo limitado por el radio máximo
 	var target_off := dir * (amount * sizes.raycast_max_offset)
 	target_off = Vector2(target_off.x * sizes.axis_weights.x, target_off.y * sizes.axis_weights.y)
-
 	# Suavizado
 	var k : float = clamp(delta * sizes.raycast_smooth, 0.0, 1.0)
 	raycast_offset = raycast_offset.lerp(target_off, k)
-
-	## Volver al centro en el aire
-	#if not character.is_on_floor():
-		#raycast_offset = raycast_offset.lerp(Vector2.ZERO, k)
-
-	# Aplicar alrededor de las posiciones locales neutras
-	leg_raycast.transform.origin  = neutral_local  + Vector3(raycast_offset.x, 0.0, raycast_offset.y)
-	return raycast_offset
 	
+	# Configuración de posiciones Y
+	var ground_leg_y_position = sizes.leg_height - (sizes.leg_height * entity_stats.distance_from_ground_factor)
+	var falling_leg_max_y_position = sizes.leg_height * 0.5
+	var jumping_leg_max_y_position = sizes.leg_height
+	var falling_max_y_speed = -3.0
+	var jumping_max_y_speed = 1.0
+	
+	# Calcular posición Y según velocidad vertical
+	var y_vel = root_rigidbody.linear_velocity.y
+	var target_y_position: float
+	
+	if y_vel < 0.0:
+		# Cayendo
+		var fall_factor = clamp(abs(y_vel) / abs(falling_max_y_speed), 0.0, 1.0)
+		target_y_position = lerp(ground_leg_y_position, falling_leg_max_y_position, fall_factor)
+	else:
+		# Saltando o en el suelo
+		var jump_factor = clamp(y_vel / jumping_max_y_speed, 0.0, 1.0)
+		target_y_position = lerp(ground_leg_y_position, jumping_leg_max_y_position, jump_factor)
+	
+	# Aplicar alrededor de las posiciones locales neutras
+	leg_raycast.transform.origin = neutral_local + Vector3(raycast_offset.x, 0.0, raycast_offset.y)
+	leg_airborne_target.transform.origin = Vector3(
+		neutral_local.x - raycast_offset.x * 0.3,
+		neutral_local.y - target_y_position,
+		neutral_local.z - raycast_offset.y * 0.3
+	)
 	
 static func get_orthogonal(v: Vector3) -> Vector3:
 	if abs(v.x) < abs(v.y):
