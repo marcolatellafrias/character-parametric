@@ -6,7 +6,7 @@ extends CharacterBody3D
 @export var grab_line_radius := 0.01
 @export var grab_line_color := Color(0.2, 0.8, 1.0, 0.95)
 
-@export var jump_velocity: float = 6.0
+@export var jump_velocity: float = 12.0
 @export var ground_push_impulse: float = 0.4        # tweak to taste
 @export var ground_push_max_dist: float = 1.2  
 

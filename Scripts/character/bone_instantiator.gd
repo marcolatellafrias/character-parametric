@@ -48,8 +48,8 @@ func initialize_skeleton() -> void:
 	ik_util.left_leg_raycast.add_exception(char_rigidbody)
 	ik_util.right_leg_raycast.add_exception(char_rigidbody)
 	
-	local_targets.add_child(ik_util.left_leg_pole)
-	local_targets.add_child(ik_util.right_leg_pole)
+	#local_targets.add_child(ik_util.left_leg_pole)
+	#local_targets.add_child(ik_util.right_leg_pole)
 	local_targets.add_child(ik_util.left_leg_next_target)
 	local_targets.add_child(ik_util.right_leg_next_target)
 	local_targets.add_child(ik_util.left_leg_airborne_target)

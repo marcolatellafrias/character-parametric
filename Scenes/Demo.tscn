@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=25 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://by0al5irc1r60" path="res://Materials/Floor.tres" id="1_lpcab"]
 [ext_resource type="Material" uid="uid://bq5ujksxl5avb" path="res://Materials/Shapes.tres" id="2_fnnck"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://s04a8ue62sk4" path="res://Scripts/character/basic_char.gd" id="8_oilx1"]
 [ext_resource type="PackedScene" uid="uid://depimbd5eofjb" path="res://Scenes/car.tscn" id="9_4i7ud"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
+[ext_resource type="PackedScene" uid="uid://wiaprhwxu848" path="res://Scenes/auto_uwrapeado.tscn" id="9_v3boh"]
 [ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 
@@ -123,6 +124,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8081498, -7.2051997)
 transform = Transform3D(-0.88493073, 0, -0.46572256, 0, 1, 0, 0.46572256, 0, -0.88493073, -4.2783775, 1.9868951, 8.103675)
 size = Vector2(10, 4)
 
+[node name="Mirror3D2" parent="world" instance=ExtResource("8_ecetj")]
+transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 0.99999994, 0.6955866, 2.1140683, -12.842005)
+size = Vector2(0.4, 0.16)
+
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="world"]
 transform = Transform3D(-0.86602354, -0.43301606, 0.25000072, 0, 0.49999818, 0.86602646, -0.5000033, 0.7499993, -0.4330102, 0, 0, 0)
 shadow_enabled = true
@@ -147,6 +152,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6187816, 2.2957344)
 
 [node name="RigidBody3D2" parent="world" instance=ExtResource("9_4i7ud")]
 transform = Transform3D(0.6417977, 0, 0.76687396, 0, 1, 0, -0.76687396, 0, 0.6417977, 2.2019553, 0.3249837, 1.0182643)
+
+[node name="auto uwrapeado2" parent="world" instance=ExtResource("9_v3boh")]
+transform = Transform3D(1.45, 0, 0, 0, 1.45, 0, 0, 0, 1.45, 0.70012856, 0.18461268, -14.94844)
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 0.99999994, -3.374179, 1.0039177, -6.8743)

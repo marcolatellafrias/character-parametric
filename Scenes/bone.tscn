@@ -1,0 +1,5 @@
+[gd_scene load_steps=2 format=3 uid="uid://dwcm3hc0of57i"]
+
+[ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="1_fmouj"]
+
+[node name="bone" instance=ExtResource("1_fmouj")]

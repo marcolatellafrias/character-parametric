@@ -1,8 +1,22 @@
 63f7b34db8d8cdea90c76aacccf841ec
-::res://::1761686218
+::res://::1761962510
+export_presets.cfg::TextFile::-1::1761723346::0::1::::<><><>0<>0<><>::
 LICENSE.md::TextFile::-1::1761072817::0::1::::<><><>0<>0<><>::
 README.md::TextFile::-1::1761072817::0::1::::<><><>0<>0<><>::
-::res://addons/::1761072817
+::res://addons/::1761961581
+::res://addons/flexible_toon_shader/::1761962450
+FlexibleToonMaterial2.tres::ShaderMaterial::8936631927181227400::1761962437::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
+flexible_toon.gdshader::Shader::5615513141197692679::1761961582::0::1::::<><><>0<>0<><>::
+hatch.png::CompressedTexture2D::469793669391307625::1761961582::1761961585::1::::<><><>0<>0<>2ae2a90ca945fec7fb7b94fdd6ab1174<>res://.godot/imported/hatch.png-50153c061352b32d8c3be4f28f3c0cb2.s3tc.ctex::
+HatchToonMaterial.tres::ShaderMaterial::3330560854434209570::1761961581::0::1::::<><><>0<>0<><>::
+hatch_toon.gdshader::Shader::4121898377110693553::1761961582::0::1::::<><><>0<>0<><>::
+::res://addons/flexible_toon_shader/example/::1761961584
+cup.obj::Mesh::3110588149884569917::1761961582::1761961583::1::::<><><>0<>0<>b00440d1191d0d7114c4fba2fbba2877<>res://.godot/imported/cup.obj-573fe637ebf8c9287e6a16426ff7f16a.mesh<*>res://.godot/imported/cup.obj-573fe637ebf8c9287e6a16426ff7f16a.mesh::
+CupMaterial.tres::ShaderMaterial::731592254513345340::1761961581::0::1::::<><><>0<>0<><>::res://addons/flexible_toon_shader/flexible_toon.gdshader<>uid://c0dpox2fcqs5d::::res://addons/flexible_toon_shader/example/cup_texture.png<>uid://bnt8vgg5foqsf::::res://addons/flexible_toon_shader/example/cup_specular.png
+CupMaterialHatch.tres::ShaderMaterial::7602021699068158699::1761961581::0::1::::<><><>0<>0<><>::res://addons/flexible_toon_shader/hatch_toon.gdshader<>uid://c0dpox2fcqs5d::::res://addons/flexible_toon_shader/example/cup_texture.png<>uid://1qnxn1x7e2vc::::res://addons/flexible_toon_shader/hatch.png
+cup_specular.png::CompressedTexture2D::4532760392078651040::1761961582::1761961584::1::::<><><>0<>0<>6cb09ab3b897a6a4fb18db0e25166b50<>res://.godot/imported/cup_specular.png-67fd376e8d3f08cde7226bf38fa4025a.s3tc.ctex::
+cup_texture.png::CompressedTexture2D::6972018436747226027::1761961582::1761961584::1::::<><><>0<>0<>4cd1ccd20ae4cd1ae5f0e78ac5b733f3<>res://.godot/imported/cup_texture.png-248b9ddc88aa7c0fd85bab1be0a04e72.s3tc.ctex::
+ExampleScene.tscn::PackedScene::7227118104903473099::1761961582::0::1::::<><><>0<>0<><>::uid://konhnqnbl47a::::res://addons/flexible_toon_shader/example/CupMaterial.tres<>uid://dseolga3h4nvk::::res://addons/flexible_toon_shader/example/cup.obj<>uid://dgkqgl3vfek6v::::res://addons/flexible_toon_shader/example/CupMaterialHatch.tres
 ::res://addons/Mirror3D/::1761072817
 Mirror3D.gd::GDScript::6114414996668009307::1761072817::0::1::::Mirror3D<>Node3D<><>0<>1<><>::
 Mirror3D.gdshader::Shader::3030333951447338880::1761072817::0::1::::<><><>0<>0<><>::
@@ -14,33 +28,62 @@ green.tres::StandardMaterial3D::8092101318124136034::1761072817::0::1::::<><><>0
 red.tres::StandardMaterial3D::1329789553095403771::1761072817::0::1::::<><><>0<>0<><>::
 Shapes.tres::StandardMaterial3D::3572604480624761035::1761072817::0::1::::<><><>0<>0<><>::
 templategrid_albedo.png::CompressedTexture2D::1416096460625069073::1761072817::1761072817::1::::<><><>0<>0<>e6acb3a0bfdf540a92cc74409ad6c09b<>res://.godot/imported/templategrid_albedo.png-3a74868f1c9a55fae4e22c6a7ef39c90.s3tc.ctex::
-::res://Models/::1761429015
+::res://Models/::1761961233
 3d_creative_showcase.glb::PackedScene::8199855498802355928::1761072817::1761091154::1::::<><><>0<>0<>076f3c95fcee700265f6c7c5b0bd8b12<>res://.godot/imported/3d_creative_showcase.glb-129dff9f5e2b3c4720d19beeabc0d695.scn::uid://dxb2mc2wxbsc6::::res://Models/3d_creative_showcase_0.png
 3d_creative_showcase_0.png::CompressedTexture2D::8777330768626455843::1761072817::1761091153::1::::<><><>0<>0<>0821e97b77dffa9827fa5f9440415670<>res://.godot/imported/3d_creative_showcase_0.png-6fddac0e136fc3b108a7d3d0e25b56e3.s3tc.ctex::
 bone.glb::PackedScene::8636746699221246796::1761428970::1761429015::1::::<><><>0<>0<>64fc8baa339fe0085a778b56c6e491c3<>res://.godot/imported/bone.glb-d5ff80e9c6e8695890421bbdabdb7892.scn::
-::res://Scenes/::1761640985
+::res://Models/auto/::1761962526
+auto uwrapeado.glb::PackedScene::8842708798802457656::1761961201::1761961234::1::::<><><>0<>0<>0b41c3970058d325105aa273d9c07931<>res://.godot/imported/auto uwrapeado.glb-a15a406773f94d4e62ad062f1c7699c8.scn::uid://cm7nyvuqus25p::::res://Models/auto/auto uwrapeado_interior material.png<>uid://dyj3pdgmkcm3j::::res://Models/auto/auto uwrapeado_ventanas textura.png<>uid://7gce5k74wfd2::::res://Models/auto/auto uwrapeado_chasis text.png<>uid://cklw7jsfnk01h::::res://Models/auto/auto uwrapeado_metales text.png<>uid://3du6nja0ip6a::::res://Models/auto/auto uwrapeado_espejo central text.png<>uid://bjbbn4tbo72fg::::res://Models/auto/auto uwrapeado_patente text.png<>uid://bdswyla6ocvn0::::res://Models/auto/auto uwrapeado_sillon material.png<>uid://d3pbi750aja2d::::res://Models/auto/auto uwrapeado_mapa text.png<>uid://b2j1m72lg7qlc::::res://Models/auto/auto uwrapeado_volante text.png<>uid://dwxrr710vsuod::::res://Models/auto/auto uwrapeado_propulsor text.png<>uid://0o34myh0vp62::::res://Models/auto/auto uwrapeado_puerta textura.png<>uid://diun1x1x3eyai::::res://Models/auto/auto uwrapeado_piso text.png<>uid://pk26dxtucdmv::::res://Models/auto/auto uwrapeado_espejo lateral text.png<>uid://bd3llv7lbjkuk::::res://Models/auto/auto uwrapeado_luz detantera text.png<>uid://j2yg81ts3xiw::::res://Models/auto/auto uwrapeado_luz trasera text.png<>uid://bk2c30mbcndh2::::res://Models/auto/auto uwrapeado_sirena cosito text.png<>uid://bamwqrdsvv1p0::::res://Models/auto/auto uwrapeado_domo sirena text.png<>uid://dsfj06006ngyj::::res://Models/auto/auto uwrapeado_manivela exterior text.png<>uid://fnekou24ip3q::::res://Models/auto/auto uwrapeado_manivela interior text.png<>uid://bqfxxvrggfhfe::::res://Models/auto/auto uwrapeado_compuerta cama text.png<>uid://dcgx26aswgdfh::::res://Models/auto/auto uwrapeado_parrilla text.png<>uid://plkcbmp7ojjt::::res://Models/auto/auto uwrapeado_ventana lateral textura.png<>uid://bkegdbiucsb01::::res://Models/auto/auto uwrapeado_antena text.png
+auto uwrapeado_antena text.png::CompressedTexture2D::3096936356221853600::1761961202::1761961234::1::::<><><>0<>0<>3feefdfc64f65e0b9299ffaa44ec545a<>res://.godot/imported/auto uwrapeado_antena text.png-073e1b0e4fbd6c06de3444284adbed18.s3tc.ctex::
+auto uwrapeado_chasis text.png::CompressedTexture2D::2258559432744653845::1761961201::1761961234::1::::<><><>0<>0<>4dab11b16ab54cf20e9301428968b940<>res://.godot/imported/auto uwrapeado_chasis text.png-a4530c2f35e72f05c8ffbda9702bdffc.s3tc.ctex::
+auto uwrapeado_compuerta cama text.png::CompressedTexture2D::3521202764298222802::1761961202::1761961234::1::::<><><>0<>0<>ed52e8425fdc3e94839738e38a7b9582<>res://.godot/imported/auto uwrapeado_compuerta cama text.png-a7b28470d4f1a499102ea4cfc696dc7e.s3tc.ctex::
+auto uwrapeado_domo sirena text.png::CompressedTexture2D::2412558461663281271::1761961202::1761961234::1::::<><><>0<>0<>964f9753f8f7edd1df72c8beb82f70cd<>res://.godot/imported/auto uwrapeado_domo sirena text.png-0a23b2acd1bbe1945e64de6a8702cff4.s3tc.ctex::
+auto uwrapeado_espejo central text.png::CompressedTexture2D::1972751151333999978::1761961201::1761961234::1::::<><><>0<>0<>b1c3656717081d0039da3ed50bfb3834<>res://.godot/imported/auto uwrapeado_espejo central text.png-7e107d29a2797b11967fae5a74381373.s3tc.ctex::
+auto uwrapeado_espejo lateral text.png::CompressedTexture2D::1075171344517464105::1761961202::1761961234::1::::<><><>0<>0<>d0225b6cb436ac353bcf67c3df465adf<>res://.godot/imported/auto uwrapeado_espejo lateral text.png-d3f8c34a335da767ac06b196f9c1adff.s3tc.ctex::
+auto uwrapeado_interior material.png::CompressedTexture2D::5682000893773059655::1761961201::1761961234::1::::<><><>0<>0<>f7999dddc948c5dd38cbaee50f9eb1de<>res://.godot/imported/auto uwrapeado_interior material.png-cbec87e7f7ee2168adf0667d036156f1.s3tc.ctex::
+auto uwrapeado_luz detantera text.png::CompressedTexture2D::2655478475299843218::1761961202::1761961234::1::::<><><>0<>0<>80e5009ead46380b23849ad2cbf725fe<>res://.godot/imported/auto uwrapeado_luz detantera text.png-7eb2c6e6edb8dbca7b573113c47bf42c.s3tc.ctex::
+auto uwrapeado_luz trasera text.png::CompressedTexture2D::688907489015653986::1761961202::1761961234::1::::<><><>0<>0<>7fb34d6116ad37d260ef29800dd5b1af<>res://.godot/imported/auto uwrapeado_luz trasera text.png-094adbe7309371e512ddefc1f212563b.s3tc.ctex::
+auto uwrapeado_manivela exterior text.png::CompressedTexture2D::8433575891138501129::1761961202::1761961234::1::::<><><>0<>0<>3de94ec585e9a323bf8e5ac99b2f7736<>res://.godot/imported/auto uwrapeado_manivela exterior text.png-1dc22a4dea6f284aa85329d492ca18a4.s3tc.ctex::
+auto uwrapeado_manivela interior text.png::CompressedTexture2D::378042622391887092::1761961202::1761961234::1::::<><><>0<>0<>ddb96db35b17722b4090d27cb0551a02<>res://.godot/imported/auto uwrapeado_manivela interior text.png-35f228d0851b82575dc0760daf7a574e.s3tc.ctex::
+auto uwrapeado_mapa text.png::CompressedTexture2D::9155592070826689537::1761961201::1761961234::1::::<><><>0<>0<>ae0f9a415c2478c2595cb58631ac2243<>res://.godot/imported/auto uwrapeado_mapa text.png-5746eae3da17e71953a6bb914a96a4ef.s3tc.ctex::
+auto uwrapeado_metales text.png::CompressedTexture2D::5498831379068605471::1761961201::1761961234::1::::<><><>0<>0<>0c4ead2c50515969f52b000c372500e7<>res://.godot/imported/auto uwrapeado_metales text.png-c0639d834c382cc5e700f0bb04792045.s3tc.ctex::
+auto uwrapeado_parrilla text.png::CompressedTexture2D::7313472341220118413::1761961202::1761961234::1::::<><><>0<>0<>78050133a6e5baec88e42540d0951de7<>res://.godot/imported/auto uwrapeado_parrilla text.png-37d6f9c80d253c6a6d37900417e3cd50.s3tc.ctex::
+auto uwrapeado_patente text.png::CompressedTexture2D::3020270139096853724::1761961201::1761961234::1::::<><><>0<>0<>4b820613dc71e56dd3d5e7573ff4790a<>res://.godot/imported/auto uwrapeado_patente text.png-d28b0d8c81097f5596fc59590d344d28.s3tc.ctex::
+auto uwrapeado_piso text.png::CompressedTexture2D::7762897356096834344::1761961202::1761961234::1::::<><><>0<>0<>7f16031cf42790299ef8b633678421ed<>res://.godot/imported/auto uwrapeado_piso text.png-f04dd9c95c8767dffccc7ad26d920088.s3tc.ctex::
+auto uwrapeado_propulsor text.png::CompressedTexture2D::8751961568909602735::1761961201::1761961234::1::::<><><>0<>0<>127bed662c7f4af91548324dee2b8bc9<>res://.godot/imported/auto uwrapeado_propulsor text.png-ff1de9eaf1a157acd813f35c01e7602b.s3tc.ctex::
+auto uwrapeado_puerta textura.png::CompressedTexture2D::1785374911036157325::1761961201::1761961234::1::::<><><>0<>0<>2d3dd2c503c5bd845476261a66a1e715<>res://.godot/imported/auto uwrapeado_puerta textura.png-3859f24c6b3350e54328a3a692908c4b.s3tc.ctex::
+auto uwrapeado_sillon material.png::CompressedTexture2D::2635525226259015671::1761961201::1761961234::1::::<><><>0<>0<>8e4a8b5a7a31515667fc9ccbf785ce58<>res://.godot/imported/auto uwrapeado_sillon material.png-10010a64cc4999decd3661207d28fc0f.s3tc.ctex::
+auto uwrapeado_sirena cosito text.png::CompressedTexture2D::3144220087317938237::1761961202::1761961234::1::::<><><>0<>0<>66e1c7064940352513bfd21c67798d81<>res://.godot/imported/auto uwrapeado_sirena cosito text.png-ec1addde1446bc56250dee81982ad03c.s3tc.ctex::
+auto uwrapeado_ventana lateral textura.png::CompressedTexture2D::1076151623166475961::1761961202::1761961234::1::::<><><>0<>0<>15f2de58709f4e080e45a61a3e0f09a7<>res://.godot/imported/auto uwrapeado_ventana lateral textura.png-90117f526708712e03dd445ee8fd40ea.s3tc.ctex::
+auto uwrapeado_ventanas textura.png::CompressedTexture2D::8864100728282211617::1761961201::1761961234::1::::<><><>0<>0<>4dc30001ef229174b76e3a2b3829ceec<>res://.godot/imported/auto uwrapeado_ventanas textura.png-7a8861fdfdb42a8599e1d9f2ecb3c514.s3tc.ctex::
+auto uwrapeado_volante text.png::CompressedTexture2D::4301700656011308344::1761961201::1761961234::1::::<><><>0<>0<>0060d8afb785d4563f0eeec68452de48<>res://.godot/imported/auto uwrapeado_volante text.png-1c80335d575ebf0bf20b9e43fdc5ed88.s3tc.ctex::
+metal.tres::ShaderMaterial::3091749159269672371::1761962468::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
+vidrios.tres::ShaderMaterial::1306124917497588985::1761962526::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
+ventanas.tres::ShaderMaterial::2518200112153308807::1761962510::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
+::res://Scenes/::1761962510
+auto_uwrapeado.tscn::PackedScene::1560697273719487759::1761962510::0::1::::<><><>0<>0<><>::uid://cm7nyvuqus25p::::res://Models/auto/auto uwrapeado_interior material.png<>uid://dyj3pdgmkcm3j::::res://Models/auto/auto uwrapeado_ventanas textura.png<>uid://7gce5k74wfd2::::res://Models/auto/auto uwrapeado_chasis text.png<>uid://cklw7jsfnk01h::::res://Models/auto/auto uwrapeado_metales text.png<>uid://bb43ngplsfis2::::res://Models/auto/ventanas.tres<>uid://3du6nja0ip6a::::res://Models/auto/auto uwrapeado_espejo central text.png<>uid://bjbbn4tbo72fg::::res://Models/auto/auto uwrapeado_patente text.png<>uid://bdswyla6ocvn0::::res://Models/auto/auto uwrapeado_sillon material.png<>uid://d3pbi750aja2d::::res://Models/auto/auto uwrapeado_mapa text.png<>uid://b2j1m72lg7qlc::::res://Models/auto/auto uwrapeado_volante text.png<>uid://dwxrr710vsuod::::res://Models/auto/auto uwrapeado_propulsor text.png<>uid://0o34myh0vp62::::res://Models/auto/auto uwrapeado_puerta textura.png<>uid://diun1x1x3eyai::::res://Models/auto/auto uwrapeado_piso text.png<>uid://pk26dxtucdmv::::res://Models/auto/auto uwrapeado_espejo lateral text.png<>uid://bd3llv7lbjkuk::::res://Models/auto/auto uwrapeado_luz detantera text.png<>uid://j2yg81ts3xiw::::res://Models/auto/auto uwrapeado_luz trasera text.png<>uid://bk2c30mbcndh2::::res://Models/auto/auto uwrapeado_sirena cosito text.png<>uid://bamwqrdsvv1p0::::res://Models/auto/auto uwrapeado_domo sirena text.png<>uid://dsfj06006ngyj::::res://Models/auto/auto uwrapeado_manivela exterior text.png<>uid://fnekou24ip3q::::res://Models/auto/auto uwrapeado_manivela interior text.png<>uid://bqfxxvrggfhfe::::res://Models/auto/auto uwrapeado_compuerta cama text.png<>uid://dcgx26aswgdfh::::res://Models/auto/auto uwrapeado_parrilla text.png<>uid://plkcbmp7ojjt::::res://Models/auto/auto uwrapeado_ventana lateral textura.png<>uid://bkegdbiucsb01::::res://Models/auto/auto uwrapeado_antena text.png
 bone_instantiator.tscn::PackedScene::8724258772597005664::1761367767::0::1::::<><><>0<>0<><>::uid://rp6tci1gjxpq::::res://Scripts/character/bone_instantiator.gd
 car.tscn::PackedScene::7471490315938047607::1761091302::0::1::::<><><>0<>0<><>::uid://xaap58qp57ub::::res://Scripts/common/simple.gd<>uid://do3col5kqad5q::::res://Models/3d_creative_showcase.glb
 character.tscn::PackedScene::2112007048381938646::1761091302::0::1::::<><><>0<>0<><>::uid://cq25yhl2dfmgv::::res://Scripts/common/character_rigidbody_3d.gd
 custom_bone.tscn::PackedScene::610371420497144079::1761091302::0::1::::<><><>0<>0<><>::uid://dcb7s64cnh8gt::::res://Scripts/character/custom_bone.gd
-Demo.tscn::PackedScene::1102047196677309766::1761640985::0::1::::<><><>0<>0<><>::uid://by0al5irc1r60::::res://Materials/Floor.tres<>uid://bq5ujksxl5avb::::res://Materials/Shapes.tres<>uid://s7fo7igsctb4::::res://Materials/red.tres<>uid://da33e5tos7dp0::::res://Materials/blue.tres<>uid://dnj4yx07gux3o::::res://Materials/green.tres<>uid://delu2qjrw6teu::::res://addons/Mirror3D/Mirror3D.tscn<>uid://s04a8ue62sk4::::res://Scripts/character/basic_char.gd<>uid://depimbd5eofjb::::res://Scenes/car.tscn<>uid://ckrqq415fubai::::res://Scenes/test_slab.tscn<>uid://dvbx7rqdampcm::::res://Models/bone.glb<>uid://k543h15j5sew::::res://Scenes/player.tscn
+Demo.tscn::PackedScene::1102047196677309766::1761962291::0::1::::<><><>0<>0<><>::uid://by0al5irc1r60::::res://Materials/Floor.tres<>uid://bq5ujksxl5avb::::res://Materials/Shapes.tres<>uid://s7fo7igsctb4::::res://Materials/red.tres<>uid://da33e5tos7dp0::::res://Materials/blue.tres<>uid://dnj4yx07gux3o::::res://Materials/green.tres<>uid://delu2qjrw6teu::::res://addons/Mirror3D/Mirror3D.tscn<>uid://s04a8ue62sk4::::res://Scripts/character/basic_char.gd<>uid://depimbd5eofjb::::res://Scenes/car.tscn<>uid://ckrqq415fubai::::res://Scenes/test_slab.tscn<>uid://wiaprhwxu848::::res://Scenes/auto_uwrapeado.tscn<>uid://dvbx7rqdampcm::::res://Models/bone.glb<>uid://k543h15j5sew::::res://Scenes/player.tscn
 player.tscn::PackedScene::765630973226337318::1761370683::0::1::::<><><>0<>0<><>::uid://rp6tci1gjxpq::::res://Scripts/character/bone_instantiator.gd
 test_slab.tscn::PackedScene::5510825834884884540::1761072817::0::1::::<><><>0<>0<><>::
 ::res://Scripts/::1761092830
-::res://Scripts/character/::1761640985
-archetypes.gd::GDScript::8027365844528752703::1761640985::0::1::::EntityStats<>RefCounted<><>0<>0<><>::
-basic_char.gd::GDScript::1316771186517198337::1761433096::0::1::::<>CharacterBody3D<><>0<>0<><>::
-bone_instantiator.gd::GDScript::1226092283612256082::1761632929::0::1::::BoneInstantiator<>Node3D<><>0<>0<><>::
-custom_bone.gd::GDScript::7303680877299981931::1761637523::0::1::::CustomBone<>Node3D<><>0<>0<><>::
-custom_bones_util.gd::GDScript::7938771750587122071::1761639797::0::1::::CustomBonesUtil<>RefCounted<><>0<>0<><>::
-debug_util.gd::GDScript::854740124712231484::1761638145::0::1::::DebugUtil<>RefCounted<><>0<>0<><>::
-ik_util.gd::GDScript::4007581012796352977::1761640861::0::1::::IkUtil<>RefCounted<><>0<>0<><>::
-skeleton_sizes_util.gd::GDScript::8137534484398750668::1761636928::0::1::::SkeletonSizesUtil<>RefCounted<><>0<>0<><>::
+::res://Scripts/character/::1761787006
+archetypes.gd::GDScript::8027365844528752703::1761723575::0::1::::EntityStats<>RefCounted<><>0<>0<><>::
+basic_char.gd::GDScript::1316771186517198337::1761711326::0::1::::<>CharacterBody3D<><>0<>0<><>::
+bone_instantiator.gd::GDScript::1226092283612256082::1761787005::0::1::::BoneInstantiator<>Node3D<><>0<>0<><>::
+custom_bone.gd::GDScript::7303680877299981931::1761785824::0::1::::CustomBone<>Node3D<><>0<>0<><>::
+custom_bones_util.gd::GDScript::7938771750587122071::1761701028::0::1::::CustomBonesUtil<>RefCounted<><>0<>0<><>::
+debug_util.gd::GDScript::854740124712231484::1761705685::0::1::::DebugUtil<>RefCounted<><>0<>0<><>::
+ik_util.gd::GDScript::4007581012796352977::1761722413::0::1::::IkUtil<>RefCounted<><>0<>0<><>::
+skeleton_sizes_util.gd::GDScript::8137534484398750668::1761711235::0::1::::SkeletonSizesUtil<>RefCounted<><>0<>0<><>::
 specie.gd::GDScript::4148917521669662033::1761359932::0::1::::<>Node<><>0<>0<><>::
 test.gd::GDScript::470906930114882903::1761623259::0::1::::<>Node3D<><>0<>0<><>::
-::res://Scripts/common/::1761513933
+::res://Scripts/common/::1761719706
 character_rigidbody_3d.gd::GDScript::5953465819678321289::1761101390::0::1::::<>RigidBody3D<><>0<>0<><>::
-hoverable.gd::GDScript::4124879486145027151::1761513932::0::1::::CharacterRigidBody3D<>RigidBody3D<><>0<>0<><>::
+hoverable.gd::GDScript::4124879486145027151::1761719706::0::1::::CharacterRigidBody3D<>RigidBody3D<><>0<>0<><>::
 simple.gd::GDScript::1614371818010596937::1761072817::0::1::::<>RigidBody3D<><>0<>0<><>::
 ::res://Scripts/misc/::1761440341
 control.gd::GDScript::1389082671590191364::1761072817::0::1::::<>CanvasLayer<><>0<>0<><>::

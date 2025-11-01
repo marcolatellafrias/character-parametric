@@ -61,7 +61,9 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	#var debug_line := DebugUtil.create_debug_line(Color.RED,bone.capsule_dimensions.y,true,false)
 	#var debug_sphere := DebugUtil.create_debug_sphere(Color.RED,0.03,true)
 	
+	bone_mesh_instance.owner = null
 	bone.add_child(bone_mesh_instance)
+	
 	#bone.add_child(debug_line)
 	#bone.add_child(debug_sphere)
 	

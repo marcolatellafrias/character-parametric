@@ -1,25 +1,25 @@
 [gd_scene load_steps=5 format=3 uid="uid://depimbd5eofjb"]
 
 [ext_resource type="Script" uid="uid://xaap58qp57ub" path="res://Scripts/common/simple.gd" id="1_go66d"]
-[ext_resource type="PackedScene" uid="uid://do3col5kqad5q" path="res://Models/3d_creative_showcase.glb" id="2_1sfmx"]
+[ext_resource type="PackedScene" uid="uid://wiaprhwxu848" path="res://Scenes/auto_uwrapeado.tscn" id="2_go66d"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_4i7ud"]
-size = Vector3(1.1148682, 0.531, 3.0972753)
+size = Vector3(2.3743591, 0.9012422, 4.5951195)
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_ymvx6"]
-size = Vector3(1, 0.74523926, 1)
+[sub_resource type="BoxShape3D" id="BoxShape3D_1sfmx"]
+size = Vector3(2.397522, 1, 2.166565)
 
 [node name="RigidBody3D" type="RigidBody3D"]
 script = ExtResource("1_go66d")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.007006049, -0.061401367, 0.020652771)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.057588935, 0.17769065, -0.111867964)
 shape = SubResource("BoxShape3D_4i7ud")
 debug_color = Color(14.532998, 2.0071282, 12.356447, 1)
 
-[node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.24746346, 0.29278564)
-shape = SubResource("BoxShape3D_ymvx6")
+[node name="auto uwrapeado" parent="." instance=ExtResource("2_go66d")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.05922377, -0.15946108, 0.05574608)
 
-[node name="Sketchfab_Scene" parent="." instance=ExtResource("2_1sfmx")]
-transform = Transform3D(-1.7484556e-08, 0, 0.4, 0, 0.4, 0, -0.4, 0, -1.7484556e-08, 0, 0.13864613, 0)
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.054107666, 1.0100272, 0.9559021)
+shape = SubResource("BoxShape3D_1sfmx")

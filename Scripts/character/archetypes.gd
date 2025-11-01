@@ -157,7 +157,7 @@ static func kid_arch() -> EntityStats:
 	arch.fatness = 0.0
 	arch.muscularity = 0.3
 	
-	arch.height = 1.2
+	arch.height = 1.3
 	
 	arch.neck_to_head_proportion = 0.25
 	arch.chest_to_low_spine_proportion = 0.3
@@ -208,7 +208,7 @@ static func tall_lanky_arch() -> EntityStats:
 	arch.horizontal_turn_spring = 0.8
 	arch.horizontal_turn_damp = 0.8
 	
-	arch.fatness = 0.1
+	arch.fatness = 0.5
 	arch.muscularity = 0.4
 	
 	arch.height = 2.2
@@ -259,7 +259,7 @@ static func giga_arch() -> EntityStats:
 	arch.horizontal_turn_spring = 0.8
 	arch.horizontal_turn_damp = 0.8
 	
-	arch.fatness = 0.4
+	arch.fatness = 0.5
 	arch.muscularity = 1.0
 	
 	arch.height = 1.8

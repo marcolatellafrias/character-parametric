@@ -1,9 +1,12 @@
-res://Scripts/character/ik_util.gd
-res://Scripts/character/bone_instantiator.gd
 res://Scenes/Demo.tscn
-res://Scripts/character/archetypes.gd
-res://Scripts/character/custom_bones_util.gd
-res://Scripts/common/hoverable.gd
-res://Scripts/character/skeleton_sizes_util.gd
-res://Scripts/character/debug_util.gd
+res://Scenes/auto_uwrapeado.tscn
+res://addons/flexible_toon_shader/FlexibleToonMaterial.tres
+res://Models/auto/FlexibleToonMaterial.tres
+res://Models/auto/ventanas.tres
+res://Models/auto/chasis.tres
+res://Models/auto/metal.tres
+res://Scenes/car.tscn
+res://Models/auto/metal oscuro.tres
 res://Scripts/character/basic_char.gd
+res://Models/auto/cuero.tres
+res://Models/auto/vidriov2.tres
