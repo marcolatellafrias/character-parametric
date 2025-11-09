@@ -1,9 +1,9 @@
+CollisionShape3D
+RigidBody3D
 GPUParticles3D
 CPUParticles3D
-CollisionShape3D
 Node3D
 MeshInstance3D
-RigidBody3D
 CharacterBody3D
 Camera3D
 RayCast3D
@@ -12,4 +12,3 @@ CanvasLayer
 Control
 BoneAttachment3D
 Skeleton3D
-Generic6DOFJoint3D

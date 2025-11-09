@@ -1,0 +1,180 @@
+[gd_scene load_steps=19 format=3 uid="uid://dg4wwu387wi12"]
+
+[ext_resource type="PackedScene" uid="uid://dg7affsliom26" path="res://Scenes/barquetesimple2.blend" id="1_dc2g8"]
+[ext_resource type="Material" uid="uid://suxxlwyeavv2" path="res://Models/auto/chasis.tres" id="2_gq4qv"]
+[ext_resource type="Material" uid="uid://dh6alal3pae1n" path="res://Models/auto/cama.tres" id="3_4s23i"]
+[ext_resource type="Material" uid="uid://ios8ttubqev2" path="res://Models/auto/tanque.tres" id="3_586se"]
+[ext_resource type="Material" uid="uid://bb43ngplsfis2" path="res://Models/auto/ventanas.tres" id="3_gq4qv"]
+[ext_resource type="Material" uid="uid://bc2amf27w1l6k" path="res://Models/auto/vidriov2.tres" id="4_u7ovr"]
+[ext_resource type="Material" uid="uid://c7fdiywnobhhb" path="res://Models/auto/sirenas.tres" id="5_4s23i"]
+[ext_resource type="Material" uid="uid://du5qso8qhjk0v" path="res://Models/auto/metal oscuro.tres" id="5_qng2u"]
+[ext_resource type="Material" uid="uid://hlhue3yyp6on" path="res://Models/auto/cable.tres" id="9_u5wqr"]
+
+[sub_resource type="Curve" id="Curve_4s23i"]
+_data = [Vector2(0, 0.6986756), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_82t0s"]
+curve = SubResource("Curve_4s23i")
+
+[sub_resource type="Curve" id="Curve_u5wqr"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(1, 0.5264901), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_dob74"]
+curve = SubResource("Curve_u5wqr")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_rvw0b"]
+gravity = Vector3(0, 2, 0)
+scale_max = 10.0
+scale_curve = SubResource("CurveTexture_dob74")
+alpha_curve = SubResource("CurveTexture_82t0s")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lakd6"]
+transparency = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+
+[sub_resource type="SphereMesh" id="SphereMesh_csvot"]
+material = SubResource("StandardMaterial3D_lakd6")
+radius = 0.1
+height = 0.2
+radial_segments = 16
+rings = 16
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4s23i"]
+emission_enabled = true
+emission = Color(1, 1, 0.09411765, 1)
+emission_energy_multiplier = 11.4
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_u5wqr"]
+emission_enabled = true
+emission = Color(0.98745865, 0.02524648, 1.92523e-07, 1)
+emission_energy_multiplier = 1.13
+
+[node name="barquetesimple2" instance=ExtResource("1_dc2g8")]
+
+[node name="Cube_001" parent="." index="0"]
+material_override = ExtResource("2_gq4qv")
+
+[node name="Cube" parent="." index="1"]
+material_override = ExtResource("3_4s23i")
+
+[node name="Cylinder_002" parent="." index="3"]
+material_override = ExtResource("3_gq4qv")
+
+[node name="GPUParticles3D" type="GPUParticles3D" parent="Cylinder_002" index="0"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.3309733, -0.22602108, -2.55652)
+amount = 20
+speed_scale = 2.0
+process_material = SubResource("ParticleProcessMaterial_rvw0b")
+draw_pass_1 = SubResource("SphereMesh_csvot")
+
+[node name="GPUParticles3D2" type="GPUParticles3D" parent="Cylinder_002" index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3260134, -0.22602108, -2.55652)
+amount = 20
+speed_scale = 2.0
+process_material = SubResource("ParticleProcessMaterial_rvw0b")
+draw_pass_1 = SubResource("SphereMesh_csvot")
+
+[node name="Cylinder_003" parent="." index="4"]
+material_override = ExtResource("3_586se")
+
+[node name="Cylinder_004" parent="." index="5"]
+material_override = ExtResource("9_u5wqr")
+
+[node name="Cube_003" parent="." index="7"]
+material_override = ExtResource("5_qng2u")
+
+[node name="Cube_005" parent="." index="8"]
+material_override = ExtResource("5_qng2u")
+
+[node name="Cylinder_006" parent="." index="9"]
+material_override = ExtResource("5_qng2u")
+
+[node name="interior" parent="." index="11"]
+material_override = ExtResource("5_qng2u")
+
+[node name="luz cabina normal" parent="." index="12"]
+material_override = ExtResource("3_gq4qv")
+
+[node name="manivela derecha exterior" parent="." index="13"]
+material_override = ExtResource("5_qng2u")
+
+[node name="manivela derecha interior" parent="." index="14"]
+material_override = ExtResource("5_qng2u")
+
+[node name="manivela izquierda exterior" parent="." index="15"]
+material_override = ExtResource("5_qng2u")
+
+[node name="manivela izquierda interior" parent="." index="16"]
+material_override = ExtResource("5_qng2u")
+
+[node name="mapa" parent="." index="17"]
+material_override = ExtResource("5_qng2u")
+
+[node name="sillones" parent="." index="19"]
+material_override = ExtResource("5_qng2u")
+
+[node name="sirena cabina domo" parent="." index="21"]
+material_override = ExtResource("5_4s23i")
+
+[node name="sirena cama domo" parent="." index="23"]
+material_override = ExtResource("5_4s23i")
+
+[node name="volante" parent="." index="24"]
+material_override = ExtResource("5_qng2u")
+
+[node name="Cube_012" parent="." index="26"]
+material_override = ExtResource("3_gq4qv")
+
+[node name="Cube_006" parent="." index="27"]
+material_override = ExtResource("2_gq4qv")
+
+[node name="ventanas" parent="." index="28"]
+material_override = ExtResource("4_u7ovr")
+
+[node name="Cube_013" parent="." index="30"]
+material_override = ExtResource("3_gq4qv")
+
+[node name="volante_001" parent="." index="32"]
+material_override = ExtResource("9_u5wqr")
+
+[node name="Cube_015" parent="." index="33"]
+material_override = ExtResource("2_gq4qv")
+
+[node name="Cube_018" parent="." index="35"]
+material_override = ExtResource("5_qng2u")
+
+[node name="Cylinder_010" parent="." index="36"]
+material_override = ExtResource("3_gq4qv")
+
+[node name="Cylinder_001" parent="." index="37"]
+material_override = ExtResource("3_gq4qv")
+
+[node name="sirena cama domo_001" parent="." index="38"]
+material_override = ExtResource("3_gq4qv")
+
+[node name="sirena cabina domo_001" parent="." index="39"]
+material_override = ExtResource("3_gq4qv")
+
+[node name="Cylinder_007" parent="." index="41"]
+material_override = ExtResource("5_qng2u")
+
+[node name="Cylinder_009" parent="." index="43"]
+material_override = ExtResource("9_u5wqr")
+
+[node name="Cube_009" parent="." index="44"]
+material_override = ExtResource("5_qng2u")
+
+[node name="Cylinder_005" parent="." index="45"]
+material_override = ExtResource("5_qng2u")
+
+[node name="Cylinder_008" parent="." index="47"]
+material_override = ExtResource("5_qng2u")
+
+[node name="Cube_010" parent="." index="49"]
+material_overlay = SubResource("StandardMaterial3D_4s23i")
+
+[node name="Cube_011" parent="." index="50"]
+material_override = SubResource("StandardMaterial3D_u5wqr")

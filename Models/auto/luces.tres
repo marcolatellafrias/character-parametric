@@ -1,0 +1,7 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3 uid="uid://m2sodxy1bcep"]
+
+[ext_resource type="Shader" uid="uid://ck1wlyrl0637d" path="res://Models/auto/luces_emitivas.gdshader" id="1_7liaa"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_7liaa")

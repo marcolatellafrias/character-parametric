@@ -1,38 +1,20 @@
-[gd_scene load_steps=135 format=4 uid="uid://wiaprhwxu848"]
+[gd_scene load_steps=136 format=4 uid="uid://wiaprhwxu848"]
 
-[ext_resource type="Texture2D" uid="uid://cm7nyvuqus25p" path="res://Models/auto/auto uwrapeado_interior material.png" id="1_p0neo"]
 [ext_resource type="Material" uid="uid://bc2amf27w1l6k" path="res://Models/auto/vidriov2.tres" id="3_lakd6"]
-[ext_resource type="Texture2D" uid="uid://7gce5k74wfd2" path="res://Models/auto/auto uwrapeado_chasis text.png" id="3_vi1fb"]
-[ext_resource type="Texture2D" uid="uid://cklw7jsfnk01h" path="res://Models/auto/auto uwrapeado_metales text.png" id="4_iblgn"]
 [ext_resource type="Material" uid="uid://suxxlwyeavv2" path="res://Models/auto/chasis.tres" id="4_vi1fb"]
 [ext_resource type="Material" uid="uid://bb43ngplsfis2" path="res://Models/auto/ventanas.tres" id="4_xp6ts"]
-[ext_resource type="Texture2D" uid="uid://3du6nja0ip6a" path="res://Models/auto/auto uwrapeado_espejo central text.png" id="5_yolc2"]
 [ext_resource type="Material" uid="uid://bkbwwloqshhjn" path="res://Models/auto/metal.tres" id="6_iblgn"]
-[ext_resource type="Texture2D" uid="uid://bjbbn4tbo72fg" path="res://Models/auto/auto uwrapeado_patente text.png" id="6_lakd6"]
-[ext_resource type="Texture2D" uid="uid://bdswyla6ocvn0" path="res://Models/auto/auto uwrapeado_sillon material.png" id="7_dob74"]
-[ext_resource type="Texture2D" uid="uid://d3pbi750aja2d" path="res://Models/auto/auto uwrapeado_mapa text.png" id="8_82t0s"]
-[ext_resource type="Texture2D" uid="uid://b2j1m72lg7qlc" path="res://Models/auto/auto uwrapeado_volante text.png" id="9_yytc2"]
 [ext_resource type="Material" uid="uid://dkqtay12afnj7" path="res://Models/auto/cuero.tres" id="10_lakd6"]
-[ext_resource type="Texture2D" uid="uid://dwxrr710vsuod" path="res://Models/auto/auto uwrapeado_propulsor text.png" id="10_nh8dq"]
-[ext_resource type="Texture2D" uid="uid://0o34myh0vp62" path="res://Models/auto/auto uwrapeado_puerta textura.png" id="11_7vr5j"]
-[ext_resource type="Texture2D" uid="uid://diun1x1x3eyai" path="res://Models/auto/auto uwrapeado_piso text.png" id="12_b5s2h"]
-[ext_resource type="Texture2D" uid="uid://pk26dxtucdmv" path="res://Models/auto/auto uwrapeado_espejo lateral text.png" id="13_1r806"]
 [ext_resource type="Material" uid="uid://du5qso8qhjk0v" path="res://Models/auto/metal oscuro.tres" id="13_yolc2"]
-[ext_resource type="Texture2D" uid="uid://bd3llv7lbjkuk" path="res://Models/auto/auto uwrapeado_luz detantera text.png" id="14_xo1bx"]
-[ext_resource type="Texture2D" uid="uid://j2yg81ts3xiw" path="res://Models/auto/auto uwrapeado_luz trasera text.png" id="15_mjgf7"]
-[ext_resource type="Texture2D" uid="uid://bk2c30mbcndh2" path="res://Models/auto/auto uwrapeado_sirena cosito text.png" id="16_1ig5n"]
-[ext_resource type="Texture2D" uid="uid://bamwqrdsvv1p0" path="res://Models/auto/auto uwrapeado_domo sirena text.png" id="17_g85pd"]
-[ext_resource type="Texture2D" uid="uid://dsfj06006ngyj" path="res://Models/auto/auto uwrapeado_manivela exterior text.png" id="18_00ja5"]
-[ext_resource type="Texture2D" uid="uid://fnekou24ip3q" path="res://Models/auto/auto uwrapeado_manivela interior text.png" id="19_sn00o"]
-[ext_resource type="Texture2D" uid="uid://bqfxxvrggfhfe" path="res://Models/auto/auto uwrapeado_compuerta cama text.png" id="20_kkqs8"]
-[ext_resource type="Texture2D" uid="uid://dcgx26aswgdfh" path="res://Models/auto/auto uwrapeado_parrilla text.png" id="21_8mce8"]
-[ext_resource type="Texture2D" uid="uid://plkcbmp7ojjt" path="res://Models/auto/auto uwrapeado_ventana lateral textura.png" id="22_qv65t"]
-[ext_resource type="Texture2D" uid="uid://bkegdbiucsb01" path="res://Models/auto/auto uwrapeado_antena text.png" id="23_ee8u1"]
+[ext_resource type="Material" uid="uid://m2sodxy1bcep" path="res://Models/auto/luces.tres" id="19_dob74"]
+
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_dwlro"]
+load_path = "res://.godot/imported/auto uwrapeado_interior material.png-cbec87e7f7ee2168adf0667d036156f1.s3tc.ctex"
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vhwss"]
 resource_name = "interior material"
 cull_mode = 2
-albedo_texture = ExtResource("1_p0neo")
+albedo_texture = SubResource("CompressedTexture2D_dwlro")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_ayxw2"]
@@ -110,10 +92,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_57meg")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_kq0qd"]
+load_path = "res://.godot/imported/auto uwrapeado_chasis text.png-a4530c2f35e72f05c8ffbda9702bdffc.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_eac1e"]
 resource_name = "chasis material"
 cull_mode = 2
-albedo_texture = ExtResource("3_vi1fb")
+albedo_texture = SubResource("CompressedTexture2D_kq0qd")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_rq3ic"]
@@ -150,10 +135,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_rq3ic")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_gvmpg"]
+load_path = "res://.godot/imported/auto uwrapeado_metales text.png-c0639d834c382cc5e700f0bb04792045.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ojvac"]
 resource_name = "metales material"
 cull_mode = 2
-albedo_texture = ExtResource("4_iblgn")
+albedo_texture = SubResource("CompressedTexture2D_gvmpg")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_hlk0w"]
@@ -190,10 +178,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_hlk0w")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_42h8a"]
+load_path = "res://.godot/imported/auto uwrapeado_espejo central text.png-7e107d29a2797b11967fae5a74381373.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ijejp"]
 resource_name = "espejo central material"
 cull_mode = 2
-albedo_texture = ExtResource("5_yolc2")
+albedo_texture = SubResource("CompressedTexture2D_42h8a")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_kof23"]
@@ -230,10 +221,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_kof23")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_lp1fx"]
+load_path = "res://.godot/imported/auto uwrapeado_patente text.png-d28b0d8c81097f5596fc59590d344d28.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dbddl"]
 resource_name = "patente material"
 cull_mode = 2
-albedo_texture = ExtResource("6_lakd6")
+albedo_texture = SubResource("CompressedTexture2D_lp1fx")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_q52ic"]
@@ -268,10 +262,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_q52ic")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_ehg3y"]
+load_path = "res://.godot/imported/auto uwrapeado_sillon material.png-10010a64cc4999decd3661207d28fc0f.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_3u2sd"]
 resource_name = "sillon material"
 cull_mode = 2
-albedo_texture = ExtResource("7_dob74")
+albedo_texture = SubResource("CompressedTexture2D_ehg3y")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_14dhx"]
@@ -308,10 +305,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_14dhx")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_s7a2s"]
+load_path = "res://.godot/imported/auto uwrapeado_mapa text.png-5746eae3da17e71953a6bb914a96a4ef.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tfyn6"]
 resource_name = "mapa material"
 cull_mode = 2
-albedo_texture = ExtResource("8_82t0s")
+albedo_texture = SubResource("CompressedTexture2D_s7a2s")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_xnhag"]
@@ -348,10 +348,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_xnhag")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_3wfja"]
+load_path = "res://.godot/imported/auto uwrapeado_volante text.png-1c80335d575ebf0bf20b9e43fdc5ed88.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_jq0qb"]
 resource_name = "volante material"
 cull_mode = 2
-albedo_texture = ExtResource("9_yytc2")
+albedo_texture = SubResource("CompressedTexture2D_3wfja")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_k6waf"]
@@ -388,10 +391,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_k6waf")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_lwq0g"]
+load_path = "res://.godot/imported/auto uwrapeado_propulsor text.png-ff1de9eaf1a157acd813f35c01e7602b.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2fo3m"]
 resource_name = "propulsor material"
 cull_mode = 2
-albedo_texture = ExtResource("10_nh8dq")
+albedo_texture = SubResource("CompressedTexture2D_lwq0g")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_lmdke"]
@@ -432,38 +438,41 @@ shadow_mesh = SubResource("ArrayMesh_lmdke")
 _data = [Vector2(0, 0.6986756), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
 point_count = 2
 
-[sub_resource type="CurveTexture" id="CurveTexture_82t0s"]
+[sub_resource type="CurveTexture" id="CurveTexture_43tow"]
 curve = SubResource("Curve_dob74")
 
 [sub_resource type="Curve" id="Curve_lakd6"]
 _data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(1, 0.5264901), 0.0, 0.0, 0, 0]
 point_count = 2
 
-[sub_resource type="CurveTexture" id="CurveTexture_dob74"]
+[sub_resource type="CurveTexture" id="CurveTexture_prkxx"]
 curve = SubResource("Curve_lakd6")
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_lakd6"]
 gravity = Vector3(0, 2, 0)
 scale_max = 10.0
-scale_curve = SubResource("CurveTexture_dob74")
-alpha_curve = SubResource("CurveTexture_82t0s")
+scale_curve = SubResource("CurveTexture_prkxx")
+alpha_curve = SubResource("CurveTexture_43tow")
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lakd6"]
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_oi6mo"]
 transparency = 1
 shading_mode = 0
 vertex_color_use_as_albedo = true
 
 [sub_resource type="SphereMesh" id="SphereMesh_dob74"]
-material = SubResource("StandardMaterial3D_lakd6")
+material = SubResource("StandardMaterial3D_oi6mo")
 radius = 0.1
 height = 0.2
 radial_segments = 16
 rings = 16
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_kntd2"]
+load_path = "res://.godot/imported/auto uwrapeado_puerta textura.png-3859f24c6b3350e54328a3a692908c4b.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_qe8vy"]
 resource_name = "puerta material"
 cull_mode = 2
-albedo_texture = ExtResource("11_7vr5j")
+albedo_texture = SubResource("CompressedTexture2D_kntd2")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_0adpp"]
@@ -500,10 +509,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_0adpp")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_8xvk6"]
+load_path = "res://.godot/imported/auto uwrapeado_piso text.png-f04dd9c95c8767dffccc7ad26d920088.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_p63pf"]
 resource_name = "piso material"
 cull_mode = 2
-albedo_texture = ExtResource("12_b5s2h")
+albedo_texture = SubResource("CompressedTexture2D_8xvk6")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_1rtlj"]
@@ -540,10 +552,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_1rtlj")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_xylio"]
+load_path = "res://.godot/imported/auto uwrapeado_espejo lateral text.png-d3f8c34a335da767ac06b196f9c1adff.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_oiadl"]
 resource_name = "espejo lateral material"
 cull_mode = 2
-albedo_texture = ExtResource("13_1r806")
+albedo_texture = SubResource("CompressedTexture2D_xylio")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_2taq6"]
@@ -714,10 +729,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_qu6ca")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_plhu2"]
+load_path = "res://.godot/imported/auto uwrapeado_luz detantera text.png-7eb2c6e6edb8dbca7b573113c47bf42c.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bywgg"]
 resource_name = "luz delantera material"
 cull_mode = 2
-albedo_texture = ExtResource("14_xo1bx")
+albedo_texture = SubResource("CompressedTexture2D_plhu2")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_ecqui"]
@@ -822,10 +840,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_bfpd4")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_p0neo"]
+load_path = "res://.godot/imported/auto uwrapeado_luz trasera text.png-094adbe7309371e512ddefc1f212563b.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_icrxc"]
 resource_name = "luz trasera material"
 cull_mode = 2
-albedo_texture = ExtResource("15_mjgf7")
+albedo_texture = SubResource("CompressedTexture2D_p0neo")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_yx7ir"]
@@ -896,10 +917,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_y2lr0")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_xp6ts"]
+load_path = "res://.godot/imported/auto uwrapeado_sirena cosito text.png-ec1addde1446bc56250dee81982ad03c.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_18ca8"]
 resource_name = "sirena cosito material"
 cull_mode = 2
-albedo_texture = ExtResource("16_1ig5n")
+albedo_texture = SubResource("CompressedTexture2D_xp6ts")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_atjhb"]
@@ -934,10 +958,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_atjhb")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_vi1fb"]
+load_path = "res://.godot/imported/auto uwrapeado_domo sirena text.png-0a23b2acd1bbe1945e64de6a8702cff4.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8sgo7"]
 resource_name = "domo sirena material"
 cull_mode = 2
-albedo_texture = ExtResource("17_g85pd")
+albedo_texture = SubResource("CompressedTexture2D_vi1fb")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_gchkb"]
@@ -1040,10 +1067,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_ps6wr")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_iblgn"]
+load_path = "res://.godot/imported/auto uwrapeado_manivela exterior text.png-1dc22a4dea6f284aa85329d492ca18a4.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_26qem"]
 resource_name = "manivela exterior material"
 cull_mode = 2
-albedo_texture = ExtResource("18_00ja5")
+albedo_texture = SubResource("CompressedTexture2D_iblgn")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_y1dof"]
@@ -1080,10 +1110,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_y1dof")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_yolc2"]
+load_path = "res://.godot/imported/auto uwrapeado_manivela interior text.png-35f228d0851b82575dc0760daf7a574e.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_007r5"]
 resource_name = "manivela interior material"
 cull_mode = 2
-albedo_texture = ExtResource("19_sn00o")
+albedo_texture = SubResource("CompressedTexture2D_yolc2")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_yec5q"]
@@ -1188,10 +1221,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_dib1u")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_lakd6"]
+load_path = "res://.godot/imported/auto uwrapeado_compuerta cama text.png-a7b28470d4f1a499102ea4cfc696dc7e.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_i4csr"]
 resource_name = "compuerta cama material"
 cull_mode = 2
-albedo_texture = ExtResource("20_kkqs8")
+albedo_texture = SubResource("CompressedTexture2D_lakd6")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_qqj82"]
@@ -1262,10 +1298,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_87qey")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_dob74"]
+load_path = "res://.godot/imported/auto uwrapeado_parrilla text.png-37d6f9c80d253c6a6d37900417e3cd50.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dxf2g"]
 resource_name = "parrilla material"
 cull_mode = 2
-albedo_texture = ExtResource("21_8mce8")
+albedo_texture = SubResource("CompressedTexture2D_dob74")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_rt6i5"]
@@ -1302,10 +1341,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_rt6i5")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_82t0s"]
+load_path = "res://.godot/imported/auto uwrapeado_ventana lateral textura.png-90117f526708712e03dd445ee8fd40ea.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xaee1"]
 resource_name = "ventana laterial material"
 cull_mode = 2
-albedo_texture = ExtResource("22_qv65t")
+albedo_texture = SubResource("CompressedTexture2D_82t0s")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_h1do3"]
@@ -1408,10 +1450,13 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_0wx34")
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_yytc2"]
+load_path = "res://.godot/imported/auto uwrapeado_antena text.png-073e1b0e4fbd6c06de3444284adbed18.s3tc.ctex"
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_d4fba"]
 resource_name = "antena material"
 cull_mode = 2
-albedo_texture = ExtResource("23_ee8u1")
+albedo_texture = SubResource("CompressedTexture2D_yytc2")
 roughness = 0.5
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_p5uys"]
@@ -1558,11 +1603,13 @@ skeleton = NodePath("")
 
 [node name="luz delantera izq" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.046185147, 0)
+material_override = ExtResource("19_dob74")
 mesh = SubResource("ArrayMesh_ulwyi")
 skeleton = NodePath("")
 
 [node name="luz delantera der" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.046185147, 0)
+material_override = ExtResource("19_dob74")
 mesh = SubResource("ArrayMesh_3yi8x")
 skeleton = NodePath("")
 

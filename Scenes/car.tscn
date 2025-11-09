@@ -1,25 +1,30 @@
 [gd_scene load_steps=5 format=3 uid="uid://depimbd5eofjb"]
 
 [ext_resource type="Script" uid="uid://xaap58qp57ub" path="res://Scripts/common/simple.gd" id="1_go66d"]
-[ext_resource type="PackedScene" uid="uid://wiaprhwxu848" path="res://Scenes/auto_uwrapeado.tscn" id="2_go66d"]
+[ext_resource type="PackedScene" uid="uid://dg4wwu387wi12" path="res://Scenes/barquetesimple_2.tscn" id="2_go66d"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_4i7ud"]
-size = Vector3(2.3743591, 0.9012422, 4.5951195)
+size = Vector3(0.37394333, 3.2274766, 3.133472)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_1sfmx"]
-size = Vector3(2.397522, 1, 2.166565)
+size = Vector3(5.010269, 1.3486328, 8.905098)
 
 [node name="RigidBody3D" type="RigidBody3D"]
 script = ExtResource("1_go66d")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.057588935, 0.17769065, -0.111867964)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.6260448, 1.3408078, 2.49459)
 shape = SubResource("BoxShape3D_4i7ud")
 debug_color = Color(14.532998, 2.0071282, 12.356447, 1)
 
-[node name="auto uwrapeado" parent="." instance=ExtResource("2_go66d")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.05922377, -0.15946108, 0.05574608)
+[node name="CollisionShape3D3" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.3335898, 1.3408078, 2.49459)
+shape = SubResource("BoxShape3D_4i7ud")
+debug_color = Color(14.532998, 2.0071282, 12.356447, 1)
 
 [node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.054107666, 1.0100272, 0.9559021)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.67417145, -0.066632986, -0.124858856)
 shape = SubResource("BoxShape3D_1sfmx")
+
+[node name="barquetesimple2" parent="." instance=ExtResource("2_go66d")]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0.6144059, 0.41750228, -0.024565697)
