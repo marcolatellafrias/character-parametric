@@ -1,11 +1,11 @@
+Camera3D
+Node3D
 CollisionShape3D
 RigidBody3D
 GPUParticles3D
 CPUParticles3D
-Node3D
 MeshInstance3D
 CharacterBody3D
-Camera3D
 RayCast3D
 CharacterRigidBody3D
 CanvasLayer

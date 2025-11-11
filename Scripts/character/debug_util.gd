@@ -196,3 +196,38 @@ static func create_debug_colored_cube(size, light_amount: float = 0.35) -> MeshI
 
 	mesh_instance.mesh = mesh
 	return mesh_instance
+
+
+static func create_debug_line_to_from(from: Vector3, to: Vector3, color: Color, width: float) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var cube := BoxMesh.new()
+	
+	var distance := from.distance_to(to)
+	cube.size = Vector3(width, distance, width)
+	mesh_instance.mesh = cube
+	
+	var midpoint := (from + to) / 2.0
+	mesh_instance.position = midpoint
+	
+	# Construir la base manualmente para alinear el eje Y con la dirección
+	var direction := (to - from).normalized()
+	if direction.length() > 0.001:
+		var y_axis = direction
+		var x_axis = y_axis.cross(Vector3.UP)
+		
+		# Si la línea está vertical, usar otro vector de referencia
+		if x_axis.length() < 0.001:
+			x_axis = y_axis.cross(Vector3.RIGHT)
+		
+		x_axis = x_axis.normalized()
+		var z_axis = x_axis.cross(y_axis).normalized()
+		
+		# Aplicar la base personalizada
+		mesh_instance.basis = Basis(x_axis, y_axis, z_axis)
+	
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = color
+	
+	mesh_instance.material_override = material
+	return mesh_instance

@@ -43,14 +43,12 @@ radial_segments = 16
 rings = 16
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4s23i"]
-emission_enabled = true
-emission = Color(1, 1, 0.09411765, 1)
-emission_energy_multiplier = 11.4
+shading_mode = 0
+albedo_color = Color(0.8380958, 0.71804106, 0.35390636, 1)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_u5wqr"]
-emission_enabled = true
-emission = Color(0.98745865, 0.02524648, 1.92523e-07, 1)
-emission_energy_multiplier = 1.13
+shading_mode = 0
+albedo_color = Color(1, 0.38128993, 0.44383693, 1)
 
 [node name="barquetesimple2" instance=ExtResource("1_dc2g8")]
 

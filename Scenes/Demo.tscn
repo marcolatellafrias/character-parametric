@@ -6,11 +6,11 @@
 [ext_resource type="Material" uid="uid://da33e5tos7dp0" path="res://Materials/blue.tres" id="4_oilx1"]
 [ext_resource type="Material" uid="uid://dnj4yx07gux3o" path="res://Materials/green.tres" id="5_4i7ud"]
 [ext_resource type="PackedScene" uid="uid://delu2qjrw6teu" path="res://addons/Mirror3D/Mirror3D.tscn" id="8_ecetj"]
-[ext_resource type="Script" uid="uid://s04a8ue62sk4" path="res://Scripts/character/basic_char.gd" id="8_oilx1"]
 [ext_resource type="PackedScene" uid="uid://depimbd5eofjb" path="res://Scenes/car.tscn" id="9_4i7ud"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
 [ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
+[ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/city.gd" id="12_v3boh"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_hfvyn"]
 material = ExtResource("1_lpcab")
@@ -64,6 +64,7 @@ adjustment_enabled = true
 
 [node name="Floor" type="MeshInstance3D" parent="world"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15950775, -0.3936212, 0.0074591637)
+visible = false
 mesh = SubResource("BoxMesh_hfvyn")
 skeleton = NodePath("../..")
 surface_material_override/0 = ExtResource("1_lpcab")
@@ -147,12 +148,7 @@ skeleton = NodePath("../../..")
 surface_material_override/0 = ExtResource("2_fnnck")
 
 [node name="RigidBody3D" parent="world" instance=ExtResource("9_4i7ud")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6187816, 2.2957344)
-
-[node name="CharacterBody3D" type="CharacterBody3D" parent="."]
-transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 0.99999994, -3.374179, 1.0039177, -6.8743)
-script = ExtResource("8_oilx1")
-grab_ray_length = 30.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.899603, 1.6187816, 2.2957344)
 
 [node name="chars" type="Node3D" parent="."]
 
@@ -177,3 +173,10 @@ archetype = 1
 
 [node name="bone" parent="chars" instance=ExtResource("11_v3boh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.0371246, 0.47957346, -19.87078)
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 4.595005, 8.0720005, 4.616742)
+current = true
+
+[node name="city" type="Node3D" parent="."]
+script = ExtResource("12_v3boh")
