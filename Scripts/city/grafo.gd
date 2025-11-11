@@ -332,45 +332,36 @@ static func _is_convex_quad(p1: Vector3, p2: Vector3, p3: Vector3, p4: Vector3) 
 static func _subdivide_faces(points: Array[Vector3], faces: Array) -> Dictionary:
 	var new_points = points.duplicate()
 	var new_faces = []
+	var edge_midpoints = {}  # <-- Caché de puntos medios
 	
 	for face in faces:
 		var sub_faces = []
 		
 		if face.size() == 4:
-			sub_faces = _subdivide_quad_face(face, new_points)
+			sub_faces = _subdivide_quad_face(face, new_points, edge_midpoints)
 		elif face.size() == 3:
-			sub_faces = _subdivide_triangle_face(face, new_points)
+			sub_faces = _subdivide_triangle_face(face, new_points, edge_midpoints)
 		
 		new_faces.append_array(sub_faces)
 	
 	return {"points": new_points, "faces": new_faces}
 
-static func _subdivide_quad_face(face: Array, points: Array[Vector3]) -> Array:
+static func _subdivide_quad_face(face: Array, points: Array[Vector3], edge_midpoints: Dictionary) -> Array:
+	# Obtener o crear puntos medios
+	var idx_mid1 = _get_or_create_midpoint(face[0], face[1], points, edge_midpoints)
+	var idx_mid2 = _get_or_create_midpoint(face[1], face[2], points, edge_midpoints)
+	var idx_mid3 = _get_or_create_midpoint(face[2], face[3], points, edge_midpoints)
+	var idx_mid4 = _get_or_create_midpoint(face[3], face[0], points, edge_midpoints)
+	
+	# El centro sigue siendo único por cara
 	var p1 = points[face[0]]
 	var p2 = points[face[1]]
 	var p3 = points[face[2]]
 	var p4 = points[face[3]]
-	
-	# Puntos medios
-	var mid1 = (p1 + p2) / 2.0
-	var mid2 = (p2 + p3) / 2.0
-	var mid3 = (p3 + p4) / 2.0
-	var mid4 = (p4 + p1) / 2.0
 	var center = (p1 + p2 + p3 + p4) / 4.0
-	
-	# Agregar nuevos puntos
-	var idx_mid1 = points.size()
-	points.append(mid1)
-	var idx_mid2 = points.size()
-	points.append(mid2)
-	var idx_mid3 = points.size()
-	points.append(mid3)
-	var idx_mid4 = points.size()
-	points.append(mid4)
 	var idx_center = points.size()
 	points.append(center)
 	
-	# Crear 4 caras hijas
 	var result = []
 	result.append([face[0], idx_mid1, idx_center, idx_mid4])
 	result.append([idx_mid1, face[1], idx_mid2, idx_center])
@@ -379,24 +370,17 @@ static func _subdivide_quad_face(face: Array, points: Array[Vector3]) -> Array:
 	
 	return result
 
-static func _subdivide_triangle_face(face: Array, points: Array[Vector3]) -> Array:
+static func _subdivide_triangle_face(face: Array, points: Array[Vector3], edge_midpoints: Dictionary) -> Array:
+	# Obtener o crear puntos medios (reutilizando si ya existen)
+	var idx_mid1 = _get_or_create_midpoint(face[0], face[1], points, edge_midpoints)
+	var idx_mid2 = _get_or_create_midpoint(face[1], face[2], points, edge_midpoints)
+	var idx_mid3 = _get_or_create_midpoint(face[2], face[0], points, edge_midpoints)
+	
+	# El centro sigue siendo único por cara
 	var p1 = points[face[0]]
 	var p2 = points[face[1]]
 	var p3 = points[face[2]]
-	
-	# Puntos medios
-	var mid1 = (p1 + p2) / 2.0
-	var mid2 = (p2 + p3) / 2.0
-	var mid3 = (p3 + p1) / 2.0
 	var center = (p1 + p2 + p3) / 3.0
-	
-	# Agregar nuevos puntos
-	var idx_mid1 = points.size()
-	points.append(mid1)
-	var idx_mid2 = points.size()
-	points.append(mid2)
-	var idx_mid3 = points.size()
-	points.append(mid3)
 	var idx_center = points.size()
 	points.append(center)
 	
@@ -407,6 +391,20 @@ static func _subdivide_triangle_face(face: Array, points: Array[Vector3]) -> Arr
 	result.append([idx_center, idx_mid2, face[2], idx_mid3])
 	
 	return result
+
+# Función helper
+static func _get_or_create_midpoint(idx1: int, idx2: int, points: Array[Vector3], cache: Dictionary) -> int:
+	var key = _get_edge_key(idx1, idx2)
+	
+	if key in cache:
+		return cache[key]
+	
+	var midpoint = (points[idx1] + points[idx2]) / 2.0
+	var new_idx = points.size()
+	points.append(midpoint)
+	cache[key] = new_idx
+	
+	return new_idx
 
 # ============================================
 # UTILIDADES
