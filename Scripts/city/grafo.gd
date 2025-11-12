@@ -9,6 +9,7 @@ var edges: Array[Array] = []         # [[idx1, idx2], ...] aristas
 var faces: Array = []                # [[idx1, idx2, idx3, ...], ...] caras
 var smoothing_steps: int = 0         # Cantidad de pasos de smoothing realizados
 var original_inscribed_sizes: Dictionary = {}  # {face_idx: float} tamaño original del cuadrado inscrito
+var neighborhoods: Dictionary = {}   # {face_idx: neighborhood_id} barrio de cada cara (-1 = sin asignar)
 
 
 # ============================================
@@ -22,7 +23,8 @@ func generate_graph(
 	min_quad_angle: float = 0.2 * PI,
 	max_quad_angle: float = 0.9 * PI,
 	use_seed: bool = true,
-	generation_seed: int = 12345
+	generation_seed: int = 12345,
+	num_neighborhoods: int = 3
 ) -> void:
 	
 	if use_seed:
@@ -34,6 +36,7 @@ func generate_graph(
 	faces.clear()
 	smoothing_steps = 0
 	original_inscribed_sizes.clear()
+	neighborhoods.clear()
 	
 	var edges_dict: Dictionary = {}
 	
@@ -71,6 +74,9 @@ func generate_graph(
 	# 5. Calcular y guardar los tamaños originales de los cuadrados inscritos
 	_calculate_original_inscribed_sizes()
 	
+	# 6. Asignar barrios a las caras
+	_assign_neighborhoods(num_neighborhoods)
+	
 	
 func _calculate_original_inscribed_sizes() -> void:
 	original_inscribed_sizes.clear()
@@ -82,6 +88,115 @@ func _calculate_original_inscribed_sizes() -> void:
 			# Calcular el tamaño del cuadrado como la distancia entre dos vértices consecutivos
 			var size: float = inscribed_square[0].distance_to(inscribed_square[1])
 			original_inscribed_sizes[face_idx] = size
+
+# ============================================
+# ASIGNACIÓN DE BARRIOS
+# ============================================
+
+## Asigna barrios a las caras del grafo mediante expansión territorial
+## @param num_neighborhoods: Cantidad de barrios a generar
+func _assign_neighborhoods(num_neighborhoods: int) -> void:
+	neighborhoods.clear()
+	
+	# Inicializar todas las caras sin barrio asignado (-1)
+	for face_idx in range(faces.size()):
+		neighborhoods[face_idx] = -1
+	
+	# Si no hay barrios o no hay caras, salir
+	if num_neighborhoods <= 0 or faces.is_empty():
+		return
+	
+	# Limitar la cantidad de barrios a la cantidad de caras disponibles
+	var actual_neighborhoods = min(num_neighborhoods, faces.size())
+	
+	# 1. Seleccionar caras semilla aleatorias para cada barrio
+	var available_faces: Array = []
+	for i in range(faces.size()):
+		available_faces.append(i)
+	
+	var neighborhood_frontiers: Array[Array] = []  # Array de fronteras, una por barrio
+	
+	for neighborhood_id in range(actual_neighborhoods):
+		# Seleccionar una cara aleatoria de las disponibles
+		var random_idx = randi() % available_faces.size()
+		var seed_face_idx = available_faces[random_idx]
+		available_faces.remove_at(random_idx)
+		
+		# Asignar el barrio a la cara semilla
+		neighborhoods[seed_face_idx] = neighborhood_id
+		
+		# Inicializar la frontera de este barrio con la cara semilla
+		var frontier: Array = [seed_face_idx]
+		neighborhood_frontiers.append(frontier)
+	
+	# 2. Expandir los barrios iterativamente
+	var expansion_active = true
+	
+	while expansion_active:
+		expansion_active = false
+		var new_frontiers: Array[Array] = []
+		
+		# Expandir cada barrio
+		for neighborhood_id in range(actual_neighborhoods):
+			var current_frontier = neighborhood_frontiers[neighborhood_id]
+			var new_frontier: Array = []
+			
+			# Para cada cara en la frontera actual
+			for face_idx in current_frontier:
+				# Obtener caras vecinas (que comparten una arista)
+				var neighbor_faces = _get_neighbor_faces(face_idx)
+				
+				# Intentar expandirse a cada vecino
+				for neighbor_idx in neighbor_faces:
+					# Si el vecino no tiene barrio asignado
+					if neighborhoods[neighbor_idx] == -1:
+						# Asignar este barrio al vecino
+						neighborhoods[neighbor_idx] = neighborhood_id
+						# Agregar el vecino a la nueva frontera
+						new_frontier.append(neighbor_idx)
+						expansion_active = true
+			
+			new_frontiers.append(new_frontier)
+		
+		# Actualizar las fronteras para la próxima iteración
+		neighborhood_frontiers = new_frontiers
+
+
+## Encuentra las caras vecinas de una cara dada (que comparten al menos una arista)
+## @param face_idx: Índice de la cara a consultar
+## @return: Array con los índices de las caras vecinas
+func _get_neighbor_faces(face_idx: int) -> Array:
+	if face_idx < 0 or face_idx >= faces.size():
+		return []
+	
+	var current_face = faces[face_idx]
+	var neighbors: Array = []
+	
+	# Obtener todas las aristas de la cara actual
+	var current_edges: Array = []
+	for i in range(current_face.size()):
+		var next_i = (i + 1) % current_face.size()
+		var edge_key = _get_edge_key(current_face[i], current_face[next_i])
+		current_edges.append(edge_key)
+	
+	# Buscar otras caras que compartan alguna arista
+	for other_face_idx in range(faces.size()):
+		if other_face_idx == face_idx:
+			continue
+		
+		var other_face = faces[other_face_idx]
+		
+		# Verificar si comparten alguna arista
+		for i in range(other_face.size()):
+			var next_i = (i + 1) % other_face.size()
+			var edge_key = _get_edge_key(other_face[i], other_face[next_i])
+			
+			if edge_key in current_edges:
+				neighbors.append(other_face_idx)
+				break  # Ya encontramos que son vecinos, no necesitamos seguir
+	
+	return neighbors
+
 
 # ============================================
 # POISSON DISK SAMPLING
@@ -454,6 +569,28 @@ func get_quads_for_node(node_idx: int) -> Array[int]:
 			connected_quads.append(i)
 	
 	return connected_quads
+
+
+## Obtiene el ID del barrio de una cara específica
+## @param face_idx: Índice de la cara a consultar
+## @return: ID del barrio (-1 si no tiene barrio asignado)
+func get_neighborhood_for_face(face_idx: int) -> int:
+	if face_idx in neighborhoods:
+		return neighborhoods[face_idx]
+	return -1
+
+
+## Obtiene todas las caras que pertenecen a un barrio específico
+## @param neighborhood_id: ID del barrio a consultar
+## @return: Array con los índices de las caras del barrio
+func get_faces_in_neighborhood(neighborhood_id: int) -> Array:
+	var faces_in_neighborhood: Array = []
+	
+	for face_idx in neighborhoods:
+		if neighborhoods[face_idx] == neighborhood_id:
+			faces_in_neighborhood.append(face_idx)
+	
+	return faces_in_neighborhood
 
 
 # ============================================

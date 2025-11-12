@@ -5,30 +5,34 @@ extends Node3D
 # ============================================
 @export_group("Generación del Grafo")
 @export var region_size: Vector2 = Vector2(10, 10)
-@export var min_distance: float = 1.7
-@export var rejection_samples: int = 30
+@export var min_distance: float = 1.3
+@export var rejection_samples: int = 100
 @export var use_seed: bool = true
-@export var generation_seed: int = 12345
+@export var generation_seed: int = 1234
 
 @export_group("Filtros de Ángulos")
 @export var max_angle_threshold: float = 0.825 * PI
 @export var min_quad_angle: float = 0.2 * PI
 @export var max_quad_angle: float = 0.9 * PI
 
+@export_group("Barrios")
+@export var num_neighborhoods: int = 6
+@export var show_neighborhoods: bool = true
+
 @export_group("Suavizado")
-@export var smoothing_steps: int = 300  # Número de pasos de suavizado
+@export var smoothing_steps: int = 40  # Número de pasos de suavizado
 @export var auto_smooth: bool = true  # Aplicar suavizado automáticamente
 @export var animate_smoothing: bool = true  # Animar el proceso de suavizado
-@export var animation_speed: float = 0.1  # Tiempo entre pasos (segundos)
+@export var animation_speed: float = 0.05  # Tiempo entre pasos (segundos)
 
 @export_group("Visualización")
-@export var node_color: Color = Color.AQUA
-@export var node_radius: float = 0.1
+@export var node_color: Color = Color.CHARTREUSE
+@export var node_radius: float = 0.08
 @export var edge_color: Color = Color.WHITE
 @export var edge_width: float = 0.02
 @export var inscribed_square_color: Color = Color.RED
 @export var inscribed_square_width: float = 0.03
-@export var show_inscribed_squares: bool = true
+@export var show_inscribed_squares: bool = false
 @export var auto_generate: bool = true
 
 # ============================================
@@ -38,6 +42,7 @@ var generator: GraphGenerator = null
 var original_generator: GraphGenerator = null  # Guardar el grafo original
 var current_smoothing_step: int = 0
 var is_animating: bool = false
+var neighborhood_colors: Dictionary = {}  # {neighborhood_id: Color}
 
 func _ready() -> void:
 	if auto_generate:
@@ -62,8 +67,12 @@ func generate_and_visualize() -> void:
 		min_quad_angle,
 		max_quad_angle,
 		use_seed,
-		generation_seed
+		generation_seed,
+		num_neighborhoods
 	)
+	
+	# Generar colores para los barrios
+	_generate_neighborhood_colors()
 	
 	# Guardar el grafo original (copia profunda)
 	original_generator = GraphGenerator.new()
@@ -74,6 +83,7 @@ func generate_and_visualize() -> void:
 	original_generator.faces = []
 	for face in generator.faces:
 		original_generator.faces.append(face.duplicate())
+	original_generator.neighborhoods = generator.neighborhoods.duplicate()
 	
 	# Aplicar suavizado si está habilitado
 	if auto_smooth:
@@ -170,6 +180,7 @@ func reset_to_original() -> void:
 	generator.faces = []
 	for face in original_generator.faces:
 		generator.faces.append(face.duplicate())
+	generator.neighborhoods = original_generator.neighborhoods.duplicate()
 	
 	current_smoothing_step = 0
 	clear_visualization()
@@ -184,6 +195,10 @@ func visualize_graph() -> void:
 	if generator == null:
 		push_warning("No hay grafo para visualizar")
 		return
+	
+	# Visualizar caras (barrios) primero para que queden debajo
+	if show_neighborhoods:
+		visualize_faces()
 	
 	# Visualizar nodos
 	visualize_nodes()
@@ -220,6 +235,30 @@ func visualize_edges() -> void:
 		var line = DebugUtil.create_debug_line_to_from(p1, p2, edge_color, edge_width)
 		add_child(line)
 
+func visualize_faces() -> void:
+	for face_idx in range(generator.faces.size()):
+		var face = generator.faces[face_idx]
+		
+		# Obtener el color del barrio de esta cara
+		var neighborhood_id = generator.get_neighborhood_for_face(face_idx)
+		var face_color = _get_neighborhood_color(neighborhood_id)
+		
+		# Solo visualizamos quads (4 vértices)
+		if face.size() == 4:
+			# Obtener las posiciones de los vértices
+			var p1 = generator.points[face[0]]
+			var p2 = generator.points[face[1]]
+			var p3 = generator.points[face[2]]
+			var p4 = generator.points[face[3]]
+			
+			# Crear el plano con el color del barrio
+			var plane = DebugUtil.create_debug_plane(p1, p2, p3, p4, face_color)
+			add_child(plane)
+		elif face.size() == 3:
+			# Para triángulos, crear dos triángulos pequeños para formar un quad
+			# O simplemente omitir (ya que después de la subdivisión todo debería ser quads)
+			push_warning("Cara con 3 vértices encontrada en face_idx: ", face_idx)
+
 func visualize_inscribed_squares() -> void:
 	# Iterar por cada cara del grafo
 	for face_idx in range(generator.faces.size()):
@@ -248,6 +287,35 @@ func visualize_inscribed_squares() -> void:
 			add_child(line)
 
 # ============================================
+# GESTIÓN DE COLORES DE BARRIOS
+# ============================================
+
+## Genera colores distintivos para cada barrio usando HSV
+func _generate_neighborhood_colors() -> void:
+	neighborhood_colors.clear()
+	
+	# Color para caras sin barrio asignado
+	neighborhood_colors[-1] = Color.DARK_GRAY
+	
+	# Generar colores para cada barrio usando el espacio HSV
+	# Distribuyendo uniformemente el matiz (hue) alrededor del círculo cromático
+	for i in range(num_neighborhoods):
+		var hue = float(i) / float(num_neighborhoods)
+		var saturation = 0.7  # Saturación moderada
+		var value = 0.9  # Brillo alto
+		
+		var color = Color.from_hsv(hue, saturation, value)
+		neighborhood_colors[i] = color
+
+## Obtiene el color de un barrio específico
+func _get_neighborhood_color(neighborhood_id: int) -> Color:
+	if neighborhood_id in neighborhood_colors:
+		return neighborhood_colors[neighborhood_id]
+	
+	# Color por defecto si no se encuentra el barrio
+	return Color.MAGENTA
+
+# ============================================
 # UTILIDADES
 # ============================================
 
@@ -264,7 +332,21 @@ func print_graph_stats() -> void:
 	print("Points (puntos): ", generator.points.size())
 	print("Edges: ", generator.edges.size())
 	print("Faces: ", generator.faces.size())
+	print("Barrios: ", num_neighborhoods)
 	print("Pasos de suavizado aplicados: ", current_smoothing_step)
+	
+	# Estadísticas de barrios
+	var neighborhood_counts = {}
+	for face_idx in generator.neighborhoods:
+		var neighborhood_id = generator.neighborhoods[face_idx]
+		if neighborhood_id not in neighborhood_counts:
+			neighborhood_counts[neighborhood_id] = 0
+		neighborhood_counts[neighborhood_id] += 1
+	
+	print("\n--- Distribución de Barrios ---")
+	for neighborhood_id in neighborhood_counts:
+		print("  Barrio ", neighborhood_id, ": ", neighborhood_counts[neighborhood_id], " caras")
+	
 	print("================================\n")
 
 func regenerate() -> void:
