@@ -5,7 +5,7 @@ extends Node3D
 # ============================================
 @export_group("Generación del Grafo")
 @export var region_size: Vector2 = Vector2(10, 10)
-@export var min_distance: float = 2.7
+@export var min_distance: float = 1.7
 @export var rejection_samples: int = 30
 @export var use_seed: bool = true
 @export var generation_seed: int = 12345

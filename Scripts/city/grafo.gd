@@ -10,6 +10,7 @@ var faces: Array = []                # [[idx1, idx2, idx3, ...], ...] caras
 var smoothing_steps: int = 0         # Cantidad de pasos de smoothing realizados
 var original_inscribed_sizes: Dictionary = {}  # {face_idx: float} tamaño original del cuadrado inscrito
 
+
 # ============================================
 # FUNCIÓN PRINCIPAL
 # ============================================
@@ -497,8 +498,8 @@ func get_inscribed_square_for_face(face_idx: int, use_original_size: bool = fals
 
 	return inscribed_3d
 
-## Calcula el promedio de los puntos más cercanos de los cuadrados inscritos
-## en todas las caras conectadas a un nodo
+## Calcula el promedio de los puntos correspondientes (por índice clockwise) 
+## de los cuadrados inscritos en todas las caras conectadas a un nodo
 ## @param node_idx: Índice del nodo a consultar
 ## @param use_original_size: Si es true, usa los tamaños originales para calcular los cuadrados inscritos
 ## @return: Vector3 con la posición promedio, o Vector3.ZERO si no hay caras conectadas
@@ -516,40 +517,95 @@ func get_average_closest_inscribed_point(node_idx: int, use_original_size: bool 
 		return Vector3.ZERO
 	
 	var node_position: Vector3 = points[node_idx]
-	var closest_points: Array[Vector3] = []
+	var corresponding_points: Array[Vector3] = []
 	
-	# 2-3. Por cada cara, calcular cuadrado inscrito y encontrar punto más cercano
+	# 2-3. Por cada cara, encontrar el punto correspondiente por índice clockwise
 	for face_idx in connected_quads:
-		# 2. Calcular cuadrado inscrito (usando tamaño original si se especifica)
+		var face = faces[face_idx]
+		
+		# Convertir la cara a 2D y calcular centro de masa
+		var face_2d: Array = []
+		var center_2d := Vector2.ZERO
+		for idx in face:
+			var p = points[idx]
+			var p2d = Vector2(p.x, p.z)
+			face_2d.append(p2d)
+			center_2d += p2d
+		center_2d /= face.size()
+		
+		# Centrar los vértices
+		var centered_face: Array = []
+		for p2d in face_2d:
+			centered_face.append(p2d - center_2d)
+		
+		# Ordenar en sentido horario usando la misma función que get_inscribed_square
+		var sorted_indices = _get_clockwise_sorted_indices(centered_face)
+		
+		# Encontrar en qué posición clockwise está nuestro nodo
+		var clockwise_index := -1
+		for i in range(sorted_indices.size()):
+			if face[sorted_indices[i]] == node_idx:
+				clockwise_index = i
+				break
+		
+		if clockwise_index == -1:
+			push_warning("No se pudo encontrar el nodo en la cara (esto no debería pasar)")
+			continue
+		
+		# Obtener el cuadrado inscrito
 		var inscribed_square: Array[Vector3] = get_inscribed_square_for_face(face_idx, use_original_size)
 		
 		if inscribed_square.is_empty():
 			continue
 		
-		# 3. Encontrar el punto más cercano al nodo original
-		var closest_point: Vector3 = inscribed_square[0]
-		var min_distance: float = node_position.distance_to(inscribed_square[0])
+		# Usar el mismo índice clockwise para obtener el punto correspondiente
+		# Nota: Si la cara es un triángulo (3 vértices), el cuadrado inscrito sigue teniendo 4 vértices
+		# En ese caso, necesitamos mapear correctamente
+		var corresponding_point: Vector3
+		if face.size() == 4:
+			# Para quads, mapeo directo
+			corresponding_point = inscribed_square[clockwise_index]
+		else:
+			# Para triángulos, mapear los 3 índices a 4 vértices del cuadrado
+			# Usamos los vértices 0, 1, 2 del cuadrado (ignorando el 3)
+			if clockwise_index < 3:
+				corresponding_point = inscribed_square[clockwise_index]
+			else:
+				# Esto no debería pasar con triángulos
+				corresponding_point = inscribed_square[0]
 		
-		for i in range(1, inscribed_square.size()):
-			var distance: float = node_position.distance_to(inscribed_square[i])
-			if distance < min_distance:
-				min_distance = distance
-				closest_point = inscribed_square[i]
-		
-		closest_points.append(closest_point)
+		corresponding_points.append(corresponding_point)
 	
-	# 4-5. Calcular el promedio de todos los puntos más cercanos
-	if closest_points.is_empty():
-		push_warning("No se pudieron calcular cuadrados inscritos para las caras del nodo ", node_idx)
+	# 4. Calcular el promedio de todos los puntos correspondientes
+	if corresponding_points.is_empty():
+		push_warning("No se pudieron calcular puntos correspondientes para las caras del nodo ", node_idx)
 		return Vector3.ZERO
 	
 	var average_position: Vector3 = Vector3.ZERO
-	for point in closest_points:
+	for point in corresponding_points:
 		average_position += point
 	
-	average_position /= closest_points.size()
+	average_position /= corresponding_points.size()
 	
 	return average_position
+
+
+## Función auxiliar: Ordena vértices centrados en sentido horario y retorna los índices ordenados
+static func _get_clockwise_sorted_indices(centered_vertices: Array) -> Array:
+	# Calcular ángulo de cada vértice respecto al origen
+	var angles := []
+	for i in range(centered_vertices.size()):
+		var angle := atan2(centered_vertices[i].y, centered_vertices[i].x)
+		angles.append({"index": i, "angle": angle})
+	
+	# Ordenar por ángulo (sentido horario = ángulo decreciente)
+	angles.sort_custom(func(a, b): return a["angle"] > b["angle"])
+	
+	var sorted_indices := []
+	for item in angles:
+		sorted_indices.append(item["index"])
+	
+	return sorted_indices
 
 
 ## Mueve uno o varios nodos del grafo a nuevas posiciones
