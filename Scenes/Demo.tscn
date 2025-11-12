@@ -177,17 +177,16 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.0371246, 0.47957346, -19.87
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 4.595005, 8.0720005, 4.616742)
+current = true
 
 [node name="city" type="Node3D" parent="."]
 script = ExtResource("12_v3boh")
 region_size = null
 min_distance = null
 rejection_samples = null
-use_seed = null
 generation_seed = null
-max_angle_threshold = null
-min_quad_angle = null
-max_quad_angle = null
+num_neighborhoods = null
+show_neighborhoods = null
 smoothing_steps = null
 auto_smooth = null
 animate_smoothing = null
@@ -200,6 +199,14 @@ inscribed_square_color = null
 inscribed_square_width = null
 show_inscribed_squares = null
 auto_generate = null
+num_large_streets = null
+num_small_streets = null
+small_street_color = null
+small_street_width = null
+medium_street_color = null
+medium_street_width = null
+large_street_color = null
+large_street_width = null
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 script = ExtResource("8_oilx1")

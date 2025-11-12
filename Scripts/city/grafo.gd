@@ -9,26 +9,24 @@ var edges: Array[Array] = []         # [[idx1, idx2], ...] aristas
 var faces: Array = []                # [[idx1, idx2, idx3, ...], ...] caras
 var smoothing_steps: int = 0         # Cantidad de pasos de smoothing realizados
 var original_inscribed_sizes: Dictionary = {}  # {face_idx: float} tamaño original del cuadrado inscrito
-var neighborhoods: Dictionary = {}   # {face_idx: neighborhood_id} barrio de cada cara (-1 = sin asignar)
 
 
 # ============================================
 # FUNCIÓN PRINCIPAL
 # ============================================
 func generate_graph(
-	region_size: Vector2 = Vector2(10, 10),
-	min_distance: float = 5.3,
-	rejection_samples: int = 30,
-	max_angle_threshold: float = 0.825 * PI,
-	min_quad_angle: float = 0.2 * PI,
-	max_quad_angle: float = 0.9 * PI,
-	use_seed: bool = true,
-	generation_seed: int = 12345,
-	num_neighborhoods: int = 3
+	smooth_steps: int,
+	region_size: Vector2,
+	min_distance: float,
+	rejection_samples: int,
+	generation_seed: int,
+
 ) -> void:
+	var max_angle_threshold: float = 0.825 * PI
+	var min_quad_angle: float = 0.2 * PI
+	var max_quad_angle: float = 0.9 * PI
 	
-	if use_seed:
-		seed(generation_seed)
+	seed(generation_seed)
 	
 	# Limpiar estado anterior
 	points.clear()
@@ -36,7 +34,6 @@ func generate_graph(
 	faces.clear()
 	smoothing_steps = 0
 	original_inscribed_sizes.clear()
-	neighborhoods.clear()
 	
 	var edges_dict: Dictionary = {}
 	
@@ -73,10 +70,9 @@ func generate_graph(
 	
 	# 5. Calcular y guardar los tamaños originales de los cuadrados inscritos
 	_calculate_original_inscribed_sizes()
-	
-	# 6. Asignar barrios a las caras
-	_assign_neighborhoods(num_neighborhoods)
-	
+	# 6. Aplicar smoothing (si se solicitó)
+	for i in range(smooth_steps):
+		smooth_graph()
 	
 func _calculate_original_inscribed_sizes() -> void:
 	original_inscribed_sizes.clear()
@@ -88,115 +84,6 @@ func _calculate_original_inscribed_sizes() -> void:
 			# Calcular el tamaño del cuadrado como la distancia entre dos vértices consecutivos
 			var size: float = inscribed_square[0].distance_to(inscribed_square[1])
 			original_inscribed_sizes[face_idx] = size
-
-# ============================================
-# ASIGNACIÓN DE BARRIOS
-# ============================================
-
-## Asigna barrios a las caras del grafo mediante expansión territorial
-## @param num_neighborhoods: Cantidad de barrios a generar
-func _assign_neighborhoods(num_neighborhoods: int) -> void:
-	neighborhoods.clear()
-	
-	# Inicializar todas las caras sin barrio asignado (-1)
-	for face_idx in range(faces.size()):
-		neighborhoods[face_idx] = -1
-	
-	# Si no hay barrios o no hay caras, salir
-	if num_neighborhoods <= 0 or faces.is_empty():
-		return
-	
-	# Limitar la cantidad de barrios a la cantidad de caras disponibles
-	var actual_neighborhoods = min(num_neighborhoods, faces.size())
-	
-	# 1. Seleccionar caras semilla aleatorias para cada barrio
-	var available_faces: Array = []
-	for i in range(faces.size()):
-		available_faces.append(i)
-	
-	var neighborhood_frontiers: Array[Array] = []  # Array de fronteras, una por barrio
-	
-	for neighborhood_id in range(actual_neighborhoods):
-		# Seleccionar una cara aleatoria de las disponibles
-		var random_idx = randi() % available_faces.size()
-		var seed_face_idx = available_faces[random_idx]
-		available_faces.remove_at(random_idx)
-		
-		# Asignar el barrio a la cara semilla
-		neighborhoods[seed_face_idx] = neighborhood_id
-		
-		# Inicializar la frontera de este barrio con la cara semilla
-		var frontier: Array = [seed_face_idx]
-		neighborhood_frontiers.append(frontier)
-	
-	# 2. Expandir los barrios iterativamente
-	var expansion_active = true
-	
-	while expansion_active:
-		expansion_active = false
-		var new_frontiers: Array[Array] = []
-		
-		# Expandir cada barrio
-		for neighborhood_id in range(actual_neighborhoods):
-			var current_frontier = neighborhood_frontiers[neighborhood_id]
-			var new_frontier: Array = []
-			
-			# Para cada cara en la frontera actual
-			for face_idx in current_frontier:
-				# Obtener caras vecinas (que comparten una arista)
-				var neighbor_faces = _get_neighbor_faces(face_idx)
-				
-				# Intentar expandirse a cada vecino
-				for neighbor_idx in neighbor_faces:
-					# Si el vecino no tiene barrio asignado
-					if neighborhoods[neighbor_idx] == -1:
-						# Asignar este barrio al vecino
-						neighborhoods[neighbor_idx] = neighborhood_id
-						# Agregar el vecino a la nueva frontera
-						new_frontier.append(neighbor_idx)
-						expansion_active = true
-			
-			new_frontiers.append(new_frontier)
-		
-		# Actualizar las fronteras para la próxima iteración
-		neighborhood_frontiers = new_frontiers
-
-
-## Encuentra las caras vecinas de una cara dada (que comparten al menos una arista)
-## @param face_idx: Índice de la cara a consultar
-## @return: Array con los índices de las caras vecinas
-func _get_neighbor_faces(face_idx: int) -> Array:
-	if face_idx < 0 or face_idx >= faces.size():
-		return []
-	
-	var current_face = faces[face_idx]
-	var neighbors: Array = []
-	
-	# Obtener todas las aristas de la cara actual
-	var current_edges: Array = []
-	for i in range(current_face.size()):
-		var next_i = (i + 1) % current_face.size()
-		var edge_key = _get_edge_key(current_face[i], current_face[next_i])
-		current_edges.append(edge_key)
-	
-	# Buscar otras caras que compartan alguna arista
-	for other_face_idx in range(faces.size()):
-		if other_face_idx == face_idx:
-			continue
-		
-		var other_face = faces[other_face_idx]
-		
-		# Verificar si comparten alguna arista
-		for i in range(other_face.size()):
-			var next_i = (i + 1) % other_face.size()
-			var edge_key = _get_edge_key(other_face[i], other_face[next_i])
-			
-			if edge_key in current_edges:
-				neighbors.append(other_face_idx)
-				break  # Ya encontramos que son vecinos, no necesitamos seguir
-	
-	return neighbors
-
 
 # ============================================
 # POISSON DISK SAMPLING
@@ -571,28 +458,6 @@ func get_quads_for_node(node_idx: int) -> Array[int]:
 	return connected_quads
 
 
-## Obtiene el ID del barrio de una cara específica
-## @param face_idx: Índice de la cara a consultar
-## @return: ID del barrio (-1 si no tiene barrio asignado)
-func get_neighborhood_for_face(face_idx: int) -> int:
-	if face_idx in neighborhoods:
-		return neighborhoods[face_idx]
-	return -1
-
-
-## Obtiene todas las caras que pertenecen a un barrio específico
-## @param neighborhood_id: ID del barrio a consultar
-## @return: Array con los índices de las caras del barrio
-func get_faces_in_neighborhood(neighborhood_id: int) -> Array:
-	var faces_in_neighborhood: Array = []
-	
-	for face_idx in neighborhoods:
-		if neighborhoods[face_idx] == neighborhood_id:
-			faces_in_neighborhood.append(face_idx)
-	
-	return faces_in_neighborhood
-
-
 # ============================================
 # GEOMETRÍA DE CARAS
 # ============================================
@@ -772,3 +637,152 @@ func smooth_graph() -> void:
 	
 	# Incrementar contador de pasos de smoothing
 	smoothing_steps += 1
+	
+## Obtiene los índices de las caras adyacentes a una cara dada
+## (caras que comparten al menos una arista, es decir, dos vértices consecutivos)
+## @param face_idx: Índice de la cara a consultar
+## @return: Array[int] con los índices de las caras adyacentes
+func get_adjacent_faces(face_idx: int) -> Array[int]:
+	var adjacent: Array[int] = []
+	
+	if face_idx < 0 or face_idx >= faces.size():
+		return adjacent
+	
+	var face = faces[face_idx]
+	
+	# Crear conjunto de aristas de esta cara
+	var face_edges: Dictionary = {}
+	for i in range(face.size()):
+		var next_i = (i + 1) % face.size()
+		var edge_key = _get_edge_key(face[i], face[next_i])
+		face_edges[edge_key] = true
+	
+	# Buscar otras caras que compartan al menos una arista
+	for other_face_idx in range(faces.size()):
+		if other_face_idx == face_idx:
+			continue
+		
+		var other_face = faces[other_face_idx]
+		
+		# Verificar si comparten alguna arista
+		for i in range(other_face.size()):
+			var next_i = (i + 1) % other_face.size()
+			var edge_key = _get_edge_key(other_face[i], other_face[next_i])
+			
+			if edge_key in face_edges:
+				adjacent.append(other_face_idx)
+				break  # Ya encontramos que son adyacentes, no seguir verificando
+	
+	return adjacent
+
+
+## Obtiene todos los edges conectados a un nodo
+## @param node_idx: Índice del nodo a consultar
+## @return: Array con los edges conectados (cada edge es [idx1, idx2])
+func get_edges_for_node(node_idx: int) -> Array:
+	var connected: Array = []
+	
+	for edge in edges:
+		if edge[0] == node_idx or edge[1] == node_idx:
+			connected.append(edge)
+	
+	return connected
+	
+## Selecciona dos edges que apunten en direcciones aproximadamente opuestas
+## @param node_idx: Nodo central desde el cual comparar direcciones
+## @param node_edges: Array de edges conectados al nodo
+## @return: Array con dos edges opuestos, o array vacío si no se encuentran
+func select_opposite_edges(node_idx: int, node_edges: Array) -> Array:
+	if node_edges.size() < 2:
+		return []
+	
+	var node_pos = points[node_idx]
+	
+	# Calcular direcciones de todos los edges
+	var directions: Array = []
+	for edge in node_edges:
+		var other_node = edge[1] if edge[0] == node_idx else edge[0]
+		var other_pos = points[other_node]
+		var direction = (other_pos - node_pos).normalized()
+		directions.append({"edge": edge, "direction": direction})
+	
+	# Encontrar el par con mayor oposición (dot product más negativo)
+	var best_pair = []
+	var best_opposition = 0.5  # Umbral mínimo para considerar opuestos
+	
+	for i in range(directions.size()):
+		for j in range(i + 1, directions.size()):
+			var dot = directions[i]["direction"].dot(directions[j]["direction"])
+			if dot < -best_opposition:
+				best_opposition = dot
+				best_pair = [directions[i]["edge"], directions[j]["edge"]]
+	
+	# Si no se encontró un buen par, elegir dos aleatorios
+	if best_pair.is_empty():
+		node_edges.shuffle()
+		return [node_edges[0], node_edges[1]]
+	
+	return best_pair
+	
+## Verifica si un nodo está en el límite del mapa
+## @param node_idx: Índice del nodo a verificar
+## @param edge_types: Diccionario con tipos de edges {edge_key: tipo}
+## @return: true si el nodo tiene al menos un edge de tipo -1 (límite)
+func is_boundary_node(node_idx: int, edge_types: Dictionary) -> bool:
+	var connected_edges = get_edges_for_node(node_idx)
+	
+	for edge in connected_edges:
+		var edge_key = _get_edge_key(edge[0], edge[1])
+		if edge_types.get(edge_key, 1) == -1:  # Tipo -1 = límite
+			return true
+	
+	return false
+
+## Obtiene el siguiente edge que mejor continúa una dirección dada
+## @param current_node: Nodo actual
+## @param previous_node: Nodo anterior (para calcular dirección)
+## @param edge_types: Diccionario con tipos de edges
+## @param desired_type: Tipo de edge que estamos buscando
+## @return: Edge que mejor continúa la dirección, o null si no hay ninguno válido
+func get_next_edge_in_direction(
+	current_node: int, 
+	previous_node: int, 
+	edge_types: Dictionary,
+	desired_type: int
+) -> Array:
+	var connected_edges = get_edges_for_node(current_node)
+	
+	# Calcular la dirección actual
+	var current_pos = points[current_node]
+	var previous_pos = points[previous_node]
+	var current_direction = (current_pos - previous_pos).normalized()
+	
+	# Buscar el edge que mejor se alinee con la dirección actual
+	var best_edge: Array = []  # Inicializar como array vacío en lugar de null
+	var best_alignment = -2.0  # Peor caso posible
+	
+	for edge in connected_edges:
+		# No volver atrás
+		var other_node = edge[1] if edge[0] == current_node else edge[0]
+		if other_node == previous_node:
+			continue
+		
+		# Verificar si este edge ya tiene un tipo incompatible
+		var edge_key = _get_edge_key(edge[0], edge[1])
+		var current_type = edge_types.get(edge_key, 1)
+		
+		# Si el edge ya es del mismo tipo o mediana, puede ser usado
+		# Si es de otro tipo especial (grande o pequeña diferente), saltarlo
+		if current_type != desired_type and current_type != 1:
+			continue
+		
+		# Calcular alineación con la dirección actual
+		var other_pos = points[other_node]
+		var edge_direction = (other_pos - current_pos).normalized()
+		var alignment = current_direction.dot(edge_direction)
+		
+		if alignment > best_alignment:
+			best_alignment = alignment
+			best_edge = edge
+	
+	return best_edge  # Ahora retorna array vacío si no encuentra nada

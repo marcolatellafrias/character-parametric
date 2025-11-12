@@ -5,45 +5,55 @@ extends Node3D
 # ============================================
 @export_group("Generación del Grafo")
 @export var region_size: Vector2 = Vector2(10, 10)
-@export var min_distance: float = 1.3
-@export var rejection_samples: int = 100
-@export var use_seed: bool = true
-@export var generation_seed: int = 1234
-
-@export_group("Filtros de Ángulos")
-@export var max_angle_threshold: float = 0.825 * PI
-@export var min_quad_angle: float = 0.2 * PI
-@export var max_quad_angle: float = 0.9 * PI
+@export var min_distance: float = 1.0
+@export var rejection_samples: int = 1000
+@export var generation_seed: int = 12345
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 6
 @export var show_neighborhoods: bool = true
 
 @export_group("Suavizado")
-@export var smoothing_steps: int = 40  # Número de pasos de suavizado
-@export var auto_smooth: bool = true  # Aplicar suavizado automáticamente
-@export var animate_smoothing: bool = true  # Animar el proceso de suavizado
-@export var animation_speed: float = 0.05  # Tiempo entre pasos (segundos)
+@export var smoothing_steps: int = 100  # Número de pasos de suavizado
 
 @export_group("Visualización")
 @export var node_color: Color = Color.CHARTREUSE
 @export var node_radius: float = 0.08
-@export var edge_color: Color = Color.WHITE
-@export var edge_width: float = 0.02
+@export var show_nodes: bool = true
+@export var show_inscribed_squares: bool = false
 @export var inscribed_square_color: Color = Color.RED
 @export var inscribed_square_width: float = 0.03
-@export var show_inscribed_squares: bool = false
 @export var auto_generate: bool = true
+
+@export_group("Tipos de Calles")
+@export var num_large_streets: int = 5
+@export var num_small_streets: int = 15
+
+@export_subgroup("Calles Pequeñas (Tipo 0)")
+@export var small_street_color: Color = Color.DEEP_PINK
+@export var small_street_width: float = 0.01
+
+@export_subgroup("Calles Medianas (Tipo 1)")
+@export var medium_street_color: Color = Color.WHITE
+@export var medium_street_width: float = 0.02
+
+@export_subgroup("Calles Grandes (Tipo 2)")
+@export var large_street_color: Color = Color.GREEN
+@export var large_street_width: float = 0.04
+
+@export_subgroup("Calles Límite (Tipo -1)")
+@export var boundary_street_color: Color = Color.ORANGE_RED
+@export var boundary_street_width: float = 0.05
 
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
-var generator: GraphGenerator = null
-var original_generator: GraphGenerator = null  # Guardar el grafo original
-var current_smoothing_step: int = 0
-var is_animating: bool = false
+var generator: GraphCityGenerator = null
 var neighborhood_colors: Dictionary = {}  # {neighborhood_id: Color}
 
+# ============================================
+# INICIALIZACIÓN
+# ============================================
 func _ready() -> void:
 	if auto_generate:
 		generate_and_visualize()
@@ -52,343 +62,192 @@ func _ready() -> void:
 # GENERACIÓN Y VISUALIZACIÓN
 # ============================================
 func generate_and_visualize() -> void:
-	# Limpiar visualización anterior
 	clear_visualization()
-	
-	# Crear nueva instancia del generador
-	generator = GraphGenerator.new()
-	
-	# Generar el grafo
-	generator.generate_graph(
+	generate_graph()
+	visualize_graph()
+
+func generate_graph() -> void:
+	generator = GraphCityGenerator.new()
+	generator.generate_city_graph(
+		smoothing_steps,
 		region_size,
 		min_distance,
 		rejection_samples,
-		max_angle_threshold,
-		min_quad_angle,
-		max_quad_angle,
-		use_seed,
 		generation_seed,
-		num_neighborhoods
+		num_neighborhoods,
+		num_large_streets,
+		num_small_streets
 	)
 	
-	# Generar colores para los barrios
+	# Generar colores para cada barrio
 	_generate_neighborhood_colors()
-	
-	# Guardar el grafo original (copia profunda)
-	original_generator = GraphGenerator.new()
-	original_generator.points = generator.points.duplicate()
-	original_generator.edges = []
-	for edge in generator.edges:
-		original_generator.edges.append(edge.duplicate())
-	original_generator.faces = []
-	for face in generator.faces:
-		original_generator.faces.append(face.duplicate())
-	original_generator.neighborhoods = generator.neighborhoods.duplicate()
-	
-	# Aplicar suavizado si está habilitado
-	if auto_smooth:
-		if animate_smoothing:
-			start_animated_smoothing()
-		else:
-			apply_smoothing_steps(smoothing_steps)
-	
-	# Visualizar
-	visualize_graph()
-	
-	# Imprimir estadísticas
-	print_graph_stats()
 
-# ============================================
-# FUNCIONES DE SUAVIZADO
-# ============================================
-
-## Aplica múltiples pasos de suavizado al grafo
-func apply_smoothing_steps(steps: int) -> void:
-	if generator == null:
-		push_warning("No hay grafo para suavizar")
-		return
-	
-	print("Aplicando ", steps, " pasos de suavizado...")
-	
-	for i in range(steps):
-		generator.smooth_graph()
-	
-	print("Suavizado completado")
-
-## Aplica un solo paso de suavizado
-func apply_single_smoothing_step() -> void:
-	if generator == null:
-		push_warning("No hay grafo para suavizar")
-		return
-	
-	generator.smooth_graph()
-	current_smoothing_step += 1
-	
-	print("Paso de suavizado ", current_smoothing_step, " aplicado")
-
-## Inicia la animación del suavizado
-func start_animated_smoothing() -> void:
-	if is_animating:
-		push_warning("Ya hay una animación en progreso")
-		return
-	
-	if generator == null:
-		push_warning("No hay grafo para suavizar")
-		return
-	
-	is_animating = true
-	current_smoothing_step = 0
-	_animate_smoothing_step()
-
-## Anima un paso de suavizado
-func _animate_smoothing_step() -> void:
-	if current_smoothing_step >= smoothing_steps:
-		is_animating = false
-		print("Animación de suavizado completada")
-		return
-	
-	# Aplicar un paso de suavizado
-	apply_single_smoothing_step()
-	
-	# Actualizar visualización
-	clear_visualization()
-	visualize_graph()
-	
-	# Programar el siguiente paso
-	await get_tree().create_timer(animation_speed).timeout
-	
-	if is_animating:  # Verificar que no se haya cancelado
-		_animate_smoothing_step()
-
-## Detiene la animación del suavizado
-func stop_animated_smoothing() -> void:
-	is_animating = false
-	print("Animación de suavizado detenida")
-
-## Resetea el grafo al estado original
-func reset_to_original() -> void:
-	if original_generator == null:
-		push_warning("No hay grafo original guardado")
-		return
-	
-	# Restaurar el grafo desde el original (copia profunda)
-	generator = GraphGenerator.new()
-	generator.points = original_generator.points.duplicate()
-	generator.edges = []
-	for edge in original_generator.edges:
-		generator.edges.append(edge.duplicate())
-	generator.faces = []
-	for face in original_generator.faces:
-		generator.faces.append(face.duplicate())
-	generator.neighborhoods = original_generator.neighborhoods.duplicate()
-	
-	current_smoothing_step = 0
-	clear_visualization()
-	visualize_graph()
-	print("Grafo reseteado al estado original")
-
-# ============================================
-# VISUALIZACIÓN
-# ============================================
-
-func visualize_graph() -> void:
-	if generator == null:
-		push_warning("No hay grafo para visualizar")
-		return
-	
-	# Visualizar caras (barrios) primero para que queden debajo
-	if show_neighborhoods:
-		visualize_faces()
-	
-	# Visualizar nodos
-	visualize_nodes()
-	
-	# Visualizar aristas
-	visualize_edges()
-	
-	# Visualizar cuadrados inscritos
-	if show_inscribed_squares:
-		visualize_inscribed_squares()
-
-func visualize_nodes() -> void:
-	for point in generator.points:
-		var sphere = DebugUtil.create_debug_sphere(node_color, node_radius)
-		add_child(sphere)
-		sphere.global_position = point
-
-func visualize_edges() -> void:
-	for edge in generator.edges:
-		if edge.size() != 2:
-			continue
-		
-		var idx1 = edge[0]
-		var idx2 = edge[1]
-		
-		# Validar índices
-		if idx1 >= generator.points.size() or idx2 >= generator.points.size():
-			push_warning("Índice de arista fuera de rango: ", edge)
-			continue
-		
-		var p1 = generator.points[idx1]
-		var p2 = generator.points[idx2]
-		
-		var line = DebugUtil.create_debug_line_to_from(p1, p2, edge_color, edge_width)
-		add_child(line)
-
-func visualize_faces() -> void:
-	for face_idx in range(generator.faces.size()):
-		var face = generator.faces[face_idx]
-		
-		# Obtener el color del barrio de esta cara
-		var neighborhood_id = generator.get_neighborhood_for_face(face_idx)
-		var face_color = _get_neighborhood_color(neighborhood_id)
-		
-		# Solo visualizamos quads (4 vértices)
-		if face.size() == 4:
-			# Obtener las posiciones de los vértices
-			var p1 = generator.points[face[0]]
-			var p2 = generator.points[face[1]]
-			var p3 = generator.points[face[2]]
-			var p4 = generator.points[face[3]]
-			
-			# Crear el plano con el color del barrio
-			var plane = DebugUtil.create_debug_plane(p1, p2, p3, p4, face_color)
-			add_child(plane)
-		elif face.size() == 3:
-			# Para triángulos, crear dos triángulos pequeños para formar un quad
-			# O simplemente omitir (ya que después de la subdivisión todo debería ser quads)
-			push_warning("Cara con 3 vértices encontrada en face_idx: ", face_idx)
-
-func visualize_inscribed_squares() -> void:
-	# Iterar por cada cara del grafo
-	for face_idx in range(generator.faces.size()):
-		# Obtener el cuadrado inscrito para esta cara
-		var square_vertices: Array[Vector3] = generator.get_inscribed_square_for_face(face_idx)
-		
-		# Validar que se obtuvo un cuadrado válido
-		if square_vertices.is_empty():
-			continue
-		
-		if square_vertices.size() != 4:
-			push_warning("Cuadrado inscrito inválido para cara ", face_idx, " - tiene ", square_vertices.size(), " vértices")
-			continue
-		
-		# Visualizar el cuadrado como 4 líneas conectadas
-		for i in range(4):
-			var p1 = square_vertices[i]
-			var p2 = square_vertices[(i + 1) % 4]  # Conectar con el siguiente vértice (ciclando al primero)
-			
-			var line = DebugUtil.create_debug_line_to_from(
-				p1, 
-				p2, 
-				inscribed_square_color, 
-				inscribed_square_width
-			)
-			add_child(line)
-
-# ============================================
-# GESTIÓN DE COLORES DE BARRIOS
-# ============================================
-
-## Genera colores distintivos para cada barrio usando HSV
 func _generate_neighborhood_colors() -> void:
 	neighborhood_colors.clear()
+	seed(generation_seed)
 	
-	# Color para caras sin barrio asignado
-	neighborhood_colors[-1] = Color.DARK_GRAY
+	var neighborhood_saturation: float = 0.3
+	var neighborhood_brightness: float = 0.3
+	var neighborhood_alpha: float = 0.7
 	
-	# Generar colores para cada barrio usando el espacio HSV
-	# Distribuyendo uniformemente el matiz (hue) alrededor del círculo cromático
 	for i in range(num_neighborhoods):
-		var hue = float(i) / float(num_neighborhoods)
-		var saturation = 0.7  # Saturación moderada
-		var value = 0.9  # Brillo alto
-		
-		var color = Color.from_hsv(hue, saturation, value)
-		neighborhood_colors[i] = color
-
-## Obtiene el color de un barrio específico
-func _get_neighborhood_color(neighborhood_id: int) -> Color:
-	if neighborhood_id in neighborhood_colors:
-		return neighborhood_colors[neighborhood_id]
-	
-	# Color por defecto si no se encuentra el barrio
-	return Color.MAGENTA
-
-# ============================================
-# UTILIDADES
-# ============================================
+		# Generar colores vibrantes y variados con saturación y brillo controlados
+		var hue = randf()
+		neighborhood_colors[i] = Color.from_hsv(hue, neighborhood_saturation, neighborhood_brightness, neighborhood_alpha)
 
 func clear_visualization() -> void:
+	# Eliminar todos los hijos para limpiar la visualización anterior
 	for child in get_children():
 		child.queue_free()
 
-func print_graph_stats() -> void:
-	if generator == null:
-		print("No hay grafo generado")
+func visualize_graph() -> void:
+	if generator == null or generator.plain_graph == null:
+		push_error("No hay grafo generado para visualizar")
 		return
 	
-	print("\n=== ESTADÍSTICAS DEL GRAFO ===")
-	print("Points (puntos): ", generator.points.size())
-	print("Edges: ", generator.edges.size())
-	print("Faces: ", generator.faces.size())
-	print("Barrios: ", num_neighborhoods)
-	print("Pasos de suavizado aplicados: ", current_smoothing_step)
+	# 1. Visualizar barrios (primero, para que estén debajo)
+	if show_neighborhoods:
+		_visualize_neighborhoods()
 	
-	# Estadísticas de barrios
-	var neighborhood_counts = {}
-	for face_idx in generator.neighborhoods:
-		var neighborhood_id = generator.neighborhoods[face_idx]
-		if neighborhood_id not in neighborhood_counts:
-			neighborhood_counts[neighborhood_id] = 0
-		neighborhood_counts[neighborhood_id] += 1
+	# 2. Visualizar cuadrados inscritos (opcional)
+	if show_inscribed_squares:
+		_visualize_inscribed_squares()
 	
-	print("\n--- Distribución de Barrios ---")
-	for neighborhood_id in neighborhood_counts:
-		print("  Barrio ", neighborhood_id, ": ", neighborhood_counts[neighborhood_id], " caras")
+	# 3. Visualizar calles (según su tipo)
+	_visualize_streets()
 	
-	print("================================\n")
-
-func regenerate() -> void:
-	stop_animated_smoothing()  # Detener animación si hay una en progreso
-	generate_and_visualize()
+	# 4. Visualizar nodos (último, para que estén arriba)
+	if show_nodes:
+		_visualize_nodes()
 
 # ============================================
-# FUNCIONES PÚBLICAS PARA CONTROL MANUAL
+# VISUALIZACIÓN DE BARRIOS
 # ============================================
+func _visualize_neighborhoods() -> void:
+	for face_idx in range(generator.plain_graph.faces.size()):
+		var face = generator.plain_graph.faces[face_idx]
+		var neighborhood_id = generator.get_neighborhood_for_face(face_idx)
+		
+		if neighborhood_id == -1:
+			continue  # Sin barrio asignado
+		
+		var color = neighborhood_colors.get(neighborhood_id, Color.GRAY)
+		
+		# Obtener los vértices de la cara
+		var vertices: Array[Vector3] = []
+		for idx in face:
+			vertices.append(generator.plain_graph.points[idx])
+		
+		# Crear un plano para cada cara
+		if vertices.size() >= 3:
+			_visualize_face_as_planes(vertices, color)
 
-## Aplica un número específico de pasos de suavizado y actualiza la visualización
-func smooth(steps: int = 1) -> void:
-	apply_smoothing_steps(steps)
-	clear_visualization()
-	visualize_graph()
-	print_graph_stats()
-
-## Aplica un paso adicional de suavizado
-func smooth_one_step() -> void:
-	smooth(1)
+func _visualize_face_as_planes(vertices: Array[Vector3], color: Color) -> void:
+	# Si es un quad (4 vértices), crear un plano
+	if vertices.size() == 4:
+		var plane = DebugUtil.create_debug_plane(
+			vertices[0],
+			vertices[1],
+			vertices[2],
+			vertices[3],
+			color
+		)
+		add_child(plane)
+	
+	# Si es un triángulo (3 vértices), crear un plano triangular
+	# (usando el primer vértice dos veces para simular un triángulo)
+	elif vertices.size() == 3:
+		var plane = DebugUtil.create_debug_plane(
+			vertices[0],
+			vertices[1],
+			vertices[2],
+			vertices[2],  # Repetir el último vértice
+			color
+		)
+		add_child(plane)
+	
+	# Si tiene más de 4 vértices, triangular desde el centro
+	elif vertices.size() > 4:
+		# Calcular centro
+		var center = Vector3.ZERO
+		for v in vertices:
+			center += v
+		center /= vertices.size()
+		
+		# Crear triángulos en abanico desde el centro
+		for i in range(vertices.size()):
+			var next_i = (i + 1) % vertices.size()
+			var plane = DebugUtil.create_debug_plane(
+				center,
+				vertices[i],
+				vertices[next_i],
+				vertices[next_i],
+				color
+			)
+			add_child(plane)
 
 # ============================================
-# ACCESO A DATOS DEL GRAFO
+# VISUALIZACIÓN DE CALLES
 # ============================================
+func _visualize_streets() -> void:
+	for edge in generator.plain_graph.edges:
+		var p1 = generator.plain_graph.points[edge[0]]
+		var p2 = generator.plain_graph.points[edge[1]]
+		
+		# Obtener el tipo de calle
+		var street_type = generator.get_street_type(edge[0], edge[1])
+		
+		# Seleccionar color y ancho según el tipo
+		var color: Color
+		var width: float
+		
+		match street_type:
+			-1:  # Límite
+				color = boundary_street_color
+				width = boundary_street_width
+			0:  # Pequeña
+				color = small_street_color
+				width = small_street_width
+			1:  # Mediana
+				color = medium_street_color
+				width = medium_street_width
+			2:  # Grande
+				color = large_street_color
+				width = large_street_width
+			_:  # Por defecto (no debería pasar)
+				color = medium_street_color
+				width = medium_street_width
+		
+		# Crear la línea
+		var line = DebugUtil.create_debug_line_to_from(p1, p2, color, width)
+		add_child(line)
 
-func get_points() -> Array[Vector3]:
-	if generator == null:
-		return []
-	return generator.points
+# ============================================
+# VISUALIZACIÓN DE NODOS
+# ============================================
+func _visualize_nodes() -> void:
+	for point in generator.plain_graph.points:
+		var sphere = DebugUtil.create_debug_sphere(node_color, node_radius)
+		sphere.position = point
+		add_child(sphere)
 
-func get_edges() -> Array[Array]:
-	if generator == null:
-		return []
-	return generator.edges
-
-func get_faces() -> Array:
-	if generator == null:
-		return []
-	return generator.faces
-
-func get_generator() -> GraphGenerator:
-	return generator
-
-func get_original_generator() -> GraphGenerator:
-	return original_generator
+# ============================================
+# VISUALIZACIÓN DE CUADRADOS INSCRITOS
+# ============================================
+func _visualize_inscribed_squares() -> void:
+	for face_idx in range(generator.plain_graph.faces.size()):
+		var inscribed = generator.plain_graph.get_inscribed_square_for_face(face_idx, true)
+		
+		if inscribed.is_empty():
+			continue
+		
+		# Dibujar el cuadrado inscrito como líneas conectadas
+		for i in range(inscribed.size()):
+			var next_i = (i + 1) % inscribed.size()
+			var line = DebugUtil.create_debug_line_to_from(
+				inscribed[i],
+				inscribed[next_i],
+				inscribed_square_color,
+				inscribed_square_width
+			)
+			add_child(line)
