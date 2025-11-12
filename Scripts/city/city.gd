@@ -5,7 +5,7 @@ extends Node3D
 # ============================================
 @export_group("Generación del Grafo")
 @export var region_size: Vector2 = Vector2(10, 10)
-@export var min_distance: float = 1.3
+@export var min_distance: float = 0.7
 @export var rejection_samples: int = 30
 @export var use_seed: bool = true
 @export var generation_seed: int = 12345
@@ -34,8 +34,8 @@ extends Node3D
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
-var graph: Dictionary = {}
-var original_graph: Dictionary = {}  # Guardar el grafo original
+var generator: GraphGenerator = null
+var original_generator: GraphGenerator = null  # Guardar el grafo original
 var current_smoothing_step: int = 0
 var is_animating: bool = false
 
@@ -50,8 +50,11 @@ func generate_and_visualize() -> void:
 	# Limpiar visualización anterior
 	clear_visualization()
 	
+	# Crear nueva instancia del generador
+	generator = GraphGenerator.new()
+	
 	# Generar el grafo
-	graph = GraphGenerator.generate_graph(
+	generator.generate_graph(
 		region_size,
 		min_distance,
 		rejection_samples,
@@ -62,8 +65,15 @@ func generate_and_visualize() -> void:
 		generation_seed
 	)
 	
-	# Guardar el grafo original
-	original_graph = graph.duplicate(true)
+	# Guardar el grafo original (copia profunda)
+	original_generator = GraphGenerator.new()
+	original_generator.points = generator.points.duplicate()
+	original_generator.edges = []
+	for edge in generator.edges:
+		original_generator.edges.append(edge.duplicate())
+	original_generator.faces = []
+	for face in generator.faces:
+		original_generator.faces.append(face.duplicate())
 	
 	# Aplicar suavizado si está habilitado
 	if auto_smooth:
@@ -84,24 +94,24 @@ func generate_and_visualize() -> void:
 
 ## Aplica múltiples pasos de suavizado al grafo
 func apply_smoothing_steps(steps: int) -> void:
-	if graph.is_empty():
+	if generator == null:
 		push_warning("No hay grafo para suavizar")
 		return
 	
 	print("Aplicando ", steps, " pasos de suavizado...")
 	
 	for i in range(steps):
-		graph = GraphGenerator.smooth_graph(graph)
+		generator.smooth_graph()
 	
 	print("Suavizado completado")
 
 ## Aplica un solo paso de suavizado
 func apply_single_smoothing_step() -> void:
-	if graph.is_empty():
+	if generator == null:
 		push_warning("No hay grafo para suavizar")
 		return
 	
-	graph = GraphGenerator.smooth_graph(graph)
+	generator.smooth_graph()
 	current_smoothing_step += 1
 	
 	print("Paso de suavizado ", current_smoothing_step, " aplicado")
@@ -112,7 +122,7 @@ func start_animated_smoothing() -> void:
 		push_warning("Ya hay una animación en progreso")
 		return
 	
-	if graph.is_empty():
+	if generator == null:
 		push_warning("No hay grafo para suavizar")
 		return
 	
@@ -147,11 +157,20 @@ func stop_animated_smoothing() -> void:
 
 ## Resetea el grafo al estado original
 func reset_to_original() -> void:
-	if original_graph.is_empty():
+	if original_generator == null:
 		push_warning("No hay grafo original guardado")
 		return
 	
-	graph = original_graph.duplicate(true)
+	# Restaurar el grafo desde el original (copia profunda)
+	generator = GraphGenerator.new()
+	generator.points = original_generator.points.duplicate()
+	generator.edges = []
+	for edge in original_generator.edges:
+		generator.edges.append(edge.duplicate())
+	generator.faces = []
+	for face in original_generator.faces:
+		generator.faces.append(face.duplicate())
+	
 	current_smoothing_step = 0
 	clear_visualization()
 	visualize_graph()
@@ -162,7 +181,7 @@ func reset_to_original() -> void:
 # ============================================
 
 func visualize_graph() -> void:
-	if graph.is_empty():
+	if generator == null:
 		push_warning("No hay grafo para visualizar")
 		return
 	
@@ -177,18 +196,13 @@ func visualize_graph() -> void:
 		visualize_inscribed_squares()
 
 func visualize_nodes() -> void:
-	var points: Array = graph.get("points", [])
-	
-	for point in points:
+	for point in generator.points:
 		var sphere = DebugUtil.create_debug_sphere(node_color, node_radius)
 		add_child(sphere)
 		sphere.global_position = point
 
 func visualize_edges() -> void:
-	var points: Array = graph.get("points", [])
-	var edges: Array = graph.get("edges", [])
-	
-	for edge in edges:
+	for edge in generator.edges:
 		if edge.size() != 2:
 			continue
 		
@@ -196,28 +210,21 @@ func visualize_edges() -> void:
 		var idx2 = edge[1]
 		
 		# Validar índices
-		if idx1 >= points.size() or idx2 >= points.size():
+		if idx1 >= generator.points.size() or idx2 >= generator.points.size():
 			push_warning("Índice de arista fuera de rango: ", edge)
 			continue
 		
-		var p1 = points[idx1]
-		var p2 = points[idx2]
+		var p1 = generator.points[idx1]
+		var p2 = generator.points[idx2]
 		
 		var line = DebugUtil.create_debug_line_to_from(p1, p2, edge_color, edge_width)
 		add_child(line)
 
 func visualize_inscribed_squares() -> void:
-	var points: Array = graph.get("points", [])
-	var faces: Array = graph.get("faces", [])
-	
 	# Iterar por cada cara del grafo
-	for face_idx in range(faces.size()):
+	for face_idx in range(generator.faces.size()):
 		# Obtener el cuadrado inscrito para esta cara
-		var square_vertices: Array[Vector3] = GraphGenerator.get_inscribed_square_for_face(
-			face_idx, 
-			points, 
-			faces
-		)
+		var square_vertices: Array[Vector3] = generator.get_inscribed_square_for_face(face_idx)
 		
 		# Validar que se obtuvo un cuadrado válido
 		if square_vertices.is_empty():
@@ -249,14 +256,14 @@ func clear_visualization() -> void:
 		child.queue_free()
 
 func print_graph_stats() -> void:
-	if graph.is_empty():
+	if generator == null:
 		print("No hay grafo generado")
 		return
 	
 	print("\n=== ESTADÍSTICAS DEL GRAFO ===")
-	print("Points (puntos): ", graph.get("points", []).size())
-	print("Edges: ", graph.get("edges", []).size())
-	print("Faces: ", graph.get("faces", []).size())
+	print("Points (puntos): ", generator.points.size())
+	print("Edges: ", generator.edges.size())
+	print("Faces: ", generator.faces.size())
 	print("Pasos de suavizado aplicados: ", current_smoothing_step)
 	print("================================\n")
 
@@ -283,17 +290,23 @@ func smooth_one_step() -> void:
 # ACCESO A DATOS DEL GRAFO
 # ============================================
 
-func get_points() -> Array:
-	return graph.get("points", [])
+func get_points() -> Array[Vector3]:
+	if generator == null:
+		return []
+	return generator.points
 
-func get_edges() -> Array:
-	return graph.get("edges", [])
+func get_edges() -> Array[Array]:
+	if generator == null:
+		return []
+	return generator.edges
 
 func get_faces() -> Array:
-	return graph.get("faces", [])
+	if generator == null:
+		return []
+	return generator.faces
 
-func get_graph() -> Dictionary:
-	return graph
+func get_generator() -> GraphGenerator:
+	return generator
 
-func get_original_graph() -> Dictionary:
-	return original_graph
+func get_original_generator() -> GraphGenerator:
+	return original_generator

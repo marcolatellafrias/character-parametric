@@ -2,18 +2,16 @@ class_name GraphGenerator
 extends RefCounted
 
 # ============================================
-# ESTRUCTURA DE RETORNO
+# ESTADO DEL GRAFO
 # ============================================
-# {
-#   "points": Array[Vector3],        # Nodos del grafo
-#   "edges": Array[Array],           # [[idx1, idx2], ...] aristas
-#   "faces": Array[Array]            # [[idx1, idx2, idx3, ...], ...] caras
-# }
+var points: Array[Vector3] = []      # Nodos del grafo
+var edges: Array[Array] = []         # [[idx1, idx2], ...] aristas
+var faces: Array = []                # [[idx1, idx2, idx3, ...], ...] caras
 
 # ============================================
 # FUNCIÓN PRINCIPAL
 # ============================================
-static func generate_graph(
+func generate_graph(
 	region_size: Vector2 = Vector2(10, 10),
 	min_distance: float = 5.3,
 	rejection_samples: int = 30,
@@ -22,14 +20,17 @@ static func generate_graph(
 	max_quad_angle: float = 0.9 * PI,
 	use_seed: bool = true,
 	generation_seed: int = 12345
-) -> Dictionary:
+) -> void:
 	
 	if use_seed:
 		seed(generation_seed)
 	
-	var points: Array[Vector3] = []
+	# Limpiar estado anterior
+	points.clear()
+	edges.clear()
+	faces.clear()
+	
 	var edges_dict: Dictionary = {}
-	var faces: Array = []
 	
 	# 1. Generar puntos con Poisson Disk Sampling
 	points = _generate_poisson_points(region_size, min_distance, rejection_samples)
@@ -59,15 +60,8 @@ static func generate_graph(
 			edges_dict[key] = [face[i], face[next_i]]
 	
 	# Convertir aristas a array
-	var edges: Array[Array] = []
 	for edge in edges_dict.values():
 		edges.append(edge)
-	
-	return {
-		"points": points,
-		"edges": edges,
-		"faces": faces
-	}
 
 # ============================================
 # POISSON DISK SAMPLING
@@ -430,9 +424,8 @@ static func _get_or_create_midpoint(idx1: int, idx2: int, points: Array[Vector3]
 
 ## Retorna los índices de las caras (quads) que contienen el nodo especificado
 ## @param node_idx: Índice del nodo a consultar
-## @param faces: Array de caras del grafo
 ## @return: Array[int] con los índices de las caras que contienen el nodo
-static func get_quads_for_node(node_idx: int, faces: Array) -> Array[int]:
+func get_quads_for_node(node_idx: int) -> Array[int]:
 	var connected_quads: Array[int] = []
 	
 	for i in range(faces.size()):
@@ -449,10 +442,8 @@ static func get_quads_for_node(node_idx: int, faces: Array) -> Array[int]:
 
 ## Obtiene el cuadrado inscrito en una cara del grafo
 ## @param face_idx: Índice de la cara en el array de faces
-## @param points: Array[Vector3] con todos los puntos del grafo
-## @param faces: Array de caras del grafo
 ## @return: Array[Vector3] con los 4 vértices del cuadrado inscrito (o vacío si la cara no es válida)
-static func get_inscribed_square_for_face(face_idx: int, points: Array[Vector3], faces: Array) -> Array[Vector3]:
+func get_inscribed_square_for_face(face_idx: int) -> Array[Vector3]:
 	if face_idx < 0 or face_idx >= faces.size():
 		push_error("Índice de cara inválido: ", face_idx)
 		return []
@@ -484,17 +475,15 @@ static func get_inscribed_square_for_face(face_idx: int, points: Array[Vector3],
 ## Calcula el promedio de los puntos más cercanos de los cuadrados inscritos
 ## en todas las caras conectadas a un nodo
 ## @param node_idx: Índice del nodo a consultar
-## @param points: Array[Vector3] con todos los puntos del grafo
-## @param faces: Array de caras del grafo
 ## @return: Vector3 con la posición promedio, o Vector3.ZERO si no hay caras conectadas
-static func get_average_closest_inscribed_point(node_idx: int, points: Array[Vector3], faces: Array) -> Vector3:
+func get_average_closest_inscribed_point(node_idx: int) -> Vector3:
 	# Validar índice del nodo
 	if node_idx < 0 or node_idx >= points.size():
 		push_error("Índice de nodo inválido: ", node_idx)
 		return Vector3.ZERO
 	
 	# 1. Obtener todas las caras conectadas al nodo
-	var connected_quads: Array[int] = get_quads_for_node(node_idx, faces)
+	var connected_quads: Array[int] = get_quads_for_node(node_idx)
 	
 	if connected_quads.is_empty():
 		push_warning("El nodo ", node_idx, " no tiene caras conectadas")
@@ -506,7 +495,7 @@ static func get_average_closest_inscribed_point(node_idx: int, points: Array[Vec
 	# 2-3. Por cada cara, calcular cuadrado inscrito y encontrar punto más cercano
 	for face_idx in connected_quads:
 		# 2. Calcular cuadrado inscrito
-		var inscribed_square: Array[Vector3] = get_inscribed_square_for_face(face_idx, points, faces)
+		var inscribed_square: Array[Vector3] = get_inscribed_square_for_face(face_idx)
 		
 		if inscribed_square.is_empty():
 			continue
@@ -537,49 +526,23 @@ static func get_average_closest_inscribed_point(node_idx: int, points: Array[Vec
 	return average_position
 
 ## Mueve uno o varios nodos del grafo a nuevas posiciones
-## @param graph: Diccionario del grafo con formato {"points": Array[Vector3], "edges": Array[Array], "faces": Array}
 ## @param node_transformations: Diccionario con formato {node_idx: nueva_posicion (Vector3)}
-## @return: Nuevo diccionario con el grafo modificado
-static func move_nodes(graph: Dictionary, node_transformations: Dictionary) -> Dictionary:
-	# Crear copia profunda del grafo para no modificar el original
-	var new_points: Array[Vector3] = []
-	new_points.assign(graph["points"].duplicate())
-	
-	var new_edges: Array[Array] = []
-	for edge in graph["edges"]:
-		new_edges.append(edge.duplicate())
-	
-	var new_faces: Array = []
-	for face in graph["faces"]:
-		new_faces.append(face.duplicate())
-	
-	# Aplicar las transformaciones de posición
+func move_nodes(node_transformations: Dictionary) -> void:
+	# Aplicar las transformaciones de posición directamente
 	for node_idx in node_transformations:
-		if node_idx >= 0 and node_idx < new_points.size():
-			new_points[node_idx] = node_transformations[node_idx]
+		if node_idx >= 0 and node_idx < points.size():
+			points[node_idx] = node_transformations[node_idx]
 		else:
-			push_warning("move_nodes: Índice de nodo %d fuera de rango (0-%d)" % [node_idx, new_points.size() - 1])
-	
-	return {
-		"points": new_points,
-		"edges": new_edges,
-		"faces": new_faces
-	}
-
+			push_warning("move_nodes: Índice de nodo %d fuera de rango (0-%d)" % [node_idx, points.size() - 1])
 
 ## Suaviza el grafo moviendo cada nodo hacia su punto inscrito promedio
-## @param graph: Diccionario del grafo con formato {"points": Array[Vector3], "edges": Array[Array], "faces": Array}
-## @return: Nuevo diccionario con el grafo suavizado
-static func smooth_graph(graph: Dictionary) -> Dictionary:
-	var points: Array[Vector3] = graph["points"]
-	var faces: Array = graph["faces"]
-	
+func smooth_graph() -> void:
 	var node_transformations: Dictionary = {}
 	
 	# Calcular la nueva posición objetivo para cada nodo
 	for node_idx in range(points.size()):
-		var new_position = get_average_closest_inscribed_point(node_idx, points, faces)
+		var new_position = get_average_closest_inscribed_point(node_idx)
 		node_transformations[node_idx] = new_position
 	
 	# Aplicar todas las transformaciones de una vez
-	return move_nodes(graph, node_transformations)
+	move_nodes(node_transformations)
