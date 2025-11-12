@@ -5,7 +5,7 @@ extends Node3D
 # ============================================
 @export_group("Generación del Grafo")
 @export var region_size: Vector2 = Vector2(10, 10)
-@export var min_distance: float = 0.7
+@export var min_distance: float = 2.7
 @export var rejection_samples: int = 30
 @export var use_seed: bool = true
 @export var generation_seed: int = 12345
@@ -16,10 +16,10 @@ extends Node3D
 @export var max_quad_angle: float = 0.9 * PI
 
 @export_group("Suavizado")
-@export var smoothing_steps: int = 30  # Número de pasos de suavizado
+@export var smoothing_steps: int = 300  # Número de pasos de suavizado
 @export var auto_smooth: bool = true  # Aplicar suavizado automáticamente
 @export var animate_smoothing: bool = true  # Animar el proceso de suavizado
-@export var animation_speed: float = 0.15  # Tiempo entre pasos (segundos)
+@export var animation_speed: float = 0.1  # Tiempo entre pasos (segundos)
 
 @export_group("Visualización")
 @export var node_color: Color = Color.AQUA

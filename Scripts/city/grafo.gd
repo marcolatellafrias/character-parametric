@@ -7,6 +7,8 @@ extends RefCounted
 var points: Array[Vector3] = []      # Nodos del grafo
 var edges: Array[Array] = []         # [[idx1, idx2], ...] aristas
 var faces: Array = []                # [[idx1, idx2, idx3, ...], ...] caras
+var smoothing_steps: int = 0         # Cantidad de pasos de smoothing realizados
+var original_inscribed_sizes: Dictionary = {}  # {face_idx: float} tamaño original del cuadrado inscrito
 
 # ============================================
 # FUNCIÓN PRINCIPAL
@@ -29,6 +31,8 @@ func generate_graph(
 	points.clear()
 	edges.clear()
 	faces.clear()
+	smoothing_steps = 0
+	original_inscribed_sizes.clear()
 	
 	var edges_dict: Dictionary = {}
 	
@@ -62,6 +66,21 @@ func generate_graph(
 	# Convertir aristas a array
 	for edge in edges_dict.values():
 		edges.append(edge)
+	
+	# 5. Calcular y guardar los tamaños originales de los cuadrados inscritos
+	_calculate_original_inscribed_sizes()
+	
+	
+func _calculate_original_inscribed_sizes() -> void:
+	original_inscribed_sizes.clear()
+	
+	for face_idx in range(faces.size()):
+		var inscribed_square: Array[Vector3] = get_inscribed_square_for_face(face_idx)
+		
+		if inscribed_square.size() >= 2:
+			# Calcular el tamaño del cuadrado como la distancia entre dos vértices consecutivos
+			var size: float = inscribed_square[0].distance_to(inscribed_square[1])
+			original_inscribed_sizes[face_idx] = size
 
 # ============================================
 # POISSON DISK SAMPLING
@@ -442,8 +461,9 @@ func get_quads_for_node(node_idx: int) -> Array[int]:
 
 ## Obtiene el cuadrado inscrito en una cara del grafo
 ## @param face_idx: Índice de la cara en el array de faces
+## @param use_original_size: Si es true, usa el tamaño original guardado para el override
 ## @return: Array[Vector3] con los 4 vértices del cuadrado inscrito (o vacío si la cara no es válida)
-func get_inscribed_square_for_face(face_idx: int) -> Array[Vector3]:
+func get_inscribed_square_for_face(face_idx: int, use_original_size: bool = false) -> Array[Vector3]:
 	if face_idx < 0 or face_idx >= faces.size():
 		push_error("Índice de cara inválido: ", face_idx)
 		return []
@@ -459,8 +479,13 @@ func get_inscribed_square_for_face(face_idx: int) -> Array[Vector3]:
 		var p = points[idx]
 		quad_2d.append(Vector2(p.x, p.z))
 
+	# Determinar si debemos usar el tamaño original
+	var override_size = null
+	if use_original_size and face_idx in original_inscribed_sizes:
+		override_size = original_inscribed_sizes[face_idx]
+
 	# Obtener el cuadrado inscrito (en 2D)
-	var inscribed_2d: Array = GraphHelper.get_inscribed_square(quad_2d)
+	var inscribed_2d: Array = GraphHelper.get_inscribed_square(quad_2d, override_size)
 
 	if inscribed_2d.is_empty():
 		return []
@@ -475,8 +500,9 @@ func get_inscribed_square_for_face(face_idx: int) -> Array[Vector3]:
 ## Calcula el promedio de los puntos más cercanos de los cuadrados inscritos
 ## en todas las caras conectadas a un nodo
 ## @param node_idx: Índice del nodo a consultar
+## @param use_original_size: Si es true, usa los tamaños originales para calcular los cuadrados inscritos
 ## @return: Vector3 con la posición promedio, o Vector3.ZERO si no hay caras conectadas
-func get_average_closest_inscribed_point(node_idx: int) -> Vector3:
+func get_average_closest_inscribed_point(node_idx: int, use_original_size: bool = false) -> Vector3:
 	# Validar índice del nodo
 	if node_idx < 0 or node_idx >= points.size():
 		push_error("Índice de nodo inválido: ", node_idx)
@@ -494,8 +520,8 @@ func get_average_closest_inscribed_point(node_idx: int) -> Vector3:
 	
 	# 2-3. Por cada cara, calcular cuadrado inscrito y encontrar punto más cercano
 	for face_idx in connected_quads:
-		# 2. Calcular cuadrado inscrito
-		var inscribed_square: Array[Vector3] = get_inscribed_square_for_face(face_idx)
+		# 2. Calcular cuadrado inscrito (usando tamaño original si se especifica)
+		var inscribed_square: Array[Vector3] = get_inscribed_square_for_face(face_idx, use_original_size)
 		
 		if inscribed_square.is_empty():
 			continue
@@ -525,6 +551,7 @@ func get_average_closest_inscribed_point(node_idx: int) -> Vector3:
 	
 	return average_position
 
+
 ## Mueve uno o varios nodos del grafo a nuevas posiciones
 ## @param node_transformations: Diccionario con formato {node_idx: nueva_posicion (Vector3)}
 func move_nodes(node_transformations: Dictionary) -> void:
@@ -537,12 +564,18 @@ func move_nodes(node_transformations: Dictionary) -> void:
 
 ## Suaviza el grafo moviendo cada nodo hacia su punto inscrito promedio
 func smooth_graph() -> void:
+	# Usar tamaños originales solo después del primer paso de smoothing
+	var use_original_size: bool = (smoothing_steps > 0)
+	
 	var node_transformations: Dictionary = {}
 	
 	# Calcular la nueva posición objetivo para cada nodo
 	for node_idx in range(points.size()):
-		var new_position = get_average_closest_inscribed_point(node_idx)
+		var new_position = get_average_closest_inscribed_point(node_idx, use_original_size)
 		node_transformations[node_idx] = new_position
 	
 	# Aplicar todas las transformaciones de una vez
 	move_nodes(node_transformations)
+	
+	# Incrementar contador de pasos de smoothing
+	smoothing_steps += 1
