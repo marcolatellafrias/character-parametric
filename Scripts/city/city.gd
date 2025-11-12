@@ -5,29 +5,30 @@ extends Node3D
 # ============================================
 @export_group("Generación del Grafo")
 @export var region_size: Vector2 = Vector2(10, 10)
-@export var min_distance: float = 1.0
-@export var rejection_samples: int = 1000
-@export var generation_seed: int = 12345
+@export var min_distance: float = 0.7
+@export var rejection_samples: int = 10
+@export var generation_seed: int = 100
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 6
 @export var show_neighborhoods: bool = true
 
 @export_group("Suavizado")
-@export var smoothing_steps: int = 100  # Número de pasos de suavizado
+@export var smoothing_steps: int = 50  # Número de pasos de suavizado
 
 @export_group("Visualización")
-@export var node_color: Color = Color.CHARTREUSE
-@export var node_radius: float = 0.08
 @export var show_nodes: bool = true
+@export var node_radius: float = 0.08
+@export var normal_node_color: Color = Color.CHARTREUSE
+@export var boundary_node_color: Color = Color.ORANGE_RED
 @export var show_inscribed_squares: bool = false
 @export var inscribed_square_color: Color = Color.RED
 @export var inscribed_square_width: float = 0.03
 @export var auto_generate: bool = true
 
 @export_group("Tipos de Calles")
-@export var num_large_streets: int = 5
-@export var num_small_streets: int = 15
+@export var num_large_streets: int = 3
+@export var num_small_streets: int = 10
 
 @export_subgroup("Calles Pequeñas (Tipo 0)")
 @export var small_street_color: Color = Color.DEEP_PINK
@@ -226,8 +227,21 @@ func _visualize_streets() -> void:
 # VISUALIZACIÓN DE NODOS
 # ============================================
 func _visualize_nodes() -> void:
-	for point in generator.plain_graph.points:
-		var sphere = DebugUtil.create_debug_sphere(node_color, node_radius)
+	for node_idx in range(generator.plain_graph.points.size()):
+		var point = generator.plain_graph.points[node_idx]
+		
+		# Obtener el tipo de nodo (0 = normal, 1 = límite)
+		var node_type = generator.plain_graph.node_types.get(node_idx, 0)
+		
+		# Seleccionar color según el tipo
+		var color: Color
+		if node_type == 1:
+			color = boundary_node_color  # Nodo límite
+		else:
+			color = normal_node_color    # Nodo normal
+		
+		# Crear la esfera con el color apropiado
+		var sphere = DebugUtil.create_debug_sphere(color, node_radius)
 		sphere.position = point
 		add_child(sphere)
 

@@ -9,6 +9,7 @@ var edges: Array[Array] = []         # [[idx1, idx2], ...] aristas
 var faces: Array = []                # [[idx1, idx2, idx3, ...], ...] caras
 var smoothing_steps: int = 0         # Cantidad de pasos de smoothing realizados
 var original_inscribed_sizes: Dictionary = {}  # {face_idx: float} tamaño original del cuadrado inscrito
+var node_types: Dictionary = {}      # {node_idx: int} tipo de nodo (0=normal, 1=límite)
 
 
 # ============================================
@@ -34,6 +35,7 @@ func generate_graph(
 	faces.clear()
 	smoothing_steps = 0
 	original_inscribed_sizes.clear()
+	node_types.clear()
 	
 	var edges_dict: Dictionary = {}
 	
@@ -51,10 +53,14 @@ func generate_graph(
 	edges_dict = graph_data["edges"]
 	faces = graph_data["faces"]
 	
+	# 2.5. Detectar nodos límite ANTES de subdividir
+	_detect_boundary_nodes(faces)
+	
 	# 3. Subdividir caras
-	var subdivided = _subdivide_faces(points, faces)
+	var subdivided = _subdivide_faces(points, faces, node_types)
 	points = subdivided["points"]
 	faces = subdivided["faces"]
+	node_types = subdivided["node_types"]
 	
 	# 4. Reconstruir aristas desde las caras
 	edges_dict.clear()
@@ -73,6 +79,44 @@ func generate_graph(
 	# 6. Aplicar smoothing (si se solicitó)
 	for i in range(smooth_steps):
 		smooth_graph()
+
+# ============================================
+# DETECCIÓN DE NODOS LÍMITE
+# ============================================
+
+## Detecta y marca los nodos que están en el límite del mapa
+## Un nodo está en el límite si forma parte de un edge que pertenece a una sola cara
+func _detect_boundary_nodes(faces_array: Array) -> void:
+	node_types.clear()
+	
+	# Inicializar todos los nodos como normales (tipo 0)
+	for i in range(points.size()):
+		node_types[i] = 0
+	
+	# Contar cuántas caras usan cada edge
+	var edge_usage: Dictionary = {}
+	
+	for face in faces_array:
+		for i in range(face.size()):
+			var next_i = (i + 1) % face.size()
+			var edge_key = _get_edge_key(face[i], face[next_i])
+			
+			if edge_key not in edge_usage:
+				edge_usage[edge_key] = 0
+			edge_usage[edge_key] += 1
+	
+	# Los edges que aparecen solo en una cara son edges límite
+	for edge_key in edge_usage:
+		if edge_usage[edge_key] == 1:
+			# Extraer los índices del edge_key
+			var parts = edge_key.split("_")
+			var idx1 = int(parts[0])
+			var idx2 = int(parts[1])
+			
+			# Marcar ambos nodos como límite
+			node_types[idx1] = 1
+			node_types[idx2] = 1
+
 	
 func _calculate_original_inscribed_sizes() -> void:
 	original_inscribed_sizes.clear()
@@ -345,31 +389,37 @@ static func _is_convex_quad(p1: Vector3, p2: Vector3, p3: Vector3, p4: Vector3) 
 # ============================================
 # SUBDIVISIÓN DE CARAS
 # ============================================
-static func _subdivide_faces(points: Array[Vector3], faces: Array) -> Dictionary:
+static func _subdivide_faces(points: Array[Vector3], faces: Array, node_types: Dictionary) -> Dictionary:
 	var new_points = points.duplicate()
 	var new_faces = []
+	var new_node_types = node_types.duplicate()
 	var edge_midpoints = {}  # <-- Caché de puntos medios
 	
 	for face in faces:
 		var sub_faces = []
 		
 		if face.size() == 4:
-			sub_faces = _subdivide_quad_face(face, new_points, edge_midpoints)
+			sub_faces = _subdivide_quad_face(face, new_points, edge_midpoints, new_node_types)
 		elif face.size() == 3:
-			sub_faces = _subdivide_triangle_face(face, new_points, edge_midpoints)
+			sub_faces = _subdivide_triangle_face(face, new_points, edge_midpoints, new_node_types)
 		
 		new_faces.append_array(sub_faces)
 	
-	return {"points": new_points, "faces": new_faces}
+	return {"points": new_points, "faces": new_faces, "node_types": new_node_types}
 
-static func _subdivide_quad_face(face: Array, points: Array[Vector3], edge_midpoints: Dictionary) -> Array:
+static func _subdivide_quad_face(
+	face: Array, 
+	points: Array[Vector3], 
+	edge_midpoints: Dictionary,
+	node_types: Dictionary
+) -> Array:
 	# Obtener o crear puntos medios
-	var idx_mid1 = _get_or_create_midpoint(face[0], face[1], points, edge_midpoints)
-	var idx_mid2 = _get_or_create_midpoint(face[1], face[2], points, edge_midpoints)
-	var idx_mid3 = _get_or_create_midpoint(face[2], face[3], points, edge_midpoints)
-	var idx_mid4 = _get_or_create_midpoint(face[3], face[0], points, edge_midpoints)
+	var idx_mid1 = _get_or_create_midpoint(face[0], face[1], points, edge_midpoints, node_types)
+	var idx_mid2 = _get_or_create_midpoint(face[1], face[2], points, edge_midpoints, node_types)
+	var idx_mid3 = _get_or_create_midpoint(face[2], face[3], points, edge_midpoints, node_types)
+	var idx_mid4 = _get_or_create_midpoint(face[3], face[0], points, edge_midpoints, node_types)
 	
-	# El centro sigue siendo único por cara
+	# El centro sigue siendo único por cara y siempre es tipo 0 (normal)
 	var p1 = points[face[0]]
 	var p2 = points[face[1]]
 	var p3 = points[face[2]]
@@ -377,6 +427,7 @@ static func _subdivide_quad_face(face: Array, points: Array[Vector3], edge_midpo
 	var center = (p1 + p2 + p3 + p4) / 4.0
 	var idx_center = points.size()
 	points.append(center)
+	node_types[idx_center] = 0  # El centro siempre es normal
 	
 	var result = []
 	result.append([face[0], idx_mid1, idx_center, idx_mid4])
@@ -386,19 +437,25 @@ static func _subdivide_quad_face(face: Array, points: Array[Vector3], edge_midpo
 	
 	return result
 
-static func _subdivide_triangle_face(face: Array, points: Array[Vector3], edge_midpoints: Dictionary) -> Array:
+static func _subdivide_triangle_face(
+	face: Array, 
+	points: Array[Vector3], 
+	edge_midpoints: Dictionary,
+	node_types: Dictionary
+) -> Array:
 	# Obtener o crear puntos medios (reutilizando si ya existen)
-	var idx_mid1 = _get_or_create_midpoint(face[0], face[1], points, edge_midpoints)
-	var idx_mid2 = _get_or_create_midpoint(face[1], face[2], points, edge_midpoints)
-	var idx_mid3 = _get_or_create_midpoint(face[2], face[0], points, edge_midpoints)
+	var idx_mid1 = _get_or_create_midpoint(face[0], face[1], points, edge_midpoints, node_types)
+	var idx_mid2 = _get_or_create_midpoint(face[1], face[2], points, edge_midpoints, node_types)
+	var idx_mid3 = _get_or_create_midpoint(face[2], face[0], points, edge_midpoints, node_types)
 	
-	# El centro sigue siendo único por cara
+	# El centro sigue siendo único por cara y siempre es tipo 0 (normal)
 	var p1 = points[face[0]]
 	var p2 = points[face[1]]
 	var p3 = points[face[2]]
 	var center = (p1 + p2 + p3) / 3.0
 	var idx_center = points.size()
 	points.append(center)
+	node_types[idx_center] = 0  # El centro siempre es normal
 	
 	# Crear 3 caras hijas (quads)
 	var result = []
@@ -427,7 +484,13 @@ static func _cross_product_2d(p1: Vector3, p2: Vector3, p3: Vector3) -> float:
 	var v2 = Vector2(p3.x - p2.x, p3.z - p2.z)
 	return v1.x * v2.y - v1.y * v2.x
 
-static func _get_or_create_midpoint(idx1: int, idx2: int, points: Array[Vector3], cache: Dictionary) -> int:
+static func _get_or_create_midpoint(
+	idx1: int, 
+	idx2: int, 
+	points: Array[Vector3], 
+	cache: Dictionary,
+	node_types: Dictionary
+) -> int:
 	var key = _get_edge_key(idx1, idx2)
 	
 	if key in cache:
@@ -436,6 +499,17 @@ static func _get_or_create_midpoint(idx1: int, idx2: int, points: Array[Vector3]
 	var midpoint = (points[idx1] + points[idx2]) / 2.0
 	var new_idx = points.size()
 	points.append(midpoint)
+	
+	# Determinar el tipo del punto medio
+	# Si ambos nodos son límite (tipo 1), el punto medio también es límite
+	var type1 = node_types.get(idx1, 0)
+	var type2 = node_types.get(idx2, 0)
+	
+	if type1 == 1 and type2 == 1:
+		node_types[new_idx] = 1  # Límite
+	else:
+		node_types[new_idx] = 0  # Normal
+	
 	cache[key] = new_idx
 	
 	return new_idx

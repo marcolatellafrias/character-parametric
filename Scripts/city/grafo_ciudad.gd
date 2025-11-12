@@ -29,7 +29,7 @@ func generate_city_graph(
 	
 	# Inicializar tipos de calles
 	_initialize_street_types()
-	_mark_boundary_streets(region_size)
+	_mark_boundary_streets()
 	
 	# Generar calles especiales
 	_generate_large_streets(num_large_streets)
@@ -51,32 +51,19 @@ func _initialize_street_types() -> void:
 		var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
 		street_types[edge_key] = 1  # Mediana por defecto
 
-## Marca las calles que están en el límite del mapa como tipo -1
-func _mark_boundary_streets(region_size: Vector2) -> void:
-	var epsilon = 0.01  # Tolerancia para comparación de flotantes
-	
+## Marca las calles que conectan dos nodos límite como tipo -1 (calle límite)
+func _mark_boundary_streets() -> void:
 	for edge in plain_graph.edges:
-		var p1 = plain_graph.points[edge[0]]
-		var p2 = plain_graph.points[edge[1]]
+		var node1_idx = edge[0]
+		var node2_idx = edge[1]
 		
-		# Verificar si alguno de los dos puntos está en el borde del mapa
-		var is_boundary = false
+		# Obtener los tipos de ambos nodos
+		var node1_type = plain_graph.node_types.get(node1_idx, 0)
+		var node2_type = plain_graph.node_types.get(node2_idx, 0)
 		
-		# Verificar borde izquierdo (x ≈ 0)
-		if abs(p1.x) < epsilon or abs(p2.x) < epsilon:
-			is_boundary = true
-		# Verificar borde derecho (x ≈ region_size.x)
-		elif abs(p1.x - region_size.x) < epsilon or abs(p2.x - region_size.x) < epsilon:
-			is_boundary = true
-		# Verificar borde superior (z ≈ 0)
-		elif abs(p1.z) < epsilon or abs(p2.z) < epsilon:
-			is_boundary = true
-		# Verificar borde inferior (z ≈ region_size.y)
-		elif abs(p1.z - region_size.y) < epsilon or abs(p2.z - region_size.y) < epsilon:
-			is_boundary = true
-		
-		if is_boundary:
-			var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
+		# Si ambos nodos son límite (tipo 1), la calle es límite (tipo -1)
+		if node1_type == 1 and node2_type == 1:
+			var edge_key = GraphGenerator._get_edge_key(node1_idx, node2_idx)
 			street_types[edge_key] = -1
 
 ## Genera calles grandes mediante expansión desde nodos aleatorios
@@ -123,16 +110,19 @@ func _expand_street_direction(initial_edge: Array, start_node: int, street_type:
 	var max_iterations = 100  # Límite de seguridad
 	var iterations = 0
 	
-	# Marcar el edge inicial
+	# Marcar el edge inicial (solo si no es límite)
 	var edge_key = GraphGenerator._get_edge_key(current_edge[0], current_edge[1])
-	street_types[edge_key] = street_type
+	var current_type = street_types.get(edge_key, 1)
+	if current_type != -1:  # No sobrescribir calles límite
+		street_types[edge_key] = street_type
 	
 	while iterations < max_iterations:
 		iterations += 1
 		
-		# Verificar si llegamos a un borde
-		if plain_graph.is_boundary_node(current_node, street_types):
-			break
+		# Verificar si llegamos a un nodo límite
+		var current_node_type = plain_graph.node_types.get(current_node, 0)
+		if current_node_type == 1:
+			break  # Llegamos a un nodo límite
 		
 		# Obtener el siguiente edge en la dirección actual
 		var next_edge = plain_graph.get_next_edge_in_direction(
@@ -142,12 +132,14 @@ func _expand_street_direction(initial_edge: Array, start_node: int, street_type:
 			street_type
 		)
 		
-		if next_edge.is_empty():  # Cambiar de null a is_empty()
+		if next_edge.is_empty():
 			break  # No hay más camino válido
 		
-		# Marcar el nuevo edge
+		# Marcar el nuevo edge (solo si no es límite)
 		edge_key = GraphGenerator._get_edge_key(next_edge[0], next_edge[1])
-		street_types[edge_key] = street_type
+		current_type = street_types.get(edge_key, 1)
+		if current_type != -1:  # No sobrescribir calles límite
+			street_types[edge_key] = street_type
 		
 		# Avanzar al siguiente nodo
 		previous_node = current_node
