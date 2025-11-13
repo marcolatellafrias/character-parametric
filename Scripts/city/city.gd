@@ -46,6 +46,22 @@ extends Node3D
 @export var boundary_street_color: Color = Color.ORANGE_RED
 @export var boundary_street_width: float = 0.05
 
+@export_group("Túneles")
+@export var num_small_tunnels: int = 16
+@export var num_large_tunnels: int = 6
+@export var tunnel_min_length: int = 1
+@export var tunnel_max_length: int = 3
+@export var tunnel_max_angle_degrees: float = 30.0
+@export var tunnel_min_gap: int = 3
+
+@export_subgroup("Túneles Pequeños (Tipo 3)")
+@export var small_tunnel_color: Color = Color.CYAN
+@export var small_tunnel_width: float = 0.015
+
+@export_subgroup("Túneles Grandes (Tipo 4)")
+@export var large_tunnel_color: Color = Color.BLUE
+@export var large_tunnel_width: float = 0.045
+
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
@@ -77,7 +93,14 @@ func generate_graph() -> void:
 		generation_seed,
 		num_neighborhoods,
 		num_large_streets,
-		num_small_streets
+		num_small_streets,
+		# Parámetros de túneles
+		num_small_tunnels,
+		num_large_tunnels,
+		tunnel_min_length,
+		tunnel_max_length,
+		tunnel_max_angle_degrees,
+		tunnel_min_gap
 	)
 	
 	# Generar colores para cada barrio
@@ -215,6 +238,12 @@ func _visualize_streets() -> void:
 			2:  # Grande
 				color = large_street_color
 				width = large_street_width
+			3:  # Túnel pequeño
+				color = small_tunnel_color
+				width = small_tunnel_width
+			4:  # Túnel grande
+				color = large_tunnel_color
+				width = large_tunnel_width
 			_:  # Por defecto (no debería pasar)
 				color = medium_street_color
 				width = medium_street_width

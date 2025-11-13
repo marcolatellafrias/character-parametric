@@ -3,7 +3,7 @@ extends RefCounted
 
 var plain_graph: GraphGenerator  
 var neighborhoods: Dictionary = {}   # {face_idx: neighborhood_id} barrio de cada cara (-1 = sin asignar)
-var street_types: Dictionary = {}    # {edge_key: tipo} tipo de cada calle (-1=límite, 0=pequeña, 1=mediana, 2=grande)
+var street_types: Dictionary = {}    # {edge_key: tipo} tipo de cada calle (-1=límite, 0=pequeña, 1=mediana, 2=grande, 3=túnel chico, 4=túnel grande)
 var region_size: Vector2 = Vector2.ZERO  # Tamaño de la región
 
 func generate_city_graph(
@@ -15,6 +15,13 @@ func generate_city_graph(
 	num_neighborhoods: int,
 	num_large_streets: int,
 	num_small_streets: int,
+	# Nuevos parámetros para túneles
+	num_small_tunnels: int = 0,
+	num_large_tunnels: int = 0,
+	tunnel_min_length: int = 2,
+	tunnel_max_length: int = 6,
+	tunnel_max_angle_degrees: float = 30.0,
+	tunnel_min_gap: int = 3,
 ) -> void:
 	seed(generation_seed)
 	
@@ -38,6 +45,10 @@ func generate_city_graph(
 	# Generar calles especiales: PRIMERO pequeñas, LUEGO grandes
 	_generate_small_streets(num_small_streets)
 	_generate_large_streets(num_large_streets)
+	
+	# Generar túneles: DESPUÉS de las calles
+	_generate_small_tunnels(num_small_tunnels, tunnel_min_length, tunnel_max_length, tunnel_max_angle_degrees, tunnel_min_gap)
+	_generate_large_tunnels(num_large_tunnels, tunnel_min_length, tunnel_max_length, tunnel_max_angle_degrees, tunnel_min_gap)
 	
 	# Inicializar y asignar barrios
 	_initialize_neighborhoods()
@@ -206,6 +217,10 @@ func _can_overwrite_street(edge_key: String, new_type: int) -> bool:
 	if current_type == -1:
 		return false
 	
+	# Nunca sobrescribir túneles
+	if current_type == 3 or current_type == 4:
+		return false
+	
 	# Calles pequeñas (0) solo sobrescriben medianas (1)
 	if new_type == 0:
 		return current_type == 1
@@ -270,6 +285,221 @@ func get_streets_of_type(street_type: int) -> Array:
 			result.append(edge_key)
 	
 	return result
+
+# ============================================
+# GESTIÓN DE TÚNELES
+# ============================================
+
+## Genera túneles chicos a partir de calles chicas existentes
+func _generate_small_tunnels(
+	num_tunnels: int, 
+	min_length: int, 
+	max_length: int, 
+	max_angle_degrees: float, 
+	min_gap: int
+) -> void:
+	for i in range(num_tunnels):
+		_generate_tunnel_path(0, 3, min_length, max_length, max_angle_degrees, min_gap)
+
+## Genera túneles grandes a partir de calles grandes existentes
+func _generate_large_tunnels(
+	num_tunnels: int, 
+	min_length: int, 
+	max_length: int, 
+	max_angle_degrees: float, 
+	min_gap: int
+) -> void:
+	for i in range(num_tunnels):
+		_generate_tunnel_path(2, 4, min_length, max_length, max_angle_degrees, min_gap)
+
+## Genera un camino de túnel del tipo especificado
+## base_street_type: tipo de calle base (0 para chicas, 2 para grandes)
+## tunnel_type: tipo de túnel resultante (3 para chicos, 4 para grandes)
+func _generate_tunnel_path(
+	base_street_type: int,
+	tunnel_type: int,
+	min_length: int,
+	max_length: int,
+	max_angle_degrees: float,
+	min_gap: int
+) -> void:
+	# 1. Encontrar todos los edges del tipo de calle base
+	var candidate_edges: Array = []
+	
+	for edge in plain_graph.edges:
+		var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
+		var current_type = street_types.get(edge_key, 1)
+		
+		# Solo considerar calles del tipo base
+		if current_type == base_street_type:
+			# Verificar que no hay túneles cerca
+			if _has_nearby_tunnels(edge[0], edge[1], min_gap):
+				continue
+			
+			candidate_edges.append(edge)
+	
+	if candidate_edges.is_empty():
+		return
+	
+	# 2. Elegir un edge aleatorio como punto de partida
+	var initial_edge = candidate_edges[randi() % candidate_edges.size()]
+	var node1 = initial_edge[0]
+	var node2 = initial_edge[1]
+	
+	# 3. Determinar largo aleatorio del túnel
+	var tunnel_length = randi_range(min_length, max_length)
+	
+	# 4. Marcar el edge inicial como túnel
+	var edge_key = GraphGenerator._get_edge_key(node1, node2)
+	street_types[edge_key] = tunnel_type
+	
+	# 5. Calcular la dirección inicial
+	var pos1 = plain_graph.points[node1]
+	var pos2 = plain_graph.points[node2]
+	var initial_direction = (pos2 - pos1).normalized()
+	
+	# 6. Expandir el túnel desde node2
+	_expand_tunnel_from_edge(
+		node2, 
+		node1, 
+		base_street_type, 
+		tunnel_type, 
+		initial_direction, 
+		tunnel_length - 1,  # Ya usamos 1 edge
+		max_angle_degrees
+	)
+
+## Expande un túnel desde un edge inicial
+func _expand_tunnel_from_edge(
+	current_node: int,
+	previous_node: int,
+	base_street_type: int,
+	tunnel_type: int,
+	previous_direction: Vector3,
+	remaining_length: int,
+	max_angle_degrees: float
+) -> void:
+	if remaining_length <= 0:
+		return
+	
+	var connected_edges = plain_graph.get_edges_for_node(current_node)
+	var current_pos = plain_graph.points[current_node]
+	
+	var best_edge: Array = []
+	var best_score = -INF
+	
+	for edge in connected_edges:
+		var other_node = edge[1] if edge[0] == current_node else edge[0]
+		
+		# No retroceder
+		if other_node == previous_node:
+			continue
+		
+		var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
+		var current_type = street_types.get(edge_key, 1)
+		
+		# Solo expandir sobre calles del tipo base (no túneles u otros tipos)
+		if current_type != base_street_type:
+			continue
+		
+		var other_pos = plain_graph.points[other_node]
+		var edge_direction = (other_pos - current_pos).normalized()
+		
+		# Calcular el ángulo entre la dirección previa y la nueva
+		var dot_product = previous_direction.dot(edge_direction)
+		dot_product = clamp(dot_product, -1.0, 1.0)
+		var angle_radians = acos(dot_product)
+		var angle_degrees = rad_to_deg(angle_radians)
+		
+		# Si el ángulo es mayor al threshold, no podemos continuar por este edge
+		if angle_degrees > max_angle_degrees:
+			continue
+		
+		# Score: preferir edges más rectos (menor ángulo)
+		var score = dot_product  # Mayor dot = menor ángulo = mejor
+		
+		if score > best_score:
+			best_score = score
+			best_edge = edge
+	
+	# Si no encontramos un edge válido, terminar el túnel
+	if best_edge.is_empty():
+		return
+	
+	# Marcar el nuevo edge como túnel
+	var edge_key = GraphGenerator._get_edge_key(best_edge[0], best_edge[1])
+	street_types[edge_key] = tunnel_type
+	
+	# Continuar expandiendo
+	var next_node = best_edge[1] if best_edge[0] == current_node else best_edge[0]
+	var next_pos = plain_graph.points[next_node]
+	var new_direction = (next_pos - current_pos).normalized()
+	
+	_expand_tunnel_from_edge(
+		next_node,
+		current_node,
+		base_street_type,
+		tunnel_type,
+		new_direction,
+		remaining_length - 1,
+		max_angle_degrees
+	)
+
+## Verifica si hay túneles (tipo 3 o 4) dentro de min_gap edges desde el edge dado
+func _has_nearby_tunnels(node1: int, node2: int, min_gap: int) -> bool:
+	var visited: Dictionary = {}
+	var queue: Array = [[node1, node2, 0]]  # [nodo_actual, nodo_previo, distancia]
+	
+	while not queue.is_empty():
+		var current = queue.pop_front()
+		var current_node = current[0]
+		var previous_node = current[1]
+		var distance = current[2]
+		
+		# Si llegamos al límite de distancia, no seguir expandiendo desde aquí
+		if distance >= min_gap:
+			continue
+		
+		# Marcar como visitado
+		var visit_key = str(current_node) + "_" + str(previous_node)
+		if visit_key in visited:
+			continue
+		visited[visit_key] = true
+		
+		var connected_edges = plain_graph.get_edges_for_node(current_node)
+		
+		for edge in connected_edges:
+			var other_node = edge[1] if edge[0] == current_node else edge[0]
+			
+			var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
+			var edge_type = street_types.get(edge_key, 1)
+			
+			# Si encontramos un túnel (tipo 3 o 4), retornar true
+			if edge_type == 3 or edge_type == 4:
+				return true
+			
+			# Continuar explorando si no es el nodo previo
+			if other_node != previous_node:
+				queue.append([other_node, current_node, distance + 1])
+	
+	return false
+
+## Obtiene todas las calles de túnel (tipo 3 o 4)
+func get_all_tunnels() -> Array:
+	var result: Array = []
+	
+	for edge_key in street_types:
+		var street_type = street_types[edge_key]
+		if street_type == 3 or street_type == 4:
+			result.append(edge_key)
+	
+	return result
+
+## Verifica si un edge es un túnel
+func is_tunnel(node1_idx: int, node2_idx: int) -> bool:
+	var edge_key = GraphGenerator._get_edge_key(node1_idx, node2_idx)
+	var street_type = street_types.get(edge_key, 1)
+	return street_type == 3 or street_type == 4
 
 # ============================================
 # GESTIÓN DE BARRIOS
