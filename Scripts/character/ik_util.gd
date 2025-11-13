@@ -29,7 +29,7 @@ var right_leg_airborne_target: Node3D
 var current_step_left_mesh_instance: MeshInstance3D 
 var current_step_right_mesh_instance: MeshInstance3D 
 
-static func create(sizes: SkeletonSizesUtil, bones: CustomBonesUtil, skeleton: BoneInstantiator) -> IkUtil:
+static func create(sizes: SkeletonSizesUtil, skeleton: BoneInstantiator) -> IkUtil:
 	var new_ik_util = IkUtil.new()
 	
 	#Creo raycasts
@@ -41,8 +41,8 @@ static func create(sizes: SkeletonSizesUtil, bones: CustomBonesUtil, skeleton: B
 	new_ik_util.right_leg_raycast_indicator = create_leg_raycast_indicator(sizes)
 	new_ik_util.right_leg_raycast.add_child(new_ik_util.right_leg_raycast_indicator)
 	#Creo poles
-	new_ik_util.left_leg_pole = create_pole(bones, true, sizes, skeleton.local_targets)
-	new_ik_util.right_leg_pole = create_pole(bones, false, sizes, skeleton.local_targets)
+	new_ik_util.left_leg_pole = create_pole(true, sizes, skeleton.local_targets)
+	new_ik_util.right_leg_pole = create_pole(false, sizes, skeleton.local_targets)
 	#Creo next targets
 	new_ik_util.left_leg_next_target = IkUtil.create_next_target(-sizes.hip_size.y, left_color, sizes.raycast_leg_lenght)
 	new_ik_util.right_leg_next_target = IkUtil.create_next_target(sizes.hip_size.y, right_color, sizes.raycast_leg_lenght)
@@ -57,8 +57,8 @@ static func create(sizes: SkeletonSizesUtil, bones: CustomBonesUtil, skeleton: B
 	new_ik_util.right_leg_airborne_target = IkUtil.create_simple_ik_target(false)
 	return new_ik_util
 
-static func create_pole(bones: CustomBonesUtil, left: bool, sizes: SkeletonSizesUtil, local_targets: Node3D) -> Node3D:
-	var lower_leg : CustomBone = bones.left_lower_leg if left else bones.right_lower_leg
+static func create_pole(left: bool, sizes: SkeletonSizesUtil, local_targets: Node3D) -> Node3D:
+	#var lower_leg : CustomBone = bones.left_lower_leg if left else bones.right_lower_leg
 	var color : Color = left_color if left else right_color
 	var horizontal_offset : float = -sizes.hips_width if left else sizes.hips_width
 	var pole := Node3D.new()

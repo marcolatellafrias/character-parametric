@@ -178,7 +178,7 @@ func force_stop() -> void:
 func force_wake_up() -> void:
 	_begin_standing_up()
 
-static func create(root_size: Vector3, new_left_leg_raycast: RayCast3D, new_right_leg_raycast: RayCast3D, distance_from_ground: float, max_height_error: float) -> CharacterRigidBody3D:
+static func create(root_size: Vector3, new_left_leg_raycast: RayCast3D, new_right_leg_raycast: RayCast3D, distance_from_ground: float) -> CharacterRigidBody3D:
 	var character_rigidbody := CharacterRigidBody3D.new()
 	var new_mesh_instance := MeshInstance3D.new()
 	var capsule_mesh := CapsuleMesh.new()

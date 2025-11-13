@@ -14,7 +14,6 @@ static func create_debug_line(color: Color, length: float, on_top: bool = false,
 	
 	if on_top:
 		material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS 
-		material.depth_test = 1
 	mesh_instance.material_override = material
 	return mesh_instance
 
@@ -39,7 +38,6 @@ static func create_debug_sphere(color: Color, size: float = 0.1, on_top: bool = 
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	if on_top:
 		material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS 
-		material.depth_test = 1
 	mesh_instance.material_override = material
 	return mesh_instance
 

@@ -50,8 +50,8 @@ var distance_from_ground : float
 var raycast_leg_lenght: float
 var pole_distance: float
 var raycast_max_offset: float
-var raycast_amount := 6.0        # 0 = no se mueve, 1 = normal, >1 = amplifica
-var speed_for_max := 6.0          # velocidad a la que llega al offset máximo
+var raycast_amount := 6.5        # 0 = no se mueve, 1 = normal, >1 = amplifica
+var speed_for_max := 5.0          # velocidad a la que llega al offset máximo
 var axis_weights := Vector2(1.0, 1.0)                    # x (lateral), z (adelante) para atenuar por eje
 var speed_curve: Curve     
 const raycast_accel_gain := 0.06        # meters per (m/s^2)
@@ -158,7 +158,7 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	return skelSizes
 
 
-func update(delta: float, char_rigidbody: CharacterRigidBody3D, entityStats: EntityStats, ik_util: IkUtil) -> void:
+func update(_delta: float, char_rigidbody: CharacterRigidBody3D, entityStats: EntityStats, ik_util: IkUtil) -> void:
 	_update_step_radius(char_rigidbody,entityStats,ik_util)
 
 func _update_step_radius(char_rigidbody: CharacterRigidBody3D, entity_stats: EntityStats, ik_util: IkUtil) -> void:
@@ -173,8 +173,6 @@ func _update_step_radius(char_rigidbody: CharacterRigidBody3D, entity_stats: Ent
 	var speed_range = max(max_speed - min_speed, 0.01)
 	var t = clamp((instant_speed - min_speed) / speed_range, 0.0, 1.0)
 	
-	# Aplicar con smoothstep para transiciones naturales
-	var t_smooth = smoothstep(0.0, 1.0, t)  # GDScript tiene smoothstep built-in
 	ik_util.current_step_radius = lerp(step_radius_min , step_radius_max, t)
 
 static func lerp_range(min_val: float, max_val: float, t: float) -> float:

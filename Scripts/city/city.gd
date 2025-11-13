@@ -6,8 +6,8 @@ extends Node3D
 @export_group("Generación del Grafo")
 @export var region_size: Vector2 = Vector2(10, 10)
 @export var min_distance: float = 0.7
-@export var rejection_samples: int = 10
-@export var generation_seed: int = 100
+@export var rejection_samples: int = 30
+@export var generation_seed: int = 1234
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 6

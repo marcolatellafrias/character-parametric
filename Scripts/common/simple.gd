@@ -39,7 +39,7 @@ func _place_raycast() -> void:
 	# RayCast3D.target_position is local to the ray; convert world end to local:
 	_ray.target_position = _ray.to_local(end_global)
 
-func _physics_process(delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	if _box == null:
 		return
 

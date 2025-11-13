@@ -274,7 +274,7 @@ func _stop_grab() -> void:
 	if is_instance_valid(_grab_line):
 		_grab_line.visible = false
 
-func _update_grab(delta: float) -> void:
+func _update_grab(_delta: float) -> void:
 	if not is_instance_valid(_grabbed):
 		_grabbed = null
 		return

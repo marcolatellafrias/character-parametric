@@ -28,13 +28,12 @@ func initialize_skeleton() -> void:
 	#Luego ensamblo los huesos en una jerarquia con sus respectivos angulos de reposo, en clases de custombones
 	custom_bones_util = CustomBonesUtil.create(skel_sizes_util, entity_stats)
 	#Luego creo los local targets, global targets y raycasts
-	ik_util = IkUtil.create(skel_sizes_util, custom_bones_util, self)
+	ik_util = IkUtil.create(skel_sizes_util, self)
 	#Luego creo el character rigidbody
 	#var camera3d = Camera3D.new()
 	#camera3d.position = Vector3(0, 1.7, 2.7)
 	var charRb = Vector3(skel_sizes_util.shoulders_width * 2 ,skel_sizes_util.torso_height +skel_sizes_util.head_height,skel_sizes_util.hips_width*2)
-	var height_error : float = (entity_stats.distance_from_ground_factor * skel_sizes_util.leg_height)
-	char_rigidbody = CharacterRigidBody3D.create(charRb,ik_util.left_leg_raycast,ik_util.right_leg_raycast,skel_sizes_util.distance_from_ground,height_error)
+	char_rigidbody = CharacterRigidBody3D.create(charRb,ik_util.left_leg_raycast,ik_util.right_leg_raycast,skel_sizes_util.distance_from_ground)
 	#Agrego el esqueleto target y la camara como hijo de el rigidbody
 	char_rigidbody.add_child(custom_bones_util.lower_spine)
 	#char_rigidbody.add_child(camera3d)

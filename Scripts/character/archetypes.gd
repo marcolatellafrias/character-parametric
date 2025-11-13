@@ -67,12 +67,12 @@ static func create(archetype: Archetype) -> EntityStats:
 	else:
 		return old_arch()
 
-func as_alien(seed: float) -> EntityStats:
-	return
-func as_human(seed: float) -> EntityStats:
-	return
-func as_robot(seed: float) -> EntityStats:
-	return
+#func as_alien(seed: float) -> EntityStats:
+	#return
+#func as_human(seed: float) -> EntityStats:
+	#return
+#func as_robot(seed: float) -> EntityStats:
+	#return
 
 static func fat_man_arch() -> EntityStats:
 	var arch = EntityStats.new()
