@@ -52,6 +52,73 @@ static func create_debug_cube(color: Color) -> MeshInstance3D:
 	mesh_instance.material_override = material
 	return mesh_instance
 
+static func create_wireframe_cube(color: Color, size: float = 1.0, transparency: float = 0.5) -> Node3D:
+	var container := Node3D.new()
+	
+	# Definir los 8 vértices del cubo
+	var half := size / 2.0
+	var vertices := [
+		Vector3(-half, -half, -half),  # 0
+		Vector3(half, -half, -half),   # 1
+		Vector3(half, -half, half),    # 2
+		Vector3(-half, -half, half),   # 3
+		Vector3(-half, half, -half),   # 4
+		Vector3(half, half, -half),    # 5
+		Vector3(half, half, half),     # 6
+		Vector3(-half, half, half)     # 7
+	]
+	
+	# Definir las 12 aristas (pares de vértices)
+	var edges := [
+		[0, 1], [1, 2], [2, 3], [3, 0],  # Base inferior
+		[4, 5], [5, 6], [6, 7], [7, 4],  # Base superior
+		[0, 4], [1, 5], [2, 6], [3, 7]   # Columnas verticales
+	]
+	
+	# Crear material semitransparente
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color.a = transparency
+	
+	# Grosor de las aristas
+	var edge_thickness := size * 0.02
+	
+	# Crear cada arista como un cilindro estirado
+	for edge in edges:
+		var start: Vector3 = vertices[edge[0]]
+		var end: Vector3 = vertices[edge[1]]
+		
+		var mesh_instance := MeshInstance3D.new()
+		var cylinder := CylinderMesh.new()
+		cylinder.top_radius = edge_thickness
+		cylinder.bottom_radius = edge_thickness
+		
+		# Calcular longitud y posición
+		var length := start.distance_to(end)
+		cylinder.height = length
+		
+		mesh_instance.mesh = cylinder
+		mesh_instance.material_override = material
+		
+		# Posicionar en el punto medio
+		mesh_instance.position = (start + end) / 2.0
+		
+		# Rotar para alinear con la arista
+		var direction := (end - start).normalized()
+		var up := Vector3.UP
+		
+		# Evitar problemas cuando la dirección es paralela a UP
+		if abs(direction.dot(up)) > 0.99:
+			up = Vector3.RIGHT
+		
+		mesh_instance.look_at(mesh_instance.position + direction, up)
+		mesh_instance.rotate_object_local(Vector3.RIGHT, PI / 2.0)
+		
+		container.add_child(mesh_instance)
+	
+	return container
+
 static func create_debug_capsule(radius: float, height: float, y_offset: float) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	
@@ -279,3 +346,113 @@ static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vect
 	mesh_instance.material_override = material
 	
 	return mesh_instance
+
+## Crea un cubo skewed a partir de 4 vértices de base y una altura
+## @param base_vertices: Array de 4 Vector3 que forman la base inferior del cubo
+## @param height: Altura del cubo
+## @param color: Color del cubo
+## @return MeshInstance3D con el cubo generado
+static func create_skewed_cube(base_vertices: Array, height: float, color: Color) -> MeshInstance3D:
+	if base_vertices.size() != 4:
+		push_error("Se requieren exactamente 4 vértices para la base")
+		return null
+	
+	var mesh_instance = MeshInstance3D.new()
+	var array_mesh = ArrayMesh.new()
+	var arrays = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	
+	# Offset para centrar el cubo verticalmente
+	var height_offset = Vector3(0, -height / 2.0, 0)
+	
+	# Crear vértices superiores e inferiores con offset
+	var bottom_verts = []
+	var top_verts = []
+	
+	for i in range(4):
+		bottom_verts.append(base_vertices[i] + height_offset)
+		top_verts.append(base_vertices[i] + Vector3(0, height, 0) + height_offset)
+	
+	# Array de vértices para todas las caras del cubo
+	var vertices = PackedVector3Array()
+	var colors = PackedColorArray()
+	
+	# Función auxiliar para agregar un triángulo
+	var add_triangle = func(v1: Vector3, v2: Vector3, v3: Vector3):
+		vertices.append(v1)
+		vertices.append(v2)
+		vertices.append(v3)
+		colors.append(color)
+		colors.append(color)
+		colors.append(color)
+	
+	# Calcular la normal de la cara base para determinar el orden correcto
+	var edge1 = bottom_verts[1] - bottom_verts[0]
+	var edge2 = bottom_verts[2] - bottom_verts[0]
+	var base_normal = edge1.cross(edge2).normalized()
+	
+	# La normal debería apuntar hacia abajo (negativo en Y)
+	var should_flip_bottom = base_normal.y > 0
+	
+	# Cara inferior (base)
+	if should_flip_bottom:
+		# Invertir el orden para que la normal apunte hacia abajo
+		add_triangle.call(bottom_verts[0], bottom_verts[2], bottom_verts[1])
+		add_triangle.call(bottom_verts[0], bottom_verts[3], bottom_verts[2])
+	else:
+		add_triangle.call(bottom_verts[0], bottom_verts[1], bottom_verts[2])
+		add_triangle.call(bottom_verts[0], bottom_verts[2], bottom_verts[3])
+	
+	# Cara superior (tapa) - usar el mismo orden que la base
+	if should_flip_bottom:
+		add_triangle.call(top_verts[0], top_verts[1], top_verts[2])
+		add_triangle.call(top_verts[0], top_verts[2], top_verts[3])
+	else:
+		add_triangle.call(top_verts[0], top_verts[2], top_verts[1])
+		add_triangle.call(top_verts[0], top_verts[3], top_verts[2])
+	
+	# Caras laterales
+	# Cara 0-1
+	add_triangle.call(bottom_verts[0], bottom_verts[1], top_verts[1])
+	add_triangle.call(bottom_verts[0], top_verts[1], top_verts[0])
+	
+	# Cara 1-2
+	add_triangle.call(bottom_verts[1], bottom_verts[2], top_verts[2])
+	add_triangle.call(bottom_verts[1], top_verts[2], top_verts[1])
+	
+	# Cara 2-3
+	add_triangle.call(bottom_verts[2], bottom_verts[3], top_verts[3])
+	add_triangle.call(bottom_verts[2], top_verts[3], top_verts[2])
+	
+	# Cara 3-0
+	add_triangle.call(bottom_verts[3], bottom_verts[0], top_verts[0])
+	add_triangle.call(bottom_verts[3], top_verts[0], top_verts[3])
+	
+	# Configurar arrays del mesh
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_COLOR] = colors
+	
+	# Crear el mesh
+	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	
+	# Crear material para que use vertex colors
+	var material = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	array_mesh.surface_set_material(0, material)
+	
+	mesh_instance.mesh = array_mesh
+	
+	return mesh_instance
+
+
+## Ejemplo de uso:
+## var base = [
+##     Vector3(0, 0, 0),
+##     Vector3(1, 0, 0),
+##     Vector3(1, 0, 1),
+##     Vector3(0, 0, 1)
+## ]
+## var cube = DebugUtil.create_skewed_cube(base, 2.0, Color.RED)
+## add_child(cube)

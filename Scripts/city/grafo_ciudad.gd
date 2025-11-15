@@ -1,9 +1,18 @@
 class_name GraphCityGenerator
 extends RefCounted
 
+enum InterestPointType {
+	DELIVERY_FACILITY = 0,
+	DELIVERY_POINT = 1,
+	GAS_STATION = 2,
+	STORE = 3,
+}
+
 var plain_graph: GraphGenerator  
 var neighborhoods: Dictionary = {}   # {face_idx: neighborhood_id} barrio de cada cara (-1 = sin asignar)
 var street_types: Dictionary = {}    # {edge_key: tipo} tipo de cada calle (-1=límite, 0=pequeña, 1=mediana, 2=grande, 3=túnel chico, 4=túnel grande)
+var interest_points: Dictionary = {} # {face_idx: {InterestPointType: cantidad}} puntos de interés por manzana
+var block_grids: Dictionary = {}     # {face_idx: BlockGenerator} grilla 3D de cada manzana
 var region_size: Vector2 = Vector2.ZERO  # Tamaño de la región
 
 func generate_city_graph(
@@ -15,13 +24,22 @@ func generate_city_graph(
 	num_neighborhoods: int,
 	num_large_streets: int,
 	num_small_streets: int,
-	# Nuevos parámetros para túneles
+	# Parámetros para túneles
 	num_small_tunnels: int = 0,
 	num_large_tunnels: int = 0,
 	tunnel_min_length: int = 2,
 	tunnel_max_length: int = 6,
 	tunnel_max_angle_degrees: float = 30.0,
 	tunnel_min_gap: int = 3,
+	# Parámetros para puntos de interés
+	num_delivery_facilities: int = 5,
+	delivery_points_per_block: int = 3,
+	num_gas_stations: int = 10,
+	num_stores: int = 15,
+	# Parámetros para grillas de manzanas
+	block_grid_size: int = 10,
+	block_grid_floors: int = 1,
+	block_floor_height: float = 3.0,
 ) -> void:
 	seed(generation_seed)
 	
@@ -53,6 +71,19 @@ func generate_city_graph(
 	# Inicializar y asignar barrios
 	_initialize_neighborhoods()
 	_assign_neighborhoods(num_neighborhoods)
+	
+	# Inicializar y asignar puntos de interés
+	_initialize_interest_points()
+	_assign_interest_points(
+		num_delivery_facilities,
+		delivery_points_per_block,
+		num_gas_stations,
+		num_stores
+	)
+	
+	# Inicializar grillas de manzanas y asignar puntos de interés
+	_initialize_block_grids(block_grid_size, block_grid_floors, generation_seed, block_floor_height)
+	_assign_interest_points_to_grids()
 
 # ============================================
 # GESTIÓN DE TIPOS DE CALLES
@@ -573,3 +604,297 @@ func get_faces_in_neighborhood(neighborhood_id: int) -> Array[int]:
 			faces_in_neighborhood.append(face_idx)
 	
 	return faces_in_neighborhood
+
+# ============================================
+# GESTIÓN DE GRILLAS DE MANZANAS
+# ============================================
+
+## Inicializa un BlockGenerator para cada manzana
+func _initialize_block_grids(grid_size: int, floors: int, base_seed: int, floor_height: float) -> void:
+	block_grids.clear()
+	
+	for face_idx in range(plain_graph.faces.size()):
+		# Obtener los vértices de la cara
+		var face_nodes = plain_graph.faces[face_idx]
+		var face_vertices: Array = []
+		
+		for node_idx in face_nodes:
+			face_vertices.append(plain_graph.points[node_idx])
+		
+		# Obtener los tipos de edges de la cara
+		var edge_types_for_face: Array = []
+		
+		# Determinar los edges de la cara en orden
+		# Asumiendo que face_nodes está en orden (ciclíco)
+		for i in range(face_nodes.size()):
+			var node1 = face_nodes[i]
+			var node2 = face_nodes[(i + 1) % face_nodes.size()]
+			var street_type = get_street_type(node1, node2)
+			edge_types_for_face.append(street_type)
+		
+		# Crear un BlockGenerator con una semilla única por manzana
+		var block_gen = BlockGenerator.new()
+		
+		# Generar la grilla vacía (sin puntos predefinidos aún)
+		block_gen.generate_block_grid(
+			grid_size,
+			floors,
+			base_seed + face_idx,  # Semilla única por manzana
+			{},  # Sin puntos predefinidos por ahora
+			0,  # Piso predefinido (planta baja)
+			face_idx,  # Índice de la cara
+			face_vertices,  # Vértices de la cara
+			edge_types_for_face,  # Tipos de edges
+			floor_height  # Altura de cada piso
+		)
+		
+		block_grids[face_idx] = block_gen
+
+## Asigna los puntos de interés de cada manzana a su grilla correspondiente
+func _assign_interest_points_to_grids() -> void:
+	for face_idx in interest_points:
+		if face_idx not in block_grids:
+			continue
+		
+		var block_gen: BlockGenerator = block_grids[face_idx]
+		var points = interest_points[face_idx]
+		
+		# Construir el diccionario de counts para el BlockGenerator
+		# Convertir de InterestPointType a BlockGenerator.CellType
+		var predefined_counts = {}
+		
+		# DELIVERY_FACILITY (0 -> 1)
+		if points[InterestPointType.DELIVERY_FACILITY] > 0:
+			predefined_counts[BlockGenerator.CellType.DELIVERY_FACILITY] = points[InterestPointType.DELIVERY_FACILITY]
+		
+		# DELIVERY_POINT (1 -> 2)
+		if points[InterestPointType.DELIVERY_POINT] > 0:
+			predefined_counts[BlockGenerator.CellType.DELIVERY_POINT] = points[InterestPointType.DELIVERY_POINT]
+		
+		# GAS_STATION (2 -> 3)
+		if points[InterestPointType.GAS_STATION] > 0:
+			predefined_counts[BlockGenerator.CellType.GAS_STATION] = points[InterestPointType.GAS_STATION]
+		
+		# STORE (3 -> 4)
+		if points[InterestPointType.STORE] > 0:
+			predefined_counts[BlockGenerator.CellType.STORE] = points[InterestPointType.STORE]
+		
+		# Obtener información de la cara
+		var face_nodes = plain_graph.faces[face_idx]
+		var face_vertices: Array = []
+		
+		for node_idx in face_nodes:
+			face_vertices.append(plain_graph.points[node_idx])
+		
+		# Obtener los tipos de edges de la cara
+		var edge_types_for_face: Array = []
+		
+		for i in range(face_nodes.size()):
+			var node1 = face_nodes[i]
+			var node2 = face_nodes[(i + 1) % face_nodes.size()]
+			var street_type = get_street_type(node1, node2)
+			edge_types_for_face.append(street_type)
+		
+		# Volver a generar la grilla con los puntos predefinidos
+		if not predefined_counts.is_empty():
+			block_gen.generate_block_grid(
+				block_gen.grid_columns,
+				block_gen.grid_floors,
+				block_gen.get_instance_id(),  # Usar ID de instancia como semilla para mantener aleatoriedad
+				predefined_counts,
+				0,  # Piso predefinido (planta baja)
+				face_idx,  # Índice de la cara
+				face_vertices,  # Vértices de la cara
+				edge_types_for_face,  # Tipos de edges
+				block_gen.floor_height  # Altura de cada piso
+			)
+
+## Obtiene el BlockGenerator de una manzana específica
+func get_block_grid(face_idx: int) -> BlockGenerator:
+	if face_idx in block_grids:
+		return block_grids[face_idx]
+	return null
+
+## Obtiene todas las manzanas que tienen grillas generadas
+func get_all_block_faces() -> Array[int]:
+	var faces: Array[int] = []
+	for face_idx in block_grids:
+		faces.append(face_idx)
+	return faces
+
+## Verifica si una manzana tiene una grilla generada
+func has_block_grid(face_idx: int) -> bool:
+	return face_idx in block_grids
+
+## Obtiene información de una celda específica de una manzana
+func get_block_cell(face_idx: int, cell_coord: Vector3i) -> int:
+	if face_idx not in block_grids:
+		return -1
+	
+	var block_gen: BlockGenerator = block_grids[face_idx]
+	return block_gen.get_cell(cell_coord)
+
+## Obtiene todas las posiciones de celdas predefinidas en una manzana
+func get_block_predefined_positions(face_idx: int) -> Dictionary:
+	if face_idx not in block_grids:
+		return {}
+	
+	var block_gen: BlockGenerator = block_grids[face_idx]
+	return block_gen.get_predefined_positions()
+
+## Obtiene las dimensiones de la grilla de una manzana
+func get_block_grid_dimensions(face_idx: int) -> Vector3i:
+	if face_idx not in block_grids:
+		return Vector3i.ZERO
+	
+	var block_gen: BlockGenerator = block_grids[face_idx]
+	return Vector3i(block_gen.grid_columns, block_gen.grid_rows, block_gen.grid_floors)
+
+# ============================================
+# GESTIÓN DE PUNTOS DE INTERÉS
+# ============================================
+
+## Inicializa el diccionario de puntos de interés con contadores en 0 para todas las manzanas
+func _initialize_interest_points() -> void:
+	interest_points.clear()
+	
+	for face_idx in range(plain_graph.faces.size()):
+		interest_points[face_idx] = {
+			InterestPointType.DELIVERY_FACILITY: 0,
+			InterestPointType.DELIVERY_POINT: 0,
+			InterestPointType.GAS_STATION: 0,
+			InterestPointType.STORE: 0,
+		}
+
+## Asigna puntos de interés a las manzanas según los criterios de cada tipo
+func _assign_interest_points(
+	num_delivery_facilities: int,
+	delivery_points_per_block: int,
+	num_gas_stations: int,
+	num_stores: int
+) -> void:
+	# 1. DELIVERY_POINT: cada manzana tiene una cantidad fija
+	_assign_delivery_points(delivery_points_per_block)
+	
+	# 2. DELIVERY_FACILITY: dispersión aleatoria, máximo 1 por manzana
+	_assign_random_facilities(InterestPointType.DELIVERY_FACILITY, num_delivery_facilities)
+	
+	# 3. GAS_STATION: dispersión espacial, máximo 1 por manzana
+	_assign_spatially_distributed_facilities(InterestPointType.GAS_STATION, num_gas_stations)
+	
+	# 4. STORE: dispersión espacial, máximo 1 por manzana
+	_assign_spatially_distributed_facilities(InterestPointType.STORE, num_stores)
+
+## Asigna una cantidad fija de delivery points a cada manzana
+func _assign_delivery_points(points_per_block: int) -> void:
+	for face_idx in interest_points:
+		interest_points[face_idx][InterestPointType.DELIVERY_POINT] = points_per_block
+
+## Asigna facilities aleatorias, máximo una por manzana
+func _assign_random_facilities(facility_type: InterestPointType, num_facilities: int) -> void:
+	var total_faces = plain_graph.faces.size()
+	if total_faces == 0:
+		return
+	
+	# Limitar el número de facilities al total de manzanas
+	var actual_facilities = min(num_facilities, total_faces)
+	
+	# Crear lista de todas las manzanas disponibles
+	var available_faces = range(total_faces)
+	available_faces.shuffle()
+	
+	# Asignar 1 facility a las primeras N manzanas aleatorias
+	for i in range(actual_facilities):
+		var face_idx = available_faces[i]
+		interest_points[face_idx][facility_type] = 1
+
+## Asigna facilities con dispersión espacial para maximizar cobertura
+## Usa un algoritmo greedy que selecciona la manzana más lejana de las facilities existentes
+func _assign_spatially_distributed_facilities(facility_type: InterestPointType, num_facilities: int) -> void:
+	var total_faces = plain_graph.faces.size()
+	if total_faces == 0:
+		return
+	
+	# Limitar el número de facilities al total de manzanas
+	var actual_facilities = min(num_facilities, total_faces)
+	
+	# Lista de manzanas que ya tienen esta facility
+	var assigned_faces: Array[int] = []
+	
+	# Asignar la primera facility a una manzana aleatoria
+	if actual_facilities > 0:
+		var first_face = randi() % total_faces
+		interest_points[first_face][facility_type] = 1
+		assigned_faces.append(first_face)
+	
+	# Para cada facility restante, encontrar la manzana más lejana de todas las existentes
+	for i in range(1, actual_facilities):
+		var best_face = -1
+		var best_min_distance = -INF
+		
+		# Evaluar cada manzana candidata
+		for face_idx in range(total_faces):
+			# Saltar si ya tiene esta facility
+			if interest_points[face_idx][facility_type] > 0:
+				continue
+			
+			# Calcular la distancia mínima a cualquier facility existente
+			var min_distance = INF
+			var face_center = _get_face_center(face_idx)
+			
+			for assigned_face in assigned_faces:
+				var assigned_center = _get_face_center(assigned_face)
+				var distance = face_center.distance_to(assigned_center)
+				min_distance = min(min_distance, distance)
+			
+			# Si esta manzana está más lejos que la mejor anterior, actualizarla
+			if min_distance > best_min_distance:
+				best_min_distance = min_distance
+				best_face = face_idx
+		
+		# Asignar la facility a la mejor manzana encontrada
+		if best_face != -1:
+			interest_points[best_face][facility_type] = 1
+			assigned_faces.append(best_face)
+
+## Calcula el centro geométrico (centroide) de una cara
+func _get_face_center(face_idx: int) -> Vector3:
+	var face_nodes = plain_graph.faces[face_idx]
+	var center = Vector3.ZERO
+	
+	for node_idx in face_nodes:
+		center += plain_graph.points[node_idx]
+	
+	center /= float(face_nodes.size())
+	return center
+
+## Obtiene la cantidad de puntos de interés de un tipo específico en una manzana
+func get_interest_point_count(face_idx: int, point_type: InterestPointType) -> int:
+	if face_idx not in interest_points:
+		return 0
+	return interest_points[face_idx].get(point_type, 0)
+
+## Obtiene todos los puntos de interés de una manzana
+func get_all_interest_points_for_face(face_idx: int) -> Dictionary:
+	if face_idx in interest_points:
+		return interest_points[face_idx].duplicate()
+	return {}
+
+## Obtiene todas las manzanas que tienen al menos un punto de interés del tipo especificado
+func get_faces_with_interest_point(point_type: InterestPointType) -> Array[int]:
+	var faces_with_point: Array[int] = []
+	
+	for face_idx in interest_points:
+		if interest_points[face_idx][point_type] > 0:
+			faces_with_point.append(face_idx)
+	
+	return faces_with_point
+
+## Obtiene el total de puntos de interés de un tipo en toda la ciudad
+func get_total_interest_points(point_type: InterestPointType) -> int:
+	var total = 0
+	
+	for face_idx in interest_points:
+		total += interest_points[face_idx][point_type]
+	
+	return total

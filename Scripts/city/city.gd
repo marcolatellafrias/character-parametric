@@ -21,7 +21,6 @@ extends Node3D
 @export var node_radius: float = 0.08
 @export var normal_node_color: Color = Color.CHARTREUSE
 @export var boundary_node_color: Color = Color.ORANGE_RED
-@export var show_inscribed_squares: bool = false
 @export var inscribed_square_color: Color = Color.RED
 @export var inscribed_square_width: float = 0.03
 @export var auto_generate: bool = true
@@ -62,6 +61,24 @@ extends Node3D
 @export var large_tunnel_color: Color = Color.BLUE
 @export var large_tunnel_width: float = 0.045
 
+@export_group("Grillas de Manzanas")
+@export var show_block_grids: bool = true
+@export var block_grid_size: int = 10
+@export var block_grid_floors: int = 3
+@export var block_floor_height: float = 3.0
+
+@export_subgroup("Puntos de Interés")
+@export var num_delivery_facilities: int = 5
+@export var delivery_points_per_block: int = 2
+@export var num_gas_stations: int = 10
+@export var num_stores: int = 15
+
+@export_subgroup("Colores de Celdas")
+@export var delivery_facility_color: Color = Color.ORANGE
+@export var delivery_point_color: Color = Color.YELLOW
+@export var gas_station_color: Color = Color.RED
+@export var store_color: Color = Color.PURPLE
+
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
@@ -100,7 +117,16 @@ func generate_graph() -> void:
 		tunnel_min_length,
 		tunnel_max_length,
 		tunnel_max_angle_degrees,
-		tunnel_min_gap
+		tunnel_min_gap,
+		# Parámetros de puntos de interés
+		num_delivery_facilities,
+		delivery_points_per_block,
+		num_gas_stations,
+		num_stores,
+		# Parámetros de grillas
+		block_grid_size,
+		block_grid_floors,
+		block_floor_height
 	)
 	
 	# Generar colores para cada barrio
@@ -133,9 +159,9 @@ func visualize_graph() -> void:
 	if show_neighborhoods:
 		_visualize_neighborhoods()
 	
-	# 2. Visualizar cuadrados inscritos (opcional)
-	if show_inscribed_squares:
-		_visualize_inscribed_squares()
+	# 2. Visualizar grillas de manzanas
+	if show_block_grids:
+		_visualize_block_grids()
 	
 	# 3. Visualizar calles (según su tipo)
 	_visualize_streets()
@@ -211,6 +237,60 @@ func _visualize_face_as_planes(vertices: Array[Vector3], color: Color) -> void:
 			add_child(plane)
 
 # ============================================
+# VISUALIZACIÓN DE GRILLAS DE MANZANAS
+# ============================================
+func _visualize_block_grids() -> void:
+	# Calcular la altura de cada celda basada en min_distance y tamaño de grilla
+	var cell_height = min_distance / float(block_grid_size)
+	
+	# Obtener todas las manzanas que tienen grillas
+	var block_faces = generator.get_all_block_faces()
+	
+	for face_idx in block_faces:
+		var block_gen = generator.get_block_grid(face_idx)
+		if block_gen == null:
+			continue
+		
+		# Visualizar todas las celdas de todos los pisos
+		for floor in range(block_gen.grid_floors):
+			for row in range(block_gen.grid_rows):
+				for col in range(block_gen.grid_columns):
+					var cell_coord = Vector3i(col, row, floor)
+					var cell_type = block_gen.get_cell(cell_coord)
+					
+					# Solo visualizar celdas no vacías
+					if cell_type == BlockGenerator.CellType.EMPTY:
+						continue
+					
+					# Obtener color según el tipo de celda
+					var color = _get_color_for_cell_type(cell_type)
+					
+					# Obtener las esquinas de la base de la celda
+					var base_vertices = block_gen.get_cell_bottom_corners(col, row, floor)
+					
+					if base_vertices.size() != 4:
+						push_warning("Celda en face %d (%d,%d,%d) no tiene 4 vértices de base" % [face_idx, col, row, floor])
+						continue
+					
+					# Crear el cubo skewed usando DebugUtil
+					var cube = DebugUtil.create_skewed_cube(base_vertices, cell_height, color)
+					add_child(cube)
+
+func _get_color_for_cell_type(cell_type: int) -> Color:
+	"""Retorna el color apropiado según el tipo de celda"""
+	match cell_type:
+		BlockGenerator.CellType.DELIVERY_FACILITY:
+			return delivery_facility_color
+		BlockGenerator.CellType.DELIVERY_POINT:
+			return delivery_point_color
+		BlockGenerator.CellType.GAS_STATION:
+			return gas_station_color
+		BlockGenerator.CellType.STORE:
+			return store_color
+		_:
+			return Color.WHITE
+
+# ============================================
 # VISUALIZACIÓN DE CALLES
 # ============================================
 func _visualize_streets() -> void:
@@ -273,24 +353,3 @@ func _visualize_nodes() -> void:
 		var sphere = DebugUtil.create_debug_sphere(color, node_radius)
 		sphere.position = point
 		add_child(sphere)
-
-# ============================================
-# VISUALIZACIÓN DE CUADRADOS INSCRITOS
-# ============================================
-func _visualize_inscribed_squares() -> void:
-	for face_idx in range(generator.plain_graph.faces.size()):
-		var inscribed = generator.plain_graph.get_inscribed_square_for_face(face_idx, true)
-		
-		if inscribed.is_empty():
-			continue
-		
-		# Dibujar el cuadrado inscrito como líneas conectadas
-		for i in range(inscribed.size()):
-			var next_i = (i + 1) % inscribed.size()
-			var line = DebugUtil.create_debug_line_to_from(
-				inscribed[i],
-				inscribed[next_i],
-				inscribed_square_color,
-				inscribed_square_width
-			)
-			add_child(line)
