@@ -123,10 +123,12 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8081498, -7.2051997)
 
 [node name="Mirror3D" parent="world" instance=ExtResource("8_ecetj")]
 transform = Transform3D(-0.88493073, 0, -0.46572256, 0, 1, 0, 0.46572256, 0, -0.88493073, -4.2783775, 1.9868951, 8.103675)
+visible = false
 size = Vector2(10, 4)
 
 [node name="Mirror3D2" parent="world" instance=ExtResource("8_ecetj")]
 transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 0.99999994, 0.6955866, 2.1140683, -12.842005)
+visible = false
 size = Vector2(0.4, 0.16)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="world"]
@@ -150,6 +152,7 @@ surface_material_override/0 = ExtResource("2_fnnck")
 
 [node name="RigidBody3D" parent="world" instance=ExtResource("9_4i7ud")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.899603, 1.6187816, 2.2957344)
+visible = false
 
 [node name="chars" type="Node3D" parent="."]
 

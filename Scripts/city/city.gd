@@ -5,9 +5,9 @@ extends Node3D
 # ============================================
 @export_group("Generación del Grafo")
 @export var region_size: Vector2 = Vector2(10, 10)
-@export var min_distance: float = 0.7
-@export var rejection_samples: int = 30
-@export var generation_seed: int = 1234
+@export var min_distance: float = 3.8
+@export var rejection_samples: int = 40
+@export var generation_seed: int = 12345
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 6
@@ -63,29 +63,31 @@ extends Node3D
 @export var large_tunnel_width: float = 0.045
 
 @export_group("Puntos de Interés")
-@export var num_delivery_facilities: int = 6
-@export var delivery_points_per_block: int = 2
+@export var num_delivery_facilities: int = 5
+@export var delivery_points_per_block: int = 3
 @export var num_gas_stations: int = 10
 @export var num_stores: int = 15
 
 @export_group("Grillas de Manzanas")
-@export var block_grid_rows: int = 10
-@export var block_grid_columns: int = 10
-@export var block_grid_floors: int = 3
+@export var block_grid_rows: int = 20
+@export var block_grid_columns: int = 20
+@export var block_grid_floors: int = 5
 @export var block_cells_per_floor: int = 4
-@export var show_block_cells: bool = true
+@export var show_floor_planes: bool = true
+@export var floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)  # Azul semitransparente
 
-@export_subgroup("Colores de Celdas")
-@export var delivery_facility_color: Color = Color.ORANGE
-@export var delivery_point_color: Color = Color.YELLOW
-@export var gas_station_color: Color = Color.RED
-@export var store_color: Color = Color.BLUE
+@export_group("Rectángulos")
+@export var show_rectangles: bool = true
+@export var rect_saturation: float = 0.8
+@export var rect_brightness: float = 0.9
+@export var rect_alpha: float = 0.8
 
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
 var generator: GraphCityGenerator = null
 var neighborhood_colors: Dictionary = {}
+var rectangle_colors: Dictionary = {}
 
 # ============================================
 # INICIALIZACIÓN
@@ -156,8 +158,8 @@ func visualize_graph() -> void:
 		return
 	
 	# 1. Visualizar barrios (primero, para que estén debajo)
-	if show_neighborhoods:
-		_visualize_neighborhoods()
+	#if show_neighborhoods:
+		#_visualize_neighborhoods()
 	
 	# 2. Visualizar cuadrados inscritos (opcional)
 	if show_inscribed_squares:
@@ -166,11 +168,15 @@ func visualize_graph() -> void:
 	# 3. Visualizar calles (según su tipo)
 	_visualize_streets()
 	
-	# 4. Visualizar celdas de las manzanas
-	if show_block_cells:
-		_visualize_block_cells()
+	# 4. Visualizar planos de piso (antes de los rectángulos)
+	#if show_floor_planes:
+		#_visualize_floor_planes()
 	
-	# 5. Visualizar nodos (último, para que estén arriba)
+	# 5. Visualizar rectángulos
+	if show_rectangles:
+		_visualize_rectangles()
+	
+	# 6. Visualizar nodos (último, para que estén arriba)
 	if show_nodes:
 		_visualize_nodes()
 
@@ -310,9 +316,9 @@ func _visualize_inscribed_squares() -> void:
 			add_child(line)
 
 # ============================================
-# VISUALIZACIÓN DE CELDAS DE MANZANAS
+# VISUALIZACIÓN DE PLANOS DE PISO
 # ============================================
-func _visualize_block_cells() -> void:
+func _visualize_floor_planes() -> void:
 	var all_block_faces = generator.get_all_block_faces()
 	
 	for face_idx in all_block_faces:
@@ -321,32 +327,68 @@ func _visualize_block_cells() -> void:
 		if block == null:
 			continue
 		
-		# Obtener todas las celdas no vacías
-		var non_empty_cells = block.get_non_empty_cells()
+		# Obtener los 4 vértices del bloque (sin offset)
+		var block_vertices = block.vertices
 		
-		for cell_info in non_empty_cells:
-			var cell_type = cell_info["cell_type"]
-			var base_vertices = cell_info["base_vertices"]
-			var height = cell_info["height"]
+		# Crear un plano para cada piso
+		for floor in range(block.floors):
+			# Calcular la altura del piso
+			var floor_height = floor * block.cells_per_floor * block.cell_height
+			
+			# Crear los vértices 3D del plano a la altura del piso
+			var v0 = Vector3(block_vertices[0].x, floor_height, block_vertices[0].y)
+			var v1 = Vector3(block_vertices[1].x, floor_height, block_vertices[1].y)
+			var v2 = Vector3(block_vertices[2].x, floor_height, block_vertices[2].y)
+			var v3 = Vector3(block_vertices[3].x, floor_height, block_vertices[3].y)
+			
+			# Crear el plano
+			var plane = DebugUtil.create_debug_plane(v0, v1, v2, v3, floor_plane_color)
+			add_child(plane)
+
+# ============================================
+# VISUALIZACIÓN DE RECTÁNGULOS
+# ============================================
+func _visualize_rectangles() -> void:
+	rectangle_colors.clear()
+	seed(generation_seed)
+	
+	var all_block_faces = generator.get_all_block_faces()
+	
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		
+		if block == null:
+			continue
+		
+		# Obtener todos los rectángulos con su información visual
+		var rectangles = block.get_rectangles_visual_info()
+		
+		for rect_info in rectangles:
+			var rect_id = rect_info["rect_id"]
+			var base_vertices = rect_info["base_vertices"]
 			
 			# Saltar si no hay vértices válidos
 			if base_vertices.size() != 4:
 				continue
 			
-			# Seleccionar color según el tipo de celda
-			var color: Color
-			match cell_type:
-				BlockGenerator.CellType.DELIVERY_FACILITY:
-					color = delivery_facility_color
-				BlockGenerator.CellType.DELIVERY_POINT:
-					color = delivery_point_color
-				BlockGenerator.CellType.GAS_STATION:
-					color = gas_station_color
-				BlockGenerator.CellType.STORE:
-					color = store_color
-				_:
-					color = Color.WHITE  # Por defecto
+			# Generar o recuperar color único para este rectángulo
+			var color = _get_rectangle_color(rect_id)
 			
-			# Crear el cubo skewed
-			var cube = DebugUtil.create_skewed_cube(base_vertices, height, color)
-			add_child(cube)
+			# Crear el plano en la base del rectángulo
+			var plane = DebugUtil.create_debug_plane(
+				base_vertices[0],
+				base_vertices[1],
+				base_vertices[2],
+				base_vertices[3],
+				color
+			)
+			add_child(plane)
+
+# Genera un color único para un rectángulo basado en su ID
+func _get_rectangle_color(rect_id: int) -> Color:
+	if not rectangle_colors.has(rect_id):
+		# Usar el ID para generar un tono único pero consistente
+		var hue = fmod(rect_id * 0.618033988749895, 1.0)  # Golden ratio para mejor distribución
+		rectangle_colors[rect_id] = Color.from_hsv(hue, rect_saturation, rect_brightness, rect_alpha)
+	
+	return rectangle_colors[rect_id]

@@ -220,7 +220,7 @@ static func tall_lanky_arch() -> EntityStats:
 	arch.shoulder_width_proportion = 0.14
 	
 	arch.has_neck = true
-	
+	arch.distance_from_ground_factor = 0.04
 	
 	arch.slouch = 0.3
 	arch.shoulders_height = 0.0

@@ -37,8 +37,8 @@ func generate_city_graph(
 	num_gas_stations: int = 10,
 	num_stores: int = 15,
 	# Parámetros para grillas de manzanas
-	block_grid_rows: int = 10,
-	block_grid_columns: int = 10,
+	block_grid_rows: int = 20,
+	block_grid_columns: int = 20,
 	block_grid_floors: int = 3,
 	block_cells_per_floor: int = 4,
 ) -> void:
@@ -656,7 +656,7 @@ func _generate_block_grids(
 			cell_height,
 			floors,
 			cells_per_floor,
-			face_interest_points
+			#face_interest_points
 		)
 		
 		block_grids[face_idx] = block
