@@ -1,5 +1,4 @@
-class_name BlockGenerator
-extends RefCounted
+class_name BlockGenerator extends RefCounted
 
 # Tipos de calles
 enum StreetType {
@@ -10,6 +9,21 @@ enum StreetType {
 	SMALL_TUNNEL = 3,
 	LARGE_TUNNEL = 4,
 }
+
+# Estructura para representar un rectángulo en la grilla
+class GridRectangle:
+	var x: int  # Posición X inicial
+	var z: int  # Posición Z inicial
+	var width: int  # Ancho en celdas (eje X)
+	var height: int  # Alto en celdas (eje Z)
+	var id: int  # ID único del rectángulo
+	
+	func _init(p_x: int, p_z: int, p_width: int, p_height: int, p_id: int) -> void:
+		x = p_x
+		z = p_z
+		width = p_width
+		height = p_height
+		id = p_id
 
 # Estructura de la grilla
 var rows: int
@@ -38,25 +52,19 @@ const STREET_OFFSETS = {
 	StreetType.LARGE_TUNNEL: 0,
 }
 
-# Constraints de rectángulos
-var rect_min_width: int
-var rect_max_width: int
-var rect_min_depth: int
-var rect_max_depth: int
-
 # Área disponible después de offsets
 var available_min_x: int
 var available_max_x: int
 var available_min_z: int
 var available_max_z: int
 
-# Rectángulos generados por piso
-# Diccionario: floor -> Array de rectángulos
-# Cada rectángulo: {id: int, x: int, z: int, width: int, depth: int}
-var rectangles_by_floor: Dictionary = {}
+# Generación de rectángulos
+var rectangles: Array[GridRectangle] = []  # Lista de rectángulos generados
+var next_rectangle_id: int = 1  # Siguiente ID para asignar
+var min_rectangle_size: int = 2  # Tamaño mínimo de ancho/alto para un rectángulo
+var max_divisions: int = 4  # Número máximo de divisiones recursivas
+var random: RandomNumberGenerator = RandomNumberGenerator.new()
 
-# Contador de IDs de rectángulos
-var next_rect_id: int = 1
 
 func _init(
 	p_rows: int,
@@ -65,11 +73,7 @@ func _init(
 	p_street_types: Array[int],
 	p_cell_height: float,
 	p_floors: int,
-	p_cells_per_floor: int,
-	p_rect_min_width: int = 1,
-	p_rect_max_width: int = 5,
-	p_rect_min_depth: int = 1,
-	p_rect_max_depth: int = 5
+	p_cells_per_floor: int
 ) -> void:
 	rows = p_rows
 	columns = p_columns
@@ -78,15 +82,13 @@ func _init(
 	cell_height = p_cell_height
 	floors = p_floors
 	cells_per_floor = p_cells_per_floor
-	rect_min_width = p_rect_min_width
-	rect_max_width = p_rect_max_width
-	rect_min_depth = p_rect_min_depth
-	rect_max_depth = p_rect_max_depth
+	
+	random.randomize()
 	
 	_initialize_grid()
 	_calculate_cell_positions()
 	_calculate_available_area()
-	_generate_rectangles_all_floors()
+
 
 # Inicializa la grilla 3D con todas las celdas como vacías (0)
 func _initialize_grid() -> void:
@@ -102,6 +104,7 @@ func _initialize_grid() -> void:
 			grid_x.append(grid_z)
 		grid.append(grid_x)
 
+
 # Calcula las posiciones 3D de cada celda usando interpolación bilineal
 func _calculate_cell_positions() -> void:
 	cell_positions.clear()
@@ -116,32 +119,31 @@ func _calculate_cell_positions() -> void:
 			for x in range(columns):
 				# Interpolación bilineal para posición en el cuadrilátero skewed
 				var u = float(x) / max(1, columns - 1)  # Normalizado [0, 1]
-				var v = float(z) / max(1, rows - 1)     # Normalizado [0, 1]
+				var v = float(z) / max(1, rows - 1)  # Normalizado [0, 1]
 				
-				# Interpolación bilineal: P = (1-u)(1-v)P0 + u(1-v)P1 + uv*P2 + (1-u)v*P3
+				# Interpolación bilinear: P = (1-u)(1-v)P0 + u(1-v)P1 + uv*P2 + (1-u)v*P3
 				var pos_2d = (
 					vertices[0] * (1 - u) * (1 - v) +  # top_left
-					vertices[1] * u * (1 - v) +        # top_right
-					vertices[2] * u * v +              # bottom_right
-					vertices[3] * (1 - u) * v          # bottom_left
+					vertices[1] * u * (1 - v) +  # top_right
+					vertices[2] * u * v +  # bottom_right
+					vertices[3] * (1 - u) * v  # bottom_left
 				)
 				
 				var pos_3d = Vector3(pos_2d.x, height, pos_2d.y)
 				row_positions.append(pos_3d)
+			
 			positions_2d.append(row_positions)
 		cell_positions.append(positions_2d)
+
 
 # Calcula el área disponible después de aplicar los offsets de las calles
 func _calculate_available_area() -> void:
 	# North street (z = 0)
 	var north_offset = STREET_OFFSETS.get(street_types[0], 0)
-	
 	# South street (z = rows-1)
 	var south_offset = STREET_OFFSETS.get(street_types[2], 0)
-	
 	# West street (x = 0)
 	var west_offset = STREET_OFFSETS.get(street_types[3], 0)
-	
 	# East street (x = columns-1)
 	var east_offset = STREET_OFFSETS.get(street_types[1], 0)
 	
@@ -150,115 +152,157 @@ func _calculate_available_area() -> void:
 	available_min_z = north_offset
 	available_max_z = rows - south_offset - 1
 
-# Genera rectángulos para todos los pisos
-func _generate_rectangles_all_floors() -> void:
-	rectangles_by_floor.clear()
-	
-	for floor in range(floors):
-		var rectangles = _pack_rectangles_for_floor(floor)
-		rectangles_by_floor[floor] = rectangles
-		_apply_rectangles_to_grid(rectangles, floor)
 
-# Algoritmo de rectangle packing para un piso específico
-func _pack_rectangles_for_floor(floor: int) -> Array:
-	var rectangles = []
-	var occupied = {}  # Diccionario para marcar celdas ocupadas (key = "x,z")
-	
-	var available_width = available_max_x - available_min_x + 1
-	var available_depth = available_max_z - available_min_z + 1
-	
-	# Si el área disponible es muy pequeña, no generamos rectángulos
-	if available_width < rect_min_width or available_depth < rect_min_depth:
-		return rectangles
-	
-	# Algoritmo greedy: recorrer de arriba a abajo, izquierda a derecha
-	for z in range(available_min_z, available_max_z + 1):
-		for x in range(available_min_x, available_max_x + 1):
-			# Verificar si esta celda ya está ocupada
-			var key = str(x) + "," + str(z)
-			if occupied.has(key):
-				continue
-			
-			# Encontrar el rectángulo más grande que quepa en esta posición
-			var best_rect = _find_best_rectangle_at_position(x, z, occupied)
-			
-			if best_rect != null:
-				# Colocar el rectángulo
-				var rect_id = next_rect_id
-				next_rect_id += 1
-				
-				var rectangle = {
-					"id": rect_id,
-					"x": best_rect["x"],
-					"z": best_rect["z"],
-					"width": best_rect["width"],
-					"depth": best_rect["depth"]
-				}
-				
-				rectangles.append(rectangle)
-				_mark_area_occupied(best_rect["x"], best_rect["z"], best_rect["width"], best_rect["depth"], occupied)
-	
-	return rectangles
+# ============================================
+# GENERACIÓN DE RECTÁNGULOS (BSP)
+# ============================================
 
-# Verifica si un área está libre
-func _is_area_free(x: int, z: int, width: int, depth: int, occupied: Dictionary) -> bool:
-	for dx in range(width):
-		for dz in range(depth):
-			var key = str(x + dx) + "," + str(z + dz)
-			if occupied.has(key):
-				return false
-	return true
+# Genera rectángulos dividiendo recursivamente el área disponible
+func generate_rectangles(p_max_divisions: int = 4, p_min_size: int = 2, seed_value: int = -1) -> void:
+	max_divisions = p_max_divisions
+	min_rectangle_size = p_min_size
+	rectangles.clear()
+	next_rectangle_id = 1
+	
+	if seed_value >= 0:
+		random.seed = seed_value
+	else:
+		random.randomize()
+	
+	# Calcular área disponible
+	var start_x = available_min_x
+	var start_z = available_min_z
+	var width = available_max_x - available_min_x + 1
+	var height = available_max_z - available_min_z + 1
+	
+	# Comenzar la división recursiva
+	_divide_space(start_x, start_z, width, height, 0)
+	
+	# Aplicar los rectángulos a la grilla (en todos los pisos)
+	_apply_rectangles_to_grid()
 
-# Marca un área como ocupada
-func _mark_area_occupied(x: int, z: int, width: int, depth: int, occupied: Dictionary) -> void:
-	for dx in range(width):
-		for dz in range(depth):
-			var key = str(x + dx) + "," + str(z + dz)
-			occupied[key] = true
 
-# Aplica los rectángulos a la grilla 3D
-func _apply_rectangles_to_grid(rectangles: Array, floor: int) -> void:
-	var y_start = floor * cells_per_floor
-	var y_end = y_start + cells_per_floor
+# Divide recursivamente un espacio en rectángulos
+func _divide_space(x: int, z: int, width: int, height: int, depth: int) -> void:
+	# Si alcanzamos la profundidad máxima o el espacio es muy pequeño, crear un rectángulo
+	if depth >= max_divisions or width < min_rectangle_size * 2 or height < min_rectangle_size * 2:
+		var rect = GridRectangle.new(x, z, width, height, next_rectangle_id)
+		rectangles.append(rect)
+		next_rectangle_id += 1
+		return
+	
+	# Decidir si dividir horizontal o verticalmente
+	var divide_horizontally: bool
+	
+	if width > height * 1.25:
+		divide_horizontally = false  # Dividir verticalmente si es muy ancho
+	elif height > width * 1.25:
+		divide_horizontally = true  # Dividir horizontalmente si es muy alto
+	else:
+		divide_horizontally = random.randf() > 0.5  # Aleatorio si es similar
+	
+	if divide_horizontally:
+		# Dividir horizontalmente (línea paralela al eje X)
+		var split_z = _find_valid_split(z, height, true)
+		if split_z == -1:
+			# No se pudo dividir, crear rectángulo
+			var rect = GridRectangle.new(x, z, width, height, next_rectangle_id)
+			rectangles.append(rect)
+			next_rectangle_id += 1
+			return
+		
+		var height1 = split_z - z
+		var height2 = height - height1
+		
+		_divide_space(x, z, width, height1, depth + 1)
+		_divide_space(x, split_z, width, height2, depth + 1)
+	else:
+		# Dividir verticalmente (línea paralela al eje Z)
+		var split_x = _find_valid_split(x, width, false)
+		if split_x == -1:
+			# No se pudo dividir, crear rectángulo
+			var rect = GridRectangle.new(x, z, width, height, next_rectangle_id)
+			rectangles.append(rect)
+			next_rectangle_id += 1
+			return
+		
+		var width1 = split_x - x
+		var width2 = width - width1
+		
+		_divide_space(x, z, width1, height, depth + 1)
+		_divide_space(split_x, z, width2, height, depth + 1)
+
+
+# Encuentra un punto de división válido (que deje al menos min_rectangle_size en cada lado)
+func _find_valid_split(start: int, size: int, is_horizontal: bool) -> int:
+	const MAX_ATTEMPTS = 50
+	
+	for attempt in range(MAX_ATTEMPTS):
+		# Rango válido: [start + min_size, start + size - min_size]
+		var min_pos = start + min_rectangle_size
+		var max_pos = start + size - min_rectangle_size
+		
+		if min_pos >= max_pos:
+			return -1  # No hay espacio suficiente para dividir
+		
+		var split_pos = random.randi_range(min_pos, max_pos)
+		
+		# Verificar que ambos lados tengan al menos min_rectangle_size
+		var size1 = split_pos - start
+		var size2 = size - size1
+		
+		if size1 >= min_rectangle_size and size2 >= min_rectangle_size:
+			return split_pos
+	
+	return -1  # No se encontró un punto válido después de MAX_ATTEMPTS
+
+
+# Aplica los rectángulos generados a la grilla 3D
+func _apply_rectangles_to_grid() -> void:
+	var total_height = floors * cells_per_floor
 	
 	for rect in rectangles:
-		var rect_id = rect["id"]
-		var rect_x = rect["x"]
-		var rect_z = rect["z"]
-		var rect_width = rect["width"]
-		var rect_depth = rect["depth"]
-		
-		# Llenar todas las celdas del rectángulo en todas las alturas del piso
-		for y in range(y_start, y_end):
-			for dx in range(rect_width):
-				for dz in range(rect_depth):
-					var cell_x = rect_x + dx
-					var cell_z = rect_z + dz
-					
-					if cell_x >= 0 and cell_x < columns and cell_z >= 0 and cell_z < rows:
-						grid[cell_x][cell_z][y] = rect_id
+		# Aplicar el rectángulo en todos los niveles de altura
+		for y in range(total_height):
+			for dx in range(rect.width):
+				for dz in range(rect.height):
+					var gx = rect.x + dx
+					var gz = rect.z + dz
+					set_cell(gx, gz, y, rect.id)
+
+
+# Obtiene el rectángulo al que pertenece una celda
+func get_rectangle_at(x: int, z: int) -> GridRectangle:
+	for rect in rectangles:
+		if x >= rect.x and x < rect.x + rect.width:
+			if z >= rect.z and z < rect.z + rect.height:
+				return rect
+	return null
+
+
+# ============================================
+# MÉTODOS DE ACCESO A LA GRILLA
+# ============================================
 
 # Obtiene el ID del rectángulo en una posición
 func get_cell(x: int, z: int, y: int) -> int:
 	if x < 0 or x >= columns or z < 0 or z >= rows:
 		return 0
-	
 	var total_height = floors * cells_per_floor
 	if y < 0 or y >= total_height:
 		return 0
-	
 	return grid[x][z][y]
 
+
 # Establece el ID del rectángulo en una posición
-func set_cell(x: int, z: int, y: int, rect_id: int) -> void:
+func set_cell(x: int, z: int, y: int, value: int) -> void:
 	if x < 0 or x >= columns or z < 0 or z >= rows:
 		return
-	
 	var total_height = floors * cells_per_floor
 	if y < 0 or y >= total_height:
 		return
-	
-	grid[x][z][y] = rect_id
+	grid[x][z][y] = value
+
 
 # Obtiene la posición 3D de una celda
 func get_cell_position(x: int, z: int, y: int) -> Vector3:
@@ -268,35 +312,18 @@ func get_cell_position(x: int, z: int, y: int) -> Vector3:
 		return Vector3.ZERO
 	if x < 0 or x >= cell_positions[y][z].size():
 		return Vector3.ZERO
-	
 	return cell_positions[y][z][x]
+
 
 # Obtiene el piso al que pertenece una celda
 func get_floor_for_cell(y: int) -> int:
 	return int(y / cells_per_floor)
 
+
 # Verifica si una celda está al inicio de un piso
 func is_floor_start(y: int) -> bool:
 	return y % cells_per_floor == 0
 
-# Obtiene todos los rectángulos de un piso específico
-func get_rectangles_for_floor(floor: int) -> Array:
-	return rectangles_by_floor.get(floor, [])
-
-# Obtiene todos los rectángulos de todos los pisos
-func get_all_rectangles() -> Array:
-	var all_rects = []
-	for floor in rectangles_by_floor:
-		all_rects.append_array(rectangles_by_floor[floor])
-	return all_rects
-
-# Obtiene información de un rectángulo específico por su ID
-func get_rectangle_info(rect_id: int) -> Dictionary:
-	for floor in rectangles_by_floor:
-		for rect in rectangles_by_floor[floor]:
-			if rect["id"] == rect_id:
-				return rect
-	return {}
 
 # ============================================
 # MÉTODOS PARA VISUALIZACIÓN
@@ -363,109 +390,3 @@ func get_cell_base_vertices(x: int, z: int, y: int) -> Array:
 		Vector3(corner_tr_2d.x, height, corner_tr_2d.y),
 		Vector3(corner_tl_2d.x, height, corner_tl_2d.y)
 	]
-
-## Obtiene todos los rectángulos con su información visual
-## Retorna un Array de diccionarios con formato:
-## {rect_id: int, floor: int, base_vertices: Array, height: float, dimensions: Vector2i}
-func get_rectangles_visual_info() -> Array:
-	var result = []
-	
-	for floor in range(floors):
-		var rectangles = rectangles_by_floor.get(floor, [])
-		var y_start = floor * cells_per_floor
-		var floor_height = cells_per_floor * cell_height
-		
-		for rect in rectangles:
-			var rect_x = rect["x"]
-			var rect_z = rect["z"]
-			var rect_width = rect["width"]
-			var rect_depth = rect["depth"]
-			
-			# Obtener los 4 vértices de las esquinas del rectángulo
-			var corner_bl = get_cell_base_vertices(rect_x, rect_z, y_start)
-			var corner_br = get_cell_base_vertices(rect_x + rect_width - 1, rect_z, y_start)
-			var corner_tr = get_cell_base_vertices(rect_x + rect_width - 1, rect_z + rect_depth - 1, y_start)
-			var corner_tl = get_cell_base_vertices(rect_x, rect_z + rect_depth - 1, y_start)
-			
-			if corner_bl.size() == 4 and corner_br.size() == 4 and corner_tr.size() == 4 and corner_tl.size() == 4:
-				# Usar las esquinas externas de cada celda para formar el rectángulo completo
-				var base_vertices = [
-					corner_bl[0],  # bottom-left de la celda bottom-left
-					corner_br[1],  # bottom-right de la celda bottom-right
-					corner_tr[2],  # top-right de la celda top-right
-					corner_tl[3]   # top-left de la celda top-left
-				]
-				
-				result.append({
-					"rect_id": rect["id"],
-					"floor": floor,
-					"base_vertices": base_vertices,
-					"height": floor_height,
-					"dimensions": Vector2i(rect_width, rect_depth)
-				})
-	
-	return result
-
-# Encuentra el mejor rectángulo que quepa en una posición dada
-func _find_best_rectangle_at_position(start_x: int, start_z: int, occupied: Dictionary):
-	# Calcular el máximo ancho y profundidad posible desde esta posición
-	var max_possible_width = available_max_x - start_x + 1
-	var max_possible_depth = available_max_z - start_z + 1
-	
-	# Limitar por los constraints
-	max_possible_width = min(max_possible_width, rect_max_width)
-	max_possible_depth = min(max_possible_depth, rect_max_depth)
-	
-	# Verificar que al menos quepa el tamaño mínimo
-	if max_possible_width < rect_min_width or max_possible_depth < rect_min_depth:
-		return null
-	
-	# Intentar encontrar el rectángulo más grande que quepa
-	# Primero, determinar el ancho máximo real (considerando obstáculos)
-	var actual_max_width = 0
-	for w in range(1, max_possible_width + 1):
-		var test_x = start_x + w - 1
-		if test_x > available_max_x:
-			break
-		var key = str(test_x) + "," + str(start_z)
-		if occupied.has(key):
-			break
-		actual_max_width = w
-	
-	if actual_max_width < rect_min_width:
-		return null
-	
-	# Ahora encontrar la profundidad máxima para este ancho
-	var actual_max_depth = 0
-	for d in range(1, max_possible_depth + 1):
-		var test_z = start_z + d - 1
-		if test_z > available_max_z:
-			break
-		
-		# Verificar que toda la fila esté libre
-		var row_free = true
-		for w in range(actual_max_width):
-			var test_x = start_x + w
-			var key = str(test_x) + "," + str(test_z)
-			if occupied.has(key):
-				row_free = false
-				break
-		
-		if not row_free:
-			break
-		
-		actual_max_depth = d
-	
-	if actual_max_depth < rect_min_depth:
-		return null
-	
-	# Generar tamaño aleatorio dentro de los límites posibles
-	var rect_width = randi_range(rect_min_width, actual_max_width)
-	var rect_depth = randi_range(rect_min_depth, actual_max_depth)
-	
-	return {
-		"x": start_x,
-		"z": start_z,
-		"width": rect_width,
-		"depth": rect_depth
-	}

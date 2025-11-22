@@ -74,13 +74,17 @@ extends Node3D
 @export var block_grid_floors: int = 5
 @export var block_cells_per_floor: int = 4
 @export var show_floor_planes: bool = true
-@export var floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)  # Azul semitransparente
+@export var floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 
 @export_group("Rectángulos")
 @export var show_rectangles: bool = true
 @export var rect_saturation: float = 0.8
 @export var rect_brightness: float = 0.9
 @export var rect_alpha: float = 0.8
+@export var rect_max_divisions: int = 4
+@export var rect_min_size: int = 2
+
+
 
 # ============================================
 # DATOS DEL GRAFO
@@ -115,26 +119,22 @@ func generate_graph() -> void:
 		num_neighborhoods,
 		num_large_streets,
 		num_small_streets,
-		# Parámetros de túneles
 		num_small_tunnels,
 		num_large_tunnels,
 		tunnel_min_length,
 		tunnel_max_length,
 		tunnel_max_angle_degrees,
 		tunnel_min_gap,
-		# Parámetros de puntos de interés
-		num_delivery_facilities,
-		delivery_points_per_block,
-		num_gas_stations,
-		num_stores,
-		# Parámetros de grillas
 		block_grid_rows,
 		block_grid_columns,
 		block_grid_floors,
 		block_cells_per_floor,
+		rect_max_divisions,
+		rect_min_size,
 	)
 	
 	_generate_neighborhood_colors()
+	_generate_rectangle_colors()
 
 func _generate_neighborhood_colors() -> void:
 	neighborhood_colors.clear()
@@ -148,6 +148,22 @@ func _generate_neighborhood_colors() -> void:
 		var hue = randf()
 		neighborhood_colors[i] = Color.from_hsv(hue, neighborhood_saturation, neighborhood_brightness, neighborhood_alpha)
 
+func _generate_rectangle_colors() -> void:
+	rectangle_colors.clear()
+	seed(generation_seed + 1000)
+	
+	# Generar colores para todos los rectángulos de todas las manzanas
+	var all_block_faces = generator.get_all_block_faces()
+	
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		if block == null:
+			continue
+		
+		for rect in block.rectangles:
+			var hue = randf()
+			rectangle_colors[rect.id] = Color.from_hsv(hue, rect_saturation, rect_brightness, rect_alpha)
+
 func clear_visualization() -> void:
 	for child in get_children():
 		child.queue_free()
@@ -157,26 +173,14 @@ func visualize_graph() -> void:
 		push_error("No hay grafo generado para visualizar")
 		return
 	
-	# 1. Visualizar barrios (primero, para que estén debajo)
-	#if show_neighborhoods:
-		#_visualize_neighborhoods()
-	
-	# 2. Visualizar cuadrados inscritos (opcional)
 	if show_inscribed_squares:
 		_visualize_inscribed_squares()
 	
-	# 3. Visualizar calles (según su tipo)
 	_visualize_streets()
 	
-	# 4. Visualizar planos de piso (antes de los rectángulos)
-	#if show_floor_planes:
-		#_visualize_floor_planes()
-	
-	# 5. Visualizar rectángulos
 	if show_rectangles:
 		_visualize_rectangles()
 	
-	# 6. Visualizar nodos (último, para que estén arriba)
 	if show_nodes:
 		_visualize_nodes()
 
@@ -316,6 +320,90 @@ func _visualize_inscribed_squares() -> void:
 			add_child(line)
 
 # ============================================
+# VISUALIZACIÓN DE RECTÁNGULOS
+# ============================================
+func _visualize_rectangles() -> void:
+	var all_block_faces = generator.get_all_block_faces()
+	
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		
+		if block == null:
+			continue
+		
+		# Visualizar cada rectángulo en cada piso
+		for rect in block.rectangles:
+			var color = rectangle_colors.get(rect.id, Color.WHITE)
+			
+			for floor in range(block.floors):
+				var y = floor * block.cells_per_floor
+				
+				# Obtener las 4 esquinas del rectángulo
+				var corners = _get_rectangle_corners(block, rect, y)
+				
+				if corners.size() == 4:
+					var plane = DebugUtil.create_debug_plane(
+						corners[0],
+						corners[1],
+						corners[2],
+						corners[3],
+						color
+					)
+					add_child(plane)
+	
+	print("[Visualizer] Rectángulos generados para %d bloques" % all_block_faces.size())
+
+# Obtiene las 4 esquinas externas de un rectángulo en un piso específico
+func _get_rectangle_corners(block: BlockGenerator, rect: BlockGenerator.GridRectangle, y: int) -> Array[Vector3]:
+	var corners: Array[Vector3] = []
+	
+	# Calcular las posiciones normalizadas (u, v) de las esquinas del rectángulo
+	var u_min = float(rect.x) / max(1, block.columns)
+	var u_max = float(rect.x + rect.width) / max(1, block.columns)
+	var v_min = float(rect.z) / max(1, block.rows)
+	var v_max = float(rect.z + rect.height) / max(1, block.rows)
+	
+	var height = y * block.cell_height
+	
+	# Esquina inferior-izquierda (u_min, v_min)
+	var corner_bl_2d = (
+		block.vertices[0] * (1 - u_min) * (1 - v_min) +
+		block.vertices[1] * u_min * (1 - v_min) +
+		block.vertices[2] * u_min * v_min +
+		block.vertices[3] * (1 - u_min) * v_min
+	)
+	corners.append(Vector3(corner_bl_2d.x, height, corner_bl_2d.y))
+	
+	# Esquina inferior-derecha (u_max, v_min)
+	var corner_br_2d = (
+		block.vertices[0] * (1 - u_max) * (1 - v_min) +
+		block.vertices[1] * u_max * (1 - v_min) +
+		block.vertices[2] * u_max * v_min +
+		block.vertices[3] * (1 - u_max) * v_min
+	)
+	corners.append(Vector3(corner_br_2d.x, height, corner_br_2d.y))
+	
+	# Esquina superior-derecha (u_max, v_max)
+	var corner_tr_2d = (
+		block.vertices[0] * (1 - u_max) * (1 - v_max) +
+		block.vertices[1] * u_max * (1 - v_max) +
+		block.vertices[2] * u_max * v_max +
+		block.vertices[3] * (1 - u_max) * v_max
+	)
+	corners.append(Vector3(corner_tr_2d.x, height, corner_tr_2d.y))
+	
+	# Esquina superior-izquierda (u_min, v_max)
+	var corner_tl_2d = (
+		block.vertices[0] * (1 - u_min) * (1 - v_max) +
+		block.vertices[1] * u_min * (1 - v_max) +
+		block.vertices[2] * u_min * v_max +
+		block.vertices[3] * (1 - u_min) * v_max
+	)
+	corners.append(Vector3(corner_tl_2d.x, height, corner_tl_2d.y))
+	
+	return corners
+
+# ============================================
 # VISUALIZACIÓN DE PLANOS DE PISO
 # ============================================
 func _visualize_floor_planes() -> void:
@@ -327,68 +415,38 @@ func _visualize_floor_planes() -> void:
 		if block == null:
 			continue
 		
-		# Obtener los 4 vértices del bloque (sin offset)
-		var block_vertices = block.vertices
-		
-		# Crear un plano para cada piso
 		for floor in range(block.floors):
-			# Calcular la altura del piso
-			var floor_height = floor * block.cells_per_floor * block.cell_height
+			var corner_bl = block.get_cell_position(
+				block.available_min_x, 
+				block.available_min_z, 
+				floor * block.cells_per_floor
+			)
 			
-			# Crear los vértices 3D del plano a la altura del piso
-			var v0 = Vector3(block_vertices[0].x, floor_height, block_vertices[0].y)
-			var v1 = Vector3(block_vertices[1].x, floor_height, block_vertices[1].y)
-			var v2 = Vector3(block_vertices[2].x, floor_height, block_vertices[2].y)
-			var v3 = Vector3(block_vertices[3].x, floor_height, block_vertices[3].y)
+			var corner_br = block.get_cell_position(
+				block.available_max_x, 
+				block.available_min_z, 
+				floor * block.cells_per_floor
+			)
 			
-			# Crear el plano
-			var plane = DebugUtil.create_debug_plane(v0, v1, v2, v3, floor_plane_color)
-			add_child(plane)
-
-# ============================================
-# VISUALIZACIÓN DE RECTÁNGULOS
-# ============================================
-func _visualize_rectangles() -> void:
-	rectangle_colors.clear()
-	seed(generation_seed)
-	
-	var all_block_faces = generator.get_all_block_faces()
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		# Obtener todos los rectángulos con su información visual
-		var rectangles = block.get_rectangles_visual_info()
-		
-		for rect_info in rectangles:
-			var rect_id = rect_info["rect_id"]
-			var base_vertices = rect_info["base_vertices"]
+			var corner_tr = block.get_cell_position(
+				block.available_max_x, 
+				block.available_max_z, 
+				floor * block.cells_per_floor
+			)
 			
-			# Saltar si no hay vértices válidos
-			if base_vertices.size() != 4:
-				continue
+			var corner_tl = block.get_cell_position(
+				block.available_min_x, 
+				block.available_max_z, 
+				floor * block.cells_per_floor
+			)
 			
-			# Generar o recuperar color único para este rectángulo
-			var color = _get_rectangle_color(rect_id)
-			
-			# Crear el plano en la base del rectángulo
 			var plane = DebugUtil.create_debug_plane(
-				base_vertices[0],
-				base_vertices[1],
-				base_vertices[2],
-				base_vertices[3],
-				color
+				corner_bl, 
+				corner_br, 
+				corner_tr, 
+				corner_tl, 
+				floor_plane_color
 			)
 			add_child(plane)
-
-# Genera un color único para un rectángulo basado en su ID
-func _get_rectangle_color(rect_id: int) -> Color:
-	if not rectangle_colors.has(rect_id):
-		# Usar el ID para generar un tono único pero consistente
-		var hue = fmod(rect_id * 0.618033988749895, 1.0)  # Golden ratio para mejor distribución
-		rectangle_colors[rect_id] = Color.from_hsv(hue, rect_saturation, rect_brightness, rect_alpha)
 	
-	return rectangle_colors[rect_id]
+	print("[Visualizer] Planos de piso generados para %d bloques" % all_block_faces.size())

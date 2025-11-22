@@ -298,6 +298,74 @@ static func create_debug_line_to_from(from: Vector3, to: Vector3, color: Color, 
 	mesh_instance.material_override = material
 	return mesh_instance
 
+static func create_debug_polygon(points: PackedVector3Array, color: Color) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	
+	# Validar que hay al menos 3 puntos
+	if points.size() < 3:
+		push_error("Se necesitan al menos 3 puntos para crear un polígono")
+		return mesh_instance
+	
+	# Crear un ArrayMesh personalizado
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	
+	# Los vértices son los puntos proporcionados
+	var vertices := points
+	
+	# Calcular la normal del polígono usando los primeros 3 puntos
+	var edge1 := points[1] - points[0]
+	var edge2 := points[2] - points[0]
+	var normal := edge1.cross(edge2).normalized()
+	
+	# Verificar si la normal apunta hacia arriba (componente Y positivo)
+	# Si apunta hacia abajo, necesitamos invertir el orden de los vértices
+	var flip_winding := normal.y < 0
+	
+	# Triangulación en abanico desde el primer vértice
+	# Para un polígono de N puntos, creamos (N-2) triángulos
+	var indices := PackedInt32Array()
+	
+	if flip_winding:
+		# Orden invertido para que la normal apunte hacia arriba
+		for i in range(1, points.size() - 1):
+			indices.append(0)
+			indices.append(i + 1)
+			indices.append(i)
+		# Invertir la normal también
+		normal = -normal
+	else:
+		# Orden normal (antihorario visto desde arriba)
+		for i in range(1, points.size() - 1):
+			indices.append(0)
+			indices.append(i)
+			indices.append(i + 1)
+	
+	# Aplicar la misma normal a todos los vértices
+	var normals := PackedVector3Array()
+	normals.resize(points.size())
+	for i in range(points.size()):
+		normals[i] = normal
+	
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	
+	var array_mesh := ArrayMesh.new()
+	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	
+	mesh_instance.mesh = array_mesh
+	
+	# Crear y aplicar el material
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = color
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Visible desde ambos lados
+	
+	mesh_instance.material_override = material
+	
+	return mesh_instance
+
 static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vector3, corner4: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	
