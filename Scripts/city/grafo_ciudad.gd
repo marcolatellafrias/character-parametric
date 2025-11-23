@@ -28,6 +28,8 @@ func generate_city_graph(
 	block_cells_per_floor: int = 4,
 	rect_max_divisions: int = 4,
 	rect_min_size: int = 2,
+	rect_max_aspect_ratio: float = 1.5,
+	rect_max_dimension: int = 8,
 ) -> void:
 	
 	seed(generation_seed)
@@ -59,7 +61,9 @@ func generate_city_graph(
 		block_cells_per_floor,
 		block_cell_height,
 		rect_max_divisions,
-		rect_min_size
+		rect_min_size,
+		rect_max_aspect_ratio,
+		rect_max_dimension
 	)
 
 # ============================================
@@ -514,7 +518,9 @@ func _generate_block_grids(
 	cells_per_floor: int,
 	cell_height: float,
 	max_divisions: int,
-	min_size: int
+	min_size: int,
+	max_aspect_ratio: float,
+	max_dimension: int
 ) -> void:
 	block_grids.clear()
 	
@@ -543,7 +549,7 @@ func _generate_block_grids(
 		)
 		
 		# Generar los rectángulos para este bloque
-		block.generate_rectangles(max_divisions, min_size, face_idx)
+		block.generate_rectangles(max_divisions, min_size, max_aspect_ratio, max_dimension, face_idx)
 		
 		block_grids[face_idx] = block
 

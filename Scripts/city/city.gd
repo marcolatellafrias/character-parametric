@@ -4,8 +4,8 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(10, 10)
-@export var min_distance: float = 3.8
+@export var region_size: Vector2 = Vector2(400, 400)
+@export var min_distance: float = 100.5
 @export var rejection_samples: int = 40
 @export var generation_seed: int = 12345
 
@@ -69,10 +69,10 @@ extends Node3D
 @export var num_stores: int = 15
 
 @export_group("Grillas de Manzanas")
-@export var block_grid_rows: int = 20
-@export var block_grid_columns: int = 20
-@export var block_grid_floors: int = 5
-@export var block_cells_per_floor: int = 4
+@export var block_grid_rows: int = 35
+@export var block_grid_columns: int = 35
+@export var block_grid_floors: int = 1
+@export var block_cells_per_floor: int = 10
 @export var show_floor_planes: bool = true
 @export var floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 
@@ -81,8 +81,8 @@ extends Node3D
 @export var rect_saturation: float = 0.8
 @export var rect_brightness: float = 0.9
 @export var rect_alpha: float = 0.8
-@export var rect_max_divisions: int = 4
-@export var rect_min_size: int = 2
+@export var rect_max_divisions: int = 8
+@export var rect_min_size: int = 6
 
 
 
@@ -150,20 +150,52 @@ func _generate_neighborhood_colors() -> void:
 
 func _generate_rectangle_colors() -> void:
 	rectangle_colors.clear()
-	seed(generation_seed + 1000)
 	
-	# Generar colores para todos los rectángulos de todas las manzanas
+	# Golden ratio conjugate para distribución uniforme de colores
+	var golden_ratio_conjugate = 0.618033988749895
+	var hue = randf()  # Punto de inicio aleatorio
+	
+	# Contar total de rectángulos para mejor distribución
 	var all_block_faces = generator.get_all_block_faces()
+	var total_rectangles = 0
+	
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		if block != null:
+			total_rectangles += block.rectangles.size()
+	
+	# Si hay pocos rectángulos, usar división uniforme
+	# Si hay muchos, usar golden ratio para mayor variación
+	var use_uniform_distribution = total_rectangles < 20
+	var hue_step = 1.0 / total_rectangles if use_uniform_distribution else golden_ratio_conjugate
+	
+	var rect_index = 0
 	
 	for face_idx in all_block_faces:
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
 		if block == null:
 			continue
 		
+		# Generar colores para cada rectángulo de esta manzana
 		for rect in block.rectangles:
-			var hue = randf()
-			rectangle_colors[rect.id] = Color.from_hsv(hue, rect_saturation, rect_brightness, rect_alpha)
-
+			if use_uniform_distribution:
+				# Distribución uniforme para pocos rectángulos
+				hue = fmod(rect_index * hue_step, 1.0)
+			else:
+				# Golden ratio para muchos rectángulos (más variación)
+				hue = fmod(hue + golden_ratio_conjugate, 1.0)
+			
+			# Variar ligeramente saturation y brightness para más distinción
+			var saturation = rect_saturation + randf_range(-0.1, 0.1)
+			saturation = clamp(saturation, 0.3, 0.5)
+			
+			var brightness = rect_brightness + randf_range(-0.1, 0.1)
+			brightness = clamp(brightness, 0.3, 0.6)
+			
+			rectangle_colors[rect.id] = Color.from_hsv(hue, saturation, brightness, rect_alpha)
+			rect_index += 1
+	
+	print("[Visualizer] Generados %d colores distintos para rectángulos" % total_rectangles)
 func clear_visualization() -> void:
 	for child in get_children():
 		child.queue_free()
@@ -331,37 +363,47 @@ func _visualize_rectangles() -> void:
 		if block == null:
 			continue
 		
-		# Visualizar cada rectángulo en cada piso
+		# Visualizar cada rectángulo como un cubo extruido
 		for rect in block.rectangles:
-			var color = rectangle_colors.get(rect.id, Color.WHITE)
+			var color: Color
 			
-			for floor in range(block.floors):
-				var y = floor * block.cells_per_floor
+			# Verificar si el rectángulo está mergeado
+			if block.is_rectangle_merged(rect.id):
+				var merged_with_id = block.get_merged_with(rect.id)
+				# Usar gris claro para uno y blanco para el otro
+				if rect.id < merged_with_id:
+					color = Color(0.8, 0.8, 0.8, rect_alpha)  # Gris claro
+				else:
+					color = Color(1.0, 1.0, 1.0, rect_alpha)  # Blanco
+			else:
+				# Color normal aleatorio
+				color = rectangle_colors.get(rect.id, Color.WHITE)
+			
+			# Obtener las 4 esquinas de la base del rectángulo (con offsets aplicados)
+			var base_corners = _get_rectangle_corners(block, rect, 0)
+			
+			if base_corners.size() == 4:
+				# Calcular la altura total del edificio
+				var total_height = block.floors * block.cells_per_floor * block.cell_height
 				
-				# Obtener las 4 esquinas del rectángulo
-				var corners = _get_rectangle_corners(block, rect, y)
-				
-				if corners.size() == 4:
-					var plane = DebugUtil.create_debug_plane(
-						corners[0],
-						corners[1],
-						corners[2],
-						corners[3],
-						color
-					)
-					add_child(plane)
+				# Crear el cubo extruido
+				var cube = DebugUtil.create_skewed_cube(base_corners, total_height, color)
+				add_child(cube)
 	
-	print("[Visualizer] Rectángulos generados para %d bloques" % all_block_faces.size())
+	print("[Visualizer] Rectángulos extruidos generados para %d bloques" % all_block_faces.size())
 
 # Obtiene las 4 esquinas externas de un rectángulo en un piso específico
 func _get_rectangle_corners(block: BlockGenerator, rect: BlockGenerator.GridRectangle, y: int) -> Array[Vector3]:
 	var corners: Array[Vector3] = []
 	
-	# Calcular las posiciones normalizadas (u, v) de las esquinas del rectángulo
-	var u_min = float(rect.x) / max(1, block.columns)
-	var u_max = float(rect.x + rect.width) / max(1, block.columns)
-	var v_min = float(rect.z) / max(1, block.rows)
-	var v_max = float(rect.z + rect.height) / max(1, block.rows)
+	# Obtener los bounds con offset aplicado
+	var bounds = block.get_rectangle_bounds_with_offset(rect)
+	
+	# Calcular las posiciones normalizadas (u, v) usando las coordenadas con offset
+	var u_min = float(bounds.x_min) / max(1, block.columns)
+	var u_max = float(bounds.x_max) / max(1, block.columns)
+	var v_min = float(bounds.z_min) / max(1, block.rows)
+	var v_max = float(bounds.z_max) / max(1, block.rows)
 	
 	var height = y * block.cell_height
 	

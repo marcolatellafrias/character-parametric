@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=22 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://by0al5irc1r60" path="res://Materials/Floor.tres" id="1_lpcab"]
 [ext_resource type="Material" uid="uid://bq5ujksxl5avb" path="res://Materials/Shapes.tres" id="2_fnnck"]
@@ -7,7 +7,6 @@
 [ext_resource type="Material" uid="uid://dnj4yx07gux3o" path="res://Materials/green.tres" id="5_4i7ud"]
 [ext_resource type="PackedScene" uid="uid://delu2qjrw6teu" path="res://addons/Mirror3D/Mirror3D.tscn" id="8_ecetj"]
 [ext_resource type="Script" uid="uid://s04a8ue62sk4" path="res://Scripts/character/basic_char.gd" id="8_oilx1"]
-[ext_resource type="PackedScene" uid="uid://depimbd5eofjb" path="res://Scenes/car.tscn" id="9_4i7ud"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
 [ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
@@ -15,16 +14,10 @@
 
 [sub_resource type="BoxMesh" id="BoxMesh_hfvyn"]
 material = ExtResource("1_lpcab")
-size = Vector3(300, 0.01, 300)
+size = Vector3(3000, 0.01, 3000)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_fnnck"]
-size = Vector3(300, 1, 300)
-
-[sub_resource type="PrismMesh" id="PrismMesh_rm82a"]
-size = Vector3(1.5, 1.5, 1.5)
-
-[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_lsnf5"]
-data = PackedVector3Array(0, 0.75, 0.75, 0.75, -0.75, 0.75, -0.75, -0.75, 0.75, 0, 0.75, -0.75, -0.75, -0.75, -0.75, 0.75, -0.75, -0.75, 0, 0.75, 0.75, 0, 0.75, -0.75, 0.75, -0.75, 0.75, 0, 0.75, -0.75, 0.75, -0.75, -0.75, 0.75, -0.75, 0.75, 0, 0.75, -0.75, 0, 0.75, 0.75, -0.75, -0.75, -0.75, 0, 0.75, 0.75, -0.75, -0.75, 0.75, -0.75, -0.75, -0.75, -0.75, -0.75, 0.75, 0.75, -0.75, 0.75, -0.75, -0.75, -0.75, 0.75, -0.75, 0.75, 0.75, -0.75, -0.75, -0.75, -0.75, -0.75)
+size = Vector3(3000, 1, 3000)
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_u0d3p"]
 material = ExtResource("3_ecetj")
@@ -42,7 +35,6 @@ radius = 0.01
 height = 1.0
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_2rq0j"]
-sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
 ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
 
 [sub_resource type="Sky" id="Sky_420ax"]
@@ -53,6 +45,16 @@ background_mode = 2
 sky = SubResource("Sky_420ax")
 tonemap_mode = 2
 glow_enabled = true
+fog_mode = 1
+fog_light_color = Color(0.7659111, 0.46699548, 0.23651671, 1)
+fog_density = 1.0
+fog_sky_affect = 0.0
+fog_depth_begin = 50.0
+volumetric_fog_density = 0.3
+volumetric_fog_albedo = Color(0.9072337, 0.6909475, 0.34785485, 1)
+volumetric_fog_emission = Color(0.80489886, 0.5607987, 0.35002738, 1)
+volumetric_fog_emission_energy = 0.01
+volumetric_fog_sky_affect = 0.0
 adjustment_enabled = true
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_oilx1"]
@@ -64,8 +66,7 @@ adjustment_enabled = true
 [node name="world" type="Node3D" parent="."]
 
 [node name="Floor" type="MeshInstance3D" parent="world"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15950775, -0.3936212, 0.0074591637)
-visible = false
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.16, -0.01, 0.007)
 mesh = SubResource("BoxMesh_hfvyn")
 skeleton = NodePath("../..")
 surface_material_override/0 = ExtResource("1_lpcab")
@@ -75,17 +76,6 @@ surface_material_override/0 = ExtResource("1_lpcab")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="world/Floor/StaticBody3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.46042538, 0)
 shape = SubResource("BoxShape3D_fnnck")
-
-[node name="Prism" type="MeshInstance3D" parent="world"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.183978, 0.753702, -1.10376)
-mesh = SubResource("PrismMesh_rm82a")
-skeleton = NodePath("../..")
-surface_material_override/0 = ExtResource("2_fnnck")
-
-[node name="StaticBody3D" type="StaticBody3D" parent="world/Prism"]
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="world/Prism/StaticBody3D"]
-shape = SubResource("ConcavePolygonShape3D_lsnf5")
 
 [node name="axis" type="Node3D" parent="world"]
 transform = Transform3D(10, 0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0)
@@ -150,10 +140,6 @@ mesh = SubResource("BoxMesh_8wo38")
 skeleton = NodePath("../../..")
 surface_material_override/0 = ExtResource("2_fnnck")
 
-[node name="RigidBody3D" parent="world" instance=ExtResource("9_4i7ud")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.899603, 1.6187816, 2.2957344)
-visible = false
-
 [node name="chars" type="Node3D" parent="."]
 
 [node name="fat" parent="chars" instance=ExtResource("11_ymvx6")]
@@ -184,55 +170,6 @@ current = true
 
 [node name="city" type="Node3D" parent="."]
 script = ExtResource("12_v3boh")
-region_size = null
-min_distance = null
-rejection_samples = null
-generation_seed = null
-num_neighborhoods = null
-show_neighborhoods = null
-smoothing_steps = null
-show_nodes = null
-node_radius = null
-normal_node_color = null
-boundary_node_color = null
-show_inscribed_squares = null
-inscribed_square_color = null
-inscribed_square_width = null
-auto_generate = null
-num_large_streets = null
-num_small_streets = null
-small_street_color = null
-small_street_width = null
-medium_street_color = null
-medium_street_width = null
-large_street_color = null
-large_street_width = null
-boundary_street_color = null
-boundary_street_width = null
-num_small_tunnels = null
-num_large_tunnels = null
-tunnel_min_length = null
-tunnel_max_length = null
-tunnel_max_angle_degrees = null
-tunnel_min_gap = null
-small_tunnel_color = null
-small_tunnel_width = null
-large_tunnel_color = null
-large_tunnel_width = null
-num_delivery_facilities = null
-delivery_points_per_block = null
-num_gas_stations = null
-num_stores = null
-block_grid_rows = null
-block_grid_columns = null
-block_grid_floors = null
-block_cells_per_floor = null
-show_floor_planes = null
-floor_plane_color = null
-show_rectangles = null
-rect_saturation = null
-rect_brightness = null
-rect_alpha = null
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 script = ExtResource("8_oilx1")

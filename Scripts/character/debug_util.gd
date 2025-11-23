@@ -306,42 +306,48 @@ static func create_debug_polygon(points: PackedVector3Array, color: Color) -> Me
 		push_error("Se necesitan al menos 3 puntos para crear un polígono")
 		return mesh_instance
 	
-	# Crear un ArrayMesh personalizado
+	# Proyectar los puntos 3D al plano XZ (2D) para triangulación
+	var points_2d := PackedVector2Array()
+	var height := points[0].y  # Todos los puntos deberían tener la misma altura Y
+	
+	for point in points:
+		points_2d.append(Vector2(point.x, point.z))
+	
+	# Triangular el polígono 2D usando el algoritmo de Godot (maneja polígonos cóncavos)
+	var indices := Geometry2D.triangulate_polygon(points_2d)
+	
+	if indices.is_empty():
+		push_error("No se pudo triangular el polígono")
+		return mesh_instance
+	
+	# Crear los arrays para el mesh
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	
-	# Los vértices son los puntos proporcionados
+	# Los vértices son los puntos 3D originales
 	var vertices := points
 	
-	# Calcular la normal del polígono usando los primeros 3 puntos
-	var edge1 := points[1] - points[0]
-	var edge2 := points[2] - points[0]
-	var normal := edge1.cross(edge2).normalized()
+	# Verificar el winding order del primer triángulo para determinar la normal correcta
+	var normal := Vector3(0, 1, 0)  # Por defecto, apuntando hacia arriba
 	
-	# Verificar si la normal apunta hacia arriba (componente Y positivo)
-	# Si apunta hacia abajo, necesitamos invertir el orden de los vértices
-	var flip_winding := normal.y < 0
+	if indices.size() >= 3:
+		var v0 := points[indices[0]]
+		var v1 := points[indices[1]]
+		var v2 := points[indices[2]]
+		
+		var edge1 := v1 - v0
+		var edge2 := v2 - v0
+		var tri_normal := edge1.cross(edge2)
+		
+		# Si la normal del primer triángulo apunta hacia abajo, invertir todos los triángulos
+		if tri_normal.y < 0:
+			# Invertir el orden de los vértices en cada triángulo (swap segundo y tercer índice)
+			for i in range(0, indices.size(), 3):
+				var temp := indices[i + 1]
+				indices[i + 1] = indices[i + 2]
+				indices[i + 2] = temp
 	
-	# Triangulación en abanico desde el primer vértice
-	# Para un polígono de N puntos, creamos (N-2) triángulos
-	var indices := PackedInt32Array()
-	
-	if flip_winding:
-		# Orden invertido para que la normal apunte hacia arriba
-		for i in range(1, points.size() - 1):
-			indices.append(0)
-			indices.append(i + 1)
-			indices.append(i)
-		# Invertir la normal también
-		normal = -normal
-	else:
-		# Orden normal (antihorario visto desde arriba)
-		for i in range(1, points.size() - 1):
-			indices.append(0)
-			indices.append(i)
-			indices.append(i + 1)
-	
-	# Aplicar la misma normal a todos los vértices
+	# Crear las normales (todas apuntando hacia arriba)
 	var normals := PackedVector3Array()
 	normals.resize(points.size())
 	for i in range(points.size()):
@@ -360,12 +366,12 @@ static func create_debug_polygon(points: PackedVector3Array, color: Color) -> Me
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.albedo_color = color
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Visible desde ambos lados
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Renderizar ambos lados por seguridad
 	
 	mesh_instance.material_override = material
 	
 	return mesh_instance
-
+	
 static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vector3, corner4: Vector3, color: Color) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	
@@ -430,16 +436,13 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 	var arrays = []
 	arrays.resize(Mesh.ARRAY_MAX)
 	
-	# Offset para centrar el cubo verticalmente
-	var height_offset = Vector3(0, -height / 2.0, 0)
-	
-	# Crear vértices superiores e inferiores con offset
+	# Crear vértices superiores e inferiores
 	var bottom_verts = []
 	var top_verts = []
 	
 	for i in range(4):
-		bottom_verts.append(base_vertices[i] + height_offset)
-		top_verts.append(base_vertices[i] + Vector3(0, height, 0) + height_offset)
+		bottom_verts.append(base_vertices[i])
+		top_verts.append(base_vertices[i] + Vector3(0, height, 0))
 	
 	# Array de vértices para todas las caras del cubo
 	var vertices = PackedVector3Array()
@@ -454,33 +457,19 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 		colors.append(color)
 		colors.append(color)
 	
-	# Calcular la normal de la cara base para determinar el orden correcto
-	var edge1 = bottom_verts[1] - bottom_verts[0]
-	var edge2 = bottom_verts[2] - bottom_verts[0]
-	var base_normal = edge1.cross(edge2).normalized()
+	# Cara inferior (base) - normal apuntando hacia abajo (-Y)
+	# Orden: counter-clockwise cuando se ve desde abajo
+	# Desde arriba esto es: 0, 2, 1 y 0, 3, 2 (clockwise desde arriba = CCW desde abajo)
+	add_triangle.call(bottom_verts[0], bottom_verts[2], bottom_verts[1])
+	add_triangle.call(bottom_verts[0], bottom_verts[3], bottom_verts[2])
 	
-	# La normal debería apuntar hacia abajo (negativo en Y)
-	var should_flip_bottom = base_normal.y > 0
+	# Cara superior (tapa) - normal apuntando hacia arriba (+Y)
+	# Orden: counter-clockwise cuando se ve desde arriba
+	add_triangle.call(top_verts[0], top_verts[1], top_verts[2])
+	add_triangle.call(top_verts[0], top_verts[2], top_verts[3])
 	
-	# Cara inferior (base)
-	if should_flip_bottom:
-		# Invertir el orden para que la normal apunte hacia abajo
-		add_triangle.call(bottom_verts[0], bottom_verts[2], bottom_verts[1])
-		add_triangle.call(bottom_verts[0], bottom_verts[3], bottom_verts[2])
-	else:
-		add_triangle.call(bottom_verts[0], bottom_verts[1], bottom_verts[2])
-		add_triangle.call(bottom_verts[0], bottom_verts[2], bottom_verts[3])
-	
-	# Cara superior (tapa) - usar el mismo orden que la base
-	if should_flip_bottom:
-		add_triangle.call(top_verts[0], top_verts[1], top_verts[2])
-		add_triangle.call(top_verts[0], top_verts[2], top_verts[3])
-	else:
-		add_triangle.call(top_verts[0], top_verts[2], top_verts[1])
-		add_triangle.call(top_verts[0], top_verts[3], top_verts[2])
-	
-	# Caras laterales
-	# Cara 0-1
+	# Caras laterales (normales apuntando hacia afuera)
+	# Cara 0-1 (orden CCW desde afuera)
 	add_triangle.call(bottom_verts[0], bottom_verts[1], top_verts[1])
 	add_triangle.call(bottom_verts[0], top_verts[1], top_verts[0])
 	
@@ -503,17 +492,17 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 	# Crear el mesh
 	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	
-	# Crear material para que use vertex colors
+	# Crear material con sombras habilitadas
 	var material = StandardMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL  # Cambiar a PER_PIXEL para sombras
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Culling deshabilitado
 	array_mesh.surface_set_material(0, material)
 	
 	mesh_instance.mesh = array_mesh
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON  # Habilitar sombras
 	
 	return mesh_instance
-
 
 ## Ejemplo de uso:
 ## var base = [
