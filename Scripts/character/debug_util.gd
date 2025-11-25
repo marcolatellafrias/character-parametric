@@ -431,24 +431,36 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 		push_error("Se requieren exactamente 4 vértices para la base")
 		return null
 	
+	# Detectar orientación de los vértices base
+	# Calcular normal usando producto cruz
+	var v1 = base_vertices[1] - base_vertices[0]
+	var v2 = base_vertices[2] - base_vertices[0]
+	var normal = v1.cross(v2)
+	
+	# Si la normal apunta hacia abajo (y < 0), los vértices están en orden clockwise desde arriba
+	# Si apunta hacia arriba (y > 0), están en orden counter-clockwise
+	# Para consistencia, queremos que estén en orden counter-clockwise (CCW) desde arriba
+	var vertices_ccw = base_vertices.duplicate()
+	if normal.y < 0:
+		# Invertir orden para convertir CW a CCW
+		vertices_ccw.reverse()
+	
 	var mesh_instance = MeshInstance3D.new()
 	var array_mesh = ArrayMesh.new()
 	var arrays = []
 	arrays.resize(Mesh.ARRAY_MAX)
 	
-	# Crear vértices superiores e inferiores
+	# Crear vértices superiores e inferiores con el orden corregido
 	var bottom_verts = []
 	var top_verts = []
 	
 	for i in range(4):
-		bottom_verts.append(base_vertices[i])
-		top_verts.append(base_vertices[i] + Vector3(0, height, 0))
+		bottom_verts.append(vertices_ccw[i])
+		top_verts.append(vertices_ccw[i] + Vector3(0, height, 0))
 	
-	# Array de vértices para todas las caras del cubo
 	var vertices = PackedVector3Array()
 	var colors = PackedColorArray()
 	
-	# Función auxiliar para agregar un triángulo
 	var add_triangle = func(v1: Vector3, v2: Vector3, v3: Vector3):
 		vertices.append(v1)
 		vertices.append(v2)
@@ -457,53 +469,42 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 		colors.append(color)
 		colors.append(color)
 	
-	# Cara inferior (base) - normal apuntando hacia abajo (-Y)
-	# Orden: counter-clockwise cuando se ve desde abajo
-	# Desde arriba esto es: 0, 2, 1 y 0, 3, 2 (clockwise desde arriba = CCW desde abajo)
+	# Cara inferior (base) - normal hacia abajo
 	add_triangle.call(bottom_verts[0], bottom_verts[2], bottom_verts[1])
 	add_triangle.call(bottom_verts[0], bottom_verts[3], bottom_verts[2])
 	
-	# Cara superior (tapa) - normal apuntando hacia arriba (+Y)
-	# Orden: counter-clockwise cuando se ve desde arriba
+	# Cara superior (tapa) - normal hacia arriba
 	add_triangle.call(top_verts[0], top_verts[1], top_verts[2])
 	add_triangle.call(top_verts[0], top_verts[2], top_verts[3])
 	
-	# Caras laterales (normales apuntando hacia afuera)
-	# Cara 0-1 (orden CCW desde afuera)
+	# Caras laterales (normales hacia afuera)
 	add_triangle.call(bottom_verts[0], bottom_verts[1], top_verts[1])
 	add_triangle.call(bottom_verts[0], top_verts[1], top_verts[0])
 	
-	# Cara 1-2
 	add_triangle.call(bottom_verts[1], bottom_verts[2], top_verts[2])
 	add_triangle.call(bottom_verts[1], top_verts[2], top_verts[1])
 	
-	# Cara 2-3
 	add_triangle.call(bottom_verts[2], bottom_verts[3], top_verts[3])
 	add_triangle.call(bottom_verts[2], top_verts[3], top_verts[2])
 	
-	# Cara 3-0
 	add_triangle.call(bottom_verts[3], bottom_verts[0], top_verts[0])
 	add_triangle.call(bottom_verts[3], top_verts[0], top_verts[3])
 	
-	# Configurar arrays del mesh
 	arrays[Mesh.ARRAY_VERTEX] = vertices
 	arrays[Mesh.ARRAY_COLOR] = colors
 	
-	# Crear el mesh
 	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	
-	# Crear material con sombras habilitadas
 	var material = StandardMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL  # Cambiar a PER_PIXEL para sombras
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Culling deshabilitado
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	array_mesh.surface_set_material(0, material)
 	
 	mesh_instance.mesh = array_mesh
-	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON  # Habilitar sombras
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	
 	return mesh_instance
-
 ## Ejemplo de uso:
 ## var base = [
 ##     Vector3(0, 0, 0),
