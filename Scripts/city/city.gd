@@ -69,10 +69,10 @@ extends Node3D
 @export var num_stores: int = 15
 
 @export_group("Grillas de Manzanas")
-@export var block_grid_rows: int = 35
-@export var block_grid_columns: int = 35
+@export var block_grid_rows: int = 40
+@export var block_grid_columns: int = 40
 @export var block_grid_floors: int = 1
-@export var block_cells_per_floor: int = 20
+@export var block_cells_per_floor: int = 10
 @export var show_floor_planes: bool = true
 @export var floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 
@@ -162,7 +162,8 @@ func _generate_rectangle_colors() -> void:
 	for face_idx in all_block_faces:
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
 		if block != null:
-			total_rectangles += block.rectangles.size()
+			var rectangles = block.get_rectangles()
+			total_rectangles += rectangles.size()
 	
 	# Si hay pocos rectángulos, usar división uniforme
 	# Si hay muchos, usar golden ratio para mayor variación
@@ -177,7 +178,8 @@ func _generate_rectangle_colors() -> void:
 			continue
 		
 		# Generar colores para cada rectángulo de esta manzana
-		for rect in block.rectangles:
+		var rectangles = block.get_rectangles()
+		for rect in rectangles:
 			if use_uniform_distribution:
 				# Distribución uniforme para pocos rectángulos
 				hue = fmod(rect_index * hue_step, 1.0)
@@ -196,6 +198,7 @@ func _generate_rectangle_colors() -> void:
 			rect_index += 1
 	
 	print("[Visualizer] Generados %d colores distintos para rectángulos" % total_rectangles)
+
 func clear_visualization() -> void:
 	for child in get_children():
 		child.queue_free()
@@ -364,7 +367,8 @@ func _visualize_rectangles() -> void:
 			continue
 		
 		# Visualizar cada rectángulo como un cubo extruido
-		for rect in block.rectangles:
+		var rectangles = block.get_rectangles()
+		for rect in rectangles:
 			var color: Color
 			
 			# Verificar si el rectángulo está mergeado
@@ -384,7 +388,7 @@ func _visualize_rectangles() -> void:
 			
 			if base_corners.size() == 4:
 				# Calcular la altura total del edificio
-				var total_height = block.floors * block.cells_per_floor * block.cell_height
+				var total_height = block.get_floors() * block.get_cells_per_floor() * block.get_cell_height()
 				
 				# Crear el cubo extruido
 				var cube = DebugUtil.create_skewed_cube(base_corners, total_height, color)
@@ -393,53 +397,61 @@ func _visualize_rectangles() -> void:
 	print("[Visualizer] Rectángulos extruidos generados para %d bloques" % all_block_faces.size())
 
 # Obtiene las 4 esquinas externas de un rectángulo en un piso específico
-func _get_rectangle_corners(block: BlockGenerator, rect: BlockGenerator.GridRectangle, y: int) -> Array[Vector3]:
+func _get_rectangle_corners(block: BlockGenerator, rect: RectangleSubdivider.GridRectangle, y: int) -> Array[Vector3]:
 	var corners: Array[Vector3] = []
 	
 	# Obtener los bounds con offset aplicado
 	var bounds = block.get_rectangle_bounds_with_offset(rect)
 	
-	# Calcular las posiciones normalizadas (u, v) usando las coordenadas con offset
-	var u_min = float(bounds.x_min) / max(1, block.columns)
-	var u_max = float(bounds.x_max) / max(1, block.columns)
-	var v_min = float(bounds.z_min) / max(1, block.rows)
-	var v_max = float(bounds.z_max) / max(1, block.rows)
+	# Obtener propiedades del block
+	var columns = block.get_columns()
+	var rows = block.get_rows()
+	var cell_height = block.get_cell_height()
 	
-	var height = y * block.cell_height
+	# Obtener los vértices del bloque
+	var vertices = block.grid_geometry.vertices
+	
+	# Calcular las posiciones normalizadas (u, v) usando las coordenadas con offset
+	var u_min = float(bounds.x_min) / max(1, columns)
+	var u_max = float(bounds.x_max) / max(1, columns)
+	var v_min = float(bounds.z_min) / max(1, rows)
+	var v_max = float(bounds.z_max) / max(1, rows)
+	
+	var height = y * cell_height
 	
 	# Esquina inferior-izquierda (u_min, v_min)
 	var corner_bl_2d = (
-		block.vertices[0] * (1 - u_min) * (1 - v_min) +
-		block.vertices[1] * u_min * (1 - v_min) +
-		block.vertices[2] * u_min * v_min +
-		block.vertices[3] * (1 - u_min) * v_min
+		vertices[0] * (1 - u_min) * (1 - v_min) +
+		vertices[1] * u_min * (1 - v_min) +
+		vertices[2] * u_min * v_min +
+		vertices[3] * (1 - u_min) * v_min
 	)
 	corners.append(Vector3(corner_bl_2d.x, height, corner_bl_2d.y))
 	
 	# Esquina inferior-derecha (u_max, v_min)
 	var corner_br_2d = (
-		block.vertices[0] * (1 - u_max) * (1 - v_min) +
-		block.vertices[1] * u_max * (1 - v_min) +
-		block.vertices[2] * u_max * v_min +
-		block.vertices[3] * (1 - u_max) * v_min
+		vertices[0] * (1 - u_max) * (1 - v_min) +
+		vertices[1] * u_max * (1 - v_min) +
+		vertices[2] * u_max * v_min +
+		vertices[3] * (1 - u_max) * v_min
 	)
 	corners.append(Vector3(corner_br_2d.x, height, corner_br_2d.y))
 	
 	# Esquina superior-derecha (u_max, v_max)
 	var corner_tr_2d = (
-		block.vertices[0] * (1 - u_max) * (1 - v_max) +
-		block.vertices[1] * u_max * (1 - v_max) +
-		block.vertices[2] * u_max * v_max +
-		block.vertices[3] * (1 - u_max) * v_max
+		vertices[0] * (1 - u_max) * (1 - v_max) +
+		vertices[1] * u_max * (1 - v_max) +
+		vertices[2] * u_max * v_max +
+		vertices[3] * (1 - u_max) * v_max
 	)
 	corners.append(Vector3(corner_tr_2d.x, height, corner_tr_2d.y))
 	
 	# Esquina superior-izquierda (u_min, v_max)
 	var corner_tl_2d = (
-		block.vertices[0] * (1 - u_min) * (1 - v_max) +
-		block.vertices[1] * u_min * (1 - v_max) +
-		block.vertices[2] * u_min * v_max +
-		block.vertices[3] * (1 - u_min) * v_max
+		vertices[0] * (1 - u_min) * (1 - v_max) +
+		vertices[1] * u_min * (1 - v_max) +
+		vertices[2] * u_min * v_max +
+		vertices[3] * (1 - u_min) * v_max
 	)
 	corners.append(Vector3(corner_tl_2d.x, height, corner_tl_2d.y))
 	
@@ -457,29 +469,32 @@ func _visualize_floor_planes() -> void:
 		if block == null:
 			continue
 		
-		for floor in range(block.floors):
+		var floors = block.get_floors()
+		var cells_per_floor = block.get_cells_per_floor()
+		
+		for floor in range(floors):
 			var corner_bl = block.get_cell_position(
 				block.available_min_x, 
 				block.available_min_z, 
-				floor * block.cells_per_floor
+				floor * cells_per_floor
 			)
 			
 			var corner_br = block.get_cell_position(
 				block.available_max_x, 
 				block.available_min_z, 
-				floor * block.cells_per_floor
+				floor * cells_per_floor
 			)
 			
 			var corner_tr = block.get_cell_position(
 				block.available_max_x, 
 				block.available_max_z, 
-				floor * block.cells_per_floor
+				floor * cells_per_floor
 			)
 			
 			var corner_tl = block.get_cell_position(
 				block.available_min_x, 
 				block.available_max_z, 
-				floor * block.cells_per_floor
+				floor * cells_per_floor
 			)
 			
 			var plane = DebugUtil.create_debug_plane(

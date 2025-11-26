@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=23 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://by0al5irc1r60" path="res://Materials/Floor.tres" id="1_lpcab"]
 [ext_resource type="Material" uid="uid://bq5ujksxl5avb" path="res://Materials/Shapes.tres" id="2_fnnck"]
@@ -10,6 +10,7 @@
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
 [ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
+[ext_resource type="PackedScene" uid="uid://depimbd5eofjb" path="res://Scenes/car.tscn" id="12_h3puh"]
 [ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/city.gd" id="12_v3boh"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_hfvyn"]
@@ -173,3 +174,12 @@ script = ExtResource("12_v3boh")
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 script = ExtResource("8_oilx1")
+
+[node name="RigidBody3D" parent="." instance=ExtResource("12_h3puh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.9507675, 0.9780211, 10.36355)
+
+[node name="RigidBody3D2" parent="." instance=ExtResource("12_h3puh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 23.358292, 0.978023, -6.438919)
+
+[node name="RigidBody3D3" parent="." instance=ExtResource("12_h3puh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19.588678, 0.9780211, 18.155773)
