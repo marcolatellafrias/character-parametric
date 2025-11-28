@@ -508,12 +508,13 @@ func _visualize_lanes() -> void:
 		var all_lanes = block.get_all_lanes()
 		
 		for lane_data in all_lanes:
-			var line = DebugUtil.create_debug_line_to_from(
-				lane_data["start"],
-				lane_data["end"],
-				lane_color,
+			# Visualizar carril de from → to en verde
+			var line = DebugUtil.create_debug_arrow_to_from(
+				lane_data["from"],
+				lane_data["to"],
+				Color.GREEN,
 				lane_width
 			)
 			add_child(line)
 	
-	print("[Visualizer] Carriles generados para %d bloques" % all_block_faces.size())
+	print("[Visualizer] Carriles direccionales generados para %d bloques" % all_block_faces.size())

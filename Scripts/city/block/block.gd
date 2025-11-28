@@ -23,8 +23,8 @@ const STREET_OFFSETS = {
 	StreetType.SMALL: 7,
 	StreetType.MEDIUM: 12,
 	StreetType.LARGE: 17,
-	StreetType.SMALL_TUNNEL: 0,
-	StreetType.LARGE_TUNNEL: 0,
+	StreetType.SMALL_TUNNEL: 12,
+	StreetType.LARGE_TUNNEL: 17,
 }
 
 # Área disponible después de offsets
@@ -153,30 +153,47 @@ func get_lane_endpoints(side: String, lane_index: int) -> Dictionary:
 	var offset = lanes[side][lane_index]
 	var start_pos: Vector3
 	var end_pos: Vector3
+	var from_pos: Vector3
+	var to_pos: Vector3
 	
 	match side:
-		"north":
+		"north":  # Flujo: Este → Oeste
 			var z = available_min_z - offset
-			start_pos = grid_geometry.get_cell_position(0, z, 0)
-			end_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
-		"south":
+			start_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
+			end_pos = grid_geometry.get_cell_position(0, z, 0)
+			from_pos = start_pos
+			to_pos = end_pos
+			
+		"south":  # Flujo: Oeste → Este
 			var z = available_max_z + offset
 			start_pos = grid_geometry.get_cell_position(0, z, 0)
 			end_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
-		"west":
+			from_pos = start_pos
+			to_pos = end_pos
+			
+		"west":  # Flujo: Norte → Sur
 			var x = available_min_x - offset
 			start_pos = grid_geometry.get_cell_position(x, 0, 0)
 			end_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
-		"east":
+			from_pos = start_pos
+			to_pos = end_pos
+			
+		"east":  # Flujo: Sur → Norte
 			var x = available_max_x + offset
-			start_pos = grid_geometry.get_cell_position(x, 0, 0)
-			end_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
+			start_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
+			end_pos = grid_geometry.get_cell_position(x, 0, 0)
+			from_pos = start_pos
+			to_pos = end_pos
+			
 		_:
 			return {}
 	
 	return {
 		"start": start_pos,
-		"end": end_pos
+		"end": end_pos,
+		"from": from_pos,
+		"to": to_pos,
+		"side": side
 	}
 
 
@@ -188,7 +205,6 @@ func get_all_lanes() -> Array[Dictionary]:
 		for lane_idx in range(lanes[side].size()):
 			var endpoints = get_lane_endpoints(side, lane_idx)
 			if not endpoints.is_empty():
-				endpoints["side"] = side
 				endpoints["index"] = lane_idx
 				all_lanes.append(endpoints)
 	

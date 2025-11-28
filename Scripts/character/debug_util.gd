@@ -514,3 +514,86 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 ## ]
 ## var cube = DebugUtil.create_skewed_cube(base, 2.0, Color.RED)
 ## add_child(cube)
+
+static func create_debug_arrow_to_from(from: Vector3, to: Vector3, color: Color, width: float) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var array_mesh := ArrayMesh.new()
+	
+	var distance := from.distance_to(to)
+	var cone_height := width * 4.0
+	var line_length := distance - cone_height
+	
+	# Crear la línea (cilindro)
+	var cylinder := BoxMesh.new()
+	cylinder.size = Vector3(width, line_length, width)
+	
+	# Crear el cono
+	var cone := ArrayMesh.new()
+	var vertices := PackedVector3Array()
+	var indices := PackedInt32Array()
+	
+	var cone_base_radius := width * 2.0
+	var segments := 16
+	
+	# Vértice superior del cono (en la punta)
+	vertices.append(Vector3(0, cone_height, 0))
+	
+	# Vértices de la base del cono
+	for i in range(segments):
+		var angle := (float(i) / segments) * TAU
+		var x := cos(angle) * cone_base_radius
+		var z := sin(angle) * cone_base_radius
+		vertices.append(Vector3(x, 0, z))
+	
+	# Triángulos del cono
+	for i in range(segments):
+		var next := (i + 1) % segments
+		indices.append(0)
+		indices.append(i + 1)
+		indices.append(next + 1)
+	
+	# Base del cono
+	for i in range(1, segments - 1):
+		indices.append(1)
+		indices.append(i + 1)
+		indices.append(i + 2)
+	
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_INDEX] = indices
+	
+	cone.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	
+	# Combinar meshes con offset correcto
+	var st := SurfaceTool.new()
+	# Cilindro centrado en -cone_height/2 para que vaya de -distance/2 a distance/2 - cone_height
+	st.append_from(cylinder, 0, Transform3D(Basis.IDENTITY, Vector3(0, -cone_height / 2.0, 0)))
+	# Cono desde distance/2 - cone_height hasta distance/2
+	st.append_from(cone, 0, Transform3D(Basis.IDENTITY, Vector3(0, distance / 2.0 - cone_height, 0)))
+	array_mesh = st.commit()
+	
+	mesh_instance.mesh = array_mesh
+	
+	var midpoint := (from + to) / 2.0
+	mesh_instance.position = midpoint
+	
+	var direction := (to - from).normalized()
+	if direction.length() > 0.001:
+		var y_axis = direction
+		var x_axis = y_axis.cross(Vector3.UP)
+		
+		if x_axis.length() < 0.001:
+			x_axis = y_axis.cross(Vector3.RIGHT)
+		
+		x_axis = x_axis.normalized()
+		var z_axis = x_axis.cross(y_axis).normalized()
+		
+		mesh_instance.basis = Basis(x_axis, y_axis, z_axis)
+	
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = color
+	
+	mesh_instance.material_override = material
+	return mesh_instance
