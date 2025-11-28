@@ -16,20 +16,20 @@ func generate_city_graph(
 	num_neighborhoods: int,
 	num_large_streets: int,
 	num_small_streets: int,
-	num_small_tunnels: int = 0,
-	num_large_tunnels: int = 0,
-	tunnel_min_length: int = 2,
-	tunnel_max_length: int = 6,
-	tunnel_max_angle_degrees: float = 30.0,
-	tunnel_min_gap: int = 3,
-	block_grid_rows: int = 20,
-	block_grid_columns: int = 20,
-	block_grid_floors: int = 3,
-	block_cells_per_floor: int = 4,
-	rect_max_divisions: int = 4,
-	rect_min_size: int = 2,
-	rect_max_aspect_ratio: float = 1.5,
-	rect_max_dimension: int = 8,
+	num_small_tunnels: int,
+	num_large_tunnels: int,
+	tunnel_min_length: int,
+	tunnel_max_length: int,
+	tunnel_max_angle_degrees: float,
+	tunnel_min_gap: int,
+	block_grid_rows: int,
+	block_grid_columns: int,
+	block_grid_floors: int,
+	block_cells_per_floor: int,
+	rect_max_divisions: int,
+	rect_min_size: int,
+	rect_max_aspect_ratio: float,
+	rect_max_dimension: int,
 ) -> void:
 	
 	seed(generation_seed)
@@ -548,7 +548,6 @@ func _generate_block_grids(
 			cells_per_floor
 		)
 		
-		# Generar los rectángulos para este bloque
 		block.generate_rectangles(max_divisions, min_size, max_aspect_ratio, max_dimension, face_idx)
 		
 		block_grids[face_idx] = block

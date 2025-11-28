@@ -50,9 +50,9 @@ class RectangleOffsets:
 		west = p_west
 
 # Parámetros de generación
-var min_rectangle_size: int = 2
+var min_rectangle_size: int = 6
 var max_aspect_ratio: float = 1.5
-var max_rectangle_dimension: int = 8
+var max_rectangle_dimension: int = 12
 var min_alley_offset: int = 1
 var max_alley_offset: int = 2
 

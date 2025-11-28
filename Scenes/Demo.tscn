@@ -177,9 +177,3 @@ script = ExtResource("8_oilx1")
 
 [node name="RigidBody3D" parent="." instance=ExtResource("12_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.9507675, 0.9780211, 10.36355)
-
-[node name="RigidBody3D2" parent="." instance=ExtResource("12_h3puh")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 23.358292, 0.978023, -6.438919)
-
-[node name="RigidBody3D3" parent="." instance=ExtResource("12_h3puh")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19.588678, 0.9780211, 18.155773)

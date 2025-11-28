@@ -69,10 +69,10 @@ extends Node3D
 @export var num_stores: int = 15
 
 @export_group("Grillas de Manzanas")
-@export var block_grid_rows: int = 40
-@export var block_grid_columns: int = 40
+@export var block_grid_rows: int = 100
+@export var block_grid_columns: int = 100
 @export var block_grid_floors: int = 1
-@export var block_cells_per_floor: int = 10
+@export var block_cells_per_floor: int = 30
 @export var show_floor_planes: bool = true
 @export var floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 
@@ -81,10 +81,15 @@ extends Node3D
 @export var rect_saturation: float = 0.8
 @export var rect_brightness: float = 0.9
 @export var rect_alpha: float = 0.8
-@export var rect_max_divisions: int = 8
-@export var rect_min_size: int = 6
+@export var rect_max_divisions: int = 3
+@export var rect_min_size: int = 14
+@export var rect_max_aspect_ratio: float = 1.8
+@export var rect_max_dimension: int = 18
 
-
+@export_group("Carriles")
+@export var show_lanes: bool = true
+@export var lane_color: Color = Color.YELLOW
+@export var lane_width: float = 0.02
 
 # ============================================
 # DATOS DEL GRAFO
@@ -131,6 +136,8 @@ func generate_graph() -> void:
 		block_cells_per_floor,
 		rect_max_divisions,
 		rect_min_size,
+		rect_max_aspect_ratio,
+		rect_max_dimension,
 	)
 	
 	_generate_neighborhood_colors()
@@ -151,11 +158,9 @@ func _generate_neighborhood_colors() -> void:
 func _generate_rectangle_colors() -> void:
 	rectangle_colors.clear()
 	
-	# Golden ratio conjugate para distribución uniforme de colores
 	var golden_ratio_conjugate = 0.618033988749895
-	var hue = randf()  # Punto de inicio aleatorio
+	var hue = randf()
 	
-	# Contar total de rectángulos para mejor distribución
 	var all_block_faces = generator.get_all_block_faces()
 	var total_rectangles = 0
 	
@@ -165,8 +170,6 @@ func _generate_rectangle_colors() -> void:
 			var rectangles = block.get_rectangles()
 			total_rectangles += rectangles.size()
 	
-	# Si hay pocos rectángulos, usar división uniforme
-	# Si hay muchos, usar golden ratio para mayor variación
 	var use_uniform_distribution = total_rectangles < 20
 	var hue_step = 1.0 / total_rectangles if use_uniform_distribution else golden_ratio_conjugate
 	
@@ -177,17 +180,13 @@ func _generate_rectangle_colors() -> void:
 		if block == null:
 			continue
 		
-		# Generar colores para cada rectángulo de esta manzana
 		var rectangles = block.get_rectangles()
 		for rect in rectangles:
 			if use_uniform_distribution:
-				# Distribución uniforme para pocos rectángulos
 				hue = fmod(rect_index * hue_step, 1.0)
 			else:
-				# Golden ratio para muchos rectángulos (más variación)
 				hue = fmod(hue + golden_ratio_conjugate, 1.0)
 			
-			# Variar ligeramente saturation y brightness para más distinción
 			var saturation = rect_saturation + randf_range(-0.1, 0.1)
 			saturation = clamp(saturation, 0.3, 0.5)
 			
@@ -215,6 +214,9 @@ func visualize_graph() -> void:
 	
 	if show_rectangles:
 		_visualize_rectangles()
+	
+	if show_lanes:
+		_visualize_lanes()
 	
 	if show_nodes:
 		_visualize_nodes()
@@ -366,52 +368,39 @@ func _visualize_rectangles() -> void:
 		if block == null:
 			continue
 		
-		# Visualizar cada rectángulo como un cubo extruido
 		var rectangles = block.get_rectangles()
 		for rect in rectangles:
 			var color: Color
 			
-			# Verificar si el rectángulo está mergeado
 			if block.is_rectangle_merged(rect.id):
 				var merged_with_id = block.get_merged_with(rect.id)
-				# Usar gris claro para uno y blanco para el otro
 				if rect.id < merged_with_id:
-					color = Color(0.8, 0.8, 0.8, rect_alpha)  # Gris claro
+					color = Color(0.8, 0.8, 0.8, rect_alpha)
 				else:
-					color = Color(1.0, 1.0, 1.0, rect_alpha)  # Blanco
+					color = Color(1.0, 1.0, 1.0, rect_alpha)
 			else:
-				# Color normal aleatorio
 				color = rectangle_colors.get(rect.id, Color.WHITE)
 			
-			# Obtener las 4 esquinas de la base del rectángulo (con offsets aplicados)
 			var base_corners = _get_rectangle_corners(block, rect, 0)
 			
 			if base_corners.size() == 4:
-				# Calcular la altura total del edificio
 				var total_height = block.get_floors() * block.get_cells_per_floor() * block.get_cell_height()
-				
-				# Crear el cubo extruido
 				var cube = DebugUtil.create_skewed_cube(base_corners, total_height, color)
 				add_child(cube)
 	
 	print("[Visualizer] Rectángulos extruidos generados para %d bloques" % all_block_faces.size())
 
-# Obtiene las 4 esquinas externas de un rectángulo en un piso específico
 func _get_rectangle_corners(block: BlockGenerator, rect: RectangleSubdivider.GridRectangle, y: int) -> Array[Vector3]:
 	var corners: Array[Vector3] = []
 	
-	# Obtener los bounds con offset aplicado
 	var bounds = block.get_rectangle_bounds_with_offset(rect)
 	
-	# Obtener propiedades del block
 	var columns = block.get_columns()
 	var rows = block.get_rows()
 	var cell_height = block.get_cell_height()
 	
-	# Obtener los vértices del bloque
 	var vertices = block.grid_geometry.vertices
 	
-	# Calcular las posiciones normalizadas (u, v) usando las coordenadas con offset
 	var u_min = float(bounds.x_min) / max(1, columns)
 	var u_max = float(bounds.x_max) / max(1, columns)
 	var v_min = float(bounds.z_min) / max(1, rows)
@@ -419,7 +408,6 @@ func _get_rectangle_corners(block: BlockGenerator, rect: RectangleSubdivider.Gri
 	
 	var height = y * cell_height
 	
-	# Esquina inferior-izquierda (u_min, v_min)
 	var corner_bl_2d = (
 		vertices[0] * (1 - u_min) * (1 - v_min) +
 		vertices[1] * u_min * (1 - v_min) +
@@ -428,7 +416,6 @@ func _get_rectangle_corners(block: BlockGenerator, rect: RectangleSubdivider.Gri
 	)
 	corners.append(Vector3(corner_bl_2d.x, height, corner_bl_2d.y))
 	
-	# Esquina inferior-derecha (u_max, v_min)
 	var corner_br_2d = (
 		vertices[0] * (1 - u_max) * (1 - v_min) +
 		vertices[1] * u_max * (1 - v_min) +
@@ -437,7 +424,6 @@ func _get_rectangle_corners(block: BlockGenerator, rect: RectangleSubdivider.Gri
 	)
 	corners.append(Vector3(corner_br_2d.x, height, corner_br_2d.y))
 	
-	# Esquina superior-derecha (u_max, v_max)
 	var corner_tr_2d = (
 		vertices[0] * (1 - u_max) * (1 - v_max) +
 		vertices[1] * u_max * (1 - v_max) +
@@ -446,7 +432,6 @@ func _get_rectangle_corners(block: BlockGenerator, rect: RectangleSubdivider.Gri
 	)
 	corners.append(Vector3(corner_tr_2d.x, height, corner_tr_2d.y))
 	
-	# Esquina superior-izquierda (u_min, v_max)
 	var corner_tl_2d = (
 		vertices[0] * (1 - u_min) * (1 - v_max) +
 		vertices[1] * u_min * (1 - v_max) +
@@ -507,3 +492,28 @@ func _visualize_floor_planes() -> void:
 			add_child(plane)
 	
 	print("[Visualizer] Planos de piso generados para %d bloques" % all_block_faces.size())
+
+# ============================================
+# VISUALIZACIÓN DE CARRILES
+# ============================================
+func _visualize_lanes() -> void:
+	var all_block_faces = generator.get_all_block_faces()
+	
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		
+		if block == null:
+			continue
+		
+		var all_lanes = block.get_all_lanes()
+		
+		for lane_data in all_lanes:
+			var line = DebugUtil.create_debug_line_to_from(
+				lane_data["start"],
+				lane_data["end"],
+				lane_color,
+				lane_width
+			)
+			add_child(line)
+	
+	print("[Visualizer] Carriles generados para %d bloques" % all_block_faces.size())
