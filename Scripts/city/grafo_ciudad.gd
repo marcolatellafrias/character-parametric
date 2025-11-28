@@ -538,6 +538,9 @@ func _generate_block_grids(
 			var node2 = face_nodes[(i + 1) % face_nodes.size()]
 			street_types_array.append(get_street_type(node1, node2))
 		
+		# Determinar si la face está en sentido horario
+		var is_clockwise = _is_face_clockwise(face_vertices)
+		
 		var block = BlockGenerator.new(
 			rows,
 			columns,
@@ -545,12 +548,22 @@ func _generate_block_grids(
 			street_types_array,
 			cell_height,
 			floors,
-			cells_per_floor
+			cells_per_floor,
+			is_clockwise
 		)
 		
 		block.generate_rectangles(max_divisions, min_size, max_aspect_ratio, max_dimension, face_idx)
 		
 		block_grids[face_idx] = block
+
+# Calcula si una face está en sentido horario usando el área con signo
+func _is_face_clockwise(vertices: Array[Vector2]) -> bool:
+	var area = 0.0
+	for i in range(vertices.size()):
+		var v1 = vertices[i]
+		var v2 = vertices[(i + 1) % vertices.size()]
+		area += (v2.x - v1.x) * (v2.y + v1.y)
+	return area > 0
 
 func get_block_grid(face_idx: int)->BlockGenerator:
 	return block_grids.get(face_idx, null)

@@ -39,7 +39,7 @@ extends Node3D
 @export var medium_street_width: float = 0.02
 
 @export_subgroup("Calles Grandes (Tipo 2)")
-@export var large_street_color: Color = Color.GREEN
+@export var large_street_color: Color = Color.PURPLE
 @export var large_street_width: float = 0.04
 
 @export_subgroup("Calles Límite (Tipo -1)")

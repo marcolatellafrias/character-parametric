@@ -16,6 +16,7 @@ var subdivider: RectangleSubdivider
 
 # Geometría del bloque
 var street_types: Array[int]  # [north, east, south, west]
+var is_clockwise: bool  # Si la face está en sentido horario
 
 # Offsets de calles según tipo (en número de celdas)
 const STREET_OFFSETS = {
@@ -44,9 +45,11 @@ func _init(
 	p_street_types: Array[int],
 	p_cell_height: float,
 	p_floors: int,
-	p_cells_per_floor: int
+	p_cells_per_floor: int,
+	p_is_clockwise: bool
 ) -> void:
 	street_types = p_street_types
+	is_clockwise = p_is_clockwise
 	
 	grid_geometry = GridGeometry.new(
 		p_rows,
@@ -156,37 +159,77 @@ func get_lane_endpoints(side: String, lane_index: int) -> Dictionary:
 	var from_pos: Vector3
 	var to_pos: Vector3
 	
-	match side:
-		"north":  # Flujo: Este → Oeste
-			var z = available_min_z - offset
-			start_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
-			end_pos = grid_geometry.get_cell_position(0, z, 0)
-			from_pos = start_pos
-			to_pos = end_pos
-			
-		"south":  # Flujo: Oeste → Este
-			var z = available_max_z + offset
-			start_pos = grid_geometry.get_cell_position(0, z, 0)
-			end_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
-			from_pos = start_pos
-			to_pos = end_pos
-			
-		"west":  # Flujo: Norte → Sur
-			var x = available_min_x - offset
-			start_pos = grid_geometry.get_cell_position(x, 0, 0)
-			end_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
-			from_pos = start_pos
-			to_pos = end_pos
-			
-		"east":  # Flujo: Sur → Norte
-			var x = available_max_x + offset
-			start_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
-			end_pos = grid_geometry.get_cell_position(x, 0, 0)
-			from_pos = start_pos
-			to_pos = end_pos
-			
-		_:
-			return {}
+	# Direcciones para sentido horario (clockwise visto desde arriba con Y+)
+	# north: Este → Oeste (derecha a izquierda)
+	# east: Sur → Norte (abajo a arriba)  
+	# south: Oeste → Este (izquierda a derecha)
+	# west: Norte → Sur (arriba a abajo)
+	
+	if is_clockwise:
+		match side:
+			"north":  # Flujo: Este → Oeste
+				var z = available_min_z - offset
+				start_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
+				end_pos = grid_geometry.get_cell_position(0, z, 0)
+				from_pos = start_pos
+				to_pos = end_pos
+				
+			"south":  # Flujo: Oeste → Este
+				var z = available_max_z + offset
+				start_pos = grid_geometry.get_cell_position(0, z, 0)
+				end_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
+				from_pos = start_pos
+				to_pos = end_pos
+				
+			"west":  # Flujo: Norte → Sur
+				var x = available_min_x - offset
+				start_pos = grid_geometry.get_cell_position(x, 0, 0)
+				end_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
+				from_pos = start_pos
+				to_pos = end_pos
+				
+			"east":  # Flujo: Sur → Norte
+				var x = available_max_x + offset
+				start_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
+				end_pos = grid_geometry.get_cell_position(x, 0, 0)
+				from_pos = start_pos
+				to_pos = end_pos
+				
+			_:
+				return {}
+	else:
+		# Si es anticlockwise, invertir todas las direcciones para normalizar a horario
+		match side:
+			"north":  # Flujo inverso: Oeste → Este (para compensar anticlockwise)
+				var z = available_min_z - offset
+				start_pos = grid_geometry.get_cell_position(0, z, 0)
+				end_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
+				from_pos = start_pos
+				to_pos = end_pos
+				
+			"south":  # Flujo inverso: Este → Oeste
+				var z = available_max_z + offset
+				start_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
+				end_pos = grid_geometry.get_cell_position(0, z, 0)
+				from_pos = start_pos
+				to_pos = end_pos
+				
+			"west":  # Flujo inverso: Sur → Norte
+				var x = available_min_x - offset
+				start_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
+				end_pos = grid_geometry.get_cell_position(x, 0, 0)
+				from_pos = start_pos
+				to_pos = end_pos
+				
+			"east":  # Flujo inverso: Norte → Sur
+				var x = available_max_x + offset
+				start_pos = grid_geometry.get_cell_position(x, 0, 0)
+				end_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
+				from_pos = start_pos
+				to_pos = end_pos
+				
+			_:
+				return {}
 	
 	return {
 		"start": start_pos,
