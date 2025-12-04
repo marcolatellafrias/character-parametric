@@ -38,7 +38,7 @@ func generate_city_graph(
 	large_street_offset: int,
 	small_tunnel_offset: int,
 	large_tunnel_offset: int,
-	use_boundary_test: bool = false  # NUEVO: Parámetro para probar boundary
+	boundary_face: Array = []  # NUEVO: Parámetro para cara límite
 ) -> void:
 	
 	seed(generation_seed)
@@ -56,25 +56,6 @@ func generate_city_graph(
 		4: large_tunnel_offset
 	}
 	
-	# NUEVO: Crear cara límite de prueba si está habilitado
-	var boundary_face: Array = []
-	if use_boundary_test:
-		# Crear un quad irregular de tamaño razonable dentro de la región
-		var center = region_size / 2.0
-		var size = min(region_size.x, region_size.y) * 0.6  # 60% del tamaño mínimo
-		
-		# Quad irregular (no es un cuadrado perfecto)
-		boundary_face = [
-			center + Vector2(-size * 0.5, -size * 0.4),   # Esquina inferior izquierda
-			center + Vector2(size * 0.6, -size * 0.5),    # Esquina inferior derecha (más ancha)
-			center + Vector2(size * 0.5, size * 0.6),     # Esquina superior derecha (más alta)
-			center + Vector2(-size * 0.4, size * 0.5)     # Esquina superior izquierda
-		]
-		
-		print("Usando cara límite de prueba:")
-		for i in range(boundary_face.size()):
-			print("  Vértice %d: %s" % [i, boundary_face[i]])
-	
 	plain_graph = GraphGenerator.new()
 	plain_graph.generate_graph(
 		smooth_steps,
@@ -82,7 +63,7 @@ func generate_city_graph(
 		min_distance,
 		rejection_samples,
 		generation_seed,
-		boundary_face  # NUEVO: Pasar la cara límite
+		boundary_face  # Pasar boundary_face al GraphGenerator
 	)
 	
 	_initialize_street_types()

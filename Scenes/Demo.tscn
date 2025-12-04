@@ -68,6 +68,7 @@ adjustment_enabled = true
 
 [node name="Floor" type="MeshInstance3D" parent="world"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.16, -0.01, 0.007)
+visible = false
 mesh = SubResource("BoxMesh_hfvyn")
 skeleton = NodePath("../..")
 surface_material_override/0 = ExtResource("1_lpcab")
