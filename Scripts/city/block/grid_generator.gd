@@ -51,7 +51,7 @@ func _initialize_grid() -> void:
 		grid.append(grid_x)
 
 
-# Calcula las posiciones 3D de cada celda usando interpolación bilineal
+# Calcula las posiciones 3D de cada celda usando GridHelper
 func _calculate_cell_positions() -> void:
 	cell_positions.clear()
 	var total_height = floors * cells_per_floor
@@ -63,16 +63,8 @@ func _calculate_cell_positions() -> void:
 		for z in range(rows):
 			var row_positions = []
 			for x in range(columns):
-				var u = float(x) / max(1, columns - 1)
-				var v = float(z) / max(1, rows - 1)
-				
-				var pos_2d = (
-					vertices[0] * (1 - u) * (1 - v) +
-					vertices[1] * u * (1 - v) +
-					vertices[2] * u * v +
-					vertices[3] * (1 - u) * v
-				)
-				
+				# Usar GridHelper para obtener posición 2D
+				var pos_2d = GridHelper.get_cell_position_2d(vertices, rows, columns, x, z)
 				var pos_3d = Vector3(pos_2d.x, height, pos_2d.y)
 				row_positions.append(pos_3d)
 			
@@ -121,7 +113,7 @@ func is_floor_start(y: int) -> bool:
 	return y % cells_per_floor == 0
 
 
-# Obtiene los 4 vértices de la base de una celda específica
+# Obtiene los 4 vértices de la base de una celda específica usando GridHelper
 func get_cell_base_vertices(x: int, z: int, y: int) -> Array:
 	if y < 0 or y >= cell_positions.size():
 		return []
@@ -130,47 +122,14 @@ func get_cell_base_vertices(x: int, z: int, y: int) -> Array:
 	if x < 0 or x >= columns:
 		return []
 	
-	var u_step = 1.0 / max(1, columns) if columns > 0 else 1.0
-	var v_step = 1.0 / max(1, rows) if rows > 0 else 1.0
+	# Usar GridHelper para obtener los vértices
+	var vertices_3d = GridHelper.get_cell_base_vertices(vertices, rows, columns, x, z)
 	
-	var u = float(x) / max(1, columns)
-	var v = float(z) / max(1, rows)
-	
-	var corner_bl_2d = (
-		vertices[0] * (1 - u) * (1 - v) +
-		vertices[1] * u * (1 - v) +
-		vertices[2] * u * v +
-		vertices[3] * (1 - u) * v
-	)
-	
-	var u_next = min(1.0, u + u_step)
-	var corner_br_2d = (
-		vertices[0] * (1 - u_next) * (1 - v) +
-		vertices[1] * u_next * (1 - v) +
-		vertices[2] * u_next * v +
-		vertices[3] * (1 - u_next) * v
-	)
-	
-	var v_next = min(1.0, v + v_step)
-	var corner_tr_2d = (
-		vertices[0] * (1 - u_next) * (1 - v_next) +
-		vertices[1] * u_next * (1 - v_next) +
-		vertices[2] * u_next * v_next +
-		vertices[3] * (1 - u_next) * v_next
-	)
-	
-	var corner_tl_2d = (
-		vertices[0] * (1 - u) * (1 - v_next) +
-		vertices[1] * u * (1 - v_next) +
-		vertices[2] * u * v_next +
-		vertices[3] * (1 - u) * v_next
-	)
-	
+	# Ajustar la altura según el nivel y
 	var height = y * cell_height
+	var adjusted_vertices = []
 	
-	return [
-		Vector3(corner_bl_2d.x, height, corner_bl_2d.y),
-		Vector3(corner_br_2d.x, height, corner_br_2d.y),
-		Vector3(corner_tr_2d.x, height, corner_tr_2d.y),
-		Vector3(corner_tl_2d.x, height, corner_tl_2d.y)
-	]
+	for vertex in vertices_3d:
+		adjusted_vertices.append(Vector3(vertex.x, height, vertex.z))
+	
+	return adjusted_vertices

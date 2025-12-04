@@ -372,7 +372,7 @@ static func create_debug_polygon(points: PackedVector3Array, color: Color) -> Me
 	
 	return mesh_instance
 	
-static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vector3, corner4: Vector3, color: Color) -> MeshInstance3D:
+static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vector3, corner4: Vector3, color: Color, transparency: float = 0.0) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	
 	# Crear un ArrayMesh personalizado
@@ -414,7 +414,17 @@ static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vect
 	# Crear y aplicar el material
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.albedo_color = color
+	
+	# Aplicar transparencia al color
+	var final_color = color
+	final_color.a = clamp(1.0 - transparency, 0.0, 1.0)
+	material.albedo_color = final_color
+	
+	# Configurar transparencia si es necesario
+	if transparency > 0.0:
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		material.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Visible desde ambos lados
 	
 	mesh_instance.material_override = material

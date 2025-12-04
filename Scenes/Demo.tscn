@@ -216,6 +216,12 @@ block_grid_floors = null
 block_cells_per_floor = null
 show_floor_planes = null
 floor_plane_color = null
+boundary_offset = null
+small_street_offset = null
+medium_street_offset = null
+large_street_offset = null
+small_tunnel_offset = null
+large_tunnel_offset = null
 show_rectangles = null
 rect_saturation = null
 rect_brightness = null
@@ -227,9 +233,9 @@ rect_max_dimension = null
 show_lanes = null
 lane_color = null
 lane_width = null
-show_lane_arrows = null
-arrow_size = null
-arrow_angle_degrees = null
+show_pedestrian_planes = null
+pedestrian_plane_color = null
+pedestrian_plane_transparency = null
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 script = ExtResource("8_oilx1")

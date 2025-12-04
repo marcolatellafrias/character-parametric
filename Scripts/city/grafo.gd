@@ -10,6 +10,10 @@ var faces: Array = []                # [[idx1, idx2, idx3, ...], ...] caras
 var smoothing_steps: int = 0         # Cantidad de pasos de smoothing realizados
 var original_inscribed_sizes: Dictionary = {}  # {face_idx: float} tamaño original del cuadrado inscrito
 var node_types: Dictionary = {}      # {node_idx: int} tipo de nodo (0=normal, 1=límite)
+var boundary_edges: Dictionary = {}  # {edge_key: bool} edges que son límite (no se mueven)
+
+# Datos del boundary quad (si se usa)
+var boundary_quad_indices: Array[int] = []  # Índices de los 4 vértices del quad límite
 
 
 # ============================================
@@ -21,7 +25,7 @@ func generate_graph(
 	min_distance: float,
 	rejection_samples: int,
 	generation_seed: int,
-
+	boundary_quad: Array[Vector2] = []  # Nuevo parámetro opcional
 ) -> void:
 	var max_angle_threshold: float = 0.825 * PI
 	var min_quad_angle: float = 0.2 * PI
@@ -36,18 +40,26 @@ func generate_graph(
 	smoothing_steps = 0
 	original_inscribed_sizes.clear()
 	node_types.clear()
+	boundary_edges.clear()
+	boundary_quad_indices.clear()
 	
 	var edges_dict: Dictionary = {}
 	
-	# 1. Generar puntos con Poisson Disk Sampling
-	points = _generate_poisson_points(region_size, min_distance, rejection_samples)
+	# 1. Generar puntos con Poisson Disk Sampling (con boundary opcional)
+	points = _generate_poisson_points(
+		region_size, 
+		min_distance, 
+		rejection_samples,
+		boundary_quad
+	)
 	
-	# 2. Construir grafo desde Delaunay
+	# 2. Construir grafo desde Delaunay (con boundary opcional)
 	var graph_data = _build_graph_from_delaunay(
 		points, 
 		max_angle_threshold, 
 		min_quad_angle, 
-		max_quad_angle
+		max_quad_angle,
+		boundary_quad
 	)
 	points = graph_data["points"]
 	edges_dict = graph_data["edges"]
@@ -56,11 +68,12 @@ func generate_graph(
 	# 2.5. Detectar nodos límite ANTES de subdividir
 	_detect_boundary_nodes(faces)
 	
-	# 3. Subdividir caras
-	var subdivided = _subdivide_faces(points, faces, node_types)
+	# 3. Subdividir caras (propagando boundary edges)
+	var subdivided = _subdivide_faces(points, faces, node_types, boundary_edges)
 	points = subdivided["points"]
 	faces = subdivided["faces"]
 	node_types = subdivided["node_types"]
+	boundary_edges = subdivided["boundary_edges"]
 	
 	# 4. Reconstruir aristas desde las caras
 	edges_dict.clear()
@@ -76,7 +89,8 @@ func generate_graph(
 	
 	# 5. Calcular y guardar los tamaños originales de los cuadrados inscritos
 	_calculate_original_inscribed_sizes()
-	# 6. Aplicar smoothing (si se solicitó)
+	
+	# 6. Aplicar smoothing (si se solicitó) - respetando boundary edges
 	for i in range(smooth_steps):
 		smooth_graph()
 
@@ -87,11 +101,12 @@ func generate_graph(
 ## Detecta y marca los nodos que están en el límite del mapa
 ## Un nodo está en el límite si forma parte de un edge que pertenece a una sola cara
 func _detect_boundary_nodes(faces_array: Array) -> void:
-	node_types.clear()
+	# No limpiar node_types aquí, ya puede tener valores previos del boundary_quad
 	
-	# Inicializar todos los nodos como normales (tipo 0)
+	# Inicializar los que no existen como normales (tipo 0)
 	for i in range(points.size()):
-		node_types[i] = 0
+		if i not in node_types:
+			node_types[i] = 0
 	
 	# Contar cuántas caras usan cada edge
 	var edge_usage: Dictionary = {}
@@ -116,6 +131,9 @@ func _detect_boundary_nodes(faces_array: Array) -> void:
 			# Marcar ambos nodos como límite
 			node_types[idx1] = 1
 			node_types[idx2] = 1
+			
+			# Marcar el edge como boundary
+			boundary_edges[edge_key] = true
 
 	
 func _calculate_original_inscribed_sizes() -> void:
@@ -130,9 +148,199 @@ func _calculate_original_inscribed_sizes() -> void:
 			original_inscribed_sizes[face_idx] = size
 
 # ============================================
-# POISSON DISK SAMPLING
+# POISSON DISK SAMPLING CON BOUNDARY
 # ============================================
-static func _generate_poisson_points(
+func _generate_poisson_points(
+	region_size: Vector2,
+	min_distance: float,
+	rejection_samples: int,
+	boundary_quad: Array[Vector2] = []
+) -> Array[Vector3]:
+	
+	var result_points: Array[Vector3] = []
+	
+	# Si hay boundary_quad, primero añadir sus 4 vértices como puntos límite
+	if boundary_quad.size() == 4:
+		for i in range(4):
+			var p2d = boundary_quad[i]
+			var p3d = Vector3(p2d.x, 0.0, p2d.y)
+			result_points.append(p3d)
+			node_types[i] = 1  # Marcar como límite
+			boundary_quad_indices.append(i)
+		
+		# Marcar los edges del boundary como límite
+		for i in range(4):
+			var next_i = (i + 1) % 4
+			var edge_key = _get_edge_key(i, next_i)
+			boundary_edges[edge_key] = true
+		
+		# Generar puntos dentro del boundary_quad
+		var internal_points = _generate_poisson_in_quad(
+			boundary_quad,
+			min_distance,
+			rejection_samples
+		)
+		
+		# Añadir puntos internos (no son límite)
+		for p3d in internal_points:
+			var idx = result_points.size()
+			result_points.append(p3d)
+			node_types[idx] = 0
+	else:
+		# Generación normal sin boundary
+		result_points = _generate_poisson_points_standard(
+			region_size,
+			min_distance,
+			rejection_samples
+		)
+	
+	return result_points
+
+## Genera puntos Poisson dentro de un quad
+func _generate_poisson_in_quad(
+	quad: Array[Vector2],
+	min_distance: float,
+	rejection_samples: int
+) -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	
+	# Calcular bounding box del quad
+	var min_x = INF
+	var max_x = -INF
+	var min_y = INF
+	var max_y = -INF
+	
+	for v in quad:
+		min_x = min(min_x, v.x)
+		max_x = max(max_x, v.x)
+		min_y = min(min_y, v.y)
+		max_y = max(max_y, v.y)
+	
+	var region_size = Vector2(max_x - min_x, max_y - min_y)
+	var cell_size: float = min_distance / sqrt(2.0)
+	var grid_width: int = ceil(region_size.x / cell_size)
+	var grid_height: int = ceil(region_size.y / cell_size)
+	
+	var grid: Array = []
+	grid.resize(grid_width * grid_height)
+	
+	var active_list: Array[Vector3] = []
+	
+	# Primer punto dentro del quad
+	var first_point = _get_random_point_in_quad(quad)
+	first_point = Vector3(first_point.x, 0.0, first_point.y)
+	points.append(first_point)
+	active_list.append(first_point)
+	
+	var adjusted_point = Vector3(first_point.x - min_x, 0.0, first_point.z - min_y)
+	var grid_pos = _point_to_grid(adjusted_point, cell_size)
+	if grid_pos.x >= 0 and grid_pos.x < grid_width and grid_pos.y >= 0 and grid_pos.y < grid_height:
+		grid[grid_pos.x + grid_pos.y * grid_width] = first_point
+	
+	# Generar puntos
+	while active_list.size() > 0:
+		var random_index = randi() % active_list.size()
+		var point = active_list[random_index]
+		var found = false
+		
+		for i in range(rejection_samples):
+			var new_point = _generate_point_around(point, min_distance)
+			var new_point_2d = Vector2(new_point.x, new_point.z)
+			
+			if not _is_point_in_quad(new_point_2d, quad):
+				continue
+			
+			if _is_valid_point_in_quad(
+				new_point, 
+				grid, 
+				cell_size, 
+				grid_width, 
+				grid_height, 
+				Vector2(min_x, min_y),
+				min_distance
+			):
+				points.append(new_point)
+				active_list.append(new_point)
+				
+				var adj_point = Vector3(new_point.x - min_x, 0.0, new_point.z - min_y)
+				var new_grid_pos = _point_to_grid(adj_point, cell_size)
+				if new_grid_pos.x >= 0 and new_grid_pos.x < grid_width and new_grid_pos.y >= 0 and new_grid_pos.y < grid_height:
+					grid[new_grid_pos.x + new_grid_pos.y * grid_width] = new_point
+				found = true
+		
+		if not found:
+			active_list.remove_at(random_index)
+	
+	return points
+
+## Verifica si un punto está dentro de un quad convexo
+func _is_point_in_quad(point: Vector2, quad: Array[Vector2]) -> bool:
+	# Usar cross product para verificar si el punto está del mismo lado de todos los edges
+	var sign = 0
+	
+	for i in range(quad.size()):
+		var next_i = (i + 1) % quad.size()
+		var edge_start = quad[i]
+		var edge_end = quad[next_i]
+		
+		var cross = (edge_end.x - edge_start.x) * (point.y - edge_start.y) - \
+					(edge_end.y - edge_start.y) * (point.x - edge_start.x)
+		
+		if i == 0:
+			sign = 1 if cross >= 0 else -1
+		else:
+			var current_sign = 1 if cross >= 0 else -1
+			if current_sign != sign:
+				return false
+	
+	return true
+
+## Genera un punto aleatorio dentro de un quad
+func _get_random_point_in_quad(quad: Array[Vector2]) -> Vector2:
+	# Usar interpolación bilineal con coordenadas aleatorias
+	var u = randf()
+	var v = randf()
+	
+	var point = (
+		quad[0] * (1 - u) * (1 - v) +
+		quad[1] * u * (1 - v) +
+		quad[2] * u * v +
+		quad[3] * (1 - u) * v
+	)
+	
+	return point
+
+func _is_valid_point_in_quad(
+	point: Vector3,
+	grid: Array,
+	cell_size: float,
+	grid_width: int,
+	grid_height: int,
+	offset: Vector2,
+	min_distance: float
+) -> bool:
+	var adjusted_point = Vector3(point.x - offset.x, 0.0, point.z - offset.y)
+	var grid_pos = _point_to_grid(adjusted_point, cell_size)
+	
+	var search_start_x = max(0, grid_pos.x - 2)
+	var search_end_x = min(grid_width - 1, grid_pos.x + 2)
+	var search_start_y = max(0, grid_pos.y - 2)
+	var search_end_y = min(grid_height - 1, grid_pos.y + 2)
+	
+	for y in range(search_start_y, search_end_y + 1):
+		for x in range(search_start_x, search_end_x + 1):
+			var index = x + y * grid_width
+			if index >= 0 and index < grid.size():
+				var neighbor = grid[index]
+				if neighbor != null:
+					var distance = point.distance_to(neighbor)
+					if distance < min_distance:
+						return false
+	
+	return true
+
+## Generación estándar de Poisson (sin boundary)
+func _generate_poisson_points_standard(
 	region_size: Vector2,
 	min_distance: float,
 	rejection_samples: int
@@ -229,11 +437,12 @@ static func _point_to_grid(point: Vector3, cell_size: float) -> Vector2i:
 # ============================================
 # CONSTRUCCIÓN DEL GRAFO DESDE DELAUNAY
 # ============================================
-static func _build_graph_from_delaunay(
+func _build_graph_from_delaunay(
 	points: Array[Vector3],
 	max_angle_threshold: float,
 	min_quad_angle: float,
-	max_quad_angle: float
+	max_quad_angle: float,
+	boundary_quad: Array[Vector2] = []
 ) -> Dictionary:
 	
 	var edges: Dictionary = {}
@@ -241,6 +450,18 @@ static func _build_graph_from_delaunay(
 	
 	if points.size() < 3:
 		return {"points": points, "edges": edges, "faces": faces}
+	
+	# Si hay boundary_quad, primero crear la cara del boundary
+	if boundary_quad.size() == 4 and boundary_quad_indices.size() == 4:
+		# Crear cara del boundary (en orden)
+		var boundary_face = boundary_quad_indices.duplicate()
+		faces.append(boundary_face)
+		
+		# Añadir edges del boundary
+		for i in range(4):
+			var next_i = (i + 1) % 4
+			var key = _get_edge_key(boundary_face[i], boundary_face[next_i])
+			edges[key] = [boundary_face[i], boundary_face[next_i]]
 	
 	# Triangulación de Delaunay
 	var points_2d: PackedVector2Array = PackedVector2Array()
@@ -253,9 +474,26 @@ static func _build_graph_from_delaunay(
 	for i in range(0, indices.size(), 3):
 		triangles.append([indices[i], indices[i + 1], indices[i + 2]])
 	
-	# Filtrar triángulos obtusos
+	# Filtrar triángulos que usan edges del boundary
 	var filtered_triangles = []
 	for tri in triangles:
+		# Verificar si el triángulo usa algún edge del boundary
+		var uses_boundary = false
+		
+		if boundary_quad.size() == 4:
+			for i in range(tri.size()):
+				var next_i = (i + 1) % tri.size()
+				var edge_key = _get_edge_key(tri[i], tri[next_i])
+				
+				if edge_key in boundary_edges:
+					uses_boundary = true
+					break
+		
+		# Si usa boundary, saltarlo
+		if uses_boundary:
+			continue
+		
+		# Filtrar triángulos obtusos
 		if _is_valid_triangle(tri, points, max_angle_threshold):
 			filtered_triangles.append(tri)
 	
@@ -387,37 +625,69 @@ static func _is_convex_quad(p1: Vector3, p2: Vector3, p3: Vector3, p4: Vector3) 
 			(cross1 < 0 and cross2 < 0 and cross3 < 0 and cross4 < 0))
 
 # ============================================
-# SUBDIVISIÓN DE CARAS
+# SUBDIVISIÓN DE CARAS CON PROPAGACIÓN DE BOUNDARY
 # ============================================
-static func _subdivide_faces(points: Array[Vector3], faces: Array, node_types: Dictionary) -> Dictionary:
+static func _subdivide_faces(
+	points: Array[Vector3], 
+	faces: Array, 
+	node_types: Dictionary,
+	boundary_edges_dict: Dictionary
+) -> Dictionary:
 	var new_points = points.duplicate()
 	var new_faces = []
 	var new_node_types = node_types.duplicate()
-	var edge_midpoints = {}  # <-- Caché de puntos medios
+	var new_boundary_edges = boundary_edges_dict.duplicate()
+	var edge_midpoints = {}
 	
 	for face in faces:
 		var sub_faces = []
 		
 		if face.size() == 4:
-			sub_faces = _subdivide_quad_face(face, new_points, edge_midpoints, new_node_types)
+			sub_faces = _subdivide_quad_face(
+				face, 
+				new_points, 
+				edge_midpoints, 
+				new_node_types,
+				new_boundary_edges
+			)
 		elif face.size() == 3:
-			sub_faces = _subdivide_triangle_face(face, new_points, edge_midpoints, new_node_types)
+			sub_faces = _subdivide_triangle_face(
+				face, 
+				new_points, 
+				edge_midpoints, 
+				new_node_types,
+				new_boundary_edges
+			)
 		
 		new_faces.append_array(sub_faces)
 	
-	return {"points": new_points, "faces": new_faces, "node_types": new_node_types}
+	return {
+		"points": new_points, 
+		"faces": new_faces, 
+		"node_types": new_node_types,
+		"boundary_edges": new_boundary_edges
+	}
 
 static func _subdivide_quad_face(
 	face: Array, 
 	points: Array[Vector3], 
 	edge_midpoints: Dictionary,
-	node_types: Dictionary
+	node_types: Dictionary,
+	boundary_edges: Dictionary
 ) -> Array:
-	# Obtener o crear puntos medios
-	var idx_mid1 = _get_or_create_midpoint(face[0], face[1], points, edge_midpoints, node_types)
-	var idx_mid2 = _get_or_create_midpoint(face[1], face[2], points, edge_midpoints, node_types)
-	var idx_mid3 = _get_or_create_midpoint(face[2], face[3], points, edge_midpoints, node_types)
-	var idx_mid4 = _get_or_create_midpoint(face[3], face[0], points, edge_midpoints, node_types)
+	# Obtener o crear puntos medios, propagando boundary
+	var idx_mid1 = _get_or_create_midpoint(
+		face[0], face[1], points, edge_midpoints, node_types, boundary_edges
+	)
+	var idx_mid2 = _get_or_create_midpoint(
+		face[1], face[2], points, edge_midpoints, node_types, boundary_edges
+	)
+	var idx_mid3 = _get_or_create_midpoint(
+		face[2], face[3], points, edge_midpoints, node_types, boundary_edges
+	)
+	var idx_mid4 = _get_or_create_midpoint(
+		face[3], face[0], points, edge_midpoints, node_types, boundary_edges
+	)
 	
 	# El centro sigue siendo único por cara y siempre es tipo 0 (normal)
 	var p1 = points[face[0]]
@@ -427,7 +697,7 @@ static func _subdivide_quad_face(
 	var center = (p1 + p2 + p3 + p4) / 4.0
 	var idx_center = points.size()
 	points.append(center)
-	node_types[idx_center] = 0  # El centro siempre es normal
+	node_types[idx_center] = 0
 	
 	var result = []
 	result.append([face[0], idx_mid1, idx_center, idx_mid4])
@@ -441,12 +711,19 @@ static func _subdivide_triangle_face(
 	face: Array, 
 	points: Array[Vector3], 
 	edge_midpoints: Dictionary,
-	node_types: Dictionary
+	node_types: Dictionary,
+	boundary_edges: Dictionary
 ) -> Array:
-	# Obtener o crear puntos medios (reutilizando si ya existen)
-	var idx_mid1 = _get_or_create_midpoint(face[0], face[1], points, edge_midpoints, node_types)
-	var idx_mid2 = _get_or_create_midpoint(face[1], face[2], points, edge_midpoints, node_types)
-	var idx_mid3 = _get_or_create_midpoint(face[2], face[0], points, edge_midpoints, node_types)
+	# Obtener o crear puntos medios, propagando boundary
+	var idx_mid1 = _get_or_create_midpoint(
+		face[0], face[1], points, edge_midpoints, node_types, boundary_edges
+	)
+	var idx_mid2 = _get_or_create_midpoint(
+		face[1], face[2], points, edge_midpoints, node_types, boundary_edges
+	)
+	var idx_mid3 = _get_or_create_midpoint(
+		face[2], face[0], points, edge_midpoints, node_types, boundary_edges
+	)
 	
 	# El centro sigue siendo único por cara y siempre es tipo 0 (normal)
 	var p1 = points[face[0]]
@@ -455,9 +732,8 @@ static func _subdivide_triangle_face(
 	var center = (p1 + p2 + p3) / 3.0
 	var idx_center = points.size()
 	points.append(center)
-	node_types[idx_center] = 0  # El centro siempre es normal
+	node_types[idx_center] = 0
 	
-	# Crear 3 caras hijas (quads)
 	var result = []
 	result.append([face[0], idx_mid1, idx_center, idx_mid3])
 	result.append([idx_mid1, face[1], idx_mid2, idx_center])
@@ -489,7 +765,8 @@ static func _get_or_create_midpoint(
 	idx2: int, 
 	points: Array[Vector3], 
 	cache: Dictionary,
-	node_types: Dictionary
+	node_types: Dictionary,
+	boundary_edges: Dictionary
 ) -> int:
 	var key = _get_edge_key(idx1, idx2)
 	
@@ -501,12 +778,20 @@ static func _get_or_create_midpoint(
 	points.append(midpoint)
 	
 	# Determinar el tipo del punto medio
-	# Si ambos nodos son límite (tipo 1), el punto medio también es límite
 	var type1 = node_types.get(idx1, 0)
 	var type2 = node_types.get(idx2, 0)
 	
-	if type1 == 1 and type2 == 1:
+	# Si el edge original era boundary, los nuevos edges también lo son
+	var is_boundary_edge = boundary_edges.get(key, false)
+	
+	if is_boundary_edge or (type1 == 1 and type2 == 1):
 		node_types[new_idx] = 1  # Límite
+		
+		# Propagar boundary a los dos nuevos edges
+		var new_key1 = _get_edge_key(idx1, new_idx)
+		var new_key2 = _get_edge_key(new_idx, idx2)
+		boundary_edges[new_key1] = true
+		boundary_edges[new_key2] = true
 	else:
 		node_types[new_idx] = 0  # Normal
 	
@@ -518,9 +803,6 @@ static func _get_or_create_midpoint(
 # CONSULTAS DEL GRAFO
 # ============================================
 
-## Retorna los índices de las caras (quads) que contienen el nodo especificado
-## @param node_idx: Índice del nodo a consultar
-## @return: Array[int] con los índices de las caras que contienen el nodo
 func get_quads_for_node(node_idx: int) -> Array[int]:
 	var connected_quads: Array[int] = []
 	
@@ -536,10 +818,6 @@ func get_quads_for_node(node_idx: int) -> Array[int]:
 # GEOMETRÍA DE CARAS
 # ============================================
 
-## Obtiene el cuadrado inscrito en una cara del grafo
-## @param face_idx: Índice de la cara en el array de faces
-## @param use_original_size: Si es true, usa el tamaño original guardado para el override
-## @return: Array[Vector3] con los 4 vértices del cuadrado inscrito (o vacío si la cara no es válida)
 func get_inscribed_square_for_face(face_idx: int, use_original_size: bool = false) -> Array[Vector3]:
 	if face_idx < 0 or face_idx >= faces.size():
 		push_error("Índice de cara inválido: ", face_idx)
@@ -547,7 +825,6 @@ func get_inscribed_square_for_face(face_idx: int, use_original_size: bool = fals
 
 	var face = faces[face_idx]
 
-	# Convertir los puntos de la cara de Vector3 a Vector2
 	var quad_2d: Array = []
 	for idx in face:
 		if idx >= points.size():
@@ -556,36 +833,30 @@ func get_inscribed_square_for_face(face_idx: int, use_original_size: bool = fals
 		var p = points[idx]
 		quad_2d.append(Vector2(p.x, p.z))
 
-	# Determinar si debemos usar el tamaño original
 	var override_size = null
 	if use_original_size and face_idx in original_inscribed_sizes:
 		override_size = original_inscribed_sizes[face_idx]
 
-	# Obtener el cuadrado inscrito (en 2D)
 	var inscribed_2d: Array = GraphHelper.get_inscribed_square(quad_2d, override_size)
 
 	if inscribed_2d.is_empty():
 		return []
 
-	# Convertir de vuelta a Vector3 (con y = 0)
 	var inscribed_3d: Array[Vector3] = []
 	for p2d in inscribed_2d:
 		inscribed_3d.append(Vector3(p2d.x, 0.0, p2d.y))
 
 	return inscribed_3d
 
-## Calcula el promedio de los puntos correspondientes (por índice clockwise) 
-## de los cuadrados inscritos en todas las caras conectadas a un nodo
-## @param node_idx: Índice del nodo a consultar
-## @param use_original_size: Si es true, usa los tamaños originales para calcular los cuadrados inscritos
-## @return: Vector3 con la posición promedio, o Vector3.ZERO si no hay caras conectadas
 func get_average_closest_inscribed_point(node_idx: int, use_original_size: bool = false) -> Vector3:
-	# Validar índice del nodo
 	if node_idx < 0 or node_idx >= points.size():
 		push_error("Índice de nodo inválido: ", node_idx)
 		return Vector3.ZERO
 	
-	# 1. Obtener todas las caras conectadas al nodo
+	# Si el nodo es de tipo límite, no moverlo
+	if node_types.get(node_idx, 0) == 1:
+		return points[node_idx]
+	
 	var connected_quads: Array[int] = get_quads_for_node(node_idx)
 	
 	if connected_quads.is_empty():
@@ -595,11 +866,9 @@ func get_average_closest_inscribed_point(node_idx: int, use_original_size: bool 
 	var node_position: Vector3 = points[node_idx]
 	var corresponding_points: Array[Vector3] = []
 	
-	# 2-3. Por cada cara, encontrar el punto correspondiente por índice clockwise
 	for face_idx in connected_quads:
 		var face = faces[face_idx]
 		
-		# Convertir la cara a 2D y calcular centro de masa
 		var face_2d: Array = []
 		var center_2d := Vector2.ZERO
 		for idx in face:
@@ -609,15 +878,12 @@ func get_average_closest_inscribed_point(node_idx: int, use_original_size: bool 
 			center_2d += p2d
 		center_2d /= face.size()
 		
-		# Centrar los vértices
 		var centered_face: Array = []
 		for p2d in face_2d:
 			centered_face.append(p2d - center_2d)
 		
-		# Ordenar en sentido horario usando la misma función que get_inscribed_square
 		var sorted_indices = _get_clockwise_sorted_indices(centered_face)
 		
-		# Encontrar en qué posición clockwise está nuestro nodo
 		var clockwise_index := -1
 		for i in range(sorted_indices.size()):
 			if face[sorted_indices[i]] == node_idx:
@@ -628,31 +894,22 @@ func get_average_closest_inscribed_point(node_idx: int, use_original_size: bool 
 			push_warning("No se pudo encontrar el nodo en la cara (esto no debería pasar)")
 			continue
 		
-		# Obtener el cuadrado inscrito
 		var inscribed_square: Array[Vector3] = get_inscribed_square_for_face(face_idx, use_original_size)
 		
 		if inscribed_square.is_empty():
 			continue
 		
-		# Usar el mismo índice clockwise para obtener el punto correspondiente
-		# Nota: Si la cara es un triángulo (3 vértices), el cuadrado inscrito sigue teniendo 4 vértices
-		# En ese caso, necesitamos mapear correctamente
 		var corresponding_point: Vector3
 		if face.size() == 4:
-			# Para quads, mapeo directo
 			corresponding_point = inscribed_square[clockwise_index]
 		else:
-			# Para triángulos, mapear los 3 índices a 4 vértices del cuadrado
-			# Usamos los vértices 0, 1, 2 del cuadrado (ignorando el 3)
 			if clockwise_index < 3:
 				corresponding_point = inscribed_square[clockwise_index]
 			else:
-				# Esto no debería pasar con triángulos
 				corresponding_point = inscribed_square[0]
 		
 		corresponding_points.append(corresponding_point)
 	
-	# 4. Calcular el promedio de todos los puntos correspondientes
 	if corresponding_points.is_empty():
 		push_warning("No se pudieron calcular puntos correspondientes para las caras del nodo ", node_idx)
 		return Vector3.ZERO
@@ -666,15 +923,12 @@ func get_average_closest_inscribed_point(node_idx: int, use_original_size: bool 
 	return average_position
 
 
-## Función auxiliar: Ordena vértices centrados en sentido horario y retorna los índices ordenados
 static func _get_clockwise_sorted_indices(centered_vertices: Array) -> Array:
-	# Calcular ángulo de cada vértice respecto al origen
 	var angles := []
 	for i in range(centered_vertices.size()):
 		var angle := atan2(centered_vertices[i].y, centered_vertices[i].x)
 		angles.append({"index": i, "angle": angle})
 	
-	# Ordenar por ángulo (sentido horario = ángulo decreciente)
 	angles.sort_custom(func(a, b): return a["angle"] > b["angle"])
 	
 	var sorted_indices := []
@@ -684,38 +938,30 @@ static func _get_clockwise_sorted_indices(centered_vertices: Array) -> Array:
 	return sorted_indices
 
 
-## Mueve uno o varios nodos del grafo a nuevas posiciones
-## @param node_transformations: Diccionario con formato {node_idx: nueva_posicion (Vector3)}
 func move_nodes(node_transformations: Dictionary) -> void:
-	# Aplicar las transformaciones de posición directamente
 	for node_idx in node_transformations:
 		if node_idx >= 0 and node_idx < points.size():
-			points[node_idx] = node_transformations[node_idx]
+			# Solo mover si NO es un nodo límite
+			if node_types.get(node_idx, 0) != 1:
+				points[node_idx] = node_transformations[node_idx]
 		else:
 			push_warning("move_nodes: Índice de nodo %d fuera de rango (0-%d)" % [node_idx, points.size() - 1])
 
-## Suaviza el grafo moviendo cada nodo hacia su punto inscrito promedio
 func smooth_graph() -> void:
-	# Usar tamaños originales solo después del primer paso de smoothing
 	var use_original_size: bool = (smoothing_steps > 0)
 	
 	var node_transformations: Dictionary = {}
 	
-	# Calcular la nueva posición objetivo para cada nodo
 	for node_idx in range(points.size()):
-		var new_position = get_average_closest_inscribed_point(node_idx, use_original_size)
-		node_transformations[node_idx] = new_position
+		# Solo calcular para nodos no-límite
+		if node_types.get(node_idx, 0) == 0:
+			var new_position = get_average_closest_inscribed_point(node_idx, use_original_size)
+			node_transformations[node_idx] = new_position
 	
-	# Aplicar todas las transformaciones de una vez
 	move_nodes(node_transformations)
 	
-	# Incrementar contador de pasos de smoothing
 	smoothing_steps += 1
 	
-## Obtiene los índices de las caras adyacentes a una cara dada
-## (caras que comparten al menos una arista, es decir, dos vértices consecutivos)
-## @param face_idx: Índice de la cara a consultar
-## @return: Array[int] con los índices de las caras adyacentes
 func get_adjacent_faces(face_idx: int) -> Array[int]:
 	var adjacent: Array[int] = []
 	
@@ -724,35 +970,29 @@ func get_adjacent_faces(face_idx: int) -> Array[int]:
 	
 	var face = faces[face_idx]
 	
-	# Crear conjunto de aristas de esta cara
 	var face_edges: Dictionary = {}
 	for i in range(face.size()):
 		var next_i = (i + 1) % face.size()
 		var edge_key = _get_edge_key(face[i], face[next_i])
 		face_edges[edge_key] = true
 	
-	# Buscar otras caras que compartan al menos una arista
 	for other_face_idx in range(faces.size()):
 		if other_face_idx == face_idx:
 			continue
 		
 		var other_face = faces[other_face_idx]
 		
-		# Verificar si comparten alguna arista
 		for i in range(other_face.size()):
 			var next_i = (i + 1) % other_face.size()
 			var edge_key = _get_edge_key(other_face[i], other_face[next_i])
 			
 			if edge_key in face_edges:
 				adjacent.append(other_face_idx)
-				break  # Ya encontramos que son adyacentes, no seguir verificando
+				break
 	
 	return adjacent
 
 
-## Obtiene todos los edges conectados a un nodo
-## @param node_idx: Índice del nodo a consultar
-## @return: Array con los edges conectados (cada edge es [idx1, idx2])
 func get_edges_for_node(node_idx: int) -> Array:
 	var connected: Array = []
 	
@@ -762,17 +1002,12 @@ func get_edges_for_node(node_idx: int) -> Array:
 	
 	return connected
 	
-## Selecciona dos edges que apunten en direcciones aproximadamente opuestas
-## @param node_idx: Nodo central desde el cual comparar direcciones
-## @param node_edges: Array de edges conectados al nodo
-## @return: Array con dos edges opuestos, o array vacío si no se encuentran
 func select_opposite_edges(node_idx: int, node_edges: Array) -> Array:
 	if node_edges.size() < 2:
 		return []
 	
 	var node_pos = points[node_idx]
 	
-	# Calcular direcciones de todos los edges
 	var directions: Array = []
 	for edge in node_edges:
 		var other_node = edge[1] if edge[0] == node_idx else edge[0]
@@ -780,9 +1015,8 @@ func select_opposite_edges(node_idx: int, node_edges: Array) -> Array:
 		var direction = (other_pos - node_pos).normalized()
 		directions.append({"edge": edge, "direction": direction})
 	
-	# Encontrar el par con mayor oposición (dot product más negativo)
 	var best_pair = []
-	var best_opposition = 0.5  # Umbral mínimo para considerar opuestos
+	var best_opposition = 0.5
 	
 	for i in range(directions.size()):
 		for j in range(i + 1, directions.size()):
@@ -791,33 +1025,22 @@ func select_opposite_edges(node_idx: int, node_edges: Array) -> Array:
 				best_opposition = dot
 				best_pair = [directions[i]["edge"], directions[j]["edge"]]
 	
-	# Si no se encontró un buen par, elegir dos aleatorios
 	if best_pair.is_empty():
 		node_edges.shuffle()
 		return [node_edges[0], node_edges[1]]
 	
 	return best_pair
 	
-## Verifica si un nodo está en el límite del mapa
-## @param node_idx: Índice del nodo a verificar
-## @param edge_types: Diccionario con tipos de edges {edge_key: tipo}
-## @return: true si el nodo tiene al menos un edge de tipo -1 (límite)
 func is_boundary_node(node_idx: int, edge_types: Dictionary) -> bool:
 	var connected_edges = get_edges_for_node(node_idx)
 	
 	for edge in connected_edges:
 		var edge_key = _get_edge_key(edge[0], edge[1])
-		if edge_types.get(edge_key, 1) == -1:  # Tipo -1 = límite
+		if edge_types.get(edge_key, 1) == -1:
 			return true
 	
 	return false
 
-## Obtiene el siguiente edge que mejor continúa una dirección dada
-## @param current_node: Nodo actual
-## @param previous_node: Nodo anterior (para calcular dirección)
-## @param edge_types: Diccionario con tipos de edges
-## @param desired_type: Tipo de edge que estamos buscando
-## @return: Edge que mejor continúa la dirección, o null si no hay ninguno válido
 func get_next_edge_in_direction(
 	current_node: int, 
 	previous_node: int, 
@@ -826,31 +1049,24 @@ func get_next_edge_in_direction(
 ) -> Array:
 	var connected_edges = get_edges_for_node(current_node)
 	
-	# Calcular la dirección actual
 	var current_pos = points[current_node]
 	var previous_pos = points[previous_node]
 	var current_direction = (current_pos - previous_pos).normalized()
 	
-	# Buscar el edge que mejor se alinee con la dirección actual
-	var best_edge: Array = []  # Inicializar como array vacío en lugar de null
-	var best_alignment = -2.0  # Peor caso posible
+	var best_edge: Array = []
+	var best_alignment = -2.0
 	
 	for edge in connected_edges:
-		# No volver atrás
 		var other_node = edge[1] if edge[0] == current_node else edge[0]
 		if other_node == previous_node:
 			continue
 		
-		# Verificar si este edge ya tiene un tipo incompatible
 		var edge_key = _get_edge_key(edge[0], edge[1])
 		var current_type = edge_types.get(edge_key, 1)
 		
-		# Si el edge ya es del mismo tipo o mediana, puede ser usado
-		# Si es de otro tipo especial (grande o pequeña diferente), saltarlo
 		if current_type != desired_type and current_type != 1:
 			continue
 		
-		# Calcular alineación con la dirección actual
 		var other_pos = points[other_node]
 		var edge_direction = (other_pos - current_pos).normalized()
 		var alignment = current_direction.dot(edge_direction)
@@ -859,4 +1075,4 @@ func get_next_edge_in_direction(
 			best_alignment = alignment
 			best_edge = edge
 	
-	return best_edge  # Ahora retorna array vacío si no encuentra nada
+	return best_edge

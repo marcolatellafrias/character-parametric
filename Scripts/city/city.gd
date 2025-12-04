@@ -6,8 +6,8 @@ extends Node3D
 @export_group("Generación del Grafo")
 @export var region_size: Vector2 = Vector2(40, 40)
 @export var min_distance: float = 5.5
-@export var rejection_samples: int = 40
-@export var generation_seed: int = 12345
+@export var rejection_samples: int = 60
+@export var generation_seed: int = 123456
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 6
@@ -76,6 +76,14 @@ extends Node3D
 @export var show_floor_planes: bool = true
 @export var floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 
+@export_subgroup("Offsets de Calles (en celdas)")
+@export var boundary_offset: int = 0
+@export var small_street_offset: int = 7
+@export var medium_street_offset: int = 12
+@export var large_street_offset: int = 17
+@export var small_tunnel_offset: int = 12
+@export var large_tunnel_offset: int = 17
+
 @export_group("Rectángulos")
 @export var show_rectangles: bool = true
 @export var rect_saturation: float = 0.8
@@ -90,6 +98,11 @@ extends Node3D
 @export var show_lanes: bool = true
 @export var lane_color: Color = Color.YELLOW
 @export var lane_width: float = 0.02
+
+@export_group("Planos Peatonales")
+@export var show_pedestrian_planes: bool = true
+@export var pedestrian_plane_color: Color = Color(1.0, 0.5, 0.0, 0.6)
+@export_range(0.0, 1.0) var pedestrian_plane_transparency: float = 0.5
 
 # ============================================
 # DATOS DEL GRAFO
@@ -138,6 +151,12 @@ func generate_graph() -> void:
 		rect_min_size,
 		rect_max_aspect_ratio,
 		rect_max_dimension,
+		boundary_offset,
+		small_street_offset,
+		medium_street_offset,
+		large_street_offset,
+		small_tunnel_offset,
+		large_tunnel_offset
 	)
 	
 	_generate_neighborhood_colors()
@@ -217,6 +236,9 @@ func visualize_graph() -> void:
 	
 	if show_lanes:
 		_visualize_lanes()
+	
+	if show_pedestrian_planes:
+		_visualize_pedestrian_planes()
 	
 	if show_nodes:
 		_visualize_nodes()
@@ -508,7 +530,6 @@ func _visualize_lanes() -> void:
 		var all_lanes = block.get_all_lanes()
 		
 		for lane_data in all_lanes:
-			# Visualizar carril de from → to en verde
 			var line = DebugUtil.create_debug_arrow_to_from(
 				lane_data["from"],
 				lane_data["to"],
@@ -518,3 +539,54 @@ func _visualize_lanes() -> void:
 			add_child(line)
 	
 	print("[Visualizer] Carriles direccionales generados para %d bloques" % all_block_faces.size())
+
+# ============================================
+# VISUALIZACIÓN DE PLANOS PEATONALES
+# ============================================
+func _visualize_pedestrian_planes() -> void:
+	var all_pedestrian_planes = generator.get_all_pedestrian_planes()
+	var total_planes = 0
+	
+	# Calcular altura máxima de los edificios
+	var max_building_height = _calculate_max_building_height()
+	
+	for edge_key in all_pedestrian_planes:
+		var planes = all_pedestrian_planes[edge_key]
+		
+		# Cada edge tiene dos planos
+		for plane_data in planes:
+			if plane_data.size() != 2:
+				continue
+			
+			var point1_2d: Vector2 = plane_data[0]
+			var point2_2d: Vector2 = plane_data[1]
+			
+			# Crear los 4 vértices del plano vertical
+			var v1 = Vector3(point1_2d.x, 0.0, point1_2d.y)
+			var v2 = Vector3(point2_2d.x, 0.0, point2_2d.y)
+			var v3 = Vector3(point2_2d.x, max_building_height, point2_2d.y)
+			var v4 = Vector3(point1_2d.x, max_building_height, point1_2d.y)
+			
+			# Crear plano vertical
+			var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, pedestrian_plane_color, pedestrian_plane_transparency)
+			add_child(plane)
+			total_planes += 1
+	
+	print("[Visualizer] Planos peatonales generados: %d" % total_planes)
+
+func _calculate_max_building_height() -> float:
+	var max_height = 0.0
+	var all_block_faces = generator.get_all_block_faces()
+	
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		
+		if block == null:
+			continue
+		
+		var block_height = block.get_floors() * block.get_cells_per_floor() * block.get_cell_height()
+		
+		if block_height > max_height:
+			max_height = block_height
+	
+	return max_height

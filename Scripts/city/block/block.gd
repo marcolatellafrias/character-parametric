@@ -18,15 +18,8 @@ var subdivider: RectangleSubdivider
 var street_types: Array[int]  # [north, east, south, west]
 var is_clockwise: bool  # Si la face está en sentido horario
 
-# Offsets de calles según tipo (en número de celdas)
-const STREET_OFFSETS = {
-	StreetType.BOUNDARY: 0,
-	StreetType.SMALL: 7,
-	StreetType.MEDIUM: 12,
-	StreetType.LARGE: 17,
-	StreetType.SMALL_TUNNEL: 12,
-	StreetType.LARGE_TUNNEL: 17,
-}
+# Offsets de calles (recibidos desde GraphCityGenerator)
+var street_offsets: Dictionary = {}
 
 # Área disponible después de offsets
 var available_min_x: int
@@ -46,10 +39,12 @@ func _init(
 	p_cell_height: float,
 	p_floors: int,
 	p_cells_per_floor: int,
-	p_is_clockwise: bool
+	p_is_clockwise: bool,
+	p_street_offsets: Dictionary
 ) -> void:
 	street_types = p_street_types
 	is_clockwise = p_is_clockwise
+	street_offsets = p_street_offsets
 	
 	grid_geometry = GridGeometry.new(
 		p_rows,
@@ -69,10 +64,10 @@ func _init(
 
 # Calcula el área disponible después de aplicar los offsets de las calles
 func _calculate_available_area() -> void:
-	var north_offset = STREET_OFFSETS.get(street_types[0], 0)
-	var south_offset = STREET_OFFSETS.get(street_types[2], 0)
-	var west_offset = STREET_OFFSETS.get(street_types[3], 0)
-	var east_offset = STREET_OFFSETS.get(street_types[1], 0)
+	var north_offset = street_offsets.get(street_types[0], 0)
+	var south_offset = street_offsets.get(street_types[2], 0)
+	var west_offset = street_offsets.get(street_types[3], 0)
+	var east_offset = street_offsets.get(street_types[1], 0)
 	
 	available_min_x = west_offset
 	available_max_x = grid_geometry.columns - east_offset - 1
@@ -89,8 +84,12 @@ func _calculate_lanes() -> void:
 
 
 # Retorna los offsets de carriles según el tipo de calle
-static func _get_lane_offsets_for_street_type(street_type: int) -> Array[int]:
+func _get_lane_offsets_for_street_type(street_type: int) -> Array[int]:
 	var offsets: Array[int] = []
+	var total_offset = street_offsets.get(street_type, 0)
+	
+	if total_offset == 0:
+		return offsets
 	
 	match street_type:
 		StreetType.SMALL:  # 7 celdas: xxxxOxx
