@@ -62,19 +62,11 @@ extends Node3D
 @export var large_tunnel_color: Color = Color.BLUE
 @export var large_tunnel_width: float = 0.045
 
-@export_group("Puntos de Interés")
-@export var num_delivery_facilities: int = 5
-@export var delivery_points_per_block: int = 3
-@export var num_gas_stations: int = 10
-@export var num_stores: int = 15
-
 @export_group("Grillas de Manzanas")
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
 @export var block_grid_floors: int = 1
 @export var block_cells_per_floor: int = 30
-@export var show_floor_planes: bool = true
-@export var floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 
 @export_subgroup("Offsets de Calles (en celdas)")
 @export var boundary_offset: int = 0
@@ -84,15 +76,9 @@ extends Node3D
 @export var small_tunnel_offset: int = 12
 @export var large_tunnel_offset: int = 17
 
-@export_group("Rectángulos")
-@export var show_rectangles: bool = true
-@export var rect_saturation: float = 0.8
-@export var rect_brightness: float = 0.9
-@export var rect_alpha: float = 0.8
-@export var rect_max_divisions: int = 3
-@export var rect_min_size: int = 14
-@export var rect_max_aspect_ratio: float = 1.8
-@export var rect_max_dimension: int = 18
+@export_group("Manzanas")
+@export var show_blocks: bool = true
+@export var block_color: Color = Color(0.6, 0.6, 0.6, 0.8)
 
 @export_group("Carriles")
 @export var show_lanes: bool = true
@@ -109,7 +95,6 @@ extends Node3D
 # ============================================
 var generator: GraphCityGenerator = null
 var neighborhood_colors: Dictionary = {}
-var rectangle_colors: Dictionary = {}
 
 # ============================================
 # INICIALIZACIÓN
@@ -147,10 +132,6 @@ func generate_graph() -> void:
 		block_grid_columns,
 		block_grid_floors,
 		block_cells_per_floor,
-		rect_max_divisions,
-		rect_min_size,
-		rect_max_aspect_ratio,
-		rect_max_dimension,
 		boundary_offset,
 		small_street_offset,
 		medium_street_offset,
@@ -160,7 +141,6 @@ func generate_graph() -> void:
 	)
 	
 	_generate_neighborhood_colors()
-	_generate_rectangle_colors()
 
 func _generate_neighborhood_colors() -> void:
 	neighborhood_colors.clear()
@@ -173,49 +153,6 @@ func _generate_neighborhood_colors() -> void:
 	for i in range(num_neighborhoods):
 		var hue = randf()
 		neighborhood_colors[i] = Color.from_hsv(hue, neighborhood_saturation, neighborhood_brightness, neighborhood_alpha)
-
-func _generate_rectangle_colors() -> void:
-	rectangle_colors.clear()
-	
-	var golden_ratio_conjugate = 0.618033988749895
-	var hue = randf()
-	
-	var all_block_faces = generator.get_all_block_faces()
-	var total_rectangles = 0
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		if block != null:
-			var rectangles = block.get_rectangles()
-			total_rectangles += rectangles.size()
-	
-	var use_uniform_distribution = total_rectangles < 20
-	var hue_step = 1.0 / total_rectangles if use_uniform_distribution else golden_ratio_conjugate
-	
-	var rect_index = 0
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		if block == null:
-			continue
-		
-		var rectangles = block.get_rectangles()
-		for rect in rectangles:
-			if use_uniform_distribution:
-				hue = fmod(rect_index * hue_step, 1.0)
-			else:
-				hue = fmod(hue + golden_ratio_conjugate, 1.0)
-			
-			var saturation = rect_saturation + randf_range(-0.1, 0.1)
-			saturation = clamp(saturation, 0.3, 0.5)
-			
-			var brightness = rect_brightness + randf_range(-0.1, 0.1)
-			brightness = clamp(brightness, 0.3, 0.6)
-			
-			rectangle_colors[rect.id] = Color.from_hsv(hue, saturation, brightness, rect_alpha)
-			rect_index += 1
-	
-	print("[Visualizer] Generados %d colores distintos para rectángulos" % total_rectangles)
 
 func clear_visualization() -> void:
 	for child in get_children():
@@ -231,8 +168,8 @@ func visualize_graph() -> void:
 	
 	_visualize_streets()
 	
-	if show_rectangles:
-		_visualize_rectangles()
+	if show_blocks:
+		_visualize_blocks()
 	
 	if show_lanes:
 		_visualize_lanes()
@@ -379,9 +316,9 @@ func _visualize_inscribed_squares() -> void:
 			add_child(line)
 
 # ============================================
-# VISUALIZACIÓN DE RECTÁNGULOS
+# VISUALIZACIÓN DE MANZANAS
 # ============================================
-func _visualize_rectangles() -> void:
+func _visualize_blocks() -> void:
 	var all_block_faces = generator.get_all_block_faces()
 	
 	for face_idx in all_block_faces:
@@ -390,130 +327,14 @@ func _visualize_rectangles() -> void:
 		if block == null:
 			continue
 		
-		var rectangles = block.get_rectangles()
-		for rect in rectangles:
-			var color: Color
-			
-			if block.is_rectangle_merged(rect.id):
-				var merged_with_id = block.get_merged_with(rect.id)
-				if rect.id < merged_with_id:
-					color = Color(0.8, 0.8, 0.8, rect_alpha)
-				else:
-					color = Color(1.0, 1.0, 1.0, rect_alpha)
-			else:
-				color = rectangle_colors.get(rect.id, Color.WHITE)
-			
-			var base_corners = _get_rectangle_corners(block, rect, 0)
-			
-			if base_corners.size() == 4:
-				var total_height = block.get_floors() * block.get_cells_per_floor() * block.get_cell_height()
-				var cube = DebugUtil.create_skewed_cube(base_corners, total_height, color)
-				add_child(cube)
-	
-	print("[Visualizer] Rectángulos extruidos generados para %d bloques" % all_block_faces.size())
-
-func _get_rectangle_corners(block: BlockGenerator, rect: RectangleSubdivider.GridRectangle, y: int) -> Array[Vector3]:
-	var corners: Array[Vector3] = []
-	
-	var bounds = block.get_rectangle_bounds_with_offset(rect)
-	
-	var columns = block.get_columns()
-	var rows = block.get_rows()
-	var cell_height = block.get_cell_height()
-	
-	var vertices = block.grid_geometry.vertices
-	
-	var u_min = float(bounds.x_min) / max(1, columns)
-	var u_max = float(bounds.x_max) / max(1, columns)
-	var v_min = float(bounds.z_min) / max(1, rows)
-	var v_max = float(bounds.z_max) / max(1, rows)
-	
-	var height = y * cell_height
-	
-	var corner_bl_2d = (
-		vertices[0] * (1 - u_min) * (1 - v_min) +
-		vertices[1] * u_min * (1 - v_min) +
-		vertices[2] * u_min * v_min +
-		vertices[3] * (1 - u_min) * v_min
-	)
-	corners.append(Vector3(corner_bl_2d.x, height, corner_bl_2d.y))
-	
-	var corner_br_2d = (
-		vertices[0] * (1 - u_max) * (1 - v_min) +
-		vertices[1] * u_max * (1 - v_min) +
-		vertices[2] * u_max * v_min +
-		vertices[3] * (1 - u_max) * v_min
-	)
-	corners.append(Vector3(corner_br_2d.x, height, corner_br_2d.y))
-	
-	var corner_tr_2d = (
-		vertices[0] * (1 - u_max) * (1 - v_max) +
-		vertices[1] * u_max * (1 - v_max) +
-		vertices[2] * u_max * v_max +
-		vertices[3] * (1 - u_max) * v_max
-	)
-	corners.append(Vector3(corner_tr_2d.x, height, corner_tr_2d.y))
-	
-	var corner_tl_2d = (
-		vertices[0] * (1 - u_min) * (1 - v_max) +
-		vertices[1] * u_min * (1 - v_max) +
-		vertices[2] * u_min * v_max +
-		vertices[3] * (1 - u_min) * v_max
-	)
-	corners.append(Vector3(corner_tl_2d.x, height, corner_tl_2d.y))
-	
-	return corners
-
-# ============================================
-# VISUALIZACIÓN DE PLANOS DE PISO
-# ============================================
-func _visualize_floor_planes() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		var base_corners = block.get_block_corners()
 		
-		if block == null:
-			continue
-		
-		var floors = block.get_floors()
-		var cells_per_floor = block.get_cells_per_floor()
-		
-		for floor in range(floors):
-			var corner_bl = block.get_cell_position(
-				block.available_min_x, 
-				block.available_min_z, 
-				floor * cells_per_floor
-			)
-			
-			var corner_br = block.get_cell_position(
-				block.available_max_x, 
-				block.available_min_z, 
-				floor * cells_per_floor
-			)
-			
-			var corner_tr = block.get_cell_position(
-				block.available_max_x, 
-				block.available_max_z, 
-				floor * cells_per_floor
-			)
-			
-			var corner_tl = block.get_cell_position(
-				block.available_min_x, 
-				block.available_max_z, 
-				floor * cells_per_floor
-			)
-			
-			var plane = DebugUtil.create_debug_plane(
-				corner_bl, 
-				corner_br, 
-				corner_tr, 
-				corner_tl, 
-				floor_plane_color
-			)
-			add_child(plane)
+		if base_corners.size() == 4:
+			var total_height = block.get_floors() * block.get_cells_per_floor() * block.get_cell_height()
+			var cube = DebugUtil.create_skewed_cube(base_corners, total_height, block_color)
+			add_child(cube)
 	
-	print("[Visualizer] Planos de piso generados para %d bloques" % all_block_faces.size())
+	print("[Visualizer] Manzanas extruidas generadas para %d bloques" % all_block_faces.size())
 
 # ============================================
 # VISUALIZACIÓN DE CARRILES

@@ -34,10 +34,6 @@ func generate_city_graph(
 	block_grid_columns: int,
 	block_grid_floors: int,
 	block_cells_per_floor: int,
-	rect_max_divisions: int,
-	rect_min_size: int,
-	rect_max_aspect_ratio: float,
-	rect_max_dimension: int,
 	boundary_offset: int,
 	small_street_offset: int,
 	medium_street_offset: int,
@@ -83,11 +79,7 @@ func generate_city_graph(
 	_generate_block_grids(
 		block_grid_floors,
 		block_cells_per_floor,
-		block_cell_height,
-		rect_max_divisions,
-		rect_min_size,
-		rect_max_aspect_ratio,
-		rect_max_dimension
+		block_cell_height
 	)
 	
 	_generate_pedestrian_planes()
@@ -540,11 +532,7 @@ func get_faces_in_neighborhood(neighborhood_id: int) -> Array[int]:
 func _generate_block_grids(
 	floors: int,
 	cells_per_floor: int,
-	cell_height: float,
-	max_divisions: int,
-	min_size: int,
-	max_aspect_ratio: float,
-	max_dimension: int
+	cell_height: float
 ) -> void:
 	block_grids.clear()
 	
@@ -575,8 +563,6 @@ func _generate_block_grids(
 			is_clockwise,
 			street_offsets
 		)
-		
-		block.generate_rectangles(max_divisions, min_size, max_aspect_ratio, max_dimension, face_idx)
 		
 		block_grids[face_idx] = block
 
@@ -663,49 +649,37 @@ func get_all_pedestrian_planes() -> Dictionary:
 # HELPERS DE GEOMETRÍA
 # ============================================
 
-## Obtiene el punto de la esquina de una manzana con la grilla offseteada
-## @param node_idx: Índice del nodo que define la esquina
-## @param edge: Array [idx1, idx2] del edge conectado al nodo
-## @param face_idx: Índice de la manzana (face)
-## @return: Vector2 con la posición de la esquina offseteada (sin altura), o Vector2.ZERO si hay error
 func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> Vector2:
-	# Validar que la face existe
 	if face_idx < 0 or face_idx >= plain_graph.faces.size():
 		push_error("Índice de face inválido: %d" % face_idx)
 		return Vector2.ZERO
 	
 	var face = plain_graph.faces[face_idx]
 	
-	# Validar que el nodo pertenece a la face
 	var node_index_in_face = face.find(node_idx)
 	if node_index_in_face == -1:
 		push_error("El nodo %d no pertenece a la face %d" % [node_idx, face_idx])
 		return Vector2.ZERO
 	
-	# Validar que el edge conecta dos nodos de la face
 	if edge[0] not in face or edge[1] not in face:
 		push_error("El edge [%d, %d] no pertenece a la face %d" % [edge[0], edge[1], face_idx])
 		return Vector2.ZERO
 	
-	# Validar que el nodo es parte del edge
 	if node_idx != edge[0] and node_idx != edge[1]:
 		push_error("El nodo %d no es parte del edge [%d, %d]" % [node_idx, edge[0], edge[1]])
 		return Vector2.ZERO
 	
-	# Obtener vértices de la face en 2D
 	var face_vertices: Array[Vector2] = []
 	for node_idx_in_face in face:
 		var pos_3d = plain_graph.points[node_idx_in_face]
 		face_vertices.append(Vector2(pos_3d.x, pos_3d.z))
 	
-	# Obtener tipos de calle de la face
 	var street_types_array: Array[int] = []
 	for i in range(face.size()):
 		var node1 = face[i]
 		var node2 = face[(i + 1) % face.size()]
 		street_types_array.append(get_street_type(node1, node2))
 	
-	# Calcular área disponible con offsets
 	var available_area = GridHelper.calculate_available_area(
 		block_rows,
 		block_columns,
@@ -717,7 +691,6 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 		push_error("No se pudo calcular el área disponible para la face %d" % face_idx)
 		return Vector2.ZERO
 	
-	# Mapear el índice del nodo en la face a las coordenadas de grilla offseteada
 	var grid_x: int
 	var grid_z: int
 	
@@ -738,7 +711,6 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 			push_error("Índice de nodo en face inválido: %d" % node_index_in_face)
 			return Vector2.ZERO
 	
-	# Obtener los 4 vértices de la base de esta celda usando el helper
 	var cell_vertices = GridHelper.get_cell_base_vertices(
 		face_vertices,
 		block_rows,
@@ -751,10 +723,8 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 		push_error("No se pudieron obtener vértices para la celda (%d, %d)" % [grid_x, grid_z])
 		return Vector2.ZERO
 	
-	# Obtener la posición del nodo original
 	var node_pos = plain_graph.points[node_idx]
 	
-	# Encontrar el vértice de la celda más cercano al nodo original
 	var closest_vertex = cell_vertices[0]
 	var min_distance = node_pos.distance_to(cell_vertices[0])
 	
@@ -764,5 +734,4 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 			min_distance = distance
 			closest_vertex = cell_vertices[i]
 	
-	# Retornar como Vector2 (x, z)
 	return Vector2(closest_vertex.x, closest_vertex.z)
