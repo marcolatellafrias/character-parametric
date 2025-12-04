@@ -10,6 +10,9 @@ var cells_per_floor: int
 # Geometría del bloque
 var vertices: Array[Vector2]  # [top_left, top_right, bottom_right, bottom_left]
 
+# Grilla 3D: [x][z][y] -> int (0 = vacío/calle, >0 = ID de rectángulo)
+var grid: Array = []
+
 # Información de las celdas
 var cell_positions: Array = []  # Posiciones 3D de cada celda
 
@@ -29,7 +32,23 @@ func _init(
 	floors = p_floors
 	cells_per_floor = p_cells_per_floor
 	
+	_initialize_grid()
 	_calculate_cell_positions()
+
+
+# Inicializa la grilla 3D con todas las celdas como vacías (0)
+func _initialize_grid() -> void:
+	grid.clear()
+	var total_height = floors * cells_per_floor
+	
+	for x in range(columns):
+		var grid_x = []
+		for z in range(rows):
+			var grid_z = []
+			for y in range(total_height):
+				grid_z.append(0)
+			grid_x.append(grid_z)
+		grid.append(grid_x)
 
 
 # Calcula las posiciones 3D de cada celda usando GridHelper
@@ -44,12 +63,33 @@ func _calculate_cell_positions() -> void:
 		for z in range(rows):
 			var row_positions = []
 			for x in range(columns):
+				# Usar GridHelper para obtener posición 2D
 				var pos_2d = GridHelper.get_cell_position_2d(vertices, rows, columns, x, z)
 				var pos_3d = Vector3(pos_2d.x, height, pos_2d.y)
 				row_positions.append(pos_3d)
 			
 			positions_2d.append(row_positions)
 		cell_positions.append(positions_2d)
+
+
+# Obtiene el ID del rectángulo en una posición
+func get_cell(x: int, z: int, y: int) -> int:
+	if x < 0 or x >= columns or z < 0 or z >= rows:
+		return 0
+	var total_height = floors * cells_per_floor
+	if y < 0 or y >= total_height:
+		return 0
+	return grid[x][z][y]
+
+
+# Establece el ID del rectángulo en una posición
+func set_cell(x: int, z: int, y: int, value: int) -> void:
+	if x < 0 or x >= columns or z < 0 or z >= rows:
+		return
+	var total_height = floors * cells_per_floor
+	if y < 0 or y >= total_height:
+		return
+	grid[x][z][y] = value
 
 
 # Obtiene la posición 3D de una celda
@@ -82,8 +122,10 @@ func get_cell_base_vertices(x: int, z: int, y: int) -> Array:
 	if x < 0 or x >= columns:
 		return []
 	
+	# Usar GridHelper para obtener los vértices
 	var vertices_3d = GridHelper.get_cell_base_vertices(vertices, rows, columns, x, z)
 	
+	# Ajustar la altura según el nivel y
 	var height = y * cell_height
 	var adjusted_vertices = []
 	
