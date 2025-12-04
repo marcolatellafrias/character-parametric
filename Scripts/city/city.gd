@@ -8,8 +8,6 @@ extends Node3D
 @export var min_distance: float = 5.5
 @export var rejection_samples: int = 60
 @export var generation_seed: int = 123456
-@export var use_boundary_test: bool = true  # NUEVO: Habilitar boundary face de prueba
-@export var boundary_area: float = 400.0  # NUEVO: Área aproximada del boundary face
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 6
@@ -27,11 +25,6 @@ extends Node3D
 @export var inscribed_square_color: Color = Color.RED
 @export var inscribed_square_width: float = 0.03
 @export var auto_generate: bool = true
-
-@export_group("Boundary Face")  # NUEVO
-@export var show_boundary_face: bool = true
-@export var boundary_face_color: Color = Color.YELLOW
-@export var boundary_face_transparency: float = 0.7  # Mayor opacidad para ser más visible
 
 @export_group("Tipos de Calles")
 @export var num_large_streets: int = 3
@@ -102,37 +95,6 @@ extends Node3D
 # ============================================
 var generator: GraphCityGenerator = null
 var neighborhood_colors: Dictionary = {}
-var boundary_face: Array = []  # NUEVO: Almacenar boundary face
-
-# ============================================
-# HELPER: GENERAR QUAD CONVEXO RANDOM
-# ============================================
-static func generate_random_convex_quad(area: float, center: Vector2 = Vector2.ZERO) -> Array:
-	# Calcular dimensiones de un rectángulo base
-	var side = sqrt(area)  # Lado de un cuadrado con el área deseada
-	
-	# Crear rectángulo base centrado en el origen
-	var half_size = side / 2.0
-	
-	# 4 esquinas base (en sentido antihorario desde abajo-izquierda)
-	var corners = [
-		Vector2(-half_size, -half_size),  # Abajo izquierda
-		Vector2(half_size, -half_size),   # Abajo derecha
-		Vector2(half_size, half_size),    # Arriba derecha
-		Vector2(-half_size, half_size)    # Arriba izquierda
-	]
-	
-	# Aplicar perturbación ligera a cada esquina (±15% del tamaño)
-	var perturbation = side * 0.15
-	var quad: Array = []
-	
-	for corner in corners:
-		var offset_x = randf_range(-perturbation, perturbation)
-		var offset_y = randf_range(-perturbation, perturbation)
-		var perturbed = corner + Vector2(offset_x, offset_y)
-		quad.append(center + perturbed)
-	
-	return quad
 
 # ============================================
 # INICIALIZACIÓN
@@ -150,29 +112,6 @@ func generate_and_visualize() -> void:
 	visualize_graph()
 
 func generate_graph() -> void:
-	print("GENERANDO GRAFO")
-	print("use_boundary_test = %s" % use_boundary_test)
-	print("boundary_area = %.1f" % boundary_area)
-	print("region_size = %s" % region_size)
-	
-	# Crear boundary face si está habilitado
-	boundary_face.clear()
-	if use_boundary_test:
-		seed(generation_seed)
-		var center = region_size / 2.0
-		print("\nGenerando boundary face:")
-		print("  Centro: %s" % center)
-		print("  Área objetivo: %.1f" % boundary_area)
-		
-		boundary_face = generate_random_convex_quad(boundary_area, center)
-		
-		print("  ✓ Generado con %d vértices:" % boundary_face.size())
-		for i in range(boundary_face.size()):
-			print("    [%d] = %s" % [i, boundary_face[i]])
-	else:
-		print("\n⚠ Boundary face NO generado (use_boundary_test = false)")
-	
-	print("\nGenerando ciudad con GraphCityGenerator...")
 	generator = GraphCityGenerator.new()
 	generator.generate_city_graph(
 		smoothing_steps,
@@ -198,12 +137,10 @@ func generate_graph() -> void:
 		medium_street_offset,
 		large_street_offset,
 		small_tunnel_offset,
-		large_tunnel_offset,
-		boundary_face
+		large_tunnel_offset
 	)
 	
 	_generate_neighborhood_colors()
-	print("\n✓ Grafo generado exitosamente")
 
 func _generate_neighborhood_colors() -> void:
 	neighborhood_colors.clear()
@@ -226,21 +163,6 @@ func visualize_graph() -> void:
 		push_error("No hay grafo generado para visualizar")
 		return
 	
-	print("VISUALIZANDO GRAFO")
-	print("boundary_face.size() = %d" % boundary_face.size())
-	print("show_boundary_face = %s" % show_boundary_face)
-	print("use_boundary_test = %s" % use_boundary_test)
-	
-	# Visualizar boundary face PRIMERO
-	if show_boundary_face and not boundary_face.is_empty():
-		_visualize_boundary_face()
-	else:
-		print("\n⚠ NO visualizando boundary face:")
-		print("  show_boundary_face = %s" % show_boundary_face)
-		print("  boundary_face.is_empty() = %s" % boundary_face.is_empty())
-	
-	print("\nVisualizando elementos del grafo...")
-	
 	if show_inscribed_squares:
 		_visualize_inscribed_squares()
 	
@@ -257,63 +179,6 @@ func visualize_graph() -> void:
 	
 	if show_nodes:
 		_visualize_nodes()
-	
-	print("\n✓ Visualización completada")
-
-# ============================================
-# VISUALIZACIÓN DEL BOUNDARY FACE
-# ============================================
-func _visualize_boundary_face() -> void:
-	print("\n[BOUNDARY FACE] Iniciando visualización...")
-	
-	if boundary_face.size() != 4:
-		print("[BOUNDARY FACE] ERROR: No hay 4 vértices (tiene %d)" % boundary_face.size())
-		return
-	
-	print("[BOUNDARY FACE] Vértices 2D:")
-	for i in range(4):
-		print("  [%d] = %s" % [i, boundary_face[i]])
-	
-	# Convertir a 3D con elevación
-	var y_pos = 0.1  # Elevación visible
-	var vertices_3d = [
-		Vector3(boundary_face[0].x, y_pos, boundary_face[0].y),
-		Vector3(boundary_face[1].x, y_pos, boundary_face[1].y),
-		Vector3(boundary_face[2].x, y_pos, boundary_face[2].y),
-		Vector3(boundary_face[3].x, y_pos, boundary_face[3].y)
-	]
-	
-	print("[BOUNDARY FACE] Vértices 3D:")
-	for i in range(4):
-		print("  [%d] = %s" % [i, vertices_3d[i]])
-	
-	# PRIMERO: Dibujar bordes GRUESOS en rojo para asegurar visibilidad
-	print("[BOUNDARY FACE] Dibujando bordes rojos...")
-	for i in range(4):
-		var next_i = (i + 1) % 4
-		var line = DebugUtil.create_debug_line_to_from(
-			vertices_3d[i],
-			vertices_3d[next_i],
-			Color.RED,
-			0.2  # Muy grueso
-		)
-		add_child(line)
-		print("  Línea %d: de %s a %s" % [i, vertices_3d[i], vertices_3d[next_i]])
-	
-	# SEGUNDO: Dibujar plano semi-transparente
-	print("[BOUNDARY FACE] Dibujando plano negro...")
-	var plane_color = Color(0, 0, 0, 0.8)  # Negro casi opaco
-	var plane = DebugUtil.create_debug_plane(
-		vertices_3d[0],
-		vertices_3d[1],
-		vertices_3d[2],
-		vertices_3d[3],
-		plane_color,
-		0.8
-	)
-	add_child(plane)
-	
-	print("[BOUNDARY FACE] ✓ Visualización completada\n")
 
 # ============================================
 # VISUALIZACIÓN DE BARRIOS

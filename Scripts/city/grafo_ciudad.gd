@@ -2,15 +2,17 @@ class_name GraphCityGenerator
 extends RefCounted
 
 var plain_graph: GraphGenerator  
-var neighborhoods: Dictionary = {}
-var street_types: Dictionary = {}
-var block_grids: Dictionary = {}
-var region_size: Vector2 = Vector2.ZERO
-var pedestrian_planes: Dictionary = {}
+var neighborhoods: Dictionary = {}   # {face_idx: neighborhood_id} barrio de cada cara (-1 = sin asignar)
+var street_types: Dictionary = {}    # {edge_key: tipo} tipo de cada calle (-1=límite, 0=pequeña, 1=mediana, 2=grande, 3=túnel chico, 4=túnel grande)
+var block_grids: Dictionary = {}     # {face_idx: BlockGenerator} grilla 3D de cada manzana
+var region_size: Vector2 = Vector2.ZERO  # Tamaño de la región
+var pedestrian_planes: Dictionary = {}  # {edge_key: [plane1, plane2]} planos peatonales por edge (cada plano es [Vector2, Vector2])
 
+# Configuración de grillas
 var block_rows: int
 var block_columns: int
 
+# Offsets de calles
 var street_offsets: Dictionary = {}
 
 func generate_city_graph(
@@ -37,8 +39,7 @@ func generate_city_graph(
 	medium_street_offset: int,
 	large_street_offset: int,
 	small_tunnel_offset: int,
-	large_tunnel_offset: int,
-	boundary_face: Array = []  # NUEVO: Parámetro para cara límite
+	large_tunnel_offset: int
 ) -> void:
 	
 	seed(generation_seed)
@@ -48,12 +49,12 @@ func generate_city_graph(
 	
 	# Configurar offsets de calles
 	street_offsets = {
-		-1: boundary_offset,
-		0: small_street_offset,
-		1: medium_street_offset,
-		2: large_street_offset,
-		3: small_tunnel_offset,
-		4: large_tunnel_offset
+		-1: boundary_offset,        # BOUNDARY
+		0: small_street_offset,     # SMALL
+		1: medium_street_offset,    # MEDIUM
+		2: large_street_offset,     # LARGE
+		3: small_tunnel_offset,     # SMALL_TUNNEL
+		4: large_tunnel_offset      # LARGE_TUNNEL
 	}
 	
 	plain_graph = GraphGenerator.new()
@@ -63,7 +64,6 @@ func generate_city_graph(
 		min_distance,
 		rejection_samples,
 		generation_seed,
-		boundary_face  # Pasar boundary_face al GraphGenerator
 	)
 	
 	_initialize_street_types()
@@ -93,7 +93,7 @@ func _initialize_street_types() -> void:
 	
 	for edge in plain_graph.edges:
 		var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
-		street_types[edge_key] = 1
+		street_types[edge_key] = 1  # Mediana por defecto
 
 func _mark_boundary_streets() -> void:
 	for edge in plain_graph.edges:
@@ -476,6 +476,7 @@ func _assign_neighborhoods(num_neighborhoods: int) -> void:
 		return
 	
 	var actual_neighborhoods = min(num_neighborhoods, total_faces)
+	
 	var available_faces = range(total_faces)
 	available_faces.shuffle()
 	
@@ -592,11 +593,13 @@ func has_block_grid(face_idx: int) -> bool:
 func _generate_pedestrian_planes() -> void:
 	pedestrian_planes.clear()
 	
+	# Procesar cada edge del grafo
 	for edge in plain_graph.edges:
 		var node1_idx = edge[0]
 		var node2_idx = edge[1]
 		var edge_key = GraphGenerator._get_edge_key(node1_idx, node2_idx)
 		
+		# Encontrar las dos faces que comparten este edge
 		var adjacent_faces = _find_faces_sharing_edge(node1_idx, node2_idx)
 		
 		if adjacent_faces.size() != 2:
@@ -605,18 +608,21 @@ func _generate_pedestrian_planes() -> void:
 		var face1_idx = adjacent_faces[0]
 		var face2_idx = adjacent_faces[1]
 		
+		# Obtener esquinas offseteadas de ambas manzanas
 		var corner1_node1 = get_block_corner_with_offset(node1_idx, edge, face1_idx)
 		var corner1_node2 = get_block_corner_with_offset(node2_idx, edge, face1_idx)
 		
 		var corner2_node1 = get_block_corner_with_offset(node1_idx, edge, face2_idx)
 		var corner2_node2 = get_block_corner_with_offset(node2_idx, edge, face2_idx)
 		
+		# Validar que las esquinas sean válidas
 		if corner1_node1 == Vector2.ZERO or corner1_node2 == Vector2.ZERO or \
 		   corner2_node1 == Vector2.ZERO or corner2_node2 == Vector2.ZERO:
 			continue
 		
-		var plane1 = [corner1_node1, corner2_node1]
-		var plane2 = [corner1_node2, corner2_node2]
+		# Crear dos planos que cruzan la calle (de una manzana a la otra)
+		var plane1 = [corner1_node1, corner2_node1]  # Cruza la calle en node1
+		var plane2 = [corner1_node2, corner2_node2]  # Cruza la calle en node2
 		
 		pedestrian_planes[edge_key] = [plane1, plane2]
 
@@ -626,6 +632,7 @@ func _find_faces_sharing_edge(node1_idx: int, node2_idx: int) -> Array[int]:
 	for face_idx in range(plain_graph.faces.size()):
 		var face = plain_graph.faces[face_idx]
 		
+		# Verificar si ambos nodos están en esta face
 		if node1_idx in face and node2_idx in face:
 			sharing_faces.append(face_idx)
 	

@@ -10,7 +10,10 @@ var faces: Array = []                # [[idx1, idx2, idx3, ...], ...] caras
 var smoothing_steps: int = 0         # Cantidad de pasos de smoothing realizados
 var original_inscribed_sizes: Dictionary = {}  # {face_idx: float} tamaño original del cuadrado inscrito
 var node_types: Dictionary = {}      # {node_idx: int} tipo de nodo (0=normal, 1=límite)
-var boundary_edges: Dictionary = {}  # {edge_key: bool} edges que forman el límite de la cara
+var boundary_edges: Dictionary = {}  # {edge_key: bool} edges que son límite (no se mueven)
+
+# Datos del boundary quad (si se usa)
+var boundary_quad_indices: Array[int] = []  # Índices de los 4 vértices del quad límite
 
 
 # ============================================
@@ -22,7 +25,7 @@ func generate_graph(
 	min_distance: float,
 	rejection_samples: int,
 	generation_seed: int,
-	boundary_face: Array = []  # Opcional: [Vector2, Vector2, Vector2, Vector2]
+	boundary_quad: Array[Vector2] = []  # Nuevo parámetro opcional
 ) -> void:
 	var max_angle_threshold: float = 0.825 * PI
 	var min_quad_angle: float = 0.2 * PI
@@ -38,22 +41,25 @@ func generate_graph(
 	original_inscribed_sizes.clear()
 	node_types.clear()
 	boundary_edges.clear()
+	boundary_quad_indices.clear()
 	
 	var edges_dict: Dictionary = {}
-	var use_boundary = not boundary_face.is_empty() and boundary_face.size() == 4
 	
-	# 1. Generar puntos
-	if use_boundary:
-		_generate_points_with_boundary(boundary_face, min_distance, rejection_samples)
-	else:
-		points = _generate_poisson_points(region_size, min_distance, rejection_samples)
+	# 1. Generar puntos con Poisson Disk Sampling (con boundary opcional)
+	points = _generate_poisson_points(
+		region_size, 
+		min_distance, 
+		rejection_samples,
+		boundary_quad
+	)
 	
-	# 2. Construir grafo desde Delaunay
+	# 2. Construir grafo desde Delaunay (con boundary opcional)
 	var graph_data = _build_graph_from_delaunay(
 		points, 
 		max_angle_threshold, 
 		min_quad_angle, 
-		max_quad_angle
+		max_quad_angle,
+		boundary_quad
 	)
 	points = graph_data["points"]
 	edges_dict = graph_data["edges"]
@@ -62,8 +68,8 @@ func generate_graph(
 	# 2.5. Detectar nodos límite ANTES de subdividir
 	_detect_boundary_nodes(faces)
 	
-	# 3. Subdividir caras
-	var subdivided = _subdivide_faces(points, faces, node_types)
+	# 3. Subdividir caras (propagando boundary edges)
+	var subdivided = _subdivide_faces(points, faces, node_types, boundary_edges)
 	points = subdivided["points"]
 	faces = subdivided["faces"]
 	node_types = subdivided["node_types"]
@@ -84,218 +90,9 @@ func generate_graph(
 	# 5. Calcular y guardar los tamaños originales de los cuadrados inscritos
 	_calculate_original_inscribed_sizes()
 	
-	# 6. Aplicar smoothing (si se solicitó)
+	# 6. Aplicar smoothing (si se solicitó) - respetando boundary edges
 	for i in range(smooth_steps):
 		smooth_graph()
-
-# ============================================
-# GENERACIÓN DE PUNTOS CON CARA LÍMITE
-# ============================================
-
-func _generate_points_with_boundary(
-	boundary_face: Array,
-	min_distance: float,
-	rejection_samples: int
-) -> void:
-	# 1. Generar puntos esquina (índices 0-3)
-	for i in range(4):
-		var corner_2d: Vector2 = boundary_face[i]
-		points.append(Vector3(corner_2d.x, 0.0, corner_2d.y))
-	
-	# 2. Calcular cuántos puntos por lado basado en longitud y densidad
-	var side_point_indices: Array[Array] = [[], [], [], []]
-	
-	for i in range(4):
-		var start_idx = i
-		var end_idx = (i + 1) % 4
-		var start_pos = points[start_idx]
-		var end_pos = points[end_idx]
-		var side_length = start_pos.distance_to(end_pos)
-		
-		# Calcular número de puntos: al menos 1, máximo basado en longitud
-		var num_points = max(1, int(side_length / min_distance) - 1)
-		
-		# Generar puntos equidistantes en este lado
-		for j in range(1, num_points + 1):
-			var t = float(j) / float(num_points + 1)
-			var point = start_pos.lerp(end_pos, t)
-			var point_idx = points.size()
-			points.append(point)
-			side_point_indices[i].append(point_idx)
-	
-	# 3. Marcar boundary edges
-	for i in range(4):
-		var start_corner = i
-		var end_corner = (i + 1) % 4
-		
-		# Edge desde esquina inicial a primer punto del lado
-		if side_point_indices[i].size() > 0:
-			var first_side_point = side_point_indices[i][0]
-			var key1 = _get_edge_key(start_corner, first_side_point)
-			boundary_edges[key1] = true
-			
-			# Edges entre puntos del lado
-			for j in range(side_point_indices[i].size() - 1):
-				var p1 = side_point_indices[i][j]
-				var p2 = side_point_indices[i][j + 1]
-				var key = _get_edge_key(p1, p2)
-				boundary_edges[key] = true
-			
-			# Edge desde último punto del lado a esquina final
-			var last_side_point = side_point_indices[i][side_point_indices[i].size() - 1]
-			var key2 = _get_edge_key(last_side_point, end_corner)
-			boundary_edges[key2] = true
-		else:
-			# Sin puntos intermedios, edge directo entre esquinas
-			var key = _get_edge_key(start_corner, end_corner)
-			boundary_edges[key] = true
-	
-	# 4. Generar puntos Poisson dentro de la cara límite
-	var poisson_points = _generate_poisson_inside_boundary(
-		boundary_face,
-		min_distance,
-		rejection_samples
-	)
-	
-	points.append_array(poisson_points)
-
-func _generate_poisson_inside_boundary(
-	boundary_face: Array,
-	min_distance: float,
-	rejection_samples: int
-) -> Array[Vector3]:
-	var result: Array[Vector3] = []
-	
-	# Calcular bounding box de la cara límite
-	var min_x = boundary_face[0].x
-	var max_x = boundary_face[0].x
-	var min_y = boundary_face[0].y
-	var max_y = boundary_face[0].y
-	
-	for i in range(1, 4):
-		min_x = min(min_x, boundary_face[i].x)
-		max_x = max(max_x, boundary_face[i].x)
-		min_y = min(min_y, boundary_face[i].y)
-		max_y = max(max_y, boundary_face[i].y)
-	
-	var region_size = Vector2(max_x - min_x, max_y - min_y)
-	var offset = Vector2(min_x, min_y)
-	
-	# Grid para Poisson
-	var cell_size: float = min_distance / sqrt(2.0)
-	var grid_width: int = ceil(region_size.x / cell_size)
-	var grid_height: int = ceil(region_size.y / cell_size)
-	
-	var grid: Array = []
-	grid.resize(grid_width * grid_height)
-	
-	# Agregar puntos existentes al grid
-	for existing_point in points:
-		var grid_pos = _point_to_grid_offset(existing_point, cell_size, offset)
-		if grid_pos.x >= 0 and grid_pos.x < grid_width and grid_pos.y >= 0 and grid_pos.y < grid_height:
-			grid[grid_pos.x + grid_pos.y * grid_width] = existing_point
-	
-	var active_list: Array[Vector3] = []
-	
-	# Primer punto dentro de la cara
-	var first_point = _generate_random_point_inside_quad(boundary_face)
-	if first_point != Vector3.ZERO:
-		result.append(first_point)
-		active_list.append(first_point)
-		var grid_pos = _point_to_grid_offset(first_point, cell_size, offset)
-		if grid_pos.x >= 0 and grid_pos.x < grid_width and grid_pos.y >= 0 and grid_pos.y < grid_height:
-			grid[grid_pos.x + grid_pos.y * grid_width] = first_point
-	
-	# Generar puntos
-	while active_list.size() > 0:
-		var random_index = randi() % active_list.size()
-		var point = active_list[random_index]
-		var found = false
-		
-		for i in range(rejection_samples):
-			var new_point = _generate_point_around(point, min_distance)
-			
-			# Verificar que esté dentro de la cara límite
-			if not _is_point_inside_quad(Vector2(new_point.x, new_point.z), boundary_face):
-				continue
-			
-			if _is_valid_point_with_existing(new_point, grid, cell_size, grid_width, grid_height, min_distance, offset):
-				result.append(new_point)
-				active_list.append(new_point)
-				var new_grid_pos = _point_to_grid_offset(new_point, cell_size, offset)
-				if new_grid_pos.x >= 0 and new_grid_pos.x < grid_width and new_grid_pos.y >= 0 and new_grid_pos.y < grid_height:
-					grid[new_grid_pos.x + new_grid_pos.y * grid_width] = new_point
-				found = true
-		
-		if not found:
-			active_list.remove_at(random_index)
-	
-	return result
-
-func _generate_random_point_inside_quad(quad: Array) -> Vector3:
-	# Generar punto aleatorio usando coordenadas baricéntricas
-	for attempt in range(100):
-		var s = randf()
-		var t = randf()
-		
-		# Interpolar bilinealmente en el quad
-		var p0 = quad[0]
-		var p1 = quad[1]
-		var p2 = quad[2]
-		var p3 = quad[3]
-		
-		var point_2d = (1 - s) * (1 - t) * p0 + s * (1 - t) * p1 + s * t * p2 + (1 - s) * t * p3
-		
-		if _is_point_inside_quad(point_2d, quad):
-			return Vector3(point_2d.x, 0.0, point_2d.y)
-	
-	return Vector3.ZERO
-
-func _is_point_inside_quad(point: Vector2, quad: Array) -> bool:
-	# Usar ray casting
-	var intersections = 0
-	
-	for i in range(4):
-		var v1 = quad[i]
-		var v2 = quad[(i + 1) % 4]
-		
-		if ((v1.y > point.y) != (v2.y > point.y)) and \
-		   (point.x < (v2.x - v1.x) * (point.y - v1.y) / (v2.y - v1.y) + v1.x):
-			intersections += 1
-	
-	return intersections % 2 == 1
-
-static func _point_to_grid_offset(point: Vector3, cell_size: float, offset: Vector2) -> Vector2i:
-	return Vector2i(
-		int((point.x - offset.x) / cell_size),
-		int((point.z - offset.y) / cell_size)
-	)
-
-static func _is_valid_point_with_existing(
-	point: Vector3,
-	grid: Array,
-	cell_size: float,
-	grid_width: int,
-	grid_height: int,
-	min_distance: float,
-	offset: Vector2
-) -> bool:
-	var grid_pos = _point_to_grid_offset(point, cell_size, offset)
-	var search_start_x = max(0, grid_pos.x - 2)
-	var search_end_x = min(grid_width - 1, grid_pos.x + 2)
-	var search_start_y = max(0, grid_pos.y - 2)
-	var search_end_y = min(grid_height - 1, grid_pos.y + 2)
-	
-	for y in range(search_start_y, search_end_y + 1):
-		for x in range(search_start_x, search_end_x + 1):
-			var index = x + y * grid_width
-			var neighbor = grid[index]
-			if neighbor != null:
-				var distance = point.distance_to(neighbor)
-				if distance < min_distance:
-					return false
-	
-	return true
 
 # ============================================
 # DETECCIÓN DE NODOS LÍMITE
@@ -304,11 +101,12 @@ static func _is_valid_point_with_existing(
 ## Detecta y marca los nodos que están en el límite del mapa
 ## Un nodo está en el límite si forma parte de un edge que pertenece a una sola cara
 func _detect_boundary_nodes(faces_array: Array) -> void:
-	node_types.clear()
+	# No limpiar node_types aquí, ya puede tener valores previos del boundary_quad
 	
-	# Inicializar todos los nodos como normales (tipo 0)
+	# Inicializar los que no existen como normales (tipo 0)
 	for i in range(points.size()):
-		node_types[i] = 0
+		if i not in node_types:
+			node_types[i] = 0
 	
 	# Contar cuántas caras usan cada edge
 	var edge_usage: Dictionary = {}
@@ -333,6 +131,9 @@ func _detect_boundary_nodes(faces_array: Array) -> void:
 			# Marcar ambos nodos como límite
 			node_types[idx1] = 1
 			node_types[idx2] = 1
+			
+			# Marcar el edge como boundary
+			boundary_edges[edge_key] = true
 
 	
 func _calculate_original_inscribed_sizes() -> void:
@@ -347,9 +148,199 @@ func _calculate_original_inscribed_sizes() -> void:
 			original_inscribed_sizes[face_idx] = size
 
 # ============================================
-# POISSON DISK SAMPLING
+# POISSON DISK SAMPLING CON BOUNDARY
 # ============================================
-static func _generate_poisson_points(
+func _generate_poisson_points(
+	region_size: Vector2,
+	min_distance: float,
+	rejection_samples: int,
+	boundary_quad: Array[Vector2] = []
+) -> Array[Vector3]:
+	
+	var result_points: Array[Vector3] = []
+	
+	# Si hay boundary_quad, primero añadir sus 4 vértices como puntos límite
+	if boundary_quad.size() == 4:
+		for i in range(4):
+			var p2d = boundary_quad[i]
+			var p3d = Vector3(p2d.x, 0.0, p2d.y)
+			result_points.append(p3d)
+			node_types[i] = 1  # Marcar como límite
+			boundary_quad_indices.append(i)
+		
+		# Marcar los edges del boundary como límite
+		for i in range(4):
+			var next_i = (i + 1) % 4
+			var edge_key = _get_edge_key(i, next_i)
+			boundary_edges[edge_key] = true
+		
+		# Generar puntos dentro del boundary_quad
+		var internal_points = _generate_poisson_in_quad(
+			boundary_quad,
+			min_distance,
+			rejection_samples
+		)
+		
+		# Añadir puntos internos (no son límite)
+		for p3d in internal_points:
+			var idx = result_points.size()
+			result_points.append(p3d)
+			node_types[idx] = 0
+	else:
+		# Generación normal sin boundary
+		result_points = _generate_poisson_points_standard(
+			region_size,
+			min_distance,
+			rejection_samples
+		)
+	
+	return result_points
+
+## Genera puntos Poisson dentro de un quad
+func _generate_poisson_in_quad(
+	quad: Array[Vector2],
+	min_distance: float,
+	rejection_samples: int
+) -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	
+	# Calcular bounding box del quad
+	var min_x = INF
+	var max_x = -INF
+	var min_y = INF
+	var max_y = -INF
+	
+	for v in quad:
+		min_x = min(min_x, v.x)
+		max_x = max(max_x, v.x)
+		min_y = min(min_y, v.y)
+		max_y = max(max_y, v.y)
+	
+	var region_size = Vector2(max_x - min_x, max_y - min_y)
+	var cell_size: float = min_distance / sqrt(2.0)
+	var grid_width: int = ceil(region_size.x / cell_size)
+	var grid_height: int = ceil(region_size.y / cell_size)
+	
+	var grid: Array = []
+	grid.resize(grid_width * grid_height)
+	
+	var active_list: Array[Vector3] = []
+	
+	# Primer punto dentro del quad
+	var first_point = _get_random_point_in_quad(quad)
+	first_point = Vector3(first_point.x, 0.0, first_point.y)
+	points.append(first_point)
+	active_list.append(first_point)
+	
+	var adjusted_point = Vector3(first_point.x - min_x, 0.0, first_point.z - min_y)
+	var grid_pos = _point_to_grid(adjusted_point, cell_size)
+	if grid_pos.x >= 0 and grid_pos.x < grid_width and grid_pos.y >= 0 and grid_pos.y < grid_height:
+		grid[grid_pos.x + grid_pos.y * grid_width] = first_point
+	
+	# Generar puntos
+	while active_list.size() > 0:
+		var random_index = randi() % active_list.size()
+		var point = active_list[random_index]
+		var found = false
+		
+		for i in range(rejection_samples):
+			var new_point = _generate_point_around(point, min_distance)
+			var new_point_2d = Vector2(new_point.x, new_point.z)
+			
+			if not _is_point_in_quad(new_point_2d, quad):
+				continue
+			
+			if _is_valid_point_in_quad(
+				new_point, 
+				grid, 
+				cell_size, 
+				grid_width, 
+				grid_height, 
+				Vector2(min_x, min_y),
+				min_distance
+			):
+				points.append(new_point)
+				active_list.append(new_point)
+				
+				var adj_point = Vector3(new_point.x - min_x, 0.0, new_point.z - min_y)
+				var new_grid_pos = _point_to_grid(adj_point, cell_size)
+				if new_grid_pos.x >= 0 and new_grid_pos.x < grid_width and new_grid_pos.y >= 0 and new_grid_pos.y < grid_height:
+					grid[new_grid_pos.x + new_grid_pos.y * grid_width] = new_point
+				found = true
+		
+		if not found:
+			active_list.remove_at(random_index)
+	
+	return points
+
+## Verifica si un punto está dentro de un quad convexo
+func _is_point_in_quad(point: Vector2, quad: Array[Vector2]) -> bool:
+	# Usar cross product para verificar si el punto está del mismo lado de todos los edges
+	var sign = 0
+	
+	for i in range(quad.size()):
+		var next_i = (i + 1) % quad.size()
+		var edge_start = quad[i]
+		var edge_end = quad[next_i]
+		
+		var cross = (edge_end.x - edge_start.x) * (point.y - edge_start.y) - \
+					(edge_end.y - edge_start.y) * (point.x - edge_start.x)
+		
+		if i == 0:
+			sign = 1 if cross >= 0 else -1
+		else:
+			var current_sign = 1 if cross >= 0 else -1
+			if current_sign != sign:
+				return false
+	
+	return true
+
+## Genera un punto aleatorio dentro de un quad
+func _get_random_point_in_quad(quad: Array[Vector2]) -> Vector2:
+	# Usar interpolación bilineal con coordenadas aleatorias
+	var u = randf()
+	var v = randf()
+	
+	var point = (
+		quad[0] * (1 - u) * (1 - v) +
+		quad[1] * u * (1 - v) +
+		quad[2] * u * v +
+		quad[3] * (1 - u) * v
+	)
+	
+	return point
+
+func _is_valid_point_in_quad(
+	point: Vector3,
+	grid: Array,
+	cell_size: float,
+	grid_width: int,
+	grid_height: int,
+	offset: Vector2,
+	min_distance: float
+) -> bool:
+	var adjusted_point = Vector3(point.x - offset.x, 0.0, point.z - offset.y)
+	var grid_pos = _point_to_grid(adjusted_point, cell_size)
+	
+	var search_start_x = max(0, grid_pos.x - 2)
+	var search_end_x = min(grid_width - 1, grid_pos.x + 2)
+	var search_start_y = max(0, grid_pos.y - 2)
+	var search_end_y = min(grid_height - 1, grid_pos.y + 2)
+	
+	for y in range(search_start_y, search_end_y + 1):
+		for x in range(search_start_x, search_end_x + 1):
+			var index = x + y * grid_width
+			if index >= 0 and index < grid.size():
+				var neighbor = grid[index]
+				if neighbor != null:
+					var distance = point.distance_to(neighbor)
+					if distance < min_distance:
+						return false
+	
+	return true
+
+## Generación estándar de Poisson (sin boundary)
+func _generate_poisson_points_standard(
 	region_size: Vector2,
 	min_distance: float,
 	rejection_samples: int
@@ -446,11 +437,12 @@ static func _point_to_grid(point: Vector3, cell_size: float) -> Vector2i:
 # ============================================
 # CONSTRUCCIÓN DEL GRAFO DESDE DELAUNAY
 # ============================================
-static func _build_graph_from_delaunay(
+func _build_graph_from_delaunay(
 	points: Array[Vector3],
 	max_angle_threshold: float,
 	min_quad_angle: float,
-	max_quad_angle: float
+	max_quad_angle: float,
+	boundary_quad: Array[Vector2] = []
 ) -> Dictionary:
 	
 	var edges: Dictionary = {}
@@ -458,6 +450,18 @@ static func _build_graph_from_delaunay(
 	
 	if points.size() < 3:
 		return {"points": points, "edges": edges, "faces": faces}
+	
+	# Si hay boundary_quad, primero crear la cara del boundary
+	if boundary_quad.size() == 4 and boundary_quad_indices.size() == 4:
+		# Crear cara del boundary (en orden)
+		var boundary_face = boundary_quad_indices.duplicate()
+		faces.append(boundary_face)
+		
+		# Añadir edges del boundary
+		for i in range(4):
+			var next_i = (i + 1) % 4
+			var key = _get_edge_key(boundary_face[i], boundary_face[next_i])
+			edges[key] = [boundary_face[i], boundary_face[next_i]]
 	
 	# Triangulación de Delaunay
 	var points_2d: PackedVector2Array = PackedVector2Array()
@@ -470,9 +474,26 @@ static func _build_graph_from_delaunay(
 	for i in range(0, indices.size(), 3):
 		triangles.append([indices[i], indices[i + 1], indices[i + 2]])
 	
-	# Filtrar triángulos obtusos
+	# Filtrar triángulos que usan edges del boundary
 	var filtered_triangles = []
 	for tri in triangles:
+		# Verificar si el triángulo usa algún edge del boundary
+		var uses_boundary = false
+		
+		if boundary_quad.size() == 4:
+			for i in range(tri.size()):
+				var next_i = (i + 1) % tri.size()
+				var edge_key = _get_edge_key(tri[i], tri[next_i])
+				
+				if edge_key in boundary_edges:
+					uses_boundary = true
+					break
+		
+		# Si usa boundary, saltarlo
+		if uses_boundary:
+			continue
+		
+		# Filtrar triángulos obtusos
 		if _is_valid_triangle(tri, points, max_angle_threshold):
 			filtered_triangles.append(tri)
 	
@@ -604,48 +625,69 @@ static func _is_convex_quad(p1: Vector3, p2: Vector3, p3: Vector3, p4: Vector3) 
 			(cross1 < 0 and cross2 < 0 and cross3 < 0 and cross4 < 0))
 
 # ============================================
-# SUBDIVISIÓN DE CARAS
+# SUBDIVISIÓN DE CARAS CON PROPAGACIÓN DE BOUNDARY
 # ============================================
-func _subdivide_faces(points: Array[Vector3], faces: Array, node_types: Dictionary) -> Dictionary:
+static func _subdivide_faces(
+	points: Array[Vector3], 
+	faces: Array, 
+	node_types: Dictionary,
+	boundary_edges_dict: Dictionary
+) -> Dictionary:
 	var new_points = points.duplicate()
 	var new_faces = []
 	var new_node_types = node_types.duplicate()
-	var new_boundary_edges = {}
+	var new_boundary_edges = boundary_edges_dict.duplicate()
 	var edge_midpoints = {}
-	
-	# Copiar boundary_edges existentes como parent edges
-	var parent_boundary_edges = boundary_edges.duplicate()
 	
 	for face in faces:
 		var sub_faces = []
 		
 		if face.size() == 4:
-			sub_faces = _subdivide_quad_face(face, new_points, edge_midpoints, new_node_types, parent_boundary_edges, new_boundary_edges)
+			sub_faces = _subdivide_quad_face(
+				face, 
+				new_points, 
+				edge_midpoints, 
+				new_node_types,
+				new_boundary_edges
+			)
 		elif face.size() == 3:
-			sub_faces = _subdivide_triangle_face(face, new_points, edge_midpoints, new_node_types, parent_boundary_edges, new_boundary_edges)
+			sub_faces = _subdivide_triangle_face(
+				face, 
+				new_points, 
+				edge_midpoints, 
+				new_node_types,
+				new_boundary_edges
+			)
 		
 		new_faces.append_array(sub_faces)
 	
 	return {
-		"points": new_points,
-		"faces": new_faces,
+		"points": new_points, 
+		"faces": new_faces, 
 		"node_types": new_node_types,
 		"boundary_edges": new_boundary_edges
 	}
 
 static func _subdivide_quad_face(
-	face: Array,
-	points: Array[Vector3],
+	face: Array, 
+	points: Array[Vector3], 
 	edge_midpoints: Dictionary,
 	node_types: Dictionary,
-	parent_boundary_edges: Dictionary,
-	new_boundary_edges: Dictionary
+	boundary_edges: Dictionary
 ) -> Array:
-	# Obtener o crear puntos medios
-	var idx_mid1 = _get_or_create_midpoint(face[0], face[1], points, edge_midpoints, node_types, parent_boundary_edges, new_boundary_edges)
-	var idx_mid2 = _get_or_create_midpoint(face[1], face[2], points, edge_midpoints, node_types, parent_boundary_edges, new_boundary_edges)
-	var idx_mid3 = _get_or_create_midpoint(face[2], face[3], points, edge_midpoints, node_types, parent_boundary_edges, new_boundary_edges)
-	var idx_mid4 = _get_or_create_midpoint(face[3], face[0], points, edge_midpoints, node_types, parent_boundary_edges, new_boundary_edges)
+	# Obtener o crear puntos medios, propagando boundary
+	var idx_mid1 = _get_or_create_midpoint(
+		face[0], face[1], points, edge_midpoints, node_types, boundary_edges
+	)
+	var idx_mid2 = _get_or_create_midpoint(
+		face[1], face[2], points, edge_midpoints, node_types, boundary_edges
+	)
+	var idx_mid3 = _get_or_create_midpoint(
+		face[2], face[3], points, edge_midpoints, node_types, boundary_edges
+	)
+	var idx_mid4 = _get_or_create_midpoint(
+		face[3], face[0], points, edge_midpoints, node_types, boundary_edges
+	)
 	
 	# El centro sigue siendo único por cara y siempre es tipo 0 (normal)
 	var p1 = points[face[0]]
@@ -666,17 +708,22 @@ static func _subdivide_quad_face(
 	return result
 
 static func _subdivide_triangle_face(
-	face: Array,
-	points: Array[Vector3],
+	face: Array, 
+	points: Array[Vector3], 
 	edge_midpoints: Dictionary,
 	node_types: Dictionary,
-	parent_boundary_edges: Dictionary,
-	new_boundary_edges: Dictionary
+	boundary_edges: Dictionary
 ) -> Array:
-	# Obtener o crear puntos medios
-	var idx_mid1 = _get_or_create_midpoint(face[0], face[1], points, edge_midpoints, node_types, parent_boundary_edges, new_boundary_edges)
-	var idx_mid2 = _get_or_create_midpoint(face[1], face[2], points, edge_midpoints, node_types, parent_boundary_edges, new_boundary_edges)
-	var idx_mid3 = _get_or_create_midpoint(face[2], face[0], points, edge_midpoints, node_types, parent_boundary_edges, new_boundary_edges)
+	# Obtener o crear puntos medios, propagando boundary
+	var idx_mid1 = _get_or_create_midpoint(
+		face[0], face[1], points, edge_midpoints, node_types, boundary_edges
+	)
+	var idx_mid2 = _get_or_create_midpoint(
+		face[1], face[2], points, edge_midpoints, node_types, boundary_edges
+	)
+	var idx_mid3 = _get_or_create_midpoint(
+		face[2], face[0], points, edge_midpoints, node_types, boundary_edges
+	)
 	
 	# El centro sigue siendo único por cara y siempre es tipo 0 (normal)
 	var p1 = points[face[0]]
@@ -714,13 +761,12 @@ static func _cross_product_2d(p1: Vector3, p2: Vector3, p3: Vector3) -> float:
 	return v1.x * v2.y - v1.y * v2.x
 
 static func _get_or_create_midpoint(
-	idx1: int,
-	idx2: int,
-	points: Array[Vector3],
+	idx1: int, 
+	idx2: int, 
+	points: Array[Vector3], 
 	cache: Dictionary,
 	node_types: Dictionary,
-	parent_boundary_edges: Dictionary,
-	new_boundary_edges: Dictionary
+	boundary_edges: Dictionary
 ) -> int:
 	var key = _get_edge_key(idx1, idx2)
 	
@@ -735,19 +781,22 @@ static func _get_or_create_midpoint(
 	var type1 = node_types.get(idx1, 0)
 	var type2 = node_types.get(idx2, 0)
 	
-	if type1 == 1 and type2 == 1:
-		node_types[new_idx] = 1
-	else:
-		node_types[new_idx] = 0
+	# Si el edge original era boundary, los nuevos edges también lo son
+	var is_boundary_edge = boundary_edges.get(key, false)
 	
-	# Si el edge padre era boundary, los hijos también lo son
-	if key in parent_boundary_edges:
-		var key1 = _get_edge_key(idx1, new_idx)
-		var key2 = _get_edge_key(new_idx, idx2)
-		new_boundary_edges[key1] = true
-		new_boundary_edges[key2] = true
+	if is_boundary_edge or (type1 == 1 and type2 == 1):
+		node_types[new_idx] = 1  # Límite
+		
+		# Propagar boundary a los dos nuevos edges
+		var new_key1 = _get_edge_key(idx1, new_idx)
+		var new_key2 = _get_edge_key(new_idx, idx2)
+		boundary_edges[new_key1] = true
+		boundary_edges[new_key2] = true
+	else:
+		node_types[new_idx] = 0  # Normal
 	
 	cache[key] = new_idx
+	
 	return new_idx
 
 # ============================================
@@ -764,6 +813,7 @@ func get_quads_for_node(node_idx: int) -> Array[int]:
 	
 	return connected_quads
 
+
 # ============================================
 # GEOMETRÍA DE CARAS
 # ============================================
@@ -774,6 +824,7 @@ func get_inscribed_square_for_face(face_idx: int, use_original_size: bool = fals
 		return []
 
 	var face = faces[face_idx]
+
 	var quad_2d: Array = []
 	for idx in face:
 		if idx >= points.size():
@@ -801,6 +852,10 @@ func get_average_closest_inscribed_point(node_idx: int, use_original_size: bool 
 	if node_idx < 0 or node_idx >= points.size():
 		push_error("Índice de nodo inválido: ", node_idx)
 		return Vector3.ZERO
+	
+	# Si el nodo es de tipo límite, no moverlo
+	if node_types.get(node_idx, 0) == 1:
+		return points[node_idx]
 	
 	var connected_quads: Array[int] = get_quads_for_node(node_idx)
 	
@@ -836,7 +891,7 @@ func get_average_closest_inscribed_point(node_idx: int, use_original_size: bool 
 				break
 		
 		if clockwise_index == -1:
-			push_warning("No se pudo encontrar el nodo en la cara")
+			push_warning("No se pudo encontrar el nodo en la cara (esto no debería pasar)")
 			continue
 		
 		var inscribed_square: Array[Vector3] = get_inscribed_square_for_face(face_idx, use_original_size)
@@ -867,6 +922,7 @@ func get_average_closest_inscribed_point(node_idx: int, use_original_size: bool 
 	
 	return average_position
 
+
 static func _get_clockwise_sorted_indices(centered_vertices: Array) -> Array:
 	var angles := []
 	for i in range(centered_vertices.size()):
@@ -881,36 +937,29 @@ static func _get_clockwise_sorted_indices(centered_vertices: Array) -> Array:
 	
 	return sorted_indices
 
+
 func move_nodes(node_transformations: Dictionary) -> void:
 	for node_idx in node_transformations:
 		if node_idx >= 0 and node_idx < points.size():
-			points[node_idx] = node_transformations[node_idx]
+			# Solo mover si NO es un nodo límite
+			if node_types.get(node_idx, 0) != 1:
+				points[node_idx] = node_transformations[node_idx]
 		else:
 			push_warning("move_nodes: Índice de nodo %d fuera de rango (0-%d)" % [node_idx, points.size() - 1])
 
 func smooth_graph() -> void:
 	var use_original_size: bool = (smoothing_steps > 0)
+	
 	var node_transformations: Dictionary = {}
 	
-	# Calcular nueva posición para cada nodo, excepto boundary nodes
 	for node_idx in range(points.size()):
-		# Verificar si este nodo está en algún boundary edge
-		var is_boundary_node = false
-		for edge_key in boundary_edges:
-			var parts = edge_key.split("_")
-			var idx1 = int(parts[0])
-			var idx2 = int(parts[1])
-			
-			if node_idx == idx1 or node_idx == idx2:
-				is_boundary_node = true
-				break
-		
-		# Solo mover nodos que no están en el boundary
-		if not is_boundary_node:
+		# Solo calcular para nodos no-límite
+		if node_types.get(node_idx, 0) == 0:
 			var new_position = get_average_closest_inscribed_point(node_idx, use_original_size)
 			node_transformations[node_idx] = new_position
 	
 	move_nodes(node_transformations)
+	
 	smoothing_steps += 1
 	
 func get_adjacent_faces(face_idx: int) -> Array[int]:
@@ -920,6 +969,7 @@ func get_adjacent_faces(face_idx: int) -> Array[int]:
 		return adjacent
 	
 	var face = faces[face_idx]
+	
 	var face_edges: Dictionary = {}
 	for i in range(face.size()):
 		var next_i = (i + 1) % face.size()
@@ -942,6 +992,7 @@ func get_adjacent_faces(face_idx: int) -> Array[int]:
 	
 	return adjacent
 
+
 func get_edges_for_node(node_idx: int) -> Array:
 	var connected: Array = []
 	
@@ -956,6 +1007,7 @@ func select_opposite_edges(node_idx: int, node_edges: Array) -> Array:
 		return []
 	
 	var node_pos = points[node_idx]
+	
 	var directions: Array = []
 	for edge in node_edges:
 		var other_node = edge[1] if edge[0] == node_idx else edge[0]
@@ -996,6 +1048,7 @@ func get_next_edge_in_direction(
 	desired_type: int
 ) -> Array:
 	var connected_edges = get_edges_for_node(current_node)
+	
 	var current_pos = points[current_node]
 	var previous_pos = points[previous_node]
 	var current_direction = (current_pos - previous_pos).normalized()
