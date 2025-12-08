@@ -1,4 +1,4 @@
-[gd_scene load_steps=23 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=24 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://by0al5irc1r60" path="res://Materials/Floor.tres" id="1_lpcab"]
 [ext_resource type="Material" uid="uid://bq5ujksxl5avb" path="res://Materials/Shapes.tres" id="2_fnnck"]
@@ -12,6 +12,7 @@
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="PackedScene" uid="uid://depimbd5eofjb" path="res://Scenes/car.tscn" id="12_h3puh"]
 [ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/city.gd" id="12_v3boh"]
+[ext_resource type="PackedScene" uid="uid://qbf2ejaplhko" path="res://Scenes/barquetesimple3.blend" id="13_h3puh"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_hfvyn"]
 material = ExtResource("1_lpcab")
@@ -206,30 +207,34 @@ small_tunnel_color = null
 small_tunnel_width = null
 large_tunnel_color = null
 large_tunnel_width = null
-num_delivery_facilities = null
-delivery_points_per_block = null
-num_gas_stations = null
-num_stores = null
 block_grid_rows = null
 block_grid_columns = null
 block_grid_floors = null
 block_cells_per_floor = null
-show_floor_planes = null
-floor_plane_color = null
 boundary_offset = null
 small_street_offset = null
 medium_street_offset = null
 large_street_offset = null
 small_tunnel_offset = null
 large_tunnel_offset = null
-show_rectangles = null
-rect_saturation = null
-rect_brightness = null
-rect_alpha = null
-rect_max_divisions = null
-rect_min_size = null
-rect_max_aspect_ratio = null
-rect_max_dimension = null
+distorted_grid_rows = null
+distorted_grid_columns = null
+wave_amplitude_x = null
+wave_amplitude_z = null
+wave_frequency_x = null
+wave_frequency_z = null
+wave_phase_x = null
+wave_phase_z = null
+show_distorted_grid = null
+distorted_grid_vertex_radius = null
+distorted_grid_normal_vertex_color = null
+distorted_grid_boundary_vertex_color = null
+distorted_grid_normal_edge_color = null
+distorted_grid_boundary_edge_color = null
+distorted_grid_edge_width = null
+distorted_grid_height_offset = null
+show_blocks = null
+block_color = null
 show_lanes = null
 lane_color = null
 lane_width = null
@@ -242,3 +247,6 @@ script = ExtResource("8_oilx1")
 
 [node name="RigidBody3D" parent="." instance=ExtResource("12_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.9507675, 0.9780211, 10.36355)
+
+[node name="barquetesimple3" parent="." instance=ExtResource("13_h3puh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21.46107, 0.7125503, -1.5130081)

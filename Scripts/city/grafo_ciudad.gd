@@ -2,11 +2,11 @@ class_name GraphCityGenerator
 extends RefCounted
 
 var plain_graph: GraphGenerator  
-var neighborhoods: Dictionary = {}   # {face_idx: neighborhood_id} barrio de cada cara (-1 = sin asignar)
-var street_types: Dictionary = {}    # {edge_key: tipo} tipo de cada calle (-1=límite, 0=pequeña, 1=mediana, 2=grande, 3=túnel chico, 4=túnel grande)
-var block_grids: Dictionary = {}     # {face_idx: BlockGenerator} grilla 3D de cada manzana
-var region_size: Vector2 = Vector2.ZERO  # Tamaño de la región
-var pedestrian_planes: Dictionary = {}  # {edge_key: [plane1, plane2]} planos peatonales por edge (cada plano es [Vector2, Vector2])
+var neighborhoods: Dictionary = {}
+var street_types: Dictionary = {}
+var block_grids: Dictionary = {}
+var region_size: Vector2 = Vector2.ZERO
+var pedestrian_planes: Dictionary = {}
 
 # Configuración de grillas
 var block_rows: int
@@ -14,6 +14,17 @@ var block_columns: int
 
 # Offsets de calles
 var street_offsets: Dictionary = {}
+
+# Configuración de DistortedGrid
+var distorted_grid_rows: int
+var distorted_grid_columns: int
+var wave_amplitude_x: float
+var wave_amplitude_z: float
+var wave_frequency_x: float
+var wave_frequency_z: float
+var wave_phase_x: float
+var wave_phase_z: float
+var edge_falloff_sharpness: float
 
 func generate_city_graph(
 	smooth_steps: int,
@@ -34,16 +45,22 @@ func generate_city_graph(
 	block_grid_columns: int,
 	block_grid_floors: int,
 	block_cells_per_floor: int,
-	rect_max_divisions: int,
-	rect_min_size: int,
-	rect_max_aspect_ratio: float,
-	rect_max_dimension: int,
 	boundary_offset: int,
 	small_street_offset: int,
 	medium_street_offset: int,
 	large_street_offset: int,
 	small_tunnel_offset: int,
-	large_tunnel_offset: int
+	large_tunnel_offset: int,
+	p_distorted_grid_rows: int = 10,
+	p_distorted_grid_columns: int = 10,
+	p_wave_amplitude_x: float = 0.1,
+	p_wave_amplitude_z: float = 0.1,
+	p_wave_frequency_x: float = 2.0,
+	p_wave_frequency_z: float = 2.0,
+	p_wave_phase_x: float = 0.0,
+	p_wave_phase_z: float = 0.0,
+	p_edge_falloff_sharpness: float = 1.0,
+	p_falloff_strength: float = 1.0
 ) -> void:
 	
 	seed(generation_seed)
@@ -51,14 +68,25 @@ func generate_city_graph(
 	self.block_rows = block_grid_rows
 	self.block_columns = block_grid_columns
 	
+	# Guardar configuración de DistortedGrid
+	self.distorted_grid_rows = p_distorted_grid_rows
+	self.distorted_grid_columns = p_distorted_grid_columns
+	self.wave_amplitude_x = p_wave_amplitude_x
+	self.wave_amplitude_z = p_wave_amplitude_z
+	self.wave_frequency_x = p_wave_frequency_x
+	self.wave_frequency_z = p_wave_frequency_z
+	self.wave_phase_x = p_wave_phase_x
+	self.wave_phase_z = p_wave_phase_z
+	self.edge_falloff_sharpness = p_edge_falloff_sharpness
+	
 	# Configurar offsets de calles
 	street_offsets = {
-		-1: boundary_offset,        # BOUNDARY
-		0: small_street_offset,     # SMALL
-		1: medium_street_offset,    # MEDIUM
-		2: large_street_offset,     # LARGE
-		3: small_tunnel_offset,     # SMALL_TUNNEL
-		4: large_tunnel_offset      # LARGE_TUNNEL
+		-1: boundary_offset,
+		0: small_street_offset,
+		1: medium_street_offset,
+		2: large_street_offset,
+		3: small_tunnel_offset,
+		4: large_tunnel_offset
 	}
 	
 	plain_graph = GraphGenerator.new()
@@ -83,11 +111,7 @@ func generate_city_graph(
 	_generate_block_grids(
 		block_grid_floors,
 		block_cells_per_floor,
-		block_cell_height,
-		rect_max_divisions,
-		rect_min_size,
-		rect_max_aspect_ratio,
-		rect_max_dimension
+		block_cell_height
 	)
 	
 	_generate_pedestrian_planes()
@@ -101,7 +125,7 @@ func _initialize_street_types() -> void:
 	
 	for edge in plain_graph.edges:
 		var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
-		street_types[edge_key] = 1  # Mediana por defecto
+		street_types[edge_key] = 1
 
 func _mark_boundary_streets() -> void:
 	for edge in plain_graph.edges:
@@ -540,11 +564,7 @@ func get_faces_in_neighborhood(neighborhood_id: int) -> Array[int]:
 func _generate_block_grids(
 	floors: int,
 	cells_per_floor: int,
-	cell_height: float,
-	max_divisions: int,
-	min_size: int,
-	max_aspect_ratio: float,
-	max_dimension: int
+	cell_height: float
 ) -> void:
 	block_grids.clear()
 	
@@ -573,10 +593,17 @@ func _generate_block_grids(
 			floors,
 			cells_per_floor,
 			is_clockwise,
-			street_offsets
+			street_offsets,
+			distorted_grid_rows,
+			distorted_grid_columns,
+			wave_amplitude_x,
+			wave_amplitude_z,
+			wave_frequency_x,
+			wave_frequency_z,
+			wave_phase_x,
+			wave_phase_z,
+			edge_falloff_sharpness
 		)
-		
-		block.generate_rectangles(max_divisions, min_size, max_aspect_ratio, max_dimension, face_idx)
 		
 		block_grids[face_idx] = block
 
@@ -588,7 +615,7 @@ func _is_face_clockwise(vertices: Array[Vector2]) -> bool:
 		area += (v2.x - v1.x) * (v2.y + v1.y)
 	return area > 0
 
-func get_block_grid(face_idx: int)->BlockGenerator:
+func get_block_grid(face_idx: int) -> BlockGenerator:
 	return block_grids.get(face_idx, null)
 
 func get_all_block_faces() -> Array[int]:
@@ -607,13 +634,11 @@ func has_block_grid(face_idx: int) -> bool:
 func _generate_pedestrian_planes() -> void:
 	pedestrian_planes.clear()
 	
-	# Procesar cada edge del grafo
 	for edge in plain_graph.edges:
 		var node1_idx = edge[0]
 		var node2_idx = edge[1]
 		var edge_key = GraphGenerator._get_edge_key(node1_idx, node2_idx)
 		
-		# Encontrar las dos faces que comparten este edge
 		var adjacent_faces = _find_faces_sharing_edge(node1_idx, node2_idx)
 		
 		if adjacent_faces.size() != 2:
@@ -622,21 +647,18 @@ func _generate_pedestrian_planes() -> void:
 		var face1_idx = adjacent_faces[0]
 		var face2_idx = adjacent_faces[1]
 		
-		# Obtener esquinas offseteadas de ambas manzanas
 		var corner1_node1 = get_block_corner_with_offset(node1_idx, edge, face1_idx)
 		var corner1_node2 = get_block_corner_with_offset(node2_idx, edge, face1_idx)
 		
 		var corner2_node1 = get_block_corner_with_offset(node1_idx, edge, face2_idx)
 		var corner2_node2 = get_block_corner_with_offset(node2_idx, edge, face2_idx)
 		
-		# Validar que las esquinas sean válidas
 		if corner1_node1 == Vector2.ZERO or corner1_node2 == Vector2.ZERO or \
 		   corner2_node1 == Vector2.ZERO or corner2_node2 == Vector2.ZERO:
 			continue
 		
-		# Crear dos planos que cruzan la calle (de una manzana a la otra)
-		var plane1 = [corner1_node1, corner2_node1]  # Cruza la calle en node1
-		var plane2 = [corner1_node2, corner2_node2]  # Cruza la calle en node2
+		var plane1 = [corner1_node1, corner2_node1]
+		var plane2 = [corner1_node2, corner2_node2]
 		
 		pedestrian_planes[edge_key] = [plane1, plane2]
 
@@ -646,7 +668,6 @@ func _find_faces_sharing_edge(node1_idx: int, node2_idx: int) -> Array[int]:
 	for face_idx in range(plain_graph.faces.size()):
 		var face = plain_graph.faces[face_idx]
 		
-		# Verificar si ambos nodos están en esta face
 		if node1_idx in face and node2_idx in face:
 			sharing_faces.append(face_idx)
 	
@@ -663,49 +684,37 @@ func get_all_pedestrian_planes() -> Dictionary:
 # HELPERS DE GEOMETRÍA
 # ============================================
 
-## Obtiene el punto de la esquina de una manzana con la grilla offseteada
-## @param node_idx: Índice del nodo que define la esquina
-## @param edge: Array [idx1, idx2] del edge conectado al nodo
-## @param face_idx: Índice de la manzana (face)
-## @return: Vector2 con la posición de la esquina offseteada (sin altura), o Vector2.ZERO si hay error
 func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> Vector2:
-	# Validar que la face existe
 	if face_idx < 0 or face_idx >= plain_graph.faces.size():
 		push_error("Índice de face inválido: %d" % face_idx)
 		return Vector2.ZERO
 	
 	var face = plain_graph.faces[face_idx]
 	
-	# Validar que el nodo pertenece a la face
 	var node_index_in_face = face.find(node_idx)
 	if node_index_in_face == -1:
 		push_error("El nodo %d no pertenece a la face %d" % [node_idx, face_idx])
 		return Vector2.ZERO
 	
-	# Validar que el edge conecta dos nodos de la face
 	if edge[0] not in face or edge[1] not in face:
 		push_error("El edge [%d, %d] no pertenece a la face %d" % [edge[0], edge[1], face_idx])
 		return Vector2.ZERO
 	
-	# Validar que el nodo es parte del edge
 	if node_idx != edge[0] and node_idx != edge[1]:
 		push_error("El nodo %d no es parte del edge [%d, %d]" % [node_idx, edge[0], edge[1]])
 		return Vector2.ZERO
 	
-	# Obtener vértices de la face en 2D
 	var face_vertices: Array[Vector2] = []
 	for node_idx_in_face in face:
 		var pos_3d = plain_graph.points[node_idx_in_face]
 		face_vertices.append(Vector2(pos_3d.x, pos_3d.z))
 	
-	# Obtener tipos de calle de la face
 	var street_types_array: Array[int] = []
 	for i in range(face.size()):
 		var node1 = face[i]
 		var node2 = face[(i + 1) % face.size()]
 		street_types_array.append(get_street_type(node1, node2))
 	
-	# Calcular área disponible con offsets
 	var available_area = GridHelper.calculate_available_area(
 		block_rows,
 		block_columns,
@@ -717,7 +726,6 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 		push_error("No se pudo calcular el área disponible para la face %d" % face_idx)
 		return Vector2.ZERO
 	
-	# Mapear el índice del nodo en la face a las coordenadas de grilla offseteada
 	var grid_x: int
 	var grid_z: int
 	
@@ -738,7 +746,6 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 			push_error("Índice de nodo en face inválido: %d" % node_index_in_face)
 			return Vector2.ZERO
 	
-	# Obtener los 4 vértices de la base de esta celda usando el helper
 	var cell_vertices = GridHelper.get_cell_base_vertices(
 		face_vertices,
 		block_rows,
@@ -751,10 +758,8 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 		push_error("No se pudieron obtener vértices para la celda (%d, %d)" % [grid_x, grid_z])
 		return Vector2.ZERO
 	
-	# Obtener la posición del nodo original
 	var node_pos = plain_graph.points[node_idx]
 	
-	# Encontrar el vértice de la celda más cercano al nodo original
 	var closest_vertex = cell_vertices[0]
 	var min_distance = node_pos.distance_to(cell_vertices[0])
 	
@@ -764,5 +769,4 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 			min_distance = distance
 			closest_vertex = cell_vertices[i]
 	
-	# Retornar como Vector2 (x, z)
 	return Vector2(closest_vertex.x, closest_vertex.z)

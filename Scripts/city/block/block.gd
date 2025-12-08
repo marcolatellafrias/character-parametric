@@ -10,9 +10,13 @@ enum StreetType {
 	LARGE_TUNNEL = 4,
 }
 
+# ============================================
+# SIMPLIFICADO - SIN RECTÁNGULOS
+# ============================================
+
 # Componentes
 var grid_geometry: GridGeometry
-var subdivider: RectangleSubdivider
+var distorted_grid: DistortedGrid  # Nueva grilla distorsionada
 
 # Geometría del bloque
 var street_types: Array[int]  # [north, east, south, west]
@@ -40,7 +44,18 @@ func _init(
 	p_floors: int,
 	p_cells_per_floor: int,
 	p_is_clockwise: bool,
-	p_street_offsets: Dictionary
+	p_street_offsets: Dictionary,
+	# Parámetros de grilla distorsionada
+	p_distorted_rows: int = 10,
+	p_distorted_columns: int = 10,
+	p_wave_amplitude_x: float = 0.1,
+	p_wave_amplitude_z: float = 0.1,
+	p_wave_frequency_x: float = 2.0,
+	p_wave_frequency_z: float = 2.0,
+	p_wave_phase_x: float = 0.0,
+	p_wave_phase_z: float = 0.0,
+	p_edge_falloff_sharpness: float = 1.0,
+	p_falloff_strength: float = 1.0
 ) -> void:
 	street_types = p_street_types
 	is_clockwise = p_is_clockwise
@@ -55,11 +70,22 @@ func _init(
 		p_cells_per_floor
 	)
 	
-	subdivider = RectangleSubdivider.new()
-	
 	_calculate_available_area()
-	subdivider.setup_area(available_min_x, available_max_x, available_min_z, available_max_z)
 	_calculate_lanes()
+	
+	# Crear grilla distorsionada
+	_create_distorted_grid(
+		p_distorted_rows,
+		p_distorted_columns,
+		p_cell_height,
+		p_wave_amplitude_x,
+		p_wave_amplitude_z,
+		p_wave_frequency_x,
+		p_wave_frequency_z,
+		p_wave_phase_x,
+		p_wave_phase_z,
+		p_edge_falloff_sharpness
+	)
 
 
 # Calcula el área disponible después de aplicar los offsets de las calles
@@ -73,6 +99,71 @@ func _calculate_available_area() -> void:
 	available_max_x = grid_geometry.columns - east_offset - 1
 	available_min_z = north_offset
 	available_max_z = grid_geometry.rows - south_offset - 1
+
+
+# Crea la grilla distorsionada usando el core block
+func _create_distorted_grid(
+	distorted_rows: int,
+	distorted_columns: int,
+	cell_height: float,
+	wave_amplitude_x: float,
+	wave_amplitude_z: float,
+	wave_frequency_x: float,
+	wave_frequency_z: float,
+	wave_phase_x: float,
+	wave_phase_z: float,
+	edge_falloff_sharpness: float
+) -> void:
+	# Obtener vértices del core block
+	var core_vertices = _get_core_block_vertices()
+	
+	# Crear la grilla distorsionada (todos los bordes son boundary por defecto)
+	distorted_grid = DistortedGrid.new(
+		distorted_rows,
+		distorted_columns,
+		core_vertices,
+		cell_height,
+		wave_amplitude_x,
+		wave_amplitude_z,
+		wave_frequency_x,
+		wave_frequency_z,
+		wave_phase_x,
+		wave_phase_z,
+		edge_falloff_sharpness
+	)
+
+
+# Obtiene los vértices del core block (área disponible)
+func _get_core_block_vertices() -> Array[Vector2]:
+	var vertices: Array[Vector2] = []
+	
+	var full_vertices = grid_geometry.vertices
+	var columns = grid_geometry.columns
+	var rows = grid_geometry.rows
+	
+	# Calcular coordenadas normalizadas para el área disponible
+	var u_min = float(available_min_x) / max(1, columns)
+	var u_max = float(available_max_x + 1) / max(1, columns)
+	var v_min = float(available_min_z) / max(1, rows)
+	var v_max = float(available_max_z + 1) / max(1, rows)
+	
+	# Bottom-Left
+	var bl = GridHelper.bilinear_interpolation(full_vertices, u_min, v_min)
+	vertices.append(bl)
+	
+	# Bottom-Right
+	var br = GridHelper.bilinear_interpolation(full_vertices, u_max, v_min)
+	vertices.append(br)
+	
+	# Top-Right
+	var tr = GridHelper.bilinear_interpolation(full_vertices, u_max, v_max)
+	vertices.append(tr)
+	
+	# Top-Left
+	var tl = GridHelper.bilinear_interpolation(full_vertices, u_min, v_max)
+	vertices.append(tl)
+	
+	return vertices
 
 
 # Calcula los carriles para cada lado de la manzana
@@ -104,50 +195,7 @@ func _get_lane_offsets_for_street_type(street_type: int) -> Array[int]:
 	return offsets
 
 
-# Genera rectángulos y los aplica a la grilla
-func generate_rectangles(
-	p_max_divisions: int,
-	p_min_size: int,
-	p_max_aspect_ratio: float,
-	p_max_dimension: int,
-	seed_value: int
-) -> void:
-	var rectangles = subdivider.generate_rectangles(
-		p_max_divisions,
-		p_min_size,
-		p_max_aspect_ratio,
-		p_max_dimension,
-		seed_value
-	)
-	
-	_apply_rectangles_to_grid(rectangles)
-
-
-# Aplica los rectángulos generados a la grilla 3D
-func _apply_rectangles_to_grid(rectangles: Array) -> void:
-	var total_height = grid_geometry.floors * grid_geometry.cells_per_floor
-	
-	for rect in rectangles:
-		for y in range(total_height):
-			for dx in range(rect.width):
-				for dz in range(rect.height):
-					var gx = rect.x + dx
-					var gz = rect.z + dz
-					grid_geometry.set_cell(gx, gz, y, rect.id)
-
-
-# Obtiene el rectángulo al que pertenece una celda
-func get_rectangle_at(x: int, z: int) -> RectangleSubdivider.GridRectangle:
-	for rect in subdivider.rectangles:
-		if x >= rect.x and x < rect.x + rect.width:
-			if z >= rect.z and z < rect.z + rect.height:
-				return rect
-	return null
-
-
 # Obtiene las posiciones de inicio y fin de un carril
-# side: "north", "south", "east", "west"
-# lane_index: índice del carril en ese lado
 func get_lane_endpoints(side: String, lane_index: int) -> Dictionary:
 	if side not in lanes or lane_index >= lanes[side].size():
 		return {}
@@ -157,12 +205,6 @@ func get_lane_endpoints(side: String, lane_index: int) -> Dictionary:
 	var end_pos: Vector3
 	var from_pos: Vector3
 	var to_pos: Vector3
-	
-	# Direcciones para sentido horario (clockwise visto desde arriba con Y+)
-	# north: Este → Oeste (derecha a izquierda)
-	# east: Sur → Norte (abajo a arriba)  
-	# south: Oeste → Este (izquierda a derecha)
-	# west: Norte → Sur (arriba a abajo)
 	
 	if is_clockwise:
 		match side:
@@ -197,9 +239,8 @@ func get_lane_endpoints(side: String, lane_index: int) -> Dictionary:
 			_:
 				return {}
 	else:
-		# Si es anticlockwise, invertir todas las direcciones para normalizar a horario
 		match side:
-			"north":  # Flujo inverso: Oeste → Este (para compensar anticlockwise)
+			"north":  # Flujo inverso: Oeste → Este
 				var z = available_min_z - offset
 				start_pos = grid_geometry.get_cell_position(0, z, 0)
 				end_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
@@ -253,38 +294,57 @@ func get_all_lanes() -> Array[Dictionary]:
 	return all_lanes
 
 
-# Acceso a datos de grilla (delegación)
-func get_cell(x: int, z: int, y: int) -> int:
-	return grid_geometry.get_cell(x, z, y)
-
-func get_cell_position(x: int, z: int, y: int) -> Vector3:
-	return grid_geometry.get_cell_position(x, z, y)
-
-func get_floor_for_cell(y: int) -> int:
-	return grid_geometry.get_floor_for_cell(y)
-
-func is_floor_start(y: int) -> bool:
-	return grid_geometry.is_floor_start(y)
-
-func get_cell_base_vertices(x: int, z: int, y: int) -> Array:
-	return grid_geometry.get_cell_base_vertices(x, z, y)
-
-
-# Acceso a datos de rectángulos (delegación)
-func get_rectangles() -> Array:
-	return subdivider.rectangles
-
-func get_rectangle_offsets(rect_id: int) -> RectangleSubdivider.RectangleOffsets:
-	return subdivider.get_rectangle_offsets(rect_id)
-
-func get_rectangle_bounds_with_offset(rect: RectangleSubdivider.GridRectangle) -> Dictionary:
-	return subdivider.get_rectangle_bounds_with_offset(rect)
-
-func is_rectangle_merged(rect_id: int) -> bool:
-	return subdivider.is_rectangle_merged(rect_id)
-
-func get_merged_with(rect_id: int) -> int:
-	return subdivider.get_merged_with(rect_id)
+# Obtiene las 4 esquinas de la manzana offseteada
+func get_block_corners() -> Array[Vector3]:
+	var corners: Array[Vector3] = []
+	
+	var vertices = grid_geometry.vertices
+	var columns = grid_geometry.columns
+	var rows = grid_geometry.rows
+	
+	# Calcular coordenadas normalizadas u, v para cada esquina del área disponible
+	var u_min = float(available_min_x) / max(1, columns)
+	var u_max = float(available_max_x) / max(1, columns)
+	var v_min = float(available_min_z) / max(1, rows)
+	var v_max = float(available_max_z) / max(1, rows)
+	
+	# Bottom-Left
+	var corner_bl_2d = (
+		vertices[0] * (1 - u_min) * (1 - v_min) +
+		vertices[1] * u_min * (1 - v_min) +
+		vertices[2] * u_min * v_min +
+		vertices[3] * (1 - u_min) * v_min
+	)
+	corners.append(Vector3(corner_bl_2d.x, 0.0, corner_bl_2d.y))
+	
+	# Bottom-Right
+	var corner_br_2d = (
+		vertices[0] * (1 - u_max) * (1 - v_min) +
+		vertices[1] * u_max * (1 - v_min) +
+		vertices[2] * u_max * v_min +
+		vertices[3] * (1 - u_max) * v_min
+	)
+	corners.append(Vector3(corner_br_2d.x, 0.0, corner_br_2d.y))
+	
+	# Top-Right
+	var corner_tr_2d = (
+		vertices[0] * (1 - u_max) * (1 - v_max) +
+		vertices[1] * u_max * (1 - v_max) +
+		vertices[2] * u_max * v_max +
+		vertices[3] * (1 - u_max) * v_max
+	)
+	corners.append(Vector3(corner_tr_2d.x, 0.0, corner_tr_2d.y))
+	
+	# Top-Left
+	var corner_tl_2d = (
+		vertices[0] * (1 - u_min) * (1 - v_max) +
+		vertices[1] * u_min * (1 - v_max) +
+		vertices[2] * u_min * v_max +
+		vertices[3] * (1 - u_min) * v_max
+	)
+	corners.append(Vector3(corner_tl_2d.x, 0.0, corner_tl_2d.y))
+	
+	return corners
 
 
 # Propiedades de acceso directo
@@ -302,3 +362,7 @@ func get_floors() -> int:
 
 func get_cells_per_floor() -> int:
 	return grid_geometry.cells_per_floor
+
+# Acceso a la grilla distorsionada
+func get_distorted_grid() -> DistortedGrid:
+	return distorted_grid
