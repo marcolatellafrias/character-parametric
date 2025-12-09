@@ -31,6 +31,9 @@ var available_max_z: int
 # Carriles por lado de la manzana
 var lanes: Dictionary = {}  # {side: Array[int]} offsets de carriles por lado
 
+# Buildings
+var buildings: Dictionary = {}  # {x_z: Building}
+
 
 func _init(
 	p_rows: int,
@@ -95,6 +98,9 @@ func _init(
 		p_min_steps_before_turn,
 		p_grid_seed
 	)
+	
+	# Crear buildings
+	_create_buildings()
 
 
 func _calculate_available_area() -> void:
@@ -154,6 +160,38 @@ func _create_path_generator(
 	
 	# Generar los alleyways
 	path_generator.generate()
+
+
+func _create_buildings() -> void:
+	buildings.clear()
+	
+	for z in range(distorted_grid.rows):
+		for x in range(distorted_grid.columns):
+			var cell_vertices = distorted_grid.get_cell_vertices(x, z)
+			
+			if cell_vertices.size() != 4:
+				continue
+			
+			var edge_types_array: Array[int] = []
+			
+			# North edge: (x, z) -> (x+1, z)
+			var north_type = path_generator.get_path_edge_type_vertices(x, z, x + 1, z)
+			edge_types_array.append(north_type)
+			
+			# East edge: (x+1, z) -> (x+1, z+1)
+			var east_type = path_generator.get_path_edge_type_vertices(x + 1, z, x + 1, z + 1)
+			edge_types_array.append(east_type)
+			
+			# South edge: (x+1, z+1) -> (x, z+1)
+			var south_type = path_generator.get_path_edge_type_vertices(x + 1, z + 1, x, z + 1)
+			edge_types_array.append(south_type)
+			
+			# West edge: (x, z+1) -> (x, z)
+			var west_type = path_generator.get_path_edge_type_vertices(x, z + 1, x, z)
+			edge_types_array.append(west_type)
+			
+			var building = Building.new(cell_vertices, edge_types_array)
+			buildings["%d_%d" % [x, z]] = building
 
 
 func _get_core_block_vertices() -> Array[Vector2]:
@@ -360,6 +398,11 @@ func get_block_corners() -> Array[Vector3]:
 	corners.append(Vector3(corner_tl_2d.x, 0.0, corner_tl_2d.y))
 	
 	return corners
+
+
+func get_building(x: int, z: int) -> Building:
+	var key = "%d_%d" % [x, z]
+	return buildings.get(key, null)
 
 
 # Propiedades de acceso directo
