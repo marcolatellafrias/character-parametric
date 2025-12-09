@@ -25,8 +25,11 @@ var wave_frequency_z: float
 var wave_phase_x: float
 var wave_phase_z: float
 var edge_falloff_sharpness: float
-var small_lines_count: int
-var big_lines_count: int
+
+# Configuración de PathGenerator
+var small_alleyways_count: int
+var big_alleyways_count: int
+var min_steps_before_turn: int
 var grid_seed: int
 
 func generate_city_graph(
@@ -63,8 +66,9 @@ func generate_city_graph(
 	p_wave_phase_x: float = 0.0,
 	p_wave_phase_z: float = 0.0,
 	p_edge_falloff_sharpness: float = 1.0,
-	p_small_lines_count: int = 2,
-	p_big_lines_count: int = 1,
+	p_small_alleyways_count: int = 2,
+	p_big_alleyways_count: int = 1,
+	p_min_steps_before_turn: int = 2,
 	p_grid_seed: int = -1
 ) -> void:
 	
@@ -83,8 +87,11 @@ func generate_city_graph(
 	self.wave_phase_x = p_wave_phase_x
 	self.wave_phase_z = p_wave_phase_z
 	self.edge_falloff_sharpness = p_edge_falloff_sharpness
-	self.small_lines_count = p_small_lines_count
-	self.big_lines_count = p_big_lines_count
+	
+	# Guardar configuración de PathGenerator
+	self.small_alleyways_count = p_small_alleyways_count
+	self.big_alleyways_count = p_big_alleyways_count
+	self.min_steps_before_turn = p_min_steps_before_turn
 	self.grid_seed = p_grid_seed
 	
 	# Configurar offsets de calles
@@ -595,7 +602,7 @@ func _generate_block_grids(
 		# Generar seed único por bloque si grid_seed es -1
 		var block_seed = grid_seed
 		if grid_seed == -1:
-			block_seed = hash(face_idx) # Determinístico basado en face_idx
+			block_seed = hash(face_idx)
 		
 		var block = BlockGenerator.new(
 			block_rows,
@@ -616,8 +623,9 @@ func _generate_block_grids(
 			wave_phase_x,
 			wave_phase_z,
 			edge_falloff_sharpness,
-			small_lines_count,
-			big_lines_count,
+			small_alleyways_count,
+			big_alleyways_count,
+			min_steps_before_turn,
 			block_seed
 		)
 		

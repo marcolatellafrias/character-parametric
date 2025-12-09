@@ -10,17 +10,14 @@ enum StreetType {
 	LARGE_TUNNEL = 4,
 }
 
-# ============================================
-# SIMPLIFICADO - SIN RECTÁNGULOS
-# ============================================
-
 # Componentes
 var grid_geometry: GridGeometry
-var distorted_grid: DistortedGrid  # Nueva grilla distorsionada
+var distorted_grid: DistortedGrid
+var path_generator: PathGenerator
 
 # Geometría del bloque
 var street_types: Array[int]  # [north, east, south, west]
-var is_clockwise: bool  # Si la face está en sentido horario
+var is_clockwise: bool
 
 # Offsets de calles (recibidos desde GraphCityGenerator)
 var street_offsets: Dictionary = {}
@@ -55,9 +52,10 @@ func _init(
 	p_wave_phase_x: float = 0.0,
 	p_wave_phase_z: float = 0.0,
 	p_edge_falloff_sharpness: float = 1.0,
-	# Parámetros de líneas internas
-	p_small_lines_count: int = 2,
-	p_big_lines_count: int = 1,
+	# Parámetros de generación de alleyways
+	p_small_alleyways_count: int = 2,
+	p_big_alleyways_count: int = 1,
+	p_min_steps_before_turn: int = 2,
 	p_grid_seed: int = -1
 ) -> void:
 	street_types = p_street_types
@@ -76,7 +74,7 @@ func _init(
 	_calculate_available_area()
 	_calculate_lanes()
 	
-	# Crear grilla distorsionada con líneas internas
+	# Crear grilla distorsionada
 	_create_distorted_grid(
 		p_distorted_rows,
 		p_distorted_columns,
@@ -87,14 +85,18 @@ func _init(
 		p_wave_frequency_z,
 		p_wave_phase_x,
 		p_wave_phase_z,
-		p_edge_falloff_sharpness,
-		p_small_lines_count,
-		p_big_lines_count,
+		p_edge_falloff_sharpness
+	)
+	
+	# Crear generador de paths
+	_create_path_generator(
+		p_small_alleyways_count,
+		p_big_alleyways_count,
+		p_min_steps_before_turn,
 		p_grid_seed
 	)
 
 
-# Calcula el área disponible después de aplicar los offsets de las calles
 func _calculate_available_area() -> void:
 	var north_offset = street_offsets.get(street_types[0], 0)
 	var south_offset = street_offsets.get(street_types[2], 0)
@@ -107,7 +109,6 @@ func _calculate_available_area() -> void:
 	available_max_z = grid_geometry.rows - south_offset - 1
 
 
-# Crea la grilla distorsionada usando el core block
 func _create_distorted_grid(
 	distorted_rows: int,
 	distorted_columns: int,
@@ -118,15 +119,10 @@ func _create_distorted_grid(
 	wave_frequency_z: float,
 	wave_phase_x: float,
 	wave_phase_z: float,
-	edge_falloff_sharpness: float,
-	small_lines_count: int,
-	big_lines_count: int,
-	grid_seed: int
+	edge_falloff_sharpness: float
 ) -> void:
-	# Obtener vértices del core block
 	var core_vertices = _get_core_block_vertices()
 	
-	# Crear la grilla distorsionada con líneas internas
 	distorted_grid = DistortedGrid.new(
 		distorted_rows,
 		distorted_columns,
@@ -138,14 +134,28 @@ func _create_distorted_grid(
 		wave_frequency_z,
 		wave_phase_x,
 		wave_phase_z,
-		edge_falloff_sharpness,
-		small_lines_count,
-		big_lines_count,
-		grid_seed
+		edge_falloff_sharpness
 	)
 
 
-# Obtiene los vértices del core block (área disponible)
+func _create_path_generator(
+	small_alleyways_count: int,
+	big_alleyways_count: int,
+	min_steps_before_turn: int,
+	grid_seed: int
+) -> void:
+	path_generator = PathGenerator.new(
+		distorted_grid,
+		small_alleyways_count,
+		big_alleyways_count,
+		min_steps_before_turn,
+		grid_seed
+	)
+	
+	# Generar los alleyways
+	path_generator.generate()
+
+
 func _get_core_block_vertices() -> Array[Vector2]:
 	var vertices: Array[Vector2] = []
 	
@@ -153,7 +163,6 @@ func _get_core_block_vertices() -> Array[Vector2]:
 	var columns = grid_geometry.columns
 	var rows = grid_geometry.rows
 	
-	# Calcular coordenadas normalizadas para el área disponible
 	var u_min = float(available_min_x) / max(1, columns)
 	var u_max = float(available_max_x + 1) / max(1, columns)
 	var v_min = float(available_min_z) / max(1, rows)
@@ -178,7 +187,6 @@ func _get_core_block_vertices() -> Array[Vector2]:
 	return vertices
 
 
-# Calcula los carriles para cada lado de la manzana
 func _calculate_lanes() -> void:
 	lanes["north"] = _get_lane_offsets_for_street_type(street_types[0])
 	lanes["east"] = _get_lane_offsets_for_street_type(street_types[1])
@@ -186,7 +194,6 @@ func _calculate_lanes() -> void:
 	lanes["west"] = _get_lane_offsets_for_street_type(street_types[3])
 
 
-# Retorna los offsets de carriles según el tipo de calle
 func _get_lane_offsets_for_street_type(street_type: int) -> Array[int]:
 	var offsets: Array[int] = []
 	var total_offset = street_offsets.get(street_type, 0)
@@ -195,19 +202,18 @@ func _get_lane_offsets_for_street_type(street_type: int) -> Array[int]:
 		return offsets
 	
 	match street_type:
-		StreetType.SMALL:  # 7 celdas: xxxxOxx
+		StreetType.SMALL:
 			offsets = [4]
-		StreetType.MEDIUM:  # 12 celdas: xxxxOxxxxOxx
+		StreetType.MEDIUM:
 			offsets = [4, 9]
-		StreetType.LARGE:  # 17 celdas: xxxxOxxxxOxxxxOxx
+		StreetType.LARGE:
 			offsets = [4, 9, 14]
-		_:  # BOUNDARY, SMALL_TUNNEL, LARGE_TUNNEL
+		_:
 			offsets = []
 	
 	return offsets
 
 
-# Obtiene las posiciones de inicio y fin de un carril
 func get_lane_endpoints(side: String, lane_index: int) -> Dictionary:
 	if side not in lanes or lane_index >= lanes[side].size():
 		return {}
@@ -220,28 +226,28 @@ func get_lane_endpoints(side: String, lane_index: int) -> Dictionary:
 	
 	if is_clockwise:
 		match side:
-			"north":  # Flujo: Este → Oeste
+			"north":
 				var z = available_min_z - offset
 				start_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
 				end_pos = grid_geometry.get_cell_position(0, z, 0)
 				from_pos = start_pos
 				to_pos = end_pos
 				
-			"south":  # Flujo: Oeste → Este
+			"south":
 				var z = available_max_z + offset
 				start_pos = grid_geometry.get_cell_position(0, z, 0)
 				end_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
 				from_pos = start_pos
 				to_pos = end_pos
 				
-			"west":  # Flujo: Norte → Sur
+			"west":
 				var x = available_min_x - offset
 				start_pos = grid_geometry.get_cell_position(x, 0, 0)
 				end_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
 				from_pos = start_pos
 				to_pos = end_pos
 				
-			"east":  # Flujo: Sur → Norte
+			"east":
 				var x = available_max_x + offset
 				start_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
 				end_pos = grid_geometry.get_cell_position(x, 0, 0)
@@ -252,28 +258,28 @@ func get_lane_endpoints(side: String, lane_index: int) -> Dictionary:
 				return {}
 	else:
 		match side:
-			"north":  # Flujo inverso: Oeste → Este
+			"north":
 				var z = available_min_z - offset
 				start_pos = grid_geometry.get_cell_position(0, z, 0)
 				end_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
 				from_pos = start_pos
 				to_pos = end_pos
 				
-			"south":  # Flujo inverso: Este → Oeste
+			"south":
 				var z = available_max_z + offset
 				start_pos = grid_geometry.get_cell_position(grid_geometry.columns - 1, z, 0)
 				end_pos = grid_geometry.get_cell_position(0, z, 0)
 				from_pos = start_pos
 				to_pos = end_pos
 				
-			"west":  # Flujo inverso: Sur → Norte
+			"west":
 				var x = available_min_x - offset
 				start_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
 				end_pos = grid_geometry.get_cell_position(x, 0, 0)
 				from_pos = start_pos
 				to_pos = end_pos
 				
-			"east":  # Flujo inverso: Norte → Sur
+			"east":
 				var x = available_max_x + offset
 				start_pos = grid_geometry.get_cell_position(x, 0, 0)
 				end_pos = grid_geometry.get_cell_position(x, grid_geometry.rows - 1, 0)
@@ -292,7 +298,6 @@ func get_lane_endpoints(side: String, lane_index: int) -> Dictionary:
 	}
 
 
-# Obtiene todos los carriles de la manzana
 func get_all_lanes() -> Array[Dictionary]:
 	var all_lanes: Array[Dictionary] = []
 	
@@ -306,7 +311,6 @@ func get_all_lanes() -> Array[Dictionary]:
 	return all_lanes
 
 
-# Obtiene las 4 esquinas de la manzana offseteada
 func get_block_corners() -> Array[Vector3]:
 	var corners: Array[Vector3] = []
 	
@@ -314,7 +318,6 @@ func get_block_corners() -> Array[Vector3]:
 	var columns = grid_geometry.columns
 	var rows = grid_geometry.rows
 	
-	# Calcular coordenadas normalizadas u, v para cada esquina del área disponible
 	var u_min = float(available_min_x) / max(1, columns)
 	var u_max = float(available_max_x) / max(1, columns)
 	var v_min = float(available_min_z) / max(1, rows)
@@ -375,6 +378,8 @@ func get_floors() -> int:
 func get_cells_per_floor() -> int:
 	return grid_geometry.cells_per_floor
 
-# Acceso a la grilla distorsionada
 func get_distorted_grid() -> DistortedGrid:
 	return distorted_grid
+
+func get_path_generator() -> PathGenerator:
+	return path_generator

@@ -87,9 +87,10 @@ extends Node3D
 @export var wave_phase_z: float = 0.0
 @export_range(0.1, 5.0) var edge_falloff_sharpness: float = 1.0
 
-@export_subgroup("Líneas Internas")
-@export var small_lines_count: int = 3
-@export var big_lines_count: int = 2
+@export_subgroup("Generación de Alleyways")
+@export var small_alleyways_count: int = 3
+@export var big_alleyways_count: int = 2
+@export var min_steps_before_turn: int = 2
 @export var grid_seed: int = -1  # -1 = aleatorio
 
 @export_subgroup("Visualización de Grilla Distorsionada")
@@ -181,8 +182,9 @@ func generate_graph() -> void:
 		wave_phase_x,
 		wave_phase_z,
 		edge_falloff_sharpness,
-		small_lines_count,
-		big_lines_count,
+		small_alleyways_count,
+		big_alleyways_count,
+		min_steps_before_turn,
 		grid_seed
 	)
 	
@@ -400,8 +402,9 @@ func _visualize_distorted_grids() -> void:
 			continue
 		
 		var distorted = block.get_distorted_grid()
+		var path_gen = block.get_path_generator()
 		
-		if distorted == null:
+		if distorted == null or path_gen == null:
 			continue
 		
 		# Cache de vértices calculados
@@ -456,7 +459,7 @@ func _visualize_distorted_grids() -> void:
 				add_child(sphere)
 				total_vertices += 1
 		
-		# Visualizar edges horizontales (conectan vértices horizontalmente adyacentes)
+		# Visualizar edges horizontales
 		for grid_z in range(distorted.rows + 1):
 			for grid_x in range(distorted.columns):
 				var pos1_2d = get_vertex.call(grid_x, grid_z)
@@ -467,23 +470,22 @@ func _visualize_distorted_grids() -> void:
 				
 				var edge_color: Color
 				
-				# Edge está en el borde si está en el primer o último row
 				var is_boundary_edge = (grid_z == 0 or grid_z == distorted.rows)
 				
 				if is_boundary_edge:
 					edge_color = distorted_grid_boundary_edge_color
 				else:
-					# Consultar tipo de path edge entre vértices (grid_x, grid_z) y (grid_x+1, grid_z)
-					var path_type = distorted.get_path_edge_type_vertices(grid_x, grid_z, grid_x + 1, grid_z)
+					# Usar PathGenerator para obtener tipo de edge
+					var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x + 1, grid_z)
 					
 					match path_type:
-						distorted.CellType.BIG:
+						DistortedGrid.CellType.BIG:
 							edge_color = distorted_grid_big_edge_color
-						distorted.CellType.SMALL:
+						DistortedGrid.CellType.SMALL:
 							edge_color = distorted_grid_small_edge_color
-						distorted.CellType.SMALL_ORIGIN:
+						DistortedGrid.CellType.SMALL_ORIGIN:
 							edge_color = distorted_grid_small_origin_edge_color
-						distorted.CellType.BIG_ORIGIN:
+						DistortedGrid.CellType.BIG_ORIGIN:
 							edge_color = distorted_grid_big_origin_edge_color
 						_:
 							edge_color = distorted_grid_normal_edge_color
@@ -497,7 +499,7 @@ func _visualize_distorted_grids() -> void:
 				add_child(line)
 				total_edges += 1
 		
-		# Visualizar edges verticales (conectan vértices verticalmente adyacentes)
+		# Visualizar edges verticales
 		for grid_z in range(distorted.rows):
 			for grid_x in range(distorted.columns + 1):
 				var pos1_2d = get_vertex.call(grid_x, grid_z)
@@ -508,23 +510,22 @@ func _visualize_distorted_grids() -> void:
 				
 				var edge_color: Color
 				
-				# Edge está en el borde si está en la primera o última columna
 				var is_boundary_edge = (grid_x == 0 or grid_x == distorted.columns)
 				
 				if is_boundary_edge:
 					edge_color = distorted_grid_boundary_edge_color
 				else:
-					# Consultar tipo de path edge entre vértices (grid_x, grid_z) y (grid_x, grid_z+1)
-					var path_type = distorted.get_path_edge_type_vertices(grid_x, grid_z, grid_x, grid_z + 1)
+					# Usar PathGenerator para obtener tipo de edge
+					var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x, grid_z + 1)
 					
 					match path_type:
-						distorted.CellType.BIG:
+						DistortedGrid.CellType.BIG:
 							edge_color = distorted_grid_big_edge_color
-						distorted.CellType.SMALL:
+						DistortedGrid.CellType.SMALL:
 							edge_color = distorted_grid_small_edge_color
-						distorted.CellType.SMALL_ORIGIN:
+						DistortedGrid.CellType.SMALL_ORIGIN:
 							edge_color = distorted_grid_small_origin_edge_color
-						distorted.CellType.BIG_ORIGIN:
+						DistortedGrid.CellType.BIG_ORIGIN:
 							edge_color = distorted_grid_big_origin_edge_color
 						_:
 							edge_color = distorted_grid_normal_edge_color
