@@ -14,7 +14,7 @@ extends Node3D
 @export var show_neighborhoods: bool = true
 
 @export_group("Suavizado")
-@export var smoothing_steps: int = 100
+@export var smoothing_steps: int = 50
 
 @export_group("Visualización General")
 @export var show_nodes: bool = true
@@ -65,7 +65,7 @@ extends Node3D
 @export_group("Grillas de Manzanas")
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
-@export var block_grid_floors: int = 1
+@export var block_grid_floors: int = 2
 @export var block_cells_per_floor: int = 30
 
 @export_subgroup("Offsets de Calles (en celdas)")
@@ -79,21 +79,33 @@ extends Node3D
 @export_group("Grilla Distorsionada")
 @export var distorted_grid_rows: int = 8
 @export var distorted_grid_columns: int = 8
-@export_range(0.0, 1.0) var wave_amplitude_x: float = 0.07  # Proporción del tamaño del bloque
-@export_range(0.0, 1.0) var wave_amplitude_z: float = 0.07  # Proporción del tamaño del bloque
+@export_range(0.0, 1.0) var wave_amplitude_x: float = 0.07
+@export_range(0.0, 1.0) var wave_amplitude_z: float = 0.07
 @export var wave_frequency_x: float = 1.0
 @export var wave_frequency_z: float = 1.0
 @export var wave_phase_x: float = 0.0
 @export var wave_phase_z: float = 0.0
-@export_range(0.1, 5.0) var edge_falloff_sharpness: float = 1.0  # 1.0 = lineal, >1.0 = abrupto, <1.0 = suave
-@export_range(0.0, 1.0) var falloff_strength: float = 1.0  # 0=sin falloff, 1=falloff máximo
+@export_range(0.1, 5.0) var edge_falloff_sharpness: float = 1.0
+
+@export_subgroup("Líneas Internas")
+@export var small_lines_count: int = 3
+@export var big_lines_count: int = 2
+@export var grid_seed: int = -1  # -1 = aleatorio
 
 @export_subgroup("Visualización de Grilla Distorsionada")
 @export var show_distorted_grid: bool = true
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
+@export var distorted_grid_small_vertex_color: Color = Color.YELLOW
+@export var distorted_grid_big_vertex_color: Color = Color.ORANGE
+@export var distorted_grid_small_origin_vertex_color: Color = Color.GREEN
+@export var distorted_grid_big_origin_vertex_color: Color = Color.MAGENTA
 @export var distorted_grid_boundary_vertex_color: Color = Color.RED
 @export var distorted_grid_normal_edge_color: Color = Color.WHITE
+@export var distorted_grid_small_edge_color: Color = Color.YELLOW
+@export var distorted_grid_big_edge_color: Color = Color.ORANGE
+@export var distorted_grid_small_origin_edge_color: Color = Color.GREEN
+@export var distorted_grid_big_origin_edge_color: Color = Color.MAGENTA
 @export var distorted_grid_boundary_edge_color: Color = Color.ORANGE_RED
 @export var distorted_grid_edge_width: float = 0.015
 @export var distorted_grid_height_offset: float = 0.1
@@ -168,7 +180,10 @@ func generate_graph() -> void:
 		wave_frequency_z,
 		wave_phase_x,
 		wave_phase_z,
-		edge_falloff_sharpness
+		edge_falloff_sharpness,
+		small_lines_count,
+		big_lines_count,
+		grid_seed
 	)
 	
 	_generate_neighborhood_colors()
@@ -389,10 +404,10 @@ func _visualize_distorted_grids() -> void:
 		if distorted == null:
 			continue
 		
-		# Cache de vértices calculados para evitar recalcularlos
+		# Cache de vértices calculados
 		var vertex_cache: Dictionary = {}
 		
-		# Función helper para calcular vértices usando coordenadas locales con falloff
+		# Función helper para calcular vértices
 		var get_vertex = func(grid_x: int, grid_z: int) -> Vector2:
 			var key = "%d_%d" % [grid_x, grid_z]
 			if key in vertex_cache:
@@ -402,7 +417,6 @@ func _visualize_distorted_grids() -> void:
 			var v = float(grid_z) / max(1, distorted.rows)
 			var base_pos = GridHelper.bilinear_interpolation(distorted.vertices, u, v)
 			
-			# Calcular direcciones locales del quad
 			var bottom_u_dir = (distorted.vertices[1] - distorted.vertices[0]).normalized()
 			var top_u_dir = (distorted.vertices[2] - distorted.vertices[3]).normalized()
 			var local_u_dir = bottom_u_dir.lerp(top_u_dir, v)
@@ -411,15 +425,12 @@ func _visualize_distorted_grids() -> void:
 			var right_v_dir = (distorted.vertices[2] - distorted.vertices[1]).normalized()
 			var local_v_dir = left_v_dir.lerp(right_v_dir, u)
 			
-			# Calcular falloff para mantener bordes fijos
 			var u_falloff = pow(min(u, 1.0 - u) * 2.0, distorted.edge_falloff_sharpness)
 			var v_falloff = pow(min(v, 1.0 - v) * 2.0, distorted.edge_falloff_sharpness)
 			
-			# Calcular desplazamientos ondulatorios con falloff
 			var wave_offset_u = sin(v * distorted.wave_frequency_z * TAU + distorted.wave_phase_z) * distorted.wave_amplitude_x * u_falloff
 			var wave_offset_v = sin(u * distorted.wave_frequency_x * TAU + distorted.wave_phase_x) * distorted.wave_amplitude_z * v_falloff
 			
-			# Aplicar desplazamientos en direcciones locales
 			var result = base_pos + local_u_dir * wave_offset_u + local_v_dir * wave_offset_v
 			vertex_cache[key] = result
 			return result
@@ -445,7 +456,7 @@ func _visualize_distorted_grids() -> void:
 				add_child(sphere)
 				total_vertices += 1
 		
-		# Visualizar edges horizontales
+		# Visualizar edges horizontales (conectan vértices horizontalmente adyacentes)
 		for grid_z in range(distorted.rows + 1):
 			for grid_x in range(distorted.columns):
 				var pos1_2d = get_vertex.call(grid_x, grid_z)
@@ -454,14 +465,28 @@ func _visualize_distorted_grids() -> void:
 				var pos1_3d = Vector3(pos1_2d.x, distorted_grid_height_offset, pos1_2d.y)
 				var pos2_3d = Vector3(pos2_2d.x, distorted_grid_height_offset, pos2_2d.y)
 				
+				var edge_color: Color
+				
 				# Edge está en el borde si está en el primer o último row
 				var is_boundary_edge = (grid_z == 0 or grid_z == distorted.rows)
 				
-				var edge_color: Color
 				if is_boundary_edge:
 					edge_color = distorted_grid_boundary_edge_color
 				else:
-					edge_color = distorted_grid_normal_edge_color
+					# Consultar tipo de path edge entre vértices (grid_x, grid_z) y (grid_x+1, grid_z)
+					var path_type = distorted.get_path_edge_type_vertices(grid_x, grid_z, grid_x + 1, grid_z)
+					
+					match path_type:
+						distorted.CellType.BIG:
+							edge_color = distorted_grid_big_edge_color
+						distorted.CellType.SMALL:
+							edge_color = distorted_grid_small_edge_color
+						distorted.CellType.SMALL_ORIGIN:
+							edge_color = distorted_grid_small_origin_edge_color
+						distorted.CellType.BIG_ORIGIN:
+							edge_color = distorted_grid_big_origin_edge_color
+						_:
+							edge_color = distorted_grid_normal_edge_color
 				
 				var line = DebugUtil.create_debug_line_to_from(
 					pos1_3d,
@@ -472,7 +497,7 @@ func _visualize_distorted_grids() -> void:
 				add_child(line)
 				total_edges += 1
 		
-		# Visualizar edges verticales
+		# Visualizar edges verticales (conectan vértices verticalmente adyacentes)
 		for grid_z in range(distorted.rows):
 			for grid_x in range(distorted.columns + 1):
 				var pos1_2d = get_vertex.call(grid_x, grid_z)
@@ -481,14 +506,28 @@ func _visualize_distorted_grids() -> void:
 				var pos1_3d = Vector3(pos1_2d.x, distorted_grid_height_offset, pos1_2d.y)
 				var pos2_3d = Vector3(pos2_2d.x, distorted_grid_height_offset, pos2_2d.y)
 				
+				var edge_color: Color
+				
 				# Edge está en el borde si está en la primera o última columna
 				var is_boundary_edge = (grid_x == 0 or grid_x == distorted.columns)
 				
-				var edge_color: Color
 				if is_boundary_edge:
 					edge_color = distorted_grid_boundary_edge_color
 				else:
-					edge_color = distorted_grid_normal_edge_color
+					# Consultar tipo de path edge entre vértices (grid_x, grid_z) y (grid_x, grid_z+1)
+					var path_type = distorted.get_path_edge_type_vertices(grid_x, grid_z, grid_x, grid_z + 1)
+					
+					match path_type:
+						distorted.CellType.BIG:
+							edge_color = distorted_grid_big_edge_color
+						distorted.CellType.SMALL:
+							edge_color = distorted_grid_small_edge_color
+						distorted.CellType.SMALL_ORIGIN:
+							edge_color = distorted_grid_small_origin_edge_color
+						distorted.CellType.BIG_ORIGIN:
+							edge_color = distorted_grid_big_origin_edge_color
+						_:
+							edge_color = distorted_grid_normal_edge_color
 				
 				var line = DebugUtil.create_debug_line_to_from(
 					pos1_3d,

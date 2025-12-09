@@ -25,6 +25,9 @@ var wave_frequency_z: float
 var wave_phase_x: float
 var wave_phase_z: float
 var edge_falloff_sharpness: float
+var small_lines_count: int
+var big_lines_count: int
+var grid_seed: int
 
 func generate_city_graph(
 	smooth_steps: int,
@@ -60,7 +63,9 @@ func generate_city_graph(
 	p_wave_phase_x: float = 0.0,
 	p_wave_phase_z: float = 0.0,
 	p_edge_falloff_sharpness: float = 1.0,
-	p_falloff_strength: float = 1.0
+	p_small_lines_count: int = 2,
+	p_big_lines_count: int = 1,
+	p_grid_seed: int = -1
 ) -> void:
 	
 	seed(generation_seed)
@@ -78,6 +83,9 @@ func generate_city_graph(
 	self.wave_phase_x = p_wave_phase_x
 	self.wave_phase_z = p_wave_phase_z
 	self.edge_falloff_sharpness = p_edge_falloff_sharpness
+	self.small_lines_count = p_small_lines_count
+	self.big_lines_count = p_big_lines_count
+	self.grid_seed = p_grid_seed
 	
 	# Configurar offsets de calles
 	street_offsets = {
@@ -584,6 +592,11 @@ func _generate_block_grids(
 		
 		var is_clockwise = _is_face_clockwise(face_vertices)
 		
+		# Generar seed único por bloque si grid_seed es -1
+		var block_seed = grid_seed
+		if grid_seed == -1:
+			block_seed = hash(face_idx) # Determinístico basado en face_idx
+		
 		var block = BlockGenerator.new(
 			block_rows,
 			block_columns,
@@ -602,7 +615,10 @@ func _generate_block_grids(
 			wave_frequency_z,
 			wave_phase_x,
 			wave_phase_z,
-			edge_falloff_sharpness
+			edge_falloff_sharpness,
+			small_lines_count,
+			big_lines_count,
+			block_seed
 		)
 		
 		block_grids[face_idx] = block

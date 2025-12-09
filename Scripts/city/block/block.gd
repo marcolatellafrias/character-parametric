@@ -55,7 +55,10 @@ func _init(
 	p_wave_phase_x: float = 0.0,
 	p_wave_phase_z: float = 0.0,
 	p_edge_falloff_sharpness: float = 1.0,
-	p_falloff_strength: float = 1.0
+	# Parámetros de líneas internas
+	p_small_lines_count: int = 2,
+	p_big_lines_count: int = 1,
+	p_grid_seed: int = -1
 ) -> void:
 	street_types = p_street_types
 	is_clockwise = p_is_clockwise
@@ -73,7 +76,7 @@ func _init(
 	_calculate_available_area()
 	_calculate_lanes()
 	
-	# Crear grilla distorsionada
+	# Crear grilla distorsionada con líneas internas
 	_create_distorted_grid(
 		p_distorted_rows,
 		p_distorted_columns,
@@ -84,7 +87,10 @@ func _init(
 		p_wave_frequency_z,
 		p_wave_phase_x,
 		p_wave_phase_z,
-		p_edge_falloff_sharpness
+		p_edge_falloff_sharpness,
+		p_small_lines_count,
+		p_big_lines_count,
+		p_grid_seed
 	)
 
 
@@ -112,12 +118,15 @@ func _create_distorted_grid(
 	wave_frequency_z: float,
 	wave_phase_x: float,
 	wave_phase_z: float,
-	edge_falloff_sharpness: float
+	edge_falloff_sharpness: float,
+	small_lines_count: int,
+	big_lines_count: int,
+	grid_seed: int
 ) -> void:
 	# Obtener vértices del core block
 	var core_vertices = _get_core_block_vertices()
 	
-	# Crear la grilla distorsionada (todos los bordes son boundary por defecto)
+	# Crear la grilla distorsionada con líneas internas
 	distorted_grid = DistortedGrid.new(
 		distorted_rows,
 		distorted_columns,
@@ -129,7 +138,10 @@ func _create_distorted_grid(
 		wave_frequency_z,
 		wave_phase_x,
 		wave_phase_z,
-		edge_falloff_sharpness
+		edge_falloff_sharpness,
+		small_lines_count,
+		big_lines_count,
+		grid_seed
 	)
 
 
