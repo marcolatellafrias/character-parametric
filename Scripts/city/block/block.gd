@@ -16,10 +16,10 @@ var distorted_grid: DistortedGrid
 var path_generator: PathGenerator
 
 # Geometría del bloque
-var street_types: Array[int]  # [north, east, south, west]
+var street_types: Array[int]
 var is_clockwise: bool
 
-# Offsets de calles (recibidos desde GraphCityGenerator)
+# Offsets de calles
 var street_offsets: Dictionary = {}
 
 # Área disponible después de offsets
@@ -29,10 +29,16 @@ var available_min_z: int
 var available_max_z: int
 
 # Carriles por lado de la manzana
-var lanes: Dictionary = {}  # {side: Array[int]} offsets de carriles por lado
+var lanes: Dictionary = {}
 
 # Buildings
-var buildings: Dictionary = {}  # {x_z: Building}
+var buildings: Dictionary = {}
+
+# Parámetros de grilla de buildings
+var building_rows: int
+var building_columns: int
+var building_cell_height: float
+var building_alleyway_offsets: Dictionary
 
 
 func _init(
@@ -45,7 +51,6 @@ func _init(
 	p_cells_per_floor: int,
 	p_is_clockwise: bool,
 	p_street_offsets: Dictionary,
-	# Parámetros de grilla distorsionada
 	p_distorted_rows: int = 10,
 	p_distorted_columns: int = 10,
 	p_wave_amplitude_x: float = 0.1,
@@ -55,15 +60,35 @@ func _init(
 	p_wave_phase_x: float = 0.0,
 	p_wave_phase_z: float = 0.0,
 	p_edge_falloff_sharpness: float = 1.0,
-	# Parámetros de generación de alleyways
 	p_small_alleyways_count: int = 2,
 	p_big_alleyways_count: int = 1,
 	p_min_steps_before_turn: int = 2,
-	p_grid_seed: int = -1
+	p_grid_seed: int = -1,
+	p_building_rows: int = 10,
+	p_building_columns: int = 10,
+	p_building_cell_height: float = 3.0,
+	p_building_alleyway_offsets: Dictionary = {}
 ) -> void:
 	street_types = p_street_types
 	is_clockwise = p_is_clockwise
 	street_offsets = p_street_offsets
+	
+	building_rows = p_building_rows
+	building_columns = p_building_columns
+	building_cell_height = p_building_cell_height
+	
+	# Configurar offsets de alleyways con valores por defecto si no se proporcionan
+	if p_building_alleyway_offsets.is_empty():
+		building_alleyway_offsets = {
+			-1: 2,  # BOUNDARY
+			0: 0,   # NORMAL
+			1: 2,   # SMALL
+			2: 4,   # BIG
+			10: 2,  # SMALL_ORIGIN
+			11: 4   # BIG_ORIGIN
+		}
+	else:
+		building_alleyway_offsets = p_building_alleyway_offsets
 	
 	grid_geometry = GridGeometry.new(
 		p_rows,
@@ -77,7 +102,6 @@ func _init(
 	_calculate_available_area()
 	_calculate_lanes()
 	
-	# Crear grilla distorsionada
 	_create_distorted_grid(
 		p_distorted_rows,
 		p_distorted_columns,
@@ -91,7 +115,6 @@ func _init(
 		p_edge_falloff_sharpness
 	)
 	
-	# Crear generador de paths
 	_create_path_generator(
 		p_small_alleyways_count,
 		p_big_alleyways_count,
@@ -99,7 +122,6 @@ func _init(
 		p_grid_seed
 	)
 	
-	# Crear buildings
 	_create_buildings()
 
 
@@ -158,7 +180,6 @@ func _create_path_generator(
 		grid_seed
 	)
 	
-	# Generar los alleyways
 	path_generator.generate()
 
 
@@ -172,6 +193,7 @@ func _create_buildings() -> void:
 			if cell_vertices.size() != 4:
 				continue
 			
+			# Obtener tipos de edges para este building
 			var edge_types_array: Array[int] = []
 			
 			# North edge: (x, z) -> (x+1, z)
@@ -190,7 +212,16 @@ func _create_buildings() -> void:
 			var west_type = path_generator.get_path_edge_type_vertices(x, z + 1, x, z)
 			edge_types_array.append(west_type)
 			
-			var building = Building.new(cell_vertices, edge_types_array)
+			# Crear building con offsets configurables
+			var building = Building.new(
+				cell_vertices,
+				edge_types_array,
+				building_rows,
+				building_columns,
+				building_cell_height,
+				building_alleyway_offsets
+			)
+			
 			buildings["%d_%d" % [x, z]] = building
 
 
@@ -405,7 +436,6 @@ func get_building(x: int, z: int) -> Building:
 	return buildings.get(key, null)
 
 
-# Propiedades de acceso directo
 func get_rows() -> int:
 	return grid_geometry.rows
 
@@ -426,3 +456,12 @@ func get_distorted_grid() -> DistortedGrid:
 
 func get_path_generator() -> PathGenerator:
 	return path_generator
+
+func get_building_rows() -> int:
+	return building_rows
+
+func get_building_columns() -> int:
+	return building_columns
+
+func get_building_cell_height() -> float:
+	return building_cell_height

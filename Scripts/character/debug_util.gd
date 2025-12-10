@@ -431,87 +431,63 @@ static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vect
 	
 	return mesh_instance
 
-## Crea un cubo skewed a partir de 4 vértices de base y una altura
-## @param base_vertices: Array de 4 Vector3 que forman la base inferior del cubo
-## @param height: Altura del cubo
-## @param color: Color del cubo
-## @return MeshInstance3D con el cubo generado
 static func create_skewed_cube(base_vertices: Array, height: float, color: Color) -> MeshInstance3D:
 	if base_vertices.size() != 4:
 		push_error("Se requieren exactamente 4 vértices para la base")
 		return null
 	
-	# Detectar orientación de los vértices base
-	# Calcular normal usando producto cruz
-	var v1 = base_vertices[1] - base_vertices[0]
-	var v2 = base_vertices[2] - base_vertices[0]
-	var normal = v1.cross(v2)
-	
-	# Si la normal apunta hacia abajo (y < 0), los vértices están en orden clockwise desde arriba
-	# Si apunta hacia arriba (y > 0), están en orden counter-clockwise
-	# Para consistencia, queremos que estén en orden counter-clockwise (CCW) desde arriba
-	var vertices_ccw = base_vertices.duplicate()
-	if normal.y < 0:
-		# Invertir orden para convertir CW a CCW
-		vertices_ccw.reverse()
-	
 	var mesh_instance = MeshInstance3D.new()
-	var array_mesh = ArrayMesh.new()
-	var arrays = []
-	arrays.resize(Mesh.ARRAY_MAX)
+	var st = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
-	# Crear vértices superiores e inferiores con el orden corregido
-	var bottom_verts = []
+	var bottom_verts = base_vertices
 	var top_verts = []
 	
 	for i in range(4):
-		bottom_verts.append(vertices_ccw[i])
-		top_verts.append(vertices_ccw[i] + Vector3(0, height, 0))
+		top_verts.append(bottom_verts[i] + Vector3(0, height, 0))
 	
 	var vertices = PackedVector3Array()
-	var colors = PackedColorArray()
+	var indices = PackedInt32Array()
 	
 	var add_triangle = func(v1: Vector3, v2: Vector3, v3: Vector3):
+		var start_idx = vertices.size()
 		vertices.append(v1)
 		vertices.append(v2)
 		vertices.append(v3)
-		colors.append(color)
-		colors.append(color)
-		colors.append(color)
+		indices.append(start_idx)
+		indices.append(start_idx + 1)
+		indices.append(start_idx + 2)
 	
-	# Cara inferior (base) - normal hacia abajo
+	# Cara inferior (normal hacia abajo, visto desde arriba = CW)
 	add_triangle.call(bottom_verts[0], bottom_verts[2], bottom_verts[1])
 	add_triangle.call(bottom_verts[0], bottom_verts[3], bottom_verts[2])
 	
-	# Cara superior (tapa) - normal hacia arriba
+	# Cara superior (normal hacia arriba, visto desde arriba = CCW)
 	add_triangle.call(top_verts[0], top_verts[1], top_verts[2])
 	add_triangle.call(top_verts[0], top_verts[2], top_verts[3])
 	
-	# Caras laterales (normales hacia afuera)
-	add_triangle.call(bottom_verts[0], bottom_verts[1], top_verts[1])
-	add_triangle.call(bottom_verts[0], top_verts[1], top_verts[0])
+	# Caras laterales
+	for i in range(4):
+		var next_i = (i + 1) % 4
+		add_triangle.call(bottom_verts[i], top_verts[next_i], top_verts[i])
+		add_triangle.call(bottom_verts[i], bottom_verts[next_i], top_verts[next_i])
 	
-	add_triangle.call(bottom_verts[1], bottom_verts[2], top_verts[2])
-	add_triangle.call(bottom_verts[1], top_verts[2], top_verts[1])
-	
-	add_triangle.call(bottom_verts[2], bottom_verts[3], top_verts[3])
-	add_triangle.call(bottom_verts[2], top_verts[3], top_verts[2])
-	
-	add_triangle.call(bottom_verts[3], bottom_verts[0], top_verts[0])
-	add_triangle.call(bottom_verts[3], top_verts[0], top_verts[3])
-	
+	var arrays = []
+	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
-	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
 	
-	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	st.create_from_arrays(arrays)
+	st.set_color(color)
+	st.generate_normals()
 	
 	var material = StandardMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	array_mesh.surface_set_material(0, material)
+	material.cull_mode = BaseMaterial3D.CULL_BACK
+	st.set_material(material)
 	
-	mesh_instance.mesh = array_mesh
+	mesh_instance.mesh = st.commit()
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	
 	return mesh_instance

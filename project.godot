@@ -85,5 +85,4 @@ common/physics_ticks_per_second=240
 
 [rendering]
 
-lights_and_shadows/directional_shadow/size=8192
 anti_aliasing/quality/msaa=2

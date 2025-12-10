@@ -32,6 +32,11 @@ var big_alleyways_count: int
 var min_steps_before_turn: int
 var grid_seed: int
 
+# Configuración de grilla de Buildings
+var building_grid_rows: int
+var building_grid_columns: int
+var building_cell_height: float
+
 func generate_city_graph(
 	smooth_steps: int,
 	region_size: Vector2,
@@ -69,7 +74,10 @@ func generate_city_graph(
 	p_small_alleyways_count: int = 2,
 	p_big_alleyways_count: int = 1,
 	p_min_steps_before_turn: int = 2,
-	p_grid_seed: int = -1
+	p_grid_seed: int = -1,
+	p_building_grid_rows: int = 10,
+	p_building_grid_columns: int = 10,
+	p_building_cell_height: float = 3.0
 ) -> void:
 	
 	seed(generation_seed)
@@ -93,6 +101,11 @@ func generate_city_graph(
 	self.big_alleyways_count = p_big_alleyways_count
 	self.min_steps_before_turn = p_min_steps_before_turn
 	self.grid_seed = p_grid_seed
+	
+	# Guardar configuración de grilla de Buildings
+	self.building_grid_rows = p_building_grid_rows
+	self.building_grid_columns = p_building_grid_columns
+	self.building_cell_height = p_building_cell_height
 	
 	# Configurar offsets de calles
 	street_offsets = {
@@ -626,7 +639,10 @@ func _generate_block_grids(
 			small_alleyways_count,
 			big_alleyways_count,
 			min_steps_before_turn,
-			block_seed
+			block_seed,
+			building_grid_rows,
+			building_grid_columns,
+			building_cell_height
 		)
 		
 		block_grids[face_idx] = block

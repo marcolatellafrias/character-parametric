@@ -175,41 +175,52 @@ func get_edge_type(side: String) -> int:
 			return 0
 
 
+## Retorna los 4 vértices de una celda en orden: [BL, BR, TR, TL]
 func get_cell_vertices(x: int, z: int) -> Array[Vector3]:
 	var result: Array[Vector3] = []
 	
 	if x < 0 or x >= columns or z < 0 or z >= rows:
 		return result
 	
-	for dz in [0, 1]:
-		for dx in [0, 1]:
-			var cell_x = clamp(x + dx, 0, columns)
-			var cell_z = clamp(z + dz, 0, rows)
-			
-			var u = float(cell_x) / max(1, columns)
-			var v = float(cell_z) / max(1, rows)
-			var base_pos = GridHelper.bilinear_interpolation(vertices, u, v)
-			
-			var bottom_u_dir = (vertices[1] - vertices[0]).normalized()
-			var top_u_dir = (vertices[2] - vertices[3]).normalized()
-			var local_u_dir = bottom_u_dir.lerp(top_u_dir, v)
-			
-			var left_v_dir = (vertices[3] - vertices[0]).normalized()
-			var right_v_dir = (vertices[2] - vertices[1]).normalized()
-			var local_v_dir = left_v_dir.lerp(right_v_dir, u)
-			
-			var u_falloff = pow(min(u, 1.0 - u) * 2.0, edge_falloff_sharpness)
-			var v_falloff = pow(min(v, 1.0 - v) * 2.0, edge_falloff_sharpness)
-			
-			var wave_offset_u = sin(v * wave_frequency_z * TAU + wave_phase_z) * wave_amplitude_x * u_falloff
-			var wave_offset_v = sin(u * wave_frequency_x * TAU + wave_phase_x) * wave_amplitude_z * v_falloff
-			
-			var distorted_pos_2d = base_pos + local_u_dir * wave_offset_u + local_v_dir * wave_offset_v
-			
-			result.append(Vector3(
-				distorted_pos_2d.x,
-				0.0,
-				distorted_pos_2d.y
-			))
+	# Calcular explícitamente cada vértice en el orden correcto
+	# Bottom-Left: (x, z)
+	var bl_pos = _calculate_vertex_at(x, z)
+	result.append(Vector3(bl_pos.x, 0.0, bl_pos.y))
+	
+	# Bottom-Right: (x+1, z)
+	var br_pos = _calculate_vertex_at(x + 1, z)
+	result.append(Vector3(br_pos.x, 0.0, br_pos.y))
+	
+	# Top-Right: (x+1, z+1)
+	var tr_pos = _calculate_vertex_at(x + 1, z + 1)
+	result.append(Vector3(tr_pos.x, 0.0, tr_pos.y))
+	
+	# Top-Left: (x, z+1)
+	var tl_pos = _calculate_vertex_at(x, z + 1)
+	result.append(Vector3(tl_pos.x, 0.0, tl_pos.y))
 	
 	return result
+
+
+## Calcula la posición distorsionada de un vértice en coordenadas de grilla
+func _calculate_vertex_at(grid_x: int, grid_z: int) -> Vector2:
+	var u = float(grid_x) / max(1, columns)
+	var v = float(grid_z) / max(1, rows)
+	
+	var base_pos = GridHelper.bilinear_interpolation(vertices, u, v)
+	
+	var bottom_u_dir = (vertices[1] - vertices[0]).normalized()
+	var top_u_dir = (vertices[2] - vertices[3]).normalized()
+	var local_u_dir = bottom_u_dir.lerp(top_u_dir, v)
+	
+	var left_v_dir = (vertices[3] - vertices[0]).normalized()
+	var right_v_dir = (vertices[2] - vertices[1]).normalized()
+	var local_v_dir = left_v_dir.lerp(right_v_dir, u)
+	
+	var u_falloff = pow(min(u, 1.0 - u) * 2.0, edge_falloff_sharpness)
+	var v_falloff = pow(min(v, 1.0 - v) * 2.0, edge_falloff_sharpness)
+	
+	var wave_offset_u = sin(v * wave_frequency_z * TAU + wave_phase_z) * wave_amplitude_x * u_falloff
+	var wave_offset_v = sin(u * wave_frequency_x * TAU + wave_phase_x) * wave_amplitude_z * v_falloff
+	
+	return base_pos + local_u_dir * wave_offset_u + local_v_dir * wave_offset_v

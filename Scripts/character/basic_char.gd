@@ -35,7 +35,7 @@ var _grab_distance: float = 0.0
 @export var sprint_speed: float = 10.0
 @export var mouse_sensitivity: float = 0.002   # radians per pixel
 @export var invert_y: bool = false
-@export var show_mesh: bool = true            # first-person => off by default
+@export var show_mesh: bool = false            # first-person => off by default
 
 var _yaw: float = 0.0
 var _pitch: float = 0.0
