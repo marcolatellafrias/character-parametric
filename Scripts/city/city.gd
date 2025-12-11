@@ -4,8 +4,8 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(70/6, 70/6)
-@export var min_distance: float = 15.5/6
+@export var region_size: Vector2 = Vector2(70/10, 70/10)
+@export var min_distance: float = 15.5/10
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
 
@@ -66,7 +66,7 @@ extends Node3D
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
 @export var block_grid_floors: int = 2
-@export var block_cells_per_floor: int = 10
+@export var block_cells_per_floor: int = 30
 
 @export_subgroup("Offsets de Calles (en celdas)")
 @export var boundary_offset: int = 0

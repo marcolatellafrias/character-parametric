@@ -607,7 +607,7 @@ static func create_building_cube(base_vertices: Array, height: float, color: Col
 	var normals = PackedVector3Array()
 	var indices = PackedInt32Array()
 	
-	var add_triangle = func(v1: Vector3, v2: Vector3, v3: Vector3, normal: Vector3):
+	var add_triangle_with_normal = func(v1: Vector3, v2: Vector3, v3: Vector3, normal: Vector3):
 		var start_idx = vertices.size()
 		vertices.append(v1)
 		vertices.append(v2)
@@ -621,13 +621,13 @@ static func create_building_cube(base_vertices: Array, height: float, color: Col
 	
 	# Cara inferior (normal hacia abajo)
 	var bottom_normal = Vector3(0, -1, 0)
-	add_triangle.call(bottom_verts[0], bottom_verts[2], bottom_verts[1], bottom_normal)
-	add_triangle.call(bottom_verts[0], bottom_verts[3], bottom_verts[2], bottom_normal)
+	add_triangle_with_normal.call(bottom_verts[0], bottom_verts[2], bottom_verts[1], bottom_normal)
+	add_triangle_with_normal.call(bottom_verts[0], bottom_verts[3], bottom_verts[2], bottom_normal)
 	
 	# Cara superior (normal hacia arriba)
 	var top_normal = Vector3(0, 1, 0)
-	add_triangle.call(top_verts[0], top_verts[1], top_verts[2], top_normal)
-	add_triangle.call(top_verts[0], top_verts[2], top_verts[3], top_normal)
+	add_triangle_with_normal.call(top_verts[0], top_verts[1], top_verts[2], top_normal)
+	add_triangle_with_normal.call(top_verts[0], top_verts[2], top_verts[3], top_normal)
 	
 	var edge_map: Array[int]
 	
@@ -643,13 +643,25 @@ static func create_building_cube(base_vertices: Array, height: float, color: Col
 		if edge_type != 0:
 			var next_i = (i + 1) % 4
 			
-			# Calcular normal de la cara lateral
-			var edge_vec = bottom_verts[next_i] - bottom_verts[i]
-			var up_vec = Vector3(0, 1, 0)
-			var face_normal = edge_vec.cross(up_vec).normalized()
+			# Calcular normal usando los 3 vértices del primer triángulo
+			var v1 = bottom_verts[i]
+			var v2 = top_verts[next_i]
+			var v3 = top_verts[i]
 			
-			add_triangle.call(bottom_verts[i], top_verts[next_i], top_verts[i], face_normal)
-			add_triangle.call(bottom_verts[i], bottom_verts[next_i], top_verts[next_i], face_normal)
+			var edge1 = v2 - v1
+			var edge2 = v3 - v1
+			var face_normal = edge1.cross(edge2).normalized()
+			
+			# Asegurar que la normal apunte hacia afuera
+			var center = (bottom_verts[0] + bottom_verts[1] + bottom_verts[2] + bottom_verts[3]) / 4.0
+			var face_center = (v1 + v2 + v3) / 3.0
+			var to_outside = (face_center - center).normalized()
+			
+			if face_normal.dot(to_outside) < 0:
+				face_normal = -face_normal
+			
+			add_triangle_with_normal.call(bottom_verts[i], top_verts[next_i], top_verts[i], face_normal)
+			add_triangle_with_normal.call(bottom_verts[i], bottom_verts[next_i], top_verts[next_i], face_normal)
 	
 	var arrays = []
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -664,6 +676,7 @@ static func create_building_cube(base_vertices: Array, height: float, color: Col
 	material.vertex_color_use_as_albedo = true
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	material.cull_mode = BaseMaterial3D.CULL_BACK
+	material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
 	st.set_material(material)
 	
 	mesh_instance.mesh = st.commit()

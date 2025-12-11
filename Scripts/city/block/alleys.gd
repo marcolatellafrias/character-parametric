@@ -10,6 +10,7 @@ var path_edges: Dictionary = {}
 var small_alleyways_count: int
 var big_alleyways_count: int
 var min_steps_before_turn: int
+var straight_probability: float
 var rng: RandomNumberGenerator
 
 
@@ -18,12 +19,15 @@ func _init(
 	p_small_alleyways_count: int = 2,
 	p_big_alleyways_count: int = 1,
 	p_min_steps_before_turn: int = 2,
-	p_seed: int = -1
+	p_seed: int = -1,
+	p_straight_probability: float = 0.5
+
 ) -> void:
 	grid = p_grid
 	small_alleyways_count = p_small_alleyways_count
 	big_alleyways_count = p_big_alleyways_count
 	min_steps_before_turn = p_min_steps_before_turn
+	straight_probability = p_straight_probability
 	
 	rng = RandomNumberGenerator.new()
 	if p_seed == -1:
@@ -270,8 +274,8 @@ func _get_next_vertex_with_turn_ratio(
 	
 	if is_going_toward_target:
 		# Actualmente yendo hacia el target, puede:
-		# 1. Seguir hacia el target (70%)
-		# 2. Girar a perpendiculares (30%)
+		# 1. Seguir hacia el target (straight_probability%)
+		# 2. Girar a perpendiculares (1 - straight_probability%)
 		
 		# Evaluar seguir recto
 		var straight_option = current + target_dir
@@ -297,7 +301,7 @@ func _get_next_vertex_with_turn_ratio(
 			var chosen_dir = valid_perp_dirs[rng.randi_range(0, valid_perp_dirs.size() - 1)]
 			return {"vertex": current + chosen_dir, "is_turn": true}
 		elif can_go_straight and not valid_perp_dirs.is_empty():
-			if rng.randf() < 0.7:
+			if rng.randf() < straight_probability:
 				return {"vertex": straight_option, "is_turn": false}
 			else:
 				var chosen_dir = valid_perp_dirs[rng.randi_range(0, valid_perp_dirs.size() - 1)]
