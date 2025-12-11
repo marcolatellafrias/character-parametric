@@ -4,8 +4,8 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(600, 600)
-@export var min_distance: float = 150.5
+@export var region_size: Vector2 = Vector2(70/6, 70/6)
+@export var min_distance: float = 15.5/6
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
 
@@ -66,7 +66,7 @@ extends Node3D
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
 @export var block_grid_floors: int = 2
-@export var block_cells_per_floor: int = 30
+@export var block_cells_per_floor: int = 10
 
 @export_subgroup("Offsets de Calles (en celdas)")
 @export var boundary_offset: int = 0
@@ -77,8 +77,8 @@ extends Node3D
 @export var large_tunnel_offset: int = 17
 
 @export_group("Grilla Distorsionada")
-@export var distorted_grid_rows: int = 8
-@export var distorted_grid_columns: int = 8
+@export var distorted_grid_rows: int = 6
+@export var distorted_grid_columns: int = 6
 @export_range(0.0, 1.0) var wave_amplitude_x: float = 0.07
 @export_range(0.0, 1.0) var wave_amplitude_z: float = 0.07
 @export var wave_frequency_x: float = 1.0
@@ -89,13 +89,13 @@ extends Node3D
 
 @export_subgroup("Generación de Alleyways")
 @export var small_alleyways_count: int = 3
-@export var big_alleyways_count: int = 2
+@export var big_alleyways_count: int = 3
 @export var min_steps_before_turn: int = 2
 @export var grid_seed: int = -1  # -1 = aleatorio
 
 @export_group("Grilla de Buildings")
-@export var building_grid_rows: int = 10
-@export var building_grid_columns: int = 10
+@export var building_grid_rows: int = 20
+@export var building_grid_columns: int = 20
 @export var building_cell_height: float = 3.0
 
 @export_subgroup("Visualización de Grilla Distorsionada")
@@ -126,7 +126,7 @@ extends Node3D
 @export var lane_width: float = 0.02
 
 @export_group("Planos Peatonales")
-@export var show_pedestrian_planes: bool = true
+@export var show_pedestrian_planes: bool = false
 @export var pedestrian_plane_color: Color = Color(1.0, 0.5, 0.0, 0.6)
 @export_range(0.0, 1.0) var pedestrian_plane_transparency: float = 0.5
 
@@ -391,13 +391,9 @@ func _visualize_buildings() -> void:
 		if distorted == null:
 			continue
 		
-		# Calcular altura de los buildings
 		var building_height = block.get_floors() * block.get_cells_per_floor() * block.get_cell_height()
-		
-		# Determinar si el bloque está en orden clockwise
 		var is_clockwise = block.is_clockwise
 		
-		# Iterar por cada building en el distorted_grid
 		for z in range(distorted.rows):
 			for x in range(distorted.columns):
 				var building: Building = block.get_building(x, z)
@@ -405,22 +401,24 @@ func _visualize_buildings() -> void:
 				if building == null:
 					continue
 				
-				# Obtener vértices del área core del building
-				var core_vertices = building.get_core_vertices(0)  # Piso base
+				var core_vertices = building.get_core_vertices(0)
 				
 				if core_vertices.size() != 4:
 					continue
 				
-				# Si el bloque es clockwise, invertir el orden de los vértices
-				# para que las normales apunten hacia afuera
 				if is_clockwise:
-					# Invertir de [BL, BR, TR, TL] a [BL, TL, TR, BR]
 					var temp = core_vertices[1]
 					core_vertices[1] = core_vertices[3]
 					core_vertices[3] = temp
 				
-				# Crear cubo extruido del building
-				var cube = DebugUtil.create_skewed_cube(core_vertices, building_height, building_color)
+				# Usar la nueva función con edge_types
+				var cube = DebugUtil.create_building_cube(
+					core_vertices, 
+					building_height, 
+					building_color,
+					building.edge_types,
+					is_clockwise
+				)
 				add_child(cube)
 				total_buildings += 1
 	

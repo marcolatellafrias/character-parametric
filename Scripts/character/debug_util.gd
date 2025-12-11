@@ -583,3 +583,90 @@ static func create_debug_arrow_to_from(from: Vector3, to: Vector3, color: Color,
 	
 	mesh_instance.material_override = material
 	return mesh_instance
+
+static func create_building_cube(base_vertices: Array, height: float, color: Color, edge_types: Array[int], is_clockwise: bool) -> MeshInstance3D:
+	if base_vertices.size() != 4:
+		push_error("Se requieren exactamente 4 vértices para la base")
+		return null
+	
+	if edge_types.size() != 4:
+		push_error("Se requieren exactamente 4 tipos de edges [north, east, south, west]")
+		return null
+	
+	var mesh_instance = MeshInstance3D.new()
+	var st = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	
+	var bottom_verts = base_vertices
+	var top_verts = []
+	
+	for i in range(4):
+		top_verts.append(bottom_verts[i] + Vector3(0, height, 0))
+	
+	var vertices = PackedVector3Array()
+	var normals = PackedVector3Array()
+	var indices = PackedInt32Array()
+	
+	var add_triangle = func(v1: Vector3, v2: Vector3, v3: Vector3, normal: Vector3):
+		var start_idx = vertices.size()
+		vertices.append(v1)
+		vertices.append(v2)
+		vertices.append(v3)
+		normals.append(normal)
+		normals.append(normal)
+		normals.append(normal)
+		indices.append(start_idx)
+		indices.append(start_idx + 1)
+		indices.append(start_idx + 2)
+	
+	# Cara inferior (normal hacia abajo)
+	var bottom_normal = Vector3(0, -1, 0)
+	add_triangle.call(bottom_verts[0], bottom_verts[2], bottom_verts[1], bottom_normal)
+	add_triangle.call(bottom_verts[0], bottom_verts[3], bottom_verts[2], bottom_normal)
+	
+	# Cara superior (normal hacia arriba)
+	var top_normal = Vector3(0, 1, 0)
+	add_triangle.call(top_verts[0], top_verts[1], top_verts[2], top_normal)
+	add_triangle.call(top_verts[0], top_verts[2], top_verts[3], top_normal)
+	
+	var edge_map: Array[int]
+	
+	if is_clockwise:
+		edge_map = [3, 2, 1, 0]
+	else:
+		edge_map = [0, 1, 2, 3]
+	
+	# Caras laterales
+	for i in range(4):
+		var edge_type = edge_types[edge_map[i]]
+		
+		if edge_type != 0:
+			var next_i = (i + 1) % 4
+			
+			# Calcular normal de la cara lateral
+			var edge_vec = bottom_verts[next_i] - bottom_verts[i]
+			var up_vec = Vector3(0, 1, 0)
+			var face_normal = edge_vec.cross(up_vec).normalized()
+			
+			add_triangle.call(bottom_verts[i], top_verts[next_i], top_verts[i], face_normal)
+			add_triangle.call(bottom_verts[i], bottom_verts[next_i], top_verts[next_i], face_normal)
+	
+	var arrays = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	
+	st.create_from_arrays(arrays)
+	st.set_color(color)
+	
+	var material = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	material.cull_mode = BaseMaterial3D.CULL_BACK
+	st.set_material(material)
+	
+	mesh_instance.mesh = st.commit()
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	
+	return mesh_instance

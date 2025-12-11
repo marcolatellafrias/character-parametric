@@ -182,7 +182,6 @@ func _create_path_generator(
 	
 	path_generator.generate()
 
-
 func _create_buildings() -> void:
 	buildings.clear()
 	
@@ -198,18 +197,30 @@ func _create_buildings() -> void:
 			
 			# North edge: (x, z) -> (x+1, z)
 			var north_type = path_generator.get_path_edge_type_vertices(x, z, x + 1, z)
+			# Si está en el borde norte, es boundary
+			if z == 0:
+				north_type = -1
 			edge_types_array.append(north_type)
 			
 			# East edge: (x+1, z) -> (x+1, z+1)
 			var east_type = path_generator.get_path_edge_type_vertices(x + 1, z, x + 1, z + 1)
+			# Si está en el borde este, es boundary
+			if x == distorted_grid.columns - 1:
+				east_type = -1
 			edge_types_array.append(east_type)
 			
 			# South edge: (x+1, z+1) -> (x, z+1)
 			var south_type = path_generator.get_path_edge_type_vertices(x + 1, z + 1, x, z + 1)
+			# Si está en el borde sur, es boundary
+			if z == distorted_grid.rows - 1:
+				south_type = -1
 			edge_types_array.append(south_type)
 			
 			# West edge: (x, z+1) -> (x, z)
 			var west_type = path_generator.get_path_edge_type_vertices(x, z + 1, x, z)
+			# Si está en el borde oeste, es boundary
+			if x == 0:
+				west_type = -1
 			edge_types_array.append(west_type)
 			
 			# Crear building con offsets configurables
