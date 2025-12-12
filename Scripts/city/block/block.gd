@@ -40,6 +40,9 @@ var building_columns: int
 var building_cell_height: float
 var building_alleyway_offsets: Dictionary
 
+# Root floors
+var root_floors: Array[int] = []
+
 
 func _init(
 	p_rows: int,
@@ -66,12 +69,14 @@ func _init(
 	p_grid_seed: int = -1,
 	p_building_rows: int = 10,
 	p_building_columns: int = 10,
-	p_building_cell_height: float = 3.0,
-	p_building_alleyway_offsets: Dictionary = {}
+	p_building_cell_height: float = 0.005,
+	p_building_alleyway_offsets: Dictionary = {},
+	p_root_floors: Array[int] = []
 ) -> void:
 	street_types = p_street_types
 	is_clockwise = p_is_clockwise
 	street_offsets = p_street_offsets
+	root_floors = p_root_floors
 	
 	building_rows = p_building_rows
 	building_columns = p_building_columns
@@ -197,33 +202,28 @@ func _create_buildings() -> void:
 			
 			# North edge: (x, z) -> (x+1, z)
 			var north_type = path_generator.get_path_edge_type_vertices(x, z, x + 1, z)
-			# Si está en el borde norte, es boundary
 			if z == 0:
 				north_type = -1
 			edge_types_array.append(north_type)
 			
 			# East edge: (x+1, z) -> (x+1, z+1)
 			var east_type = path_generator.get_path_edge_type_vertices(x + 1, z, x + 1, z + 1)
-			# Si está en el borde este, es boundary
 			if x == distorted_grid.columns - 1:
 				east_type = -1
 			edge_types_array.append(east_type)
 			
 			# South edge: (x+1, z+1) -> (x, z+1)
 			var south_type = path_generator.get_path_edge_type_vertices(x + 1, z + 1, x, z + 1)
-			# Si está en el borde sur, es boundary
 			if z == distorted_grid.rows - 1:
 				south_type = -1
 			edge_types_array.append(south_type)
 			
 			# West edge: (x, z+1) -> (x, z)
 			var west_type = path_generator.get_path_edge_type_vertices(x, z + 1, x, z)
-			# Si está en el borde oeste, es boundary
 			if x == 0:
 				west_type = -1
 			edge_types_array.append(west_type)
 			
-			# Crear building con offsets configurables
 			var building = Building.new(
 				cell_vertices,
 				edge_types_array,
@@ -476,3 +476,6 @@ func get_building_columns() -> int:
 
 func get_building_cell_height() -> float:
 	return building_cell_height
+
+func get_root_floors() -> Array[int]:
+	return root_floors

@@ -7,6 +7,7 @@ var street_types: Dictionary = {}
 var block_grids: Dictionary = {}
 var region_size: Vector2 = Vector2.ZERO
 var pedestrian_planes: Dictionary = {}
+var root_floors: Array[int] = []  # Lista de pisos que son root floors
 
 # Configuración de grillas
 var block_rows: int
@@ -35,7 +36,6 @@ var grid_seed: int
 # Configuración de grilla de Buildings
 var building_grid_rows: int
 var building_grid_columns: int
-var building_cell_height: float
 
 func generate_city_graph(
 	smooth_steps: int,
@@ -77,13 +77,16 @@ func generate_city_graph(
 	p_grid_seed: int = -1,
 	p_building_grid_rows: int = 10,
 	p_building_grid_columns: int = 10,
-	p_building_cell_height: float = 3.0
+	p_block_cell_height: float = 0.01,
+	p_building_cell_height: float = 0.005,
+	p_root_floors: Array[int] = []
 ) -> void:
 	
 	seed(generation_seed)
 	self.region_size = region_size
 	self.block_rows = block_grid_rows
 	self.block_columns = block_grid_columns
+	self.root_floors = p_root_floors
 	
 	# Guardar configuración de DistortedGrid
 	self.distorted_grid_rows = p_distorted_grid_rows
@@ -105,7 +108,6 @@ func generate_city_graph(
 	# Guardar configuración de grilla de Buildings
 	self.building_grid_rows = p_building_grid_rows
 	self.building_grid_columns = p_building_grid_columns
-	self.building_cell_height = p_building_cell_height
 	
 	# Configurar offsets de calles
 	street_offsets = {
@@ -135,11 +137,11 @@ func generate_city_graph(
 	_initialize_neighborhoods()
 	_assign_neighborhoods(num_neighborhoods)
 	
-	var block_cell_height = min_distance / block_grid_rows
 	_generate_block_grids(
 		block_grid_floors,
 		block_cells_per_floor,
-		block_cell_height
+		p_block_cell_height,
+		p_building_cell_height
 	)
 	
 	_generate_pedestrian_planes()
@@ -592,7 +594,8 @@ func get_faces_in_neighborhood(neighborhood_id: int) -> Array[int]:
 func _generate_block_grids(
 	floors: int,
 	cells_per_floor: int,
-	cell_height: float
+	block_cell_height: float,
+	building_cell_height: float
 ) -> void:
 	block_grids.clear()
 	
@@ -622,7 +625,7 @@ func _generate_block_grids(
 			block_columns,
 			face_vertices,
 			street_types_array,
-			cell_height,
+			block_cell_height,
 			floors,
 			cells_per_floor,
 			is_clockwise,
@@ -642,7 +645,9 @@ func _generate_block_grids(
 			block_seed,
 			building_grid_rows,
 			building_grid_columns,
-			building_cell_height
+			building_cell_height,
+			{},
+			root_floors
 		)
 		
 		block_grids[face_idx] = block

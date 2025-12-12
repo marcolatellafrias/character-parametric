@@ -21,7 +21,6 @@ extends Node3D
 @export var node_radius: float = 0.08
 @export var normal_node_color: Color = Color.CHARTREUSE
 @export var boundary_node_color: Color = Color.ORANGE_RED
-@export var show_inscribed_squares: bool = false
 @export var inscribed_square_color: Color = Color.RED
 @export var inscribed_square_width: float = 0.03
 @export var auto_generate: bool = true
@@ -65,8 +64,13 @@ extends Node3D
 @export_group("Grillas de Manzanas")
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
-@export var block_grid_floors: int = 2
-@export var block_cells_per_floor: int = 30
+@export var block_grid_floors: int = 9
+@export var block_cells_per_floor: int = 14
+
+@export_subgroup("Root Floors")
+@export var min_root_floor_height: int = 2
+@export var max_root_floor_height: int = 3
+@export var use_generation_seed_for_roots: bool = true
 
 @export_subgroup("Offsets de Calles (en celdas)")
 @export var boundary_offset: int = 0
@@ -96,7 +100,6 @@ extends Node3D
 @export_group("Grilla de Buildings")
 @export var building_grid_rows: int = 20
 @export var building_grid_columns: int = 20
-@export var building_cell_height: float = 3.0
 
 @export_subgroup("Visualización de Grilla Distorsionada")
 @export var show_distorted_grid: bool = true
@@ -130,11 +133,19 @@ extends Node3D
 @export var pedestrian_plane_color: Color = Color(1.0, 0.5, 0.0, 0.6)
 @export_range(0.0, 1.0) var pedestrian_plane_transparency: float = 0.5
 
+@export_group("Planos de Pisos")
+@export var show_floor_planes: bool = true
+@export var root_floor_plane_color: Color = Color(1.0, 0.0, 0.5, 0.4)
+@export_range(0.0, 1.0) var root_floor_plane_transparency: float = 0.4
+@export var normal_floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
+@export_range(0.0, 1.0) var normal_floor_plane_transparency: float = 0.3
+
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
 var generator: GraphCityGenerator = null
 var neighborhood_colors: Dictionary = {}
+var root_floors: Array[int] = []  # Lista de pisos que son root floors
 
 # ============================================
 # INICIALIZACIÓN
@@ -153,6 +164,14 @@ func generate_and_visualize() -> void:
 
 func generate_graph() -> void:
 	generator = GraphCityGenerator.new()
+	
+	# Calcular alturas de celdas basadas en min_distance
+	var block_cell_height = min_distance / block_grid_rows
+	var building_cell_height = min_distance / building_grid_rows
+	
+	# Generar root floors
+	_generate_root_floors()
+	
 	generator.generate_city_graph(
 		smoothing_steps,
 		region_size,
@@ -193,10 +212,36 @@ func generate_graph() -> void:
 		grid_seed,
 		building_grid_rows,
 		building_grid_columns,
-		building_cell_height
+		block_cell_height,
+		building_cell_height,
+		root_floors
 	)
 	
 	_generate_neighborhood_colors()
+
+func _generate_root_floors() -> void:
+	root_floors.clear()
+	
+	# El primer piso siempre es root floor
+	root_floors.append(0)
+	
+	# Usar generation_seed si está configurado
+	if use_generation_seed_for_roots:
+		seed(generation_seed)
+	
+	var current_floor = 0
+	
+	while current_floor < block_grid_floors:
+		# Generar altura aleatoria para este root floor
+		var root_height = randi_range(min_root_floor_height, max_root_floor_height)
+		
+		# El siguiente root floor está a esta distancia
+		current_floor += root_height
+		
+		if current_floor < block_grid_floors:
+			root_floors.append(current_floor)
+	
+	print("[Visualizer] Root floors generados: %s" % str(root_floors))
 
 func _generate_neighborhood_colors() -> void:
 	neighborhood_colors.clear()
@@ -219,10 +264,10 @@ func visualize_graph() -> void:
 		push_error("No hay grafo generado para visualizar")
 		return
 	
-	if show_inscribed_squares:
-		_visualize_inscribed_squares()
-	
 	_visualize_streets()
+	
+	if show_floor_planes:
+		_visualize_floor_planes()
 	
 	if show_buildings:
 		_visualize_buildings()
@@ -355,24 +400,62 @@ func _visualize_nodes() -> void:
 		add_child(sphere)
 
 # ============================================
-# VISUALIZACIÓN DE CUADRADOS INSCRITOS
+# VISUALIZACIÓN DE PLANOS DE PISOS
 # ============================================
-func _visualize_inscribed_squares() -> void:
-	for face_idx in range(generator.plain_graph.faces.size()):
-		var inscribed = generator.plain_graph.get_inscribed_square_for_face(face_idx, true)
+func _visualize_floor_planes() -> void:
+	var all_block_faces = generator.get_all_block_faces()
+	var total_planes = 0
+	var total_root_planes = 0
+	
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
 		
-		if inscribed.is_empty():
+		if block == null:
 			continue
 		
-		for i in range(inscribed.size()):
-			var next_i = (i + 1) % inscribed.size()
-			var line = DebugUtil.create_debug_line_to_from(
-				inscribed[i],
-				inscribed[next_i],
-				inscribed_square_color,
-				inscribed_square_width
-			)
-			add_child(line)
+		var floors = block.get_floors()
+		var cells_per_floor = block.get_cells_per_floor()
+		var cell_height = block.get_cell_height()
+		
+		# Obtener vértices completos del bloque (sin offsets)
+		var face_nodes = generator.plain_graph.faces[face_idx]
+		var face_vertices_3d: Array[Vector3] = []
+		
+		for node_idx in face_nodes:
+			face_vertices_3d.append(generator.plain_graph.points[node_idx])
+		
+		if face_vertices_3d.size() != 4:
+			continue
+		
+		# Crear un plano al inicio de cada piso
+		for floor in range(floors):
+			var y = floor * cells_per_floor * cell_height
+			
+			# Determinar si es root floor
+			var is_root_floor = floor in root_floors
+			
+			var color: Color
+			var transparency: float
+			
+			if is_root_floor:
+				color = root_floor_plane_color
+				transparency = root_floor_plane_transparency
+				total_root_planes += 1
+			else:
+				color = normal_floor_plane_color
+				transparency = normal_floor_plane_transparency
+			
+			# Crear plano con altura Y del piso
+			var v1 = Vector3(face_vertices_3d[0].x, y, face_vertices_3d[0].z)
+			var v2 = Vector3(face_vertices_3d[1].x, y, face_vertices_3d[1].z)
+			var v3 = Vector3(face_vertices_3d[2].x, y, face_vertices_3d[2].z)
+			var v4 = Vector3(face_vertices_3d[3].x, y, face_vertices_3d[3].z)
+			
+			var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, color, transparency)
+			add_child(plane)
+			total_planes += 1
+	
+	print("[Visualizer] Planos de pisos: %d (%d root, %d normal) en %d bloques" % [total_planes, total_root_planes, total_planes - total_root_planes, all_block_faces.size()])
 
 # ============================================
 # VISUALIZACIÓN DE BUILDINGS
@@ -411,7 +494,6 @@ func _visualize_buildings() -> void:
 					core_vertices[1] = core_vertices[3]
 					core_vertices[3] = temp
 				
-				# Usar la nueva función con edge_types
 				var cube = DebugUtil.create_building_cube(
 					core_vertices, 
 					building_height, 
