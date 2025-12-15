@@ -182,7 +182,10 @@ func _create_path_generator(
 		small_alleyways_count,
 		big_alleyways_count,
 		min_steps_before_turn,
-		grid_seed
+		grid_seed,
+		0.5,
+		root_floors,
+		grid_geometry.floors
 	)
 	
 	path_generator.generate()
@@ -190,50 +193,53 @@ func _create_path_generator(
 func _create_buildings() -> void:
 	buildings.clear()
 	
-	for z in range(distorted_grid.rows):
-		for x in range(distorted_grid.columns):
-			var cell_vertices = distorted_grid.get_cell_vertices(x, z)
-			
-			if cell_vertices.size() != 4:
-				continue
-			
-			# Obtener tipos de edges para este building
-			var edge_types_array: Array[int] = []
-			
-			# North edge: (x, z) -> (x+1, z)
-			var north_type = path_generator.get_path_edge_type_vertices(x, z, x + 1, z)
-			if z == 0:
-				north_type = -1
-			edge_types_array.append(north_type)
-			
-			# East edge: (x+1, z) -> (x+1, z+1)
-			var east_type = path_generator.get_path_edge_type_vertices(x + 1, z, x + 1, z + 1)
-			if x == distorted_grid.columns - 1:
-				east_type = -1
-			edge_types_array.append(east_type)
-			
-			# South edge: (x+1, z+1) -> (x, z+1)
-			var south_type = path_generator.get_path_edge_type_vertices(x + 1, z + 1, x, z + 1)
-			if z == distorted_grid.rows - 1:
-				south_type = -1
-			edge_types_array.append(south_type)
-			
-			# West edge: (x, z+1) -> (x, z)
-			var west_type = path_generator.get_path_edge_type_vertices(x, z + 1, x, z)
-			if x == 0:
-				west_type = -1
-			edge_types_array.append(west_type)
-			
-			var building = Building.new(
-				cell_vertices,
-				edge_types_array,
-				building_rows,
-				building_columns,
-				building_cell_height,
-				building_alleyway_offsets
-			)
-			
-			buildings["%d_%d" % [x, z]] = building
+	# Crear buildings para cada piso
+	for floor in range(grid_geometry.floors):
+		for z in range(distorted_grid.rows):
+			for x in range(distorted_grid.columns):
+				var cell_vertices = distorted_grid.get_cell_vertices(x, z)
+				
+				if cell_vertices.size() != 4:
+					continue
+				
+				# Obtener tipos de edges para este building en este piso
+				var edge_types_array: Array[int] = []
+				
+				# North edge: (x, z) -> (x+1, z)
+				var north_type = path_generator.get_path_edge_type_vertices(x, z, x + 1, z, floor)
+				if z == 0:
+					north_type = -1
+				edge_types_array.append(north_type)
+				
+				# East edge: (x+1, z) -> (x+1, z+1)
+				var east_type = path_generator.get_path_edge_type_vertices(x + 1, z, x + 1, z + 1, floor)
+				if x == distorted_grid.columns - 1:
+					east_type = -1
+				edge_types_array.append(east_type)
+				
+				# South edge: (x+1, z+1) -> (x, z+1)
+				var south_type = path_generator.get_path_edge_type_vertices(x + 1, z + 1, x, z + 1, floor)
+				if z == distorted_grid.rows - 1:
+					south_type = -1
+				edge_types_array.append(south_type)
+				
+				# West edge: (x, z+1) -> (x, z)
+				var west_type = path_generator.get_path_edge_type_vertices(x, z + 1, x, z, floor)
+				if x == 0:
+					west_type = -1
+				edge_types_array.append(west_type)
+				
+				var building = Building.new(
+					cell_vertices,
+					edge_types_array,
+					building_rows,
+					building_columns,
+					building_cell_height,
+					building_alleyway_offsets,
+					floor
+				)
+				
+				buildings["%d_%d_%d" % [x, z, floor]] = building
 
 
 func _get_core_block_vertices() -> Array[Vector2]:
@@ -442,8 +448,8 @@ func get_block_corners() -> Array[Vector3]:
 	return corners
 
 
-func get_building(x: int, z: int) -> Building:
-	var key = "%d_%d" % [x, z]
+func get_building(x: int, z: int, floor: int = 0) -> Building:
+	var key = "%d_%d_%d" % [x, z, floor]
 	return buildings.get(key, null)
 
 

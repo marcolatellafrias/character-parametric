@@ -670,10 +670,10 @@ static func create_building_cube(base_vertices: Array, height: float, color: Col
 	arrays[Mesh.ARRAY_INDEX] = indices
 	
 	st.create_from_arrays(arrays)
-	st.set_color(color)
+	# Eliminar: st.set_color(color)
 	
 	var material = StandardMaterial3D.new()
-	material.vertex_color_use_as_albedo = true
+	material.albedo_color = color  # Aplicar color directamente al material
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	material.cull_mode = BaseMaterial3D.CULL_BACK
 	material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
@@ -683,3 +683,53 @@ static func create_building_cube(base_vertices: Array, height: float, color: Col
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	
 	return mesh_instance
+
+static func create_skewed_cube_collider(base_vertices: Array, height: float) -> StaticBody3D:
+	if base_vertices.size() != 4:
+		push_error("Se requieren exactamente 4 vértices para la base")
+		return null
+	
+	var static_body = StaticBody3D.new()
+	var collision_shape = CollisionShape3D.new()
+	
+	var bottom_verts = base_vertices
+	var top_verts = []
+	
+	for i in range(4):
+		top_verts.append(bottom_verts[i] + Vector3(0, height, 0))
+	
+	# Crear array de vértices para ConvexPolygonShape3D
+	var points = PackedVector3Array()
+	
+	# Agregar vértices inferiores
+	for v in bottom_verts:
+		points.append(v)
+	
+	# Agregar vértices superiores
+	for v in top_verts:
+		points.append(v)
+	
+	# Crear el shape convexo
+	var convex_shape = ConvexPolygonShape3D.new()
+	convex_shape.points = points
+	
+	collision_shape.shape = convex_shape
+	static_body.add_child(collision_shape)
+	
+	return static_body
+
+
+static func create_building_cube_collider(
+	base_vertices: Array[Vector3],
+	height: float,
+	edge_types: Array[int],
+	is_clockwise: bool
+) -> StaticBody3D:
+	if base_vertices.size() != 4:
+		push_error("Se requieren exactamente 4 vértices para la base")
+		return null
+	
+	# Usar create_skewed_cube_collider para crear el collider
+	var collider = create_skewed_cube_collider(base_vertices, height)
+	
+	return collider

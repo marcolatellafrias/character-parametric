@@ -4,8 +4,8 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(70/10, 70/10)
-@export var min_distance: float = 15.5/10
+@export var region_size: Vector2 = Vector2(700, 700)
+@export var min_distance: float = 150.5
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
 
@@ -64,8 +64,8 @@ extends Node3D
 @export_group("Grillas de Manzanas")
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
-@export var block_grid_floors: int = 9
-@export var block_cells_per_floor: int = 14
+@export var block_grid_floors: int = 8
+@export var block_cells_per_floor: int = 12
 
 @export_subgroup("Root Floors")
 @export var min_root_floor_height: int = 2
@@ -103,6 +103,7 @@ extends Node3D
 
 @export_subgroup("Visualización de Grilla Distorsionada")
 @export var show_distorted_grid: bool = true
+@export var distorted_grid_floor_to_show: int = 0
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
 @export var distorted_grid_small_vertex_color: Color = Color.YELLOW
@@ -122,6 +123,7 @@ extends Node3D
 @export_group("Buildings")
 @export var show_buildings: bool = true
 @export var building_color: Color = Color(0.6, 0.6, 0.6, 0.8)
+@export var show_building_colliders: bool = true
 
 @export_group("Carriles")
 @export var show_lanes: bool = true
@@ -134,7 +136,7 @@ extends Node3D
 @export_range(0.0, 1.0) var pedestrian_plane_transparency: float = 0.5
 
 @export_group("Planos de Pisos")
-@export var show_floor_planes: bool = true
+@export var show_floor_planes: bool = false
 @export var root_floor_plane_color: Color = Color(1.0, 0.0, 0.5, 0.4)
 @export_range(0.0, 1.0) var root_floor_plane_transparency: float = 0.4
 @export var normal_floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
@@ -271,6 +273,9 @@ func visualize_graph() -> void:
 	
 	if show_buildings:
 		_visualize_buildings()
+	
+	if show_building_colliders:
+		_visualize_building_colliders()
 	
 	if show_distorted_grid:
 		_visualize_distorted_grids()
@@ -474,37 +479,212 @@ func _visualize_buildings() -> void:
 		if distorted == null:
 			continue
 		
-		var building_height = block.get_floors() * block.get_cells_per_floor() * block.get_cell_height()
+		var floors = block.get_floors()
+		var cells_per_floor = block.get_cells_per_floor()
+		var cell_height = block.get_cell_height()
+		var building_height = cells_per_floor * cell_height
 		var is_clockwise = block.is_clockwise
 		
-		for z in range(distorted.rows):
-			for x in range(distorted.columns):
-				var building: Building = block.get_building(x, z)
-				
-				if building == null:
-					continue
-				
-				var core_vertices = building.get_core_vertices(0)
-				
-				if core_vertices.size() != 4:
-					continue
-				
-				if is_clockwise:
-					var temp = core_vertices[1]
-					core_vertices[1] = core_vertices[3]
-					core_vertices[3] = temp
-				
-				var cube = DebugUtil.create_building_cube(
-					core_vertices, 
-					building_height, 
-					building_color,
-					building.edge_types,
-					is_clockwise
-				)
-				add_child(cube)
-				total_buildings += 1
+		# Iterar por cada piso
+		for floor in range(floors):
+			var floor_base_y = floor * cells_per_floor * cell_height
+			
+			for z in range(distorted.rows):
+				for x in range(distorted.columns):
+					var building: Building = block.get_building(x, z, floor)
+					
+					if building == null:
+						continue
+					
+					var core_vertices = building.get_core_vertices(0)
+					
+					if core_vertices.size() != 4:
+						continue
+					
+					# Ajustar altura Y de los vértices al piso correspondiente
+					for i in range(core_vertices.size()):
+						core_vertices[i].y += floor_base_y
+					
+					if is_clockwise:
+						var temp = core_vertices[1]
+						core_vertices[1] = core_vertices[3]
+						core_vertices[3] = temp
+					
+					var cube = DebugUtil.create_building_cube(
+						core_vertices, 
+						building_height, 
+						building_color,
+						building.edge_types,
+						is_clockwise
+					)
+					add_child(cube)
+					total_buildings += 1
 	
-	print("[Visualizer] Buildings individuales: %d en %d bloques" % [total_buildings, all_block_faces.size()])
+	print("[Visualizer] Buildings por piso: %d en %d bloques" % [total_buildings, all_block_faces.size()])
+
+# ============================================
+# VISUALIZACIÓN DE COLLIDERS DE BUILDINGS
+# ============================================
+func _visualize_building_colliders() -> void:
+	var all_block_faces = generator.get_all_block_faces()
+	var total_colliders = 0
+	var total_blocks = 0
+	
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		
+		if block == null:
+			continue
+		
+		var distorted = block.get_distorted_grid()
+		if distorted == null:
+			continue
+		
+		var floors = block.get_floors()
+		var cells_per_floor = block.get_cells_per_floor()
+		var cell_height = block.get_cell_height()
+		var building_height = cells_per_floor * cell_height
+		var is_clockwise = block.is_clockwise
+		
+		# Crear UN StaticBody3D para toda la manzana
+		var static_body = StaticBody3D.new()
+		var has_colliders = false
+		
+		# Iterar por cada piso
+		for floor in range(floors):
+			var floor_base_y = floor * cells_per_floor * cell_height
+			
+			for z in range(distorted.rows):
+				for x in range(distorted.columns):
+					var building: Building = block.get_building(x, z, floor)
+					
+					if building == null:
+						continue
+					
+					var core_vertices = building.get_core_vertices(0)
+					
+					if core_vertices.size() != 4:
+						continue
+					
+					# Verificar que el core no esté vacío
+					var core_info = building.get_core_info()
+					if core_info["width"] <= 0 or core_info["depth"] <= 0:
+						continue
+					
+					# Ajustar altura Y de los vértices al piso correspondiente
+					for i in range(core_vertices.size()):
+						core_vertices[i].y += floor_base_y
+					
+					if is_clockwise:
+						var temp = core_vertices[1]
+						core_vertices[1] = core_vertices[3]
+						core_vertices[3] = temp
+					
+					# Crear CollisionShape3D directamente
+					var collision_shape = _create_collision_shape_from_vertices(
+						core_vertices,
+						building_height
+					)
+					
+					if collision_shape != null:
+						static_body.add_child(collision_shape)
+						total_colliders += 1
+						has_colliders = true
+		
+		# Solo agregar el StaticBody3D si tiene al menos un collider
+		if has_colliders:
+			add_child(static_body)
+			total_blocks += 1
+	
+	print("[Visualizer] Colliders: %d buildings en %d manzanas (StaticBody3D)" % [total_colliders, total_blocks])
+
+func _create_collision_shape_from_vertices(base_vertices: Array, height: float) -> CollisionShape3D:
+	if base_vertices.size() != 4:
+		return null
+	
+	var bottom_verts = base_vertices
+	var top_verts = []
+	
+	for i in range(4):
+		top_verts.append(bottom_verts[i] + Vector3(0, height, 0))
+	
+	# Crear array de vértices para ConvexPolygonShape3D
+	var points = PackedVector3Array()
+	
+	# Agregar vértices inferiores
+	for v in bottom_verts:
+		points.append(v)
+	
+	# Agregar vértices superiores
+	for v in top_verts:
+		points.append(v)
+	
+	# Crear el shape convexo
+	var convex_shape = ConvexPolygonShape3D.new()
+	convex_shape.points = points
+	
+	# Crear CollisionShape3D
+	var collision_shape = CollisionShape3D.new()
+	collision_shape.shape = convex_shape
+	
+	return collision_shape
+
+func _create_cell_collision_shape(base_vertices: Array, height: float) -> CollisionShape3D:
+	if base_vertices.size() != 4:
+		print("[DEBUG] _create_cell_collision_shape: base_vertices.size() = %d (esperado 4)" % base_vertices.size())
+		return null
+	
+	# Validar que los vértices sean válidos
+	for i in range(base_vertices.size()):
+		var v = base_vertices[i]
+		if not (v is Vector3):
+			print("[DEBUG] _create_cell_collision_shape: vértice %d no es Vector3, es %s" % [i, typeof(v)])
+			return null
+	
+	# Crear array de vértices para ConvexPolygonShape3D
+	var points = PackedVector3Array()
+	
+	# Agregar vértices inferiores
+	for v in base_vertices:
+		points.append(v)
+	
+	# Agregar vértices superiores
+	for v in base_vertices:
+		points.append(v + Vector3(0, height, 0))
+	
+	# Validar que tenemos 8 puntos
+	if points.size() != 8:
+		print("[DEBUG] _create_cell_collision_shape: points.size() = %d (esperado 8)" % points.size())
+		return null
+	
+	# Imprimir los puntos para debug
+	print("[DEBUG] Puntos del collider:")
+	for i in range(points.size()):
+		print("  [%d] %s" % [i, points[i]])
+	
+	# Crear el shape convexo
+	var convex_shape = ConvexPolygonShape3D.new()
+	
+	if convex_shape == null:
+		print("[DEBUG] ConvexPolygonShape3D.new() retornó null!")
+		return null
+	
+	convex_shape.points = points
+	
+	# Crear CollisionShape3D
+	var collision_shape = CollisionShape3D.new()
+	
+	if collision_shape == null:
+		print("[DEBUG] CollisionShape3D.new() retornó null!")
+		return null
+	
+	collision_shape.shape = convex_shape
+	
+	print("[DEBUG] _create_cell_collision_shape: CollisionShape creado exitosamente")
+	
+	return collision_shape
+
+
 # ============================================
 # VISUALIZACIÓN DE GRILLAS DISTORSIONADAS
 # ============================================
@@ -593,8 +773,8 @@ func _visualize_distorted_grids() -> void:
 				if is_boundary_edge:
 					edge_color = distorted_grid_boundary_edge_color
 				else:
-					# Usar PathGenerator para obtener tipo de edge
-					var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x + 1, grid_z)
+					# Usar PathGenerator para obtener tipo de edge del piso seleccionado
+					var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x + 1, grid_z, distorted_grid_floor_to_show)
 					
 					match path_type:
 						DistortedGrid.CellType.BIG:
@@ -633,8 +813,8 @@ func _visualize_distorted_grids() -> void:
 				if is_boundary_edge:
 					edge_color = distorted_grid_boundary_edge_color
 				else:
-					# Usar PathGenerator para obtener tipo de edge
-					var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x, grid_z + 1)
+					# Usar PathGenerator para obtener tipo de edge del piso seleccionado
+					var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x, grid_z + 1, distorted_grid_floor_to_show)
 					
 					match path_type:
 						DistortedGrid.CellType.BIG:

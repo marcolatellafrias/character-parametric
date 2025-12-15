@@ -20,6 +20,9 @@ var core_max_x: int
 var core_min_z: int
 var core_max_z: int
 
+# Piso al que pertenece este building
+var floor: int
+
 
 func _init(
 	p_vertices: Array[Vector3],
@@ -27,7 +30,8 @@ func _init(
 	p_rows: int,
 	p_columns: int,
 	p_cell_height: float,
-	p_alleyway_offsets: Dictionary
+	p_alleyway_offsets: Dictionary,
+	p_floor: int = 0
 ) -> void:
 	vertices = p_vertices
 	edge_types = p_edge_types
@@ -35,6 +39,7 @@ func _init(
 	columns = p_columns
 	cell_height = p_cell_height
 	alleyway_offsets = p_alleyway_offsets
+	floor = p_floor
 	
 	_calculate_core_area()
 
@@ -71,18 +76,18 @@ func get_edge_type(side: String) -> int:
 			return 0
 
 
-func get_cell_position(grid_x: int, grid_z: int, floor: int = 0) -> Vector3:
+func get_cell_position(grid_x: int, grid_z: int, local_floor: int = 0) -> Vector3:
 	var vertices_2d = _vertices_3d_to_2d()
 	var u = (float(grid_x) + 0.5) / max(1, columns)
 	var v = (float(grid_z) + 0.5) / max(1, rows)
 	
 	var pos_2d = GridHelper.bilinear_interpolation(vertices_2d, u, v)
-	var y = floor * cell_height
+	var y = local_floor * cell_height
 	
 	return Vector3(pos_2d.x, y, pos_2d.y)
 
 
-func get_cell_vertices(grid_x: int, grid_z: int, floor: int = 0) -> Array[Vector3]:
+func get_cell_vertices(grid_x: int, grid_z: int, local_floor: int = 0) -> Array[Vector3]:
 	var result: Array[Vector3] = []
 	var vertices_2d = _vertices_3d_to_2d()
 	
@@ -91,7 +96,7 @@ func get_cell_vertices(grid_x: int, grid_z: int, floor: int = 0) -> Array[Vector
 	var v_min = float(grid_z) / max(1, rows)
 	var v_max = float(grid_z + 1) / max(1, rows)
 	
-	var y = floor * cell_height
+	var y = local_floor * cell_height
 	
 	# Bottom-Left
 	var bl_2d = GridHelper.bilinear_interpolation(vertices_2d, u_min, v_min)
@@ -112,7 +117,7 @@ func get_cell_vertices(grid_x: int, grid_z: int, floor: int = 0) -> Array[Vector
 	return result
 
 
-func get_core_vertices(floor: int = 0) -> Array[Vector3]:
+func get_core_vertices(local_floor: int = 0) -> Array[Vector3]:
 	var vertices_2d = _vertices_3d_to_2d()
 	var result: Array[Vector3] = []
 	
@@ -121,7 +126,7 @@ func get_core_vertices(floor: int = 0) -> Array[Vector3]:
 	var v_min = float(core_min_z) / max(1, rows)
 	var v_max = float(core_max_z + 1) / max(1, rows)
 	
-	var y = floor * cell_height
+	var y = local_floor * cell_height
 	
 	# Bottom-Left
 	var bl = GridHelper.bilinear_interpolation(vertices_2d, u_min, v_min)
@@ -167,3 +172,7 @@ func _vertices_3d_to_2d() -> Array[Vector2]:
 	for v in vertices:
 		result.append(Vector2(v.x, v.z))
 	return result
+
+
+func get_floor() -> int:
+	return floor

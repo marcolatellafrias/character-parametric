@@ -31,8 +31,8 @@ var _grab_local: Vector3
 var _grab_distance: float = 0.0
 
 
-@export var walk_speed: float = 2.5
-@export var sprint_speed: float = 10.0
+@export var walk_speed: float = 5.5
+@export var sprint_speed: float = 50.0
 @export var mouse_sensitivity: float = 0.002   # radians per pixel
 @export var invert_y: bool = false
 @export var show_mesh: bool = false            # first-person => off by default
