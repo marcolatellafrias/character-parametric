@@ -21,6 +21,9 @@ var root_floors: Array[int] = []
 var neighborhood_floor_ranges: Dictionary = {}  # {NeighborhoodType: {min: int, max: int}}
 var neighborhood_height_falloff: float = 1.0  # Controla qué tan rápido disminuyen las alturas
 
+# Probabilidades de corazón de manzana por tipo de barrio
+var neighborhood_block_heart_probabilities: Dictionary = {}  # {NeighborhoodType: float}
+
 # Configuración de grillas
 var block_rows: int
 var block_columns: int
@@ -97,7 +100,10 @@ func generate_city_graph(
 	p_residential_max_floors: int = 8,
 	p_financial_min_floors: int = 6,
 	p_financial_max_floors: int = 12,
-	p_neighborhood_height_falloff: float = 1.0
+	p_neighborhood_height_falloff: float = 1.0,
+	p_industrial_block_heart_probability: float = 0.2,
+	p_residential_block_heart_probability: float = 0.3,
+	p_financial_block_heart_probability: float = 0.1
 ) -> void:
 	
 	seed(generation_seed)
@@ -112,6 +118,13 @@ func generate_city_graph(
 		NeighborhoodType.INDUSTRIAL: {"min": p_industrial_min_floors, "max": p_industrial_max_floors},
 		NeighborhoodType.RESIDENTIAL: {"min": p_residential_min_floors, "max": p_residential_max_floors},
 		NeighborhoodType.FINANCIAL: {"min": p_financial_min_floors, "max": p_financial_max_floors}
+	}
+	
+	# Configurar probabilidades de corazón de manzana por tipo de barrio
+	neighborhood_block_heart_probabilities = {
+		NeighborhoodType.INDUSTRIAL: p_industrial_block_heart_probability,
+		NeighborhoodType.RESIDENTIAL: p_residential_block_heart_probability,
+		NeighborhoodType.FINANCIAL: p_financial_block_heart_probability
 	}
 	
 	# Guardar configuración de DistortedGrid
@@ -704,6 +717,9 @@ func _generate_block_grids(
 		var min_floors = 1
 		var max_floors = 8
 		
+		# Obtener probabilidad de corazón de manzana según tipo de barrio
+		var block_heart_prob = 0.0
+		
 		if neighborhood_type in neighborhood_floor_ranges:
 			var range_data = neighborhood_floor_ranges[neighborhood_type]
 			var target_min = range_data["min"]
@@ -731,6 +747,10 @@ func _generate_block_grids(
 			# Asegurar que min <= max
 			if min_floors > max_floors:
 				min_floors = max_floors
+		
+		# Obtener probabilidad de corazón de manzana
+		if neighborhood_type in neighborhood_block_heart_probabilities:
+			block_heart_prob = neighborhood_block_heart_probabilities[neighborhood_type]
 		
 		var block = BlockGenerator.new(
 			block_rows,
@@ -761,7 +781,8 @@ func _generate_block_grids(
 			{},
 			root_floors,
 			min_floors,
-			max_floors
+			max_floors,
+			block_heart_prob
 		)
 		
 		block_grids[face_idx] = block

@@ -42,6 +42,9 @@ var cell_to_cluster: Dictionary = {}  # "x_z" -> cluster_id
 var min_floors_per_cluster: int
 var max_floors_per_cluster: int
 
+# Probabilidad de corazón de manzana
+var block_heart_probability: float = 0.0
+
 # Parámetros de grilla de buildings
 var building_rows: int
 var building_columns: int
@@ -84,7 +87,8 @@ func _init(
 	p_building_alleyway_offsets: Dictionary = {},
 	p_root_floors: Array[int] = [],
 	p_min_floors_per_cluster: int = 1,
-	p_max_floors_per_cluster: int = 8
+	p_max_floors_per_cluster: int = 8,
+	p_block_heart_probability: float = 0.0
 ) -> void:
 	street_types = p_street_types
 	is_clockwise = p_is_clockwise
@@ -97,15 +101,16 @@ func _init(
 	
 	min_floors_per_cluster = p_min_floors_per_cluster
 	max_floors_per_cluster = p_max_floors_per_cluster
+	block_heart_probability = p_block_heart_probability
 	
 	# Configurar offsets de alleyways con valores por defecto si no se proporcionan
 	if p_building_alleyway_offsets.is_empty():
 		building_alleyway_offsets = {
 			-1: 4,  # BOUNDARY
 			0: 0,   # NORMAL
-			1: 2,   # SMALL
+			1: 4,   # SMALL
 			2: 4,   # BIG
-			10: 2,  # SMALL_ORIGIN
+			10: 4,  # SMALL_ORIGIN
 			11: 4   # BIG_ORIGIN
 		}
 	else:
@@ -148,6 +153,7 @@ func _init(
 	# Generar clusters de buildings
 	cluster_seed = p_grid_seed if p_grid_seed != -1 else randi()
 	_create_building_clusters()
+	_assign_block_hearts()
 
 
 func _calculate_available_area() -> void:
@@ -478,6 +484,32 @@ func get_cluster_for_cell(x: int, z: int) -> BuildingCluster:
 
 func get_all_clusters() -> Array[BuildingCluster]:
 	return building_clusters
+
+
+func _assign_block_hearts() -> void:
+	if block_heart_probability <= 0.0:
+		return  # No hay corazones si la probabilidad es 0
+	
+	var rng = RandomNumberGenerator.new()
+	rng.seed = cluster_seed + 9999  # Offset para evitar conflictos con otros usos del seed
+	
+	var candidates_count = 0
+	var hearts_count = 0
+	
+	for cluster in building_clusters:
+		# Verificar si el cluster es candidato (interior)
+		if cluster.is_interior_cluster(distorted_grid.rows, distorted_grid.columns):
+			candidates_count += 1
+			
+			# Aplicar probabilidad
+			if rng.randf() < block_heart_probability:
+				cluster.set_block_heart(true)
+				cluster.floor_count = 0  # Corazones no tienen altura
+				hearts_count += 1
+	
+	if candidates_count > 0:
+		print("[BlockGenerator] Corazones de manzana: %d de %d candidatos (%.1f%%) - sin altura" % 
+			[hearts_count, candidates_count, (float(hearts_count) / float(candidates_count)) * 100.0])
 
 
 func _get_core_block_vertices() -> Array[Vector2]:

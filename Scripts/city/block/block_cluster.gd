@@ -18,6 +18,9 @@ var color: Color
 # Número de pisos que tiene este cluster
 var floor_count: int
 
+# Si este cluster es un corazón de manzana
+var is_block_heart: bool = false
+
 
 func _init(p_id: int, p_seed: int, p_min_floors: int = 1, p_max_floors: int = 8) -> void:
 	id = p_id
@@ -61,3 +64,21 @@ func get_cell_count() -> int:
 
 func get_floor_count() -> int:
 	return floor_count
+
+
+func set_block_heart(value: bool) -> void:
+	is_block_heart = value
+
+
+func is_interior_cluster(distorted_grid_rows: int, distorted_grid_columns: int) -> bool:
+	# Un cluster es interior si ninguna de sus celdas toca el borde
+	for cell in cells:
+		if cell.x == 0 or cell.x == distorted_grid_columns - 1:
+			return false
+		if cell.y == 0 or cell.y == distorted_grid_rows - 1:
+			return false
+	return true
+
+
+func get_is_block_heart() -> bool:
+	return is_block_heart

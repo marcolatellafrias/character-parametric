@@ -4,28 +4,31 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(70/6, 70/6)
-@export var min_distance: float = 15.5/6
+@export var region_size: Vector2 = Vector2(700, 700)
+@export var min_distance: float = 150.5
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
 
 @export_group("Barrios")
-@export var show_neighborhoods: bool = true
+@export var show_neighborhoods: bool = false
 
 @export_subgroup("Transición de Alturas")
-@export_range(0.1, 5.0) var neighborhood_height_falloff: float = 2.0
+@export_range(0.1, 5.0) var neighborhood_height_falloff: float = 1.0
 
 @export_subgroup("Industrial")
 @export var industrial_min_floors: int = 7
 @export var industrial_max_floors: int = 14
+@export_range(0.0, 1.0) var industrial_block_heart_probability: float = 0.2
 
 @export_subgroup("Residential") 
 @export var residential_min_floors: int = 1
 @export var residential_max_floors: int = 3
+@export_range(0.0, 1.0) var residential_block_heart_probability: float = 0.4
 
 @export_subgroup("Financial")
 @export var financial_min_floors: int = 6
 @export var financial_max_floors: int = 9
+@export_range(0.0, 1.0) var financial_block_heart_probability: float = 0.1
 
 @export_group("Suavizado")
 @export var smoothing_steps: int = 50
@@ -236,7 +239,10 @@ func generate_graph() -> void:
 		residential_max_floors,
 		financial_min_floors,
 		financial_max_floors,
-		neighborhood_height_falloff
+		neighborhood_height_falloff,
+		industrial_block_heart_probability,
+		residential_block_heart_probability,
+		financial_block_heart_probability
 	)
 	
 	_generate_neighborhood_colors()

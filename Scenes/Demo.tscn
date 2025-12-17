@@ -177,6 +177,7 @@ min_distance = null
 rejection_samples = null
 generation_seed = null
 show_neighborhoods = null
+neighborhood_height_falloff = null
 industrial_min_floors = null
 industrial_max_floors = null
 residential_min_floors = null
