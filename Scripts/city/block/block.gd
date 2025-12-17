@@ -34,6 +34,10 @@ var lanes: Dictionary = {}
 # Buildings
 var buildings: Dictionary = {}
 
+# Building Clusters (edificios como conjuntos de celdas)
+var building_clusters: Array[BuildingCluster] = []
+var cell_to_cluster: Dictionary = {}  # "x_z" -> cluster_id
+
 # Parámetros de grilla de buildings
 var building_rows: int
 var building_columns: int
@@ -42,6 +46,9 @@ var building_alleyway_offsets: Dictionary
 
 # Root floors
 var root_floors: Array[int] = []
+
+# Seed para generación de clusters
+var cluster_seed: int
 
 
 func _init(
@@ -85,7 +92,7 @@ func _init(
 	# Configurar offsets de alleyways con valores por defecto si no se proporcionan
 	if p_building_alleyway_offsets.is_empty():
 		building_alleyway_offsets = {
-			-1: 2,  # BOUNDARY
+			-1: 4,  # BOUNDARY
 			0: 0,   # NORMAL
 			1: 2,   # SMALL
 			2: 4,   # BIG
@@ -128,6 +135,10 @@ func _init(
 	)
 	
 	_create_buildings()
+	
+	# Generar clusters de buildings
+	cluster_seed = p_grid_seed if p_grid_seed != -1 else randi()
+	_create_building_clusters()
 
 
 func _calculate_available_area() -> void:
@@ -193,7 +204,8 @@ func _create_path_generator(
 func _create_buildings() -> void:
 	buildings.clear()
 	
-	# Crear buildings para cada piso
+	# NOTA: Aunque creamos buildings para cada piso (para mantener meshes separados),
+	# todos los pisos usan la MISMA configuración de alleyways (del piso 0)
 	for floor in range(grid_geometry.floors):
 		for z in range(distorted_grid.rows):
 			for x in range(distorted_grid.columns):
@@ -202,32 +214,31 @@ func _create_buildings() -> void:
 				if cell_vertices.size() != 4:
 					continue
 				
-				# Obtener tipos de edges para este building en este piso
 				var edge_types_array: Array[int] = []
 				
 				# North edge: (x, z) -> (x+1, z)
-				var north_type = path_generator.get_path_edge_type_vertices(x, z, x + 1, z, floor)
 				if z == 0:
-					north_type = -1
-				edge_types_array.append(north_type)
+					edge_types_array.append(-1)  # BOUNDARY
+				else:
+					edge_types_array.append(path_generator.get_path_edge_type_vertices(x, z, x + 1, z, floor))
 				
 				# East edge: (x+1, z) -> (x+1, z+1)
-				var east_type = path_generator.get_path_edge_type_vertices(x + 1, z, x + 1, z + 1, floor)
 				if x == distorted_grid.columns - 1:
-					east_type = -1
-				edge_types_array.append(east_type)
+					edge_types_array.append(-1)  # BOUNDARY
+				else:
+					edge_types_array.append(path_generator.get_path_edge_type_vertices(x + 1, z, x + 1, z + 1, floor))
 				
 				# South edge: (x+1, z+1) -> (x, z+1)
-				var south_type = path_generator.get_path_edge_type_vertices(x + 1, z + 1, x, z + 1, floor)
 				if z == distorted_grid.rows - 1:
-					south_type = -1
-				edge_types_array.append(south_type)
+					edge_types_array.append(-1)  # BOUNDARY
+				else:
+					edge_types_array.append(path_generator.get_path_edge_type_vertices(x + 1, z + 1, x, z + 1, floor))
 				
 				# West edge: (x, z+1) -> (x, z)
-				var west_type = path_generator.get_path_edge_type_vertices(x, z + 1, x, z, floor)
 				if x == 0:
-					west_type = -1
-				edge_types_array.append(west_type)
+					edge_types_array.append(-1)  # BOUNDARY
+				else:
+					edge_types_array.append(path_generator.get_path_edge_type_vertices(x, z + 1, x, z, floor))
 				
 				var building = Building.new(
 					cell_vertices,
@@ -240,6 +251,219 @@ func _create_buildings() -> void:
 				)
 				
 				buildings["%d_%d_%d" % [x, z, floor]] = building
+
+
+func _create_building_clusters() -> void:
+	building_clusters.clear()
+	cell_to_cluster.clear()
+	
+	var cluster_id = 0
+	var rng = RandomNumberGenerator.new()
+	rng.seed = cluster_seed
+	
+	# Identificar secciones separadas por alleyways
+	# NOTA: Todos los pisos usan la misma configuración de alleyways
+	var sections = _identify_sections()
+	
+	print("[BlockGenerator] Secciones identificadas: %d (compartidas por todos los pisos)" % sections.size())
+	
+	# Para cada sección, subdividirla en clusters
+	for section in sections:
+		var section_clusters = _subdivide_section_into_clusters(section, rng, cluster_id)
+		cluster_id += section_clusters
+	
+	print("[BlockGenerator] Clusters totales generados: %d (compartidos por todos los pisos)" % building_clusters.size())
+
+
+func _identify_sections() -> Array[Array]:
+	var sections: Array[Array] = []
+	var visited: Dictionary = {}
+	
+	# Flood fill para encontrar todas las celdas conectadas (no separadas por alleyways)
+	for z in range(distorted_grid.rows):
+		for x in range(distorted_grid.columns):
+			var key = "%d_%d" % [x, z]
+			
+			if key in visited:
+				continue
+			
+			var section: Array[Vector2i] = []
+			_flood_fill_section(x, z, visited, section)
+			
+			if section.size() > 0:
+				sections.append(section)
+	
+	return sections
+
+
+func _flood_fill_section(start_x: int, start_z: int, visited: Dictionary, section: Array) -> void:
+	var queue: Array[Vector2i] = [Vector2i(start_x, start_z)]
+	
+	while queue.size() > 0:
+		var current = queue.pop_front()
+		var key = "%d_%d" % [current.x, current.y]
+		
+		if key in visited:
+			continue
+		
+		if current.x < 0 or current.x >= distorted_grid.columns or \
+		   current.y < 0 or current.y >= distorted_grid.rows:
+			continue
+		
+		visited[key] = true
+		section.append(current)
+		
+		# Verificar vecinos (norte, este, sur, oeste)
+		var neighbors = [
+			Vector2i(current.x, current.y - 1),  # Norte
+			Vector2i(current.x + 1, current.y),  # Este
+			Vector2i(current.x, current.y + 1),  # Sur
+			Vector2i(current.x - 1, current.y)   # Oeste
+		]
+		
+		for neighbor in neighbors:
+			if neighbor.x < 0 or neighbor.x >= distorted_grid.columns or \
+			   neighbor.y < 0 or neighbor.y >= distorted_grid.rows:
+				continue
+			
+			var neighbor_key = "%d_%d" % [neighbor.x, neighbor.y]
+			if neighbor_key in visited:
+				continue
+			
+			# Verificar si hay un alleyway entre current y neighbor
+			if not _is_separated_by_alleyway(current, neighbor):
+				queue.append(neighbor)
+
+
+func _is_separated_by_alleyway(cell1: Vector2i, cell2: Vector2i) -> bool:
+	# Determinar el edge entre las dos celdas
+	var diff = cell2 - cell1
+	
+	# Norte/Sur (vertical)
+	if diff.x == 0:
+		var min_z = min(cell1.y, cell2.y)
+		var x = cell1.x
+		
+		# Edge entre (x, min_z) y (x+1, min_z) si diff.y < 0
+		# Edge entre (x, min_z+1) y (x+1, min_z+1) si diff.y > 0
+		var edge_z = min_z if diff.y < 0 else min_z + 1
+		
+		var edge_type = path_generator.get_path_edge_type_vertices(
+			x, edge_z, x + 1, edge_z, 0  # Piso 0 - todos los pisos usan la misma configuración
+		)
+		
+		return _is_alleyway_type(edge_type)
+	
+	# Este/Oeste (horizontal)
+	elif diff.y == 0:
+		var min_x = min(cell1.x, cell2.x)
+		var z = cell1.y
+		
+		# Edge entre (min_x, z) y (min_x, z+1) si diff.x < 0
+		# Edge entre (min_x+1, z) y (min_x+1, z+1) si diff.x > 0
+		var edge_x = min_x if diff.x < 0 else min_x + 1
+		
+		var edge_type = path_generator.get_path_edge_type_vertices(
+			edge_x, z, edge_x, z + 1, 0  # Piso 0 - todos los pisos usan la misma configuración
+		)
+		
+		return _is_alleyway_type(edge_type)
+	
+	return false
+
+
+func _is_alleyway_type(edge_type: int) -> bool:
+	return edge_type in [
+		DistortedGrid.CellType.SMALL,
+		DistortedGrid.CellType.BIG,
+		DistortedGrid.CellType.SMALL_ORIGIN,
+		DistortedGrid.CellType.BIG_ORIGIN,
+		DistortedGrid.CellType.BOUNDARY
+	]
+
+
+func _subdivide_section_into_clusters(section: Array, rng: RandomNumberGenerator, start_cluster_id: int) -> int:
+	var unassigned_cells = section.duplicate()
+	var clusters_created = 0
+	
+	while unassigned_cells.size() > 0:
+		var cluster = BuildingCluster.new(start_cluster_id + clusters_created, cluster_seed)
+		
+		# Elegir celda inicial aleatoria
+		var start_cell = unassigned_cells[rng.randi_range(0, unassigned_cells.size() - 1)]
+		
+		# Hacer crecer el cluster desde esta celda
+		var target_size = rng.randi_range(1, 8)  # Tamaño objetivo del cluster
+		_grow_cluster(cluster, start_cell, unassigned_cells, target_size, rng)
+		
+		building_clusters.append(cluster)
+		
+		# Registrar celdas en el mapa
+		for cell in cluster.cells:
+			cell_to_cluster["%d_%d" % [cell.x, cell.y]] = cluster.id
+		
+		clusters_created += 1
+	
+	return clusters_created
+
+
+func _grow_cluster(cluster: BuildingCluster, start_cell: Vector2i, unassigned: Array, target_size: int, rng: RandomNumberGenerator) -> void:
+	cluster.add_cell(start_cell.x, start_cell.y)
+	unassigned.erase(start_cell)
+	
+	var frontier: Array[Vector2i] = _get_unassigned_neighbors(start_cell, unassigned)
+	
+	while cluster.get_cell_count() < target_size and frontier.size() > 0:
+		# Elegir celda aleatoria del frontier
+		var next_cell = frontier[rng.randi_range(0, frontier.size() - 1)]
+		frontier.erase(next_cell)
+		
+		if next_cell not in unassigned:
+			continue
+		
+		cluster.add_cell(next_cell.x, next_cell.y)
+		unassigned.erase(next_cell)
+		
+		# Agregar nuevos vecinos al frontier
+		var new_neighbors = _get_unassigned_neighbors(next_cell, unassigned)
+		for neighbor in new_neighbors:
+			if neighbor not in frontier:
+				frontier.append(neighbor)
+
+
+func _get_unassigned_neighbors(cell: Vector2i, unassigned: Array) -> Array[Vector2i]:
+	var neighbors: Array[Vector2i] = []
+	
+	var candidates = [
+		Vector2i(cell.x, cell.y - 1),
+		Vector2i(cell.x + 1, cell.y),
+		Vector2i(cell.x, cell.y + 1),
+		Vector2i(cell.x - 1, cell.y)
+	]
+	
+	for candidate in candidates:
+		if candidate in unassigned:
+			neighbors.append(candidate)
+	
+	return neighbors
+
+
+func get_cluster_for_cell(x: int, z: int) -> BuildingCluster:
+	var key = "%d_%d" % [x, z]
+	var cluster_id = cell_to_cluster.get(key, -1)
+	
+	if cluster_id == -1:
+		return null
+	
+	for cluster in building_clusters:
+		if cluster.id == cluster_id:
+			return cluster
+	
+	return null
+
+
+func get_all_clusters() -> Array[BuildingCluster]:
+	return building_clusters
 
 
 func _get_core_block_vertices() -> Array[Vector2]:

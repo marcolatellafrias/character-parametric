@@ -65,7 +65,7 @@ extends Node3D
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
 @export var block_grid_floors: int = 8
-@export var block_cells_per_floor: int = 12
+@export var block_cells_per_floor: int = 5
 
 @export_subgroup("Root Floors")
 @export var min_root_floor_height: int = 2
@@ -103,7 +103,7 @@ extends Node3D
 
 @export_subgroup("Visualización de Grilla Distorsionada")
 @export var show_distorted_grid: bool = true
-@export var distorted_grid_floor_to_show: int = 0
+@export var distorted_grid_floor_to_show: int = 0  # Nota: todos los pisos usan la misma configuración
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
 @export var distorted_grid_small_vertex_color: Color = Color.YELLOW
@@ -463,11 +463,12 @@ func _visualize_floor_planes() -> void:
 	print("[Visualizer] Planos de pisos: %d (%d root, %d normal) en %d bloques" % [total_planes, total_root_planes, total_planes - total_root_planes, all_block_faces.size()])
 
 # ============================================
-# VISUALIZACIÓN DE BUILDINGS
+# VISUALIZACIÓN DE BUILDINGS (CON CLUSTERS)
 # ============================================
 func _visualize_buildings() -> void:
 	var all_block_faces = generator.get_all_block_faces()
-	var total_buildings = 0
+	var total_clusters = 0
+	var total_cells = 0
 	
 	for face_idx in all_block_faces:
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -485,12 +486,19 @@ func _visualize_buildings() -> void:
 		var building_height = cells_per_floor * cell_height
 		var is_clockwise = block.is_clockwise
 		
-		# Iterar por cada piso
-		for floor in range(floors):
-			var floor_base_y = floor * cells_per_floor * cell_height
-			
-			for z in range(distorted.rows):
-				for x in range(distorted.columns):
+		var clusters = block.get_all_clusters()
+		total_clusters += clusters.size()
+		
+		# Visualizar cada cluster en cada piso
+		for cluster in clusters:
+			for floor in range(floors):
+				var floor_base_y = floor * cells_per_floor * cell_height
+				
+				# Recolectar todas las celdas del cluster para este piso
+				for cell in cluster.cells:
+					var x = cell.x
+					var z = cell.y
+					
 					var building: Building = block.get_building(x, z, floor)
 					
 					if building == null:
@@ -501,7 +509,12 @@ func _visualize_buildings() -> void:
 					if core_vertices.size() != 4:
 						continue
 					
-					# Ajustar altura Y de los vértices al piso correspondiente
+					# Verificar que el core no esté vacío
+					var core_info = building.get_core_info()
+					if core_info["width"] <= 0 or core_info["depth"] <= 0:
+						continue
+					
+					# Ajustar altura Y
 					for i in range(core_vertices.size()):
 						core_vertices[i].y += floor_base_y
 					
@@ -510,20 +523,19 @@ func _visualize_buildings() -> void:
 						core_vertices[1] = core_vertices[3]
 						core_vertices[3] = temp
 					
-					var cube = DebugUtil.create_building_cube(
-						core_vertices, 
-						building_height, 
-						building_color,
-						building.edge_types,
-						is_clockwise
+					# Usar el color del cluster
+					var cube = DebugUtil.create_skewed_cube(
+						core_vertices,
+						building_height,
+						cluster.color
 					)
 					add_child(cube)
-					total_buildings += 1
+					total_cells += 1
 	
-	print("[Visualizer] Buildings por piso: %d en %d bloques" % [total_buildings, all_block_faces.size()])
+	print("[Visualizer] Buildings: %d clusters (%d cells total) en %d bloques" % [total_clusters, total_cells, all_block_faces.size()])
 
 # ============================================
-# VISUALIZACIÓN DE COLLIDERS DE BUILDINGS
+# VISUALIZACIÓN DE COLLIDERS DE BUILDINGS (CON CLUSTERS)
 # ============================================
 func _visualize_building_colliders() -> void:
 	var all_block_faces = generator.get_all_block_faces()
@@ -546,16 +558,22 @@ func _visualize_building_colliders() -> void:
 		var building_height = cells_per_floor * cell_height
 		var is_clockwise = block.is_clockwise
 		
-		# Crear UN StaticBody3D para toda la manzana
-		var static_body = StaticBody3D.new()
-		var has_colliders = false
+		# Crear UN StaticBody3D por cluster en toda la manzana
+		var clusters = block.get_all_clusters()
 		
-		# Iterar por cada piso
-		for floor in range(floors):
-			var floor_base_y = floor * cells_per_floor * cell_height
+		for cluster in clusters:
+			var static_body = StaticBody3D.new()
+			var has_colliders = false
 			
-			for z in range(distorted.rows):
-				for x in range(distorted.columns):
+			# Por cada piso
+			for floor in range(floors):
+				var floor_base_y = floor * cells_per_floor * cell_height
+				
+				# Por cada celda del cluster
+				for cell in cluster.cells:
+					var x = cell.x
+					var z = cell.y
+					
 					var building: Building = block.get_building(x, z, floor)
 					
 					if building == null:
@@ -566,12 +584,11 @@ func _visualize_building_colliders() -> void:
 					if core_vertices.size() != 4:
 						continue
 					
-					# Verificar que el core no esté vacío
 					var core_info = building.get_core_info()
 					if core_info["width"] <= 0 or core_info["depth"] <= 0:
 						continue
 					
-					# Ajustar altura Y de los vértices al piso correspondiente
+					# Ajustar altura Y
 					for i in range(core_vertices.size()):
 						core_vertices[i].y += floor_base_y
 					
@@ -580,7 +597,6 @@ func _visualize_building_colliders() -> void:
 						core_vertices[1] = core_vertices[3]
 						core_vertices[3] = temp
 					
-					# Crear CollisionShape3D directamente
 					var collision_shape = _create_collision_shape_from_vertices(
 						core_vertices,
 						building_height
@@ -588,15 +604,16 @@ func _visualize_building_colliders() -> void:
 					
 					if collision_shape != null:
 						static_body.add_child(collision_shape)
-						total_colliders += 1
 						has_colliders = true
+			
+			if has_colliders:
+				add_child(static_body)
+				total_colliders += 1
 		
-		# Solo agregar el StaticBody3D si tiene al menos un collider
-		if has_colliders:
-			add_child(static_body)
+		if clusters.size() > 0:
 			total_blocks += 1
 	
-	print("[Visualizer] Colliders: %d buildings en %d manzanas (StaticBody3D)" % [total_colliders, total_blocks])
+	print("[Visualizer] Colliders: %d clusters en %d manzanas" % [total_colliders, total_blocks])
 
 func _create_collision_shape_from_vertices(base_vertices: Array, height: float) -> CollisionShape3D:
 	if base_vertices.size() != 4:
@@ -689,6 +706,8 @@ func _create_cell_collision_shape(base_vertices: Array, height: float) -> Collis
 # VISUALIZACIÓN DE GRILLAS DISTORSIONADAS
 # ============================================
 func _visualize_distorted_grids() -> void:
+	# NOTA: Todos los pisos usan la misma configuración de alleyways,
+	# por lo que el parámetro distorted_grid_floor_to_show no afecta la visualización
 	var all_block_faces = generator.get_all_block_faces()
 	var total_vertices = 0
 	var total_edges = 0

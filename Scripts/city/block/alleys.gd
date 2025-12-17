@@ -3,8 +3,8 @@ class_name PathGenerator extends RefCounted
 # Referencia a la grilla
 var grid: DistortedGrid
 
-# Edges de los callejones por piso: [floor] -> {edge_key: type}
-var path_edges_per_floor: Array[Dictionary] = []
+# Edges de los callejones - AHORA SOLO UNA CONFIGURACIÓN PARA TODOS LOS PISOS
+var path_edges: Dictionary = {}  # edge_key: type
 
 # Parámetros para generar callejones internos
 var small_alleyways_count: int
@@ -13,7 +13,7 @@ var min_steps_before_turn: int
 var straight_probability: float
 var rng: RandomNumberGenerator
 
-# Root floors
+# Root floors (mantenidos para uso futuro)
 var root_floors: Array[int] = []
 var total_floors: int = 0
 
@@ -41,32 +41,21 @@ func _init(
 		rng.randomize()
 	else:
 		rng.seed = p_seed
-	
-	# Inicializar arrays de path_edges para cada piso
-	path_edges_per_floor.resize(total_floors)
-	for i in range(total_floors):
-		path_edges_per_floor[i] = {}
 
 
 func generate() -> void:
-	print("\n=== GENERANDO ALLEYWAYS MULTI-PISO ===")
+	print("\n=== GENERANDO ALLEYWAYS (CONFIGURACIÓN ÚNICA PARA TODOS LOS PISOS) ===")
 	print("Total pisos: %d" % total_floors)
-	print("Root floors: %s" % str(root_floors))
+	print("Root floors: %s (mantenidos para uso futuro)" % str(root_floors))
 	
-	for floor in range(total_floors):
-		if floor in root_floors:
-			print("\n--- PISO %d (ROOT FLOOR) - Generación completa ---" % floor)
-			_generate_floor_from_scratch(floor)
-		elif floor == 0:
-			print("\n--- PISO 0 (BASE) - Generación completa ---" % floor)
-			_generate_floor_from_scratch(floor)
-		else:
-			print("\n--- PISO %d (NORMAL) - Mutación del piso %d ---" % [floor, floor - 1])
-			_mutate_from_previous_floor(floor)
+	# Generar solo una vez para todos los pisos
+	_generate_alleyways()
+	
+	print("  Edges generados: %d (compartidos por todos los pisos)" % path_edges.size())
 
 
-func _generate_floor_from_scratch(floor: int) -> void:
-	print("Grilla: %dx%d (columns x rows)" % [grid.columns, grid.rows])
+func _generate_alleyways() -> void:
+	print("  Grilla: %dx%d (columns x rows)" % [grid.columns, grid.rows])
 	
 	var small_seeds: Array = []
 	var big_seeds: Array = []
@@ -77,7 +66,7 @@ func _generate_floor_from_scratch(floor: int) -> void:
 		var seed = _get_random_seed_edge(DistortedGrid.CellType.SMALL, small_seeds)
 		if not seed.is_empty():
 			small_seeds.append(seed)
-			_add_path_edge_vertices(seed[0], seed[1], DistortedGrid.CellType.SMALL_ORIGIN, floor)
+			_add_path_edge_vertices(seed[0], seed[1], DistortedGrid.CellType.SMALL_ORIGIN)
 	
 	# Generar seed edges de BIG
 	print("  Generando %d SEED EDGES de BIG" % big_alleyways_count)
@@ -85,59 +74,15 @@ func _generate_floor_from_scratch(floor: int) -> void:
 		var seed = _get_random_seed_edge(DistortedGrid.CellType.BIG, big_seeds)
 		if not seed.is_empty():
 			big_seeds.append(seed)
-			_add_path_edge_vertices(seed[0], seed[1], DistortedGrid.CellType.BIG_ORIGIN, floor)
+			_add_path_edge_vertices(seed[0], seed[1], DistortedGrid.CellType.BIG_ORIGIN)
 	
 	# Expandir SMALL alleyways
 	for i in range(small_seeds.size()):
-		_expand_alleyway(small_seeds[i], DistortedGrid.CellType.SMALL, floor)
+		_expand_alleyway(small_seeds[i], DistortedGrid.CellType.SMALL)
 	
 	# Expandir BIG alleyways
 	for i in range(big_seeds.size()):
-		_expand_alleyway(big_seeds[i], DistortedGrid.CellType.BIG, floor)
-	
-	print("  Edges generados: %d" % path_edges_per_floor[floor].size())
-
-
-func _mutate_from_previous_floor(floor: int) -> void:
-	var previous_floor_edges = path_edges_per_floor[floor - 1]
-	var current_floor_edges = path_edges_per_floor[floor]
-	current_floor_edges.clear()
-	
-	var mutation_count = 0
-	
-	for edge_key in previous_floor_edges:
-		var previous_type = previous_floor_edges[edge_key]
-		var new_type = previous_type
-		
-		# Solo mutar tipos SMALL, BIG, SMALL_ORIGIN, BIG_ORIGIN
-		match previous_type:
-			DistortedGrid.CellType.SMALL, DistortedGrid.CellType.SMALL_ORIGIN:
-				# SMALL -> NORMAL (50% probabilidad)
-				if rng.randf() < 0.5:
-					new_type = DistortedGrid.CellType.NORMAL
-					mutation_count += 1
-				else:
-					new_type = previous_type
-			
-			DistortedGrid.CellType.BIG, DistortedGrid.CellType.BIG_ORIGIN:
-				# BIG -> SMALL (40%) o BIG -> NORMAL (30%) o mantener BIG (30%)
-				var rand = rng.randf()
-				if rand < 0.4:
-					new_type = DistortedGrid.CellType.SMALL
-					mutation_count += 1
-				elif rand < 0.7:
-					new_type = DistortedGrid.CellType.NORMAL
-					mutation_count += 1
-				else:
-					new_type = previous_type
-			
-			_:
-				# NORMAL y BOUNDARY no cambian
-				new_type = previous_type
-		
-		current_floor_edges[edge_key] = new_type
-	
-	print("  Mutations aplicadas: %d de %d edges" % [mutation_count, previous_floor_edges.size()])
+		_expand_alleyway(big_seeds[i], DistortedGrid.CellType.BIG)
 
 
 func _get_random_seed_edge(alleyway_type: int, existing_seeds: Array) -> Array:
@@ -188,7 +133,7 @@ func _is_seed_too_close_to_others(v1: Vector2i, v2: Vector2i, existing_seeds: Ar
 	return false
 
 
-func _expand_alleyway(seed: Array, alleyway_type: int, floor: int) -> void:
+func _expand_alleyway(seed: Array, alleyway_type: int) -> void:
 	var v1 = seed[0]
 	var v2 = seed[1]
 	var direction = seed[2]
@@ -220,11 +165,11 @@ func _expand_alleyway(seed: Array, alleyway_type: int, floor: int) -> void:
 	
 	# Expandir lado v1
 	_expand_side(v1, v2, target_boundary_v1, forbidden_boundaries, forbidden_direction_v1, 
-				 alleyway_type, visited_vertices, floor)
+				 alleyway_type, visited_vertices)
 	
 	# Expandir lado v2
 	_expand_side(v2, v1, target_boundary_v2, forbidden_boundaries, forbidden_direction_v2, 
-				 alleyway_type, visited_vertices, floor)
+				 alleyway_type, visited_vertices)
 
 
 func _expand_side(
@@ -234,8 +179,7 @@ func _expand_side(
 	forbidden_boundaries: Array[String],
 	forbidden_direction: Vector2i,
 	alleyway_type: int,
-	visited_vertices: Dictionary,
-	floor: int
+	visited_vertices: Dictionary
 ) -> void:
 	var current = start
 	var prev = previous
@@ -246,8 +190,7 @@ func _expand_side(
 		var result = _get_next_vertex_with_turn_ratio(
 			current, prev, alleyway_type, target_boundary,
 			forbidden_boundaries, forbidden_direction,
-			visited_vertices, steps_in_current_direction, current_direction,
-			floor
+			visited_vertices, steps_in_current_direction, current_direction
 		)
 		
 		if result["vertex"] == Vector2i(-1, -1):
@@ -258,10 +201,10 @@ func _expand_side(
 		var is_direction_change = new_direction != current_direction
 		
 		# Verificar si next_v ya es parte de un path del mismo tipo ANTES de visitarlo
-		var is_merge = _is_vertex_in_same_type_path(next_v, alleyway_type, visited_vertices, floor)
+		var is_merge = _is_vertex_in_same_type_path(next_v, alleyway_type, visited_vertices)
 		
 		# Agregar el edge de conexión
-		_add_path_edge_vertices(current, next_v, alleyway_type, floor)
+		_add_path_edge_vertices(current, next_v, alleyway_type)
 		visited_vertices[_get_vertex_key(next_v)] = true
 		
 		# Si era un merge, detener después de crear el edge de conexión
@@ -287,8 +230,7 @@ func _get_next_vertex_with_turn_ratio(
 	forbidden_direction: Vector2i,
 	visited_vertices: Dictionary,
 	steps_in_current_direction: int,
-	current_direction: Vector2i,
-	floor: int
+	current_direction: Vector2i
 ) -> Dictionary:
 	# Dirección hacia el boundary destino
 	var target_dir = _get_direction_to_boundary_vec(target_boundary)
@@ -308,7 +250,7 @@ func _get_next_vertex_with_turn_ratio(
 		var straight_option = current + current_direction
 		if _is_move_valid(current, straight_option, alleyway_type, 
 						  forbidden_boundaries, visited_vertices,
-						  current_direction, target_dir, floor):
+						  current_direction, target_dir):
 			return {"vertex": straight_option, "is_turn": false}
 		else:
 			# No puede seguir recto pero debe hacerlo - sin opciones
@@ -329,7 +271,7 @@ func _get_next_vertex_with_turn_ratio(
 		var straight_option = current + target_dir
 		var can_go_straight = _is_move_valid(current, straight_option, alleyway_type, 
 											  forbidden_boundaries, visited_vertices,
-											  target_dir, target_dir, floor)
+											  target_dir, target_dir)
 		
 		# Evaluar perpendiculares con lookup
 		var valid_perp_dirs: Array = []
@@ -337,7 +279,7 @@ func _get_next_vertex_with_turn_ratio(
 			var perp_option = current + perp_dir
 			if _is_move_valid(current, perp_option, alleyway_type, 
 							  forbidden_boundaries, visited_vertices,
-							  perp_dir, target_dir, floor):
+							  perp_dir, target_dir):
 				if _is_perpendicular_turn_viable(perp_option, perp_dir, target_dir, 
 												 forbidden_boundaries, visited_vertices):
 					valid_perp_dirs.append(perp_dir)
@@ -364,7 +306,7 @@ func _get_next_vertex_with_turn_ratio(
 		var straight_option = current + current_direction
 		var can_go_straight = _is_move_valid(current, straight_option, alleyway_type, 
 											  forbidden_boundaries, visited_vertices,
-											  current_direction, target_dir, floor)
+											  current_direction, target_dir)
 		if can_go_straight:
 			possible_directions.append({"dir": current_direction, "is_turn": false})
 		
@@ -372,7 +314,7 @@ func _get_next_vertex_with_turn_ratio(
 		var toward_target_option = current + target_dir
 		if _is_move_valid(current, toward_target_option, alleyway_type, 
 						  forbidden_boundaries, visited_vertices,
-						  target_dir, target_dir, floor):
+						  target_dir, target_dir):
 			possible_directions.append({"dir": target_dir, "is_turn": true})
 		
 		# Evaluar girar a la otra perpendicular con lookup
@@ -382,7 +324,7 @@ func _get_next_vertex_with_turn_ratio(
 			var perp_option = current + perp_dir
 			if _is_move_valid(current, perp_option, alleyway_type, 
 							  forbidden_boundaries, visited_vertices,
-							  perp_dir, target_dir, floor):
+							  perp_dir, target_dir):
 				if _is_perpendicular_turn_viable(perp_option, perp_dir, target_dir, 
 												 forbidden_boundaries, visited_vertices):
 					possible_directions.append({"dir": perp_dir, "is_turn": true})
@@ -403,8 +345,7 @@ func _is_move_valid(
 	forbidden_boundaries: Array[String],
 	visited_vertices: Dictionary,
 	current_direction: Vector2i = Vector2i.ZERO,
-	target_direction: Vector2i = Vector2i.ZERO,
-	floor: int = 0
+	target_direction: Vector2i = Vector2i.ZERO
 ) -> bool:
 	# Verificar límites de grilla
 	if to.x < 0 or to.x > grid.columns or to.y < 0 or to.y > grid.rows:
@@ -419,19 +360,18 @@ func _is_move_valid(
 		return false
 	
 	# Verificar que el edge puede ser agregado
-	if not _can_add_edge_vertices(from, to, alleyway_type, floor):
+	if not _can_add_edge_vertices(from, to, alleyway_type):
 		return false
 	
 	return true
 
 
-func _is_vertex_in_same_type_path(vertex: Vector2i, alleyway_type: int, visited_vertices: Dictionary, floor: int) -> bool:
+func _is_vertex_in_same_type_path(vertex: Vector2i, alleyway_type: int, visited_vertices: Dictionary) -> bool:
 	# Verificar si el vértice ya es parte de un path del mismo tipo
 	# (excluyendo los vértices ya visitados en esta expansión)
-	var floor_edges = path_edges_per_floor[floor]
 	
-	for edge_key in floor_edges:
-		var existing_type = floor_edges[edge_key]
+	for edge_key in path_edges:
+		var existing_type = path_edges[edge_key]
 		
 		# Solo verificar edges del mismo tipo
 		if not _is_same_alleyway_type(alleyway_type, existing_type):
@@ -538,14 +478,13 @@ func _get_direction_to_boundary_vec(boundary: String) -> Vector2i:
 			return Vector2i.ZERO
 
 
-func _can_add_edge_vertices(v1: Vector2i, v2: Vector2i, alleyway_type: int, floor: int) -> bool:
+func _can_add_edge_vertices(v1: Vector2i, v2: Vector2i, alleyway_type: int) -> bool:
 	var edge_key = _get_edge_key(v1, v2)
-	var floor_edges = path_edges_per_floor[floor]
 	
-	if not edge_key in floor_edges:
+	if not edge_key in path_edges:
 		return true
 	
-	var existing_type = floor_edges[edge_key]
+	var existing_type = path_edges[edge_key]
 	
 	if alleyway_type == DistortedGrid.CellType.BIG and (existing_type == DistortedGrid.CellType.SMALL or existing_type == DistortedGrid.CellType.SMALL_ORIGIN):
 		return true
@@ -553,12 +492,11 @@ func _can_add_edge_vertices(v1: Vector2i, v2: Vector2i, alleyway_type: int, floo
 	return false
 
 
-func _add_path_edge_vertices(v1: Vector2i, v2: Vector2i, alleyway_type: int, floor: int) -> void:
+func _add_path_edge_vertices(v1: Vector2i, v2: Vector2i, alleyway_type: int) -> void:
 	var edge_key = _get_edge_key(v1, v2)
-	var floor_edges = path_edges_per_floor[floor]
 	
-	if not edge_key in floor_edges or alleyway_type == DistortedGrid.CellType.BIG or alleyway_type == DistortedGrid.CellType.BIG_ORIGIN:
-		floor_edges[edge_key] = alleyway_type
+	if not edge_key in path_edges or alleyway_type == DistortedGrid.CellType.BIG or alleyway_type == DistortedGrid.CellType.BIG_ORIGIN:
+		path_edges[edge_key] = alleyway_type
 
 
 func _get_edge_key(v1: Vector2i, v2: Vector2i) -> String:
@@ -573,9 +511,8 @@ func _get_vertex_key(vertex: Vector2i) -> String:
 	return "%d_%d" % [vertex.x, vertex.y]
 
 
+# Método simplificado - ya no recibe parámetro floor
 func get_path_edge_type_vertices(v1_x: int, v1_z: int, v2_x: int, v2_z: int, floor: int = 0) -> int:
-	if floor < 0 or floor >= path_edges_per_floor.size():
-		return DistortedGrid.CellType.NORMAL
-	
+	# Ignorar el parámetro floor - todos los pisos usan la misma configuración
 	var edge_key = _get_edge_key(Vector2i(v1_x, v1_z), Vector2i(v2_x, v2_z))
-	return path_edges_per_floor[floor].get(edge_key, DistortedGrid.CellType.NORMAL)
+	return path_edges.get(edge_key, DistortedGrid.CellType.NORMAL)
