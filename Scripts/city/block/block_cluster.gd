@@ -15,8 +15,11 @@ var max_z: int
 # Color único para visualización
 var color: Color
 
+# Número de pisos que tiene este cluster
+var floor_count: int
 
-func _init(p_id: int, p_seed: int) -> void:
+
+func _init(p_id: int, p_seed: int, p_min_floors: int = 1, p_max_floors: int = 8) -> void:
 	id = p_id
 	
 	var rng = RandomNumberGenerator.new()
@@ -28,6 +31,9 @@ func _init(p_id: int, p_seed: int) -> void:
 		rng.randf_range(0.6, 0.9),
 		1.0
 	)
+	
+	# Asignar altura aleatoria al cluster
+	floor_count = rng.randi_range(p_min_floors, p_max_floors)
 
 
 func add_cell(x: int, z: int) -> void:
@@ -51,3 +57,7 @@ func contains_cell(x: int, z: int) -> bool:
 
 func get_cell_count() -> int:
 	return cells.size()
+
+
+func get_floor_count() -> int:
+	return floor_count

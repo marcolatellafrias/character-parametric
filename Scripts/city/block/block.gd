@@ -38,6 +38,10 @@ var buildings: Dictionary = {}
 var building_clusters: Array[BuildingCluster] = []
 var cell_to_cluster: Dictionary = {}  # "x_z" -> cluster_id
 
+# Parámetros de altura de clusters
+var min_floors_per_cluster: int
+var max_floors_per_cluster: int
+
 # Parámetros de grilla de buildings
 var building_rows: int
 var building_columns: int
@@ -78,7 +82,9 @@ func _init(
 	p_building_columns: int = 10,
 	p_building_cell_height: float = 0.005,
 	p_building_alleyway_offsets: Dictionary = {},
-	p_root_floors: Array[int] = []
+	p_root_floors: Array[int] = [],
+	p_min_floors_per_cluster: int = 1,
+	p_max_floors_per_cluster: int = 8
 ) -> void:
 	street_types = p_street_types
 	is_clockwise = p_is_clockwise
@@ -88,6 +94,9 @@ func _init(
 	building_rows = p_building_rows
 	building_columns = p_building_columns
 	building_cell_height = p_building_cell_height
+	
+	min_floors_per_cluster = p_min_floors_per_cluster
+	max_floors_per_cluster = p_max_floors_per_cluster
 	
 	# Configurar offsets de alleyways con valores por defecto si no se proporcionan
 	if p_building_alleyway_offsets.is_empty():
@@ -387,7 +396,12 @@ func _subdivide_section_into_clusters(section: Array, rng: RandomNumberGenerator
 	var clusters_created = 0
 	
 	while unassigned_cells.size() > 0:
-		var cluster = BuildingCluster.new(start_cluster_id + clusters_created, cluster_seed)
+		var cluster = BuildingCluster.new(
+			start_cluster_id + clusters_created, 
+			cluster_seed,
+			min_floors_per_cluster,
+			max_floors_per_cluster
+		)
 		
 		# Elegir celda inicial aleatoria
 		var start_cell = unassigned_cells[rng.randi_range(0, unassigned_cells.size() - 1)]

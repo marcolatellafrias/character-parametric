@@ -1,13 +1,25 @@
 class_name GraphCityGenerator
 extends RefCounted
 
+# Tipos de barrios
+enum NeighborhoodType {
+	INDUSTRIAL = 0,
+	RESIDENTIAL = 1,
+	FINANCIAL = 2
+}
+
 var plain_graph: GraphGenerator  
 var neighborhoods: Dictionary = {}
+var neighborhood_distances: Dictionary = {}  # {face_idx: distance_from_seed}
 var street_types: Dictionary = {}
 var block_grids: Dictionary = {}
 var region_size: Vector2 = Vector2.ZERO
 var pedestrian_planes: Dictionary = {}
-var root_floors: Array[int] = []  # Lista de pisos que son root floors
+var root_floors: Array[int] = []
+
+# Rangos de altura por tipo de barrio
+var neighborhood_floor_ranges: Dictionary = {}  # {NeighborhoodType: {min: int, max: int}}
+var neighborhood_height_falloff: float = 1.0  # Controla qué tan rápido disminuyen las alturas
 
 # Configuración de grillas
 var block_rows: int
@@ -43,7 +55,6 @@ func generate_city_graph(
 	min_distance: float,
 	rejection_samples: int,
 	generation_seed: int,
-	num_neighborhoods: int,
 	num_large_streets: int,
 	num_small_streets: int,
 	num_small_tunnels: int,
@@ -79,7 +90,14 @@ func generate_city_graph(
 	p_building_grid_columns: int = 10,
 	p_block_cell_height: float = 0.01,
 	p_building_cell_height: float = 0.005,
-	p_root_floors: Array[int] = []
+	p_root_floors: Array[int] = [],
+	p_industrial_min_floors: int = 1,
+	p_industrial_max_floors: int = 3,
+	p_residential_min_floors: int = 4,
+	p_residential_max_floors: int = 8,
+	p_financial_min_floors: int = 6,
+	p_financial_max_floors: int = 12,
+	p_neighborhood_height_falloff: float = 1.0
 ) -> void:
 	
 	seed(generation_seed)
@@ -87,6 +105,14 @@ func generate_city_graph(
 	self.block_rows = block_grid_rows
 	self.block_columns = block_grid_columns
 	self.root_floors = p_root_floors
+	self.neighborhood_height_falloff = p_neighborhood_height_falloff
+	
+	# Configurar rangos de altura por tipo de barrio
+	neighborhood_floor_ranges = {
+		NeighborhoodType.INDUSTRIAL: {"min": p_industrial_min_floors, "max": p_industrial_max_floors},
+		NeighborhoodType.RESIDENTIAL: {"min": p_residential_min_floors, "max": p_residential_max_floors},
+		NeighborhoodType.FINANCIAL: {"min": p_financial_min_floors, "max": p_financial_max_floors}
+	}
 	
 	# Guardar configuración de DistortedGrid
 	self.distorted_grid_rows = p_distorted_grid_rows
@@ -135,7 +161,7 @@ func generate_city_graph(
 	_generate_small_tunnels(num_small_tunnels, tunnel_min_length, tunnel_max_length, tunnel_max_angle_degrees, tunnel_min_gap)
 	_generate_large_tunnels(num_large_tunnels, tunnel_min_length, tunnel_max_length, tunnel_max_angle_degrees, tunnel_min_gap)
 	_initialize_neighborhoods()
-	_assign_neighborhoods(num_neighborhoods)
+	_assign_neighborhoods()  # Ya no necesita num_neighborhoods
 	
 	_generate_block_grids(
 		block_grid_floors,
@@ -519,7 +545,7 @@ func is_tunnel(node1_idx: int, node2_idx: int) -> bool:
 	return street_type == 3 or street_type == 4
 
 # ============================================
-# GESTIÓN DE BARRIOS
+# GESTIÓN DE BARRIOS (3 TIPOS)
 # ============================================
 
 func _initialize_neighborhoods() -> void:
@@ -527,36 +553,47 @@ func _initialize_neighborhoods() -> void:
 	for face_idx in range(plain_graph.faces.size()):
 		neighborhoods[face_idx] = -1
 
-func _assign_neighborhoods(num_neighborhoods: int) -> void:
-	if num_neighborhoods <= 0:
-		push_warning("Número de barrios debe ser mayor a 0")
-		return
-	
+func _assign_neighborhoods() -> void:
 	var total_faces = plain_graph.faces.size()
 	if total_faces == 0:
 		push_warning("No hay caras en el grafo para asignar barrios")
 		return
 	
-	var actual_neighborhoods = min(num_neighborhoods, total_faces)
+	# Siempre hay 3 tipos de barrios
+	var num_neighborhood_types = 3
 	
 	var available_faces = range(total_faces)
 	available_faces.shuffle()
 	
-	var expansion_fronts: Array[Array] = []
+	# Inicializar distancias
+	neighborhood_distances.clear()
+	for face_idx in range(total_faces):
+		neighborhood_distances[face_idx] = 999999  # Distancia infinita inicial
 	
-	for neighborhood_id in range(actual_neighborhoods):
-		var seed_face = available_faces[neighborhood_id]
-		neighborhoods[seed_face] = neighborhood_id
-		var queue: Array = [seed_face]
-		expansion_fronts.append(queue)
+	# Elegir semillas para cada tipo de barrio
+	var expansion_fronts: Array[Array] = []
+	var seed_faces: Array[int] = []
+	
+	for neighborhood_type in range(num_neighborhood_types):
+		if neighborhood_type < total_faces:
+			var seed_face = available_faces[neighborhood_type]
+			neighborhoods[seed_face] = neighborhood_type
+			neighborhood_distances[seed_face] = 0  # Las semillas tienen distancia 0
+			seed_faces.append(seed_face)
+			var queue: Array = [[seed_face, 0]]  # [face_idx, distance]
+			expansion_fronts.append(queue)
 	
 	var active_fronts = true
 	
+	# Expansión BFS para los 3 tipos, guardando distancias
 	while active_fronts:
 		active_fronts = false
 		
-		for neighborhood_id in range(actual_neighborhoods):
-			var queue = expansion_fronts[neighborhood_id]
+		for neighborhood_type in range(num_neighborhood_types):
+			if neighborhood_type >= expansion_fronts.size():
+				continue
+				
+			var queue = expansion_fronts[neighborhood_type]
 			
 			if queue.is_empty():
 				continue
@@ -565,27 +602,61 @@ func _assign_neighborhoods(num_neighborhoods: int) -> void:
 			var current_front_size = queue.size()
 			
 			for i in range(current_front_size):
-				var current_face = queue.pop_front()
+				var current_data = queue.pop_front()
+				var current_face = current_data[0]
+				var current_distance = current_data[1]
+				
 				var adjacent_faces = plain_graph.get_adjacent_faces(current_face)
 				
 				for adj_face in adjacent_faces:
 					if neighborhoods[adj_face] == -1:
-						neighborhoods[adj_face] = neighborhood_id
-						queue.append(adj_face)
+						neighborhoods[adj_face] = neighborhood_type
+						neighborhood_distances[adj_face] = current_distance + 1
+						queue.append([adj_face, current_distance + 1])
+	
+	# Calcular distancia máxima para normalización
+	var max_distance = 0
+	for face_idx in neighborhood_distances:
+		if neighborhood_distances[face_idx] > max_distance and neighborhood_distances[face_idx] < 999999:
+			max_distance = neighborhood_distances[face_idx]
+	
+	# Normalizar distancias (0.0 = semilla, 1.0 = borde más lejano)
+	for face_idx in neighborhood_distances:
+		if neighborhood_distances[face_idx] < 999999 and max_distance > 0:
+			neighborhood_distances[face_idx] = float(neighborhood_distances[face_idx]) / float(max_distance)
+		else:
+			neighborhood_distances[face_idx] = 1.0
+	
+	print("[GraphCityGenerator] Barrios asignados:")
+	print("  Industrial (0): %d manzanas" % get_faces_in_neighborhood(NeighborhoodType.INDUSTRIAL).size())
+	print("  Residential (1): %d manzanas" % get_faces_in_neighborhood(NeighborhoodType.RESIDENTIAL).size())
+	print("  Financial (2): %d manzanas" % get_faces_in_neighborhood(NeighborhoodType.FINANCIAL).size())
+	print("  Distancia máxima: %d pasos" % max_distance)
 
 func get_neighborhood_for_face(face_idx: int) -> int:
 	if face_idx in neighborhoods:
 		return neighborhoods[face_idx]
 	return -1
 
-func get_faces_in_neighborhood(neighborhood_id: int) -> Array[int]:
+func get_faces_in_neighborhood(neighborhood_type: int) -> Array[int]:
 	var faces_in_neighborhood: Array[int] = []
 	
 	for face_idx in neighborhoods:
-		if neighborhoods[face_idx] == neighborhood_id:
+		if neighborhoods[face_idx] == neighborhood_type:
 			faces_in_neighborhood.append(face_idx)
 	
 	return faces_in_neighborhood
+
+func get_neighborhood_type_name(neighborhood_type: int) -> String:
+	match neighborhood_type:
+		NeighborhoodType.INDUSTRIAL:
+			return "Industrial"
+		NeighborhoodType.RESIDENTIAL:
+			return "Residential"
+		NeighborhoodType.FINANCIAL:
+			return "Financial"
+		_:
+			return "Unknown"
 
 # ============================================
 # GESTIÓN DE GRILLAS DE MANZANAS
@@ -620,6 +691,47 @@ func _generate_block_grids(
 		if grid_seed == -1:
 			block_seed = hash(face_idx)
 		
+		# Obtener tipo de barrio para esta cara
+		var neighborhood_type = get_neighborhood_for_face(face_idx)
+		
+		# Obtener distancia normalizada desde la semilla (0.0 = semilla, 1.0 = borde)
+		var distance_from_seed = neighborhood_distances.get(face_idx, 1.0)
+		
+		# Aplicar falloff (curva de potencia)
+		var falloff_factor = pow(distance_from_seed, neighborhood_height_falloff)
+		
+		# Obtener rangos de altura según el tipo de barrio
+		var min_floors = 1
+		var max_floors = 8
+		
+		if neighborhood_type in neighborhood_floor_ranges:
+			var range_data = neighborhood_floor_ranges[neighborhood_type]
+			var target_min = range_data["min"]
+			var target_max = range_data["max"]
+			
+			# Calcular promedio global de todos los tipos (punto de convergencia)
+			var global_min = 0
+			var global_max = 0
+			var type_count = 0
+			
+			for type_key in neighborhood_floor_ranges:
+				var type_range = neighborhood_floor_ranges[type_key]
+				global_min += type_range["min"]
+				global_max += type_range["max"]
+				type_count += 1
+			
+			if type_count > 0:
+				global_min = int(float(global_min) / float(type_count))
+				global_max = int(float(global_max) / float(type_count))
+			
+			# Interpolar entre el rango del barrio y el rango global
+			min_floors = int(lerp(float(target_min), float(global_min), falloff_factor))
+			max_floors = int(lerp(float(target_max), float(global_max), falloff_factor))
+			
+			# Asegurar que min <= max
+			if min_floors > max_floors:
+				min_floors = max_floors
+		
 		var block = BlockGenerator.new(
 			block_rows,
 			block_columns,
@@ -647,7 +759,9 @@ func _generate_block_grids(
 			building_grid_columns,
 			building_cell_height,
 			{},
-			root_floors
+			root_floors,
+			min_floors,
+			max_floors
 		)
 		
 		block_grids[face_idx] = block

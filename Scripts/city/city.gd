@@ -4,20 +4,34 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(700, 700)
-@export var min_distance: float = 150.5
+@export var region_size: Vector2 = Vector2(70/6, 70/6)
+@export var min_distance: float = 15.5/6
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
 
 @export_group("Barrios")
-@export var num_neighborhoods: int = 6
 @export var show_neighborhoods: bool = true
+
+@export_subgroup("Transición de Alturas")
+@export_range(0.1, 5.0) var neighborhood_height_falloff: float = 2.0
+
+@export_subgroup("Industrial")
+@export var industrial_min_floors: int = 7
+@export var industrial_max_floors: int = 14
+
+@export_subgroup("Residential") 
+@export var residential_min_floors: int = 1
+@export var residential_max_floors: int = 3
+
+@export_subgroup("Financial")
+@export var financial_min_floors: int = 6
+@export var financial_max_floors: int = 9
 
 @export_group("Suavizado")
 @export var smoothing_steps: int = 50
 
 @export_group("Visualización General")
-@export var show_nodes: bool = true
+@export var show_nodes: bool = false
 @export var node_radius: float = 0.08
 @export var normal_node_color: Color = Color.CHARTREUSE
 @export var boundary_node_color: Color = Color.ORANGE_RED
@@ -102,7 +116,7 @@ extends Node3D
 @export var building_grid_columns: int = 20
 
 @export_subgroup("Visualización de Grilla Distorsionada")
-@export var show_distorted_grid: bool = true
+@export var show_distorted_grid: bool = false
 @export var distorted_grid_floor_to_show: int = 0  # Nota: todos los pisos usan la misma configuración
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
@@ -126,7 +140,7 @@ extends Node3D
 @export var show_building_colliders: bool = true
 
 @export_group("Carriles")
-@export var show_lanes: bool = true
+@export var show_lanes: bool = false
 @export var lane_color: Color = Color.YELLOW
 @export var lane_width: float = 0.02
 
@@ -180,7 +194,6 @@ func generate_graph() -> void:
 		min_distance,
 		rejection_samples,
 		generation_seed,
-		num_neighborhoods,
 		num_large_streets,
 		num_small_streets,
 		num_small_tunnels,
@@ -216,7 +229,14 @@ func generate_graph() -> void:
 		building_grid_columns,
 		block_cell_height,
 		building_cell_height,
-		root_floors
+		root_floors,
+		industrial_min_floors,
+		industrial_max_floors,
+		residential_min_floors,
+		residential_max_floors,
+		financial_min_floors,
+		financial_max_floors,
+		neighborhood_height_falloff
 	)
 	
 	_generate_neighborhood_colors()
@@ -247,15 +267,16 @@ func _generate_root_floors() -> void:
 
 func _generate_neighborhood_colors() -> void:
 	neighborhood_colors.clear()
-	seed(generation_seed)
 	
-	var neighborhood_saturation: float = 0.3
-	var neighborhood_brightness: float = 0.3
-	var neighborhood_alpha: float = 0.7
+	# Solo 3 tipos de barrios con colores específicos
+	# Industrial: Gris/Azul oscuro
+	neighborhood_colors[0] = Color(0.3, 0.35, 0.4, 0.7)
 	
-	for i in range(num_neighborhoods):
-		var hue = randf()
-		neighborhood_colors[i] = Color.from_hsv(hue, neighborhood_saturation, neighborhood_brightness, neighborhood_alpha)
+	# Residential: Verde
+	neighborhood_colors[1] = Color(0.3, 0.5, 0.3, 0.7)
+	
+	# Financial: Dorado/Amarillo
+	neighborhood_colors[2] = Color(0.6, 0.5, 0.2, 0.7)
 
 func clear_visualization() -> void:
 	for child in get_children():
@@ -480,7 +501,6 @@ func _visualize_buildings() -> void:
 		if distorted == null:
 			continue
 		
-		var floors = block.get_floors()
 		var cells_per_floor = block.get_cells_per_floor()
 		var cell_height = block.get_cell_height()
 		var building_height = cells_per_floor * cell_height
@@ -489,9 +509,12 @@ func _visualize_buildings() -> void:
 		var clusters = block.get_all_clusters()
 		total_clusters += clusters.size()
 		
-		# Visualizar cada cluster en cada piso
+		# Visualizar cada cluster en cada piso (hasta su altura específica)
 		for cluster in clusters:
-			for floor in range(floors):
+			# Usar la altura específica del cluster en lugar del global
+			var cluster_floors = cluster.get_floor_count()
+			
+			for floor in range(cluster_floors):
 				var floor_base_y = floor * cells_per_floor * cell_height
 				
 				# Recolectar todas las celdas del cluster para este piso
@@ -552,7 +575,6 @@ func _visualize_building_colliders() -> void:
 		if distorted == null:
 			continue
 		
-		var floors = block.get_floors()
 		var cells_per_floor = block.get_cells_per_floor()
 		var cell_height = block.get_cell_height()
 		var building_height = cells_per_floor * cell_height
@@ -565,8 +587,11 @@ func _visualize_building_colliders() -> void:
 			var static_body = StaticBody3D.new()
 			var has_colliders = false
 			
-			# Por cada piso
-			for floor in range(floors):
+			# Usar la altura específica del cluster
+			var cluster_floors = cluster.get_floor_count()
+			
+			# Por cada piso (hasta la altura del cluster)
+			for floor in range(cluster_floors):
 				var floor_base_y = floor * cells_per_floor * cell_height
 				
 				# Por cada celda del cluster
