@@ -16,7 +16,7 @@ extends Node3D
 @export_range(0.1, 5.0) var neighborhood_height_falloff: float = 1.0
 
 @export_subgroup("Industrial")
-@export var industrial_min_floors: int = 7
+@export var industrial_min_floors: int = 8
 @export var industrial_max_floors: int = 14
 @export_range(0.0, 1.0) var industrial_block_heart_probability: float = 0.2
 
@@ -26,7 +26,7 @@ extends Node3D
 @export_range(0.0, 1.0) var residential_block_heart_probability: float = 0.4
 
 @export_subgroup("Financial")
-@export var financial_min_floors: int = 6
+@export var financial_min_floors: int = 7
 @export var financial_max_floors: int = 9
 @export_range(0.0, 1.0) var financial_block_heart_probability: float = 0.1
 
@@ -43,7 +43,7 @@ extends Node3D
 @export var auto_generate: bool = true
 
 @export_group("Tipos de Calles")
-@export var num_large_streets: int = 3
+@export var num_large_streets: int = 6
 @export var num_small_streets: int = 10
 
 @export_subgroup("Calles Pequeñas (Tipo 0)")
@@ -119,7 +119,7 @@ extends Node3D
 @export var building_grid_columns: int = 20
 
 @export_subgroup("Visualización de Grilla Distorsionada")
-@export var show_distorted_grid: bool = false
+@export var show_distorted_grid: bool = true
 @export var distorted_grid_floor_to_show: int = 0  # Nota: todos los pisos usan la misma configuración
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
@@ -143,7 +143,7 @@ extends Node3D
 @export var show_building_colliders: bool = true
 
 @export_group("Carriles")
-@export var show_lanes: bool = false
+@export var show_lanes: bool = true
 @export var lane_color: Color = Color.YELLOW
 @export var lane_width: float = 0.02
 
@@ -556,7 +556,7 @@ func _visualize_buildings() -> void:
 					var cube = DebugUtil.create_skewed_cube(
 						core_vertices,
 						building_height,
-						cluster.color
+						cluster.color																		
 					)
 					add_child(cube)
 					total_cells += 1
@@ -895,24 +895,106 @@ func _visualize_distorted_grids() -> void:
 func _visualize_lanes() -> void:
 	var all_block_faces = generator.get_all_block_faces()
 	
+	# Colores alternados para los carriles
+	var lane_color_1 = Color(0.0, 0.0, 0.0, 0.8)  # Amarillo
+	var lane_color_2 = Color(1.0, 1.0, 1.0, 0.8)  # Naranja
+	
 	for face_idx in all_block_faces:
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
 		
 		if block == null:
 			continue
 		
+		# Obtener altura del lane desde el bloque
+		var lane_height = block.get_lane_height()
+		
 		var all_lanes = block.get_all_lanes()
 		
 		for lane_data in all_lanes:
-			var line = DebugUtil.create_debug_arrow_to_from(
-				lane_data["from"],
-				lane_data["to"],
-				Color.GREEN,
-				lane_width
+			var cell1: Vector2i = lane_data["cell1"]
+			var cell2: Vector2i = lane_data["cell2"]
+			var additional_width: int = lane_data["additional_width"]
+			var side: String = lane_data["side"]
+			var lane_index: int = lane_data["index"]
+			
+			# Alternar color basado en el índice del lane
+			var color = lane_color_1 if lane_index % 2 == 0 else lane_color_2
+			
+			# Obtener los 4 vértices de esquina del lane
+			var lane_vertices = block.get_lane_corner_vertices(cell1, cell2, additional_width, side)
+			
+			if lane_vertices.size() != 4:
+				continue
+			
+			# Determinar cara final usando sistema robusto
+			var face_to_mark = _determine_end_face(lane_vertices, cell1, cell2, block)
+			
+			# Crear skewed cube con cara marcada
+			var lane_cube = DebugUtil.create_skewed_cube_debug(
+				lane_vertices,
+				lane_height,
+				color,
+				face_to_mark
 			)
-			add_child(line)
+			add_child(lane_cube)
 	
-	print("[Visualizer] Carriles direccionales generados para %d bloques" % all_block_faces.size())
+	print("[Visualizer] Carriles visualizados para %d bloques con detección robusta de caras" % all_block_faces.size())
+
+
+func _determine_end_face(lane_vertices: Array[Vector3], cell1: Vector2i, cell2: Vector2i, block: BlockGenerator) -> int:
+	"""
+	Determina qué cara lateral marca el final del lane (hacia donde apunta cell2)
+	usando la geometría real y el vector de dirección.
+	
+	Caras laterales en create_skewed_cube_debug:
+	Face 2 (i=0): BL→BR (vértices 0→1)
+	Face 3 (i=1): BR→TR (vértices 1→2)
+	Face 4 (i=2): TR→TL (vértices 2→3)
+	Face 5 (i=3): TL→BL (vértices 3→0)
+	"""
+	
+	# Obtener posiciones 3D de las celdas centrales
+	var cell1_pos_3d = block.grid_geometry.get_cell_position(cell1.x, cell1.y, 0)
+	var cell2_pos_3d = block.grid_geometry.get_cell_position(cell2.x, cell2.y, 0)
+	
+	# Vector de dirección del lane (de inicio a fin)
+	var lane_direction = (cell2_pos_3d - cell1_pos_3d).normalized()
+	
+	# Calcular centro del lane en la base
+	var lane_center = (lane_vertices[0] + lane_vertices[1] + lane_vertices[2] + lane_vertices[3]) / 4.0
+	
+	# Definición de las 4 caras laterales
+	# Cada cara conecta dos vértices base consecutivos
+	var lateral_faces = [
+		{"index": 2, "v1": 0, "v2": 1},  # BL→BR
+		{"index": 3, "v1": 1, "v2": 2},  # BR→TR
+		{"index": 4, "v1": 2, "v2": 3},  # TR→TL
+		{"index": 5, "v1": 3, "v2": 0}   # TL→BL
+	]
+	
+	var best_face = 2
+	var best_alignment = -999.0
+	
+	for face_data in lateral_faces:
+		var v1_idx = face_data["v1"]
+		var v2_idx = face_data["v2"]
+		
+		# Centro de esta cara (en la base)
+		var face_center = (lane_vertices[v1_idx] + lane_vertices[v2_idx]) / 2.0
+		
+		# Vector desde el centro del lane hacia el centro de esta cara
+		var to_face = (face_center - lane_center).normalized()
+		
+		# Producto punto: mide qué tan alineada está esta cara con la dirección del lane
+		var alignment = to_face.dot(lane_direction)
+		
+		# La cara con mayor alignment positivo es la cara final (hacia donde apunta)
+		if alignment > best_alignment:
+			best_alignment = alignment
+			best_face = face_data["index"]
+	
+	return best_face
+
 
 # ============================================
 # VISUALIZACIÓN DE PLANOS PEATONALES

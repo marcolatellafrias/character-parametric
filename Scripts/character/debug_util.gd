@@ -599,105 +599,6 @@ static func create_debug_arrow_to_from(from: Vector3, to: Vector3, color: Color,
 	mesh_instance.material_override = material
 	return mesh_instance
 
-static func create_building_cube(base_vertices: Array, height: float, color: Color, edge_types: Array[int], is_clockwise: bool) -> MeshInstance3D:
-	if base_vertices.size() != 4:
-		push_error("Se requieren exactamente 4 vértices para la base")
-		return null
-	
-	if edge_types.size() != 4:
-		push_error("Se requieren exactamente 4 tipos de edges [north, east, south, west]")
-		return null
-	
-	var mesh_instance = MeshInstance3D.new()
-	var st = SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	
-	var bottom_verts = base_vertices
-	var top_verts = []
-	
-	for i in range(4):
-		top_verts.append(bottom_verts[i] + Vector3(0, height, 0))
-	
-	var vertices = PackedVector3Array()
-	var normals = PackedVector3Array()
-	var indices = PackedInt32Array()
-	
-	var add_triangle_with_normal = func(v1: Vector3, v2: Vector3, v3: Vector3, normal: Vector3):
-		var start_idx = vertices.size()
-		vertices.append(v1)
-		vertices.append(v2)
-		vertices.append(v3)
-		normals.append(normal)
-		normals.append(normal)
-		normals.append(normal)
-		indices.append(start_idx)
-		indices.append(start_idx + 1)
-		indices.append(start_idx + 2)
-	
-	# Cara inferior (normal hacia abajo)
-	var bottom_normal = Vector3(0, -1, 0)
-	add_triangle_with_normal.call(bottom_verts[0], bottom_verts[2], bottom_verts[1], bottom_normal)
-	add_triangle_with_normal.call(bottom_verts[0], bottom_verts[3], bottom_verts[2], bottom_normal)
-	
-	# Cara superior (normal hacia arriba)
-	var top_normal = Vector3(0, 1, 0)
-	add_triangle_with_normal.call(top_verts[0], top_verts[1], top_verts[2], top_normal)
-	add_triangle_with_normal.call(top_verts[0], top_verts[2], top_verts[3], top_normal)
-	
-	var edge_map: Array[int]
-	
-	if is_clockwise:
-		edge_map = [3, 2, 1, 0]
-	else:
-		edge_map = [0, 1, 2, 3]
-	
-	# Caras laterales
-	for i in range(4):
-		var edge_type = edge_types[edge_map[i]]
-		
-		if edge_type != 0:
-			var next_i = (i + 1) % 4
-			
-			# Calcular normal usando los 3 vértices del primer triángulo
-			var v1 = bottom_verts[i]
-			var v2 = top_verts[next_i]
-			var v3 = top_verts[i]
-			
-			var edge1 = v2 - v1
-			var edge2 = v3 - v1
-			var face_normal = edge1.cross(edge2).normalized()
-			
-			# Asegurar que la normal apunte hacia afuera
-			var center = (bottom_verts[0] + bottom_verts[1] + bottom_verts[2] + bottom_verts[3]) / 4.0
-			var face_center = (v1 + v2 + v3) / 3.0
-			var to_outside = (face_center - center).normalized()
-			
-			if face_normal.dot(to_outside) < 0:
-				face_normal = -face_normal
-			
-			add_triangle_with_normal.call(bottom_verts[i], top_verts[next_i], top_verts[i], face_normal)
-			add_triangle_with_normal.call(bottom_verts[i], bottom_verts[next_i], top_verts[next_i], face_normal)
-	
-	var arrays = []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = vertices
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_INDEX] = indices
-	
-	st.create_from_arrays(arrays)
-	# Eliminar: st.set_color(color)
-	
-	var material = StandardMaterial3D.new()
-	material.albedo_color = color  # Aplicar color directamente al material
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	material.cull_mode = BaseMaterial3D.CULL_BACK
-	material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
-	st.set_material(material)
-	
-	mesh_instance.mesh = st.commit()
-	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	
-	return mesh_instance
 
 static func create_skewed_cube_collider(base_vertices: Array, height: float) -> StaticBody3D:
 	if base_vertices.size() != 4:
@@ -732,3 +633,99 @@ static func create_skewed_cube_collider(base_vertices: Array, height: float) -> 
 	static_body.add_child(collision_shape)
 	
 	return static_body
+
+static func create_skewed_cube_debug(base_vertices: Array, height: float, color: Color, face_index: int) -> MeshInstance3D:
+	if base_vertices.size() != 4:
+		push_error("Se requieren exactamente 4 vértices para la base")
+		return null
+	
+	if face_index < 0 or face_index > 5:
+		push_error("face_index debe estar entre 0 y 5")
+		return null
+	
+	var mesh_instance = MeshInstance3D.new()
+	var st = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	
+	var bottom_verts = base_vertices
+	var top_verts = []
+	
+	for i in range(4):
+		top_verts.append(bottom_verts[i] + Vector3(0, height, 0))
+	
+	# Calcular cara opuesta
+	var opposite_face = 1 - face_index if face_index < 2 else 6 - face_index
+	
+	# Colores transparentes
+	var transparent_color = Color(color.r, color.g, color.b, 0.5)
+	var transparent_green = Color(0.0, 1.0, 0.0, 0.5)
+	var transparent_red = Color(1.0, 0.0, 0.0, 0.5)
+	
+	var current_face = 0
+	
+	var add_triangle = func(v1: Vector3, v2: Vector3, v3: Vector3, normal: Vector3, face_color: Color):
+		st.set_normal(normal)
+		st.set_color(face_color)
+		st.add_vertex(v1)
+		st.set_normal(normal)
+		st.set_color(face_color)
+		st.add_vertex(v2)
+		st.set_normal(normal)
+		st.set_color(face_color)
+		st.add_vertex(v3)
+	
+	# Cara inferior (face 0)
+	var bottom_normal = Vector3(0, -1, 0)
+	var bottom_color = transparent_green if current_face == face_index else (transparent_red if current_face == opposite_face else transparent_color)
+	add_triangle.call(bottom_verts[0], bottom_verts[2], bottom_verts[1], bottom_normal, bottom_color)
+	add_triangle.call(bottom_verts[0], bottom_verts[3], bottom_verts[2], bottom_normal, bottom_color)
+	current_face += 1
+	
+	# Cara superior (face 1)
+	var top_normal = Vector3(0, 1, 0)
+	var top_color = transparent_green if current_face == face_index else (transparent_red if current_face == opposite_face else transparent_color)
+	add_triangle.call(top_verts[0], top_verts[1], top_verts[2], top_normal, top_color)
+	add_triangle.call(top_verts[0], top_verts[2], top_verts[3], top_normal, top_color)
+	current_face += 1
+	
+	# Caras laterales (faces 2-5)
+	for i in range(4):
+		var next_i = (i + 1) % 4
+		
+		var v1 = bottom_verts[i]
+		var v2 = top_verts[next_i]
+		var v3 = top_verts[i]
+		
+		var edge1 = v2 - v1
+		var edge2 = v3 - v1
+		var face_normal = edge1.cross(edge2).normalized()
+		
+		var center = (bottom_verts[0] + bottom_verts[1] + bottom_verts[2] + bottom_verts[3]) / 4.0
+		var face_center = (v1 + v2 + v3) / 3.0
+		var to_outside = (face_center - center).normalized()
+		
+		if face_normal.dot(to_outside) < 0:
+			face_normal = -face_normal
+		
+		var side_color = transparent_green if current_face == face_index else (transparent_red if current_face == opposite_face else transparent_color)
+		add_triangle.call(bottom_verts[i], top_verts[next_i], top_verts[i], face_normal, side_color)
+		add_triangle.call(bottom_verts[i], bottom_verts[next_i], top_verts[next_i], face_normal, side_color)
+		current_face += 1
+	
+	var material = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	material.cull_mode = BaseMaterial3D.CULL_BACK
+	material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
+	
+	# Configuración de transparencia
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY
+	
+	st.set_material(material)
+	
+	mesh_instance.mesh = st.commit()
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	
+	return mesh_instance
