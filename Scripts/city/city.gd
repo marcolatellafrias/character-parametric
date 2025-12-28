@@ -892,12 +892,11 @@ func _visualize_distorted_grids() -> void:
 # ============================================
 # VISUALIZACIÓN DE CARRILES
 # ============================================
+# Fragmento modificado del visualizador para _visualize_lanes()
+# Visualiza solo las caras de inicio (rojo) y fin (verde) para debug
+
 func _visualize_lanes() -> void:
 	var all_block_faces = generator.get_all_block_faces()
-	
-	# Colores alternados para los carriles
-	var lane_color_1 = Color(0.0, 0.0, 0.0, 0.8)  # Amarillo
-	var lane_color_2 = Color(1.0, 1.0, 1.0, 0.8)  # Naranja
 	
 	for face_idx in all_block_faces:
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -905,9 +904,7 @@ func _visualize_lanes() -> void:
 		if block == null:
 			continue
 		
-		# Obtener altura del lane desde el bloque
 		var lane_height = block.get_lane_height()
-		
 		var all_lanes = block.get_all_lanes()
 		
 		for lane_data in all_lanes:
@@ -915,85 +912,78 @@ func _visualize_lanes() -> void:
 			var cell2: Vector2i = lane_data["cell2"]
 			var additional_width: int = lane_data["additional_width"]
 			var side: String = lane_data["side"]
-			var lane_index: int = lane_data["index"]
 			
-			# Alternar color basado en el índice del lane
-			var color = lane_color_1 if lane_index % 2 == 0 else lane_color_2
+			var lane_edges = block.get_lane_edges(cell1, cell2, additional_width, side)
 			
-			# Obtener los 4 vértices de esquina del lane
-			var lane_vertices = block.get_lane_corner_vertices(cell1, cell2, additional_width, side)
-			
-			if lane_vertices.size() != 4:
+			if lane_edges["start_edge"].size() != 2 or lane_edges["end_edge"].size() != 2:
 				continue
 			
-			# Determinar cara final usando sistema robusto
-			var face_to_mark = _determine_end_face(lane_vertices, cell1, cell2, block)
+			var start_v1 = lane_edges["start_edge"][0]
+			var start_v2 = lane_edges["start_edge"][1]
+			var end_v1 = lane_edges["end_edge"][0]
+			var end_v2 = lane_edges["end_edge"][1]
 			
-			# Crear skewed cube con cara marcada
-			var lane_cube = DebugUtil.create_skewed_cube_debug(
-				lane_vertices,
-				lane_height,
-				color,
-				face_to_mark
+			# Plano ROJO - inicio (base de la flecha)
+			var start_plane = DebugUtil.create_debug_plane(
+				start_v1,
+				start_v2,
+				start_v2 + Vector3(0, lane_height, 0),
+				start_v1 + Vector3(0, lane_height, 0),
+				Color.RED,
+				0.3
 			)
-			add_child(lane_cube)
+			add_child(start_plane)
+			
+			# Plano VERDE - fin (punta de la flecha)
+			var end_plane = DebugUtil.create_debug_plane(
+				end_v1,
+				end_v2,
+				end_v2 + Vector3(0, lane_height, 0),
+				end_v1 + Vector3(0, lane_height, 0),
+				Color.GREEN,
+				0.3
+			)
+			add_child(end_plane)
 	
-	print("[Visualizer] Carriles visualizados para %d bloques con detección robusta de caras" % all_block_faces.size())
+	print("[Visualizer] Planos de lanes: ROJO=inicio (base), VERDE=fin (punta)")
 
 
-func _determine_end_face(lane_vertices: Array[Vector3], cell1: Vector2i, cell2: Vector2i, block: BlockGenerator) -> int:
+func _find_face_connecting_vertices(vertex_indices: Array[int]) -> int:
 	"""
-	Determina qué cara lateral marca el final del lane (hacia donde apunta cell2)
-	usando la geometría real y el vector de dirección.
+	Encuentra qué cara lateral (2-5) conecta dos vértices dados.
 	
 	Caras laterales en create_skewed_cube_debug:
-	Face 2 (i=0): BL→BR (vértices 0→1)
-	Face 3 (i=1): BR→TR (vértices 1→2)
-	Face 4 (i=2): TR→TL (vértices 2→3)
-	Face 5 (i=3): TL→BL (vértices 3→0)
+	Face 2 (i=0): conecta vértices 0 y 1 (BL→BR)
+	Face 3 (i=1): conecta vértices 1 y 2 (BR→TR)
+	Face 4 (i=2): conecta vértices 2 y 3 (TR→TL)
+	Face 5 (i=3): conecta vértices 3 y 0 (TL→BL)
 	"""
 	
-	# Obtener posiciones 3D de las celdas centrales
-	var cell1_pos_3d = block.grid_geometry.get_cell_position(cell1.x, cell1.y, 0)
-	var cell2_pos_3d = block.grid_geometry.get_cell_position(cell2.x, cell2.y, 0)
+	if vertex_indices.size() != 2:
+		return 2  # Fallback
 	
-	# Vector de dirección del lane (de inicio a fin)
-	var lane_direction = (cell2_pos_3d - cell1_pos_3d).normalized()
+	var v1 = vertex_indices[0]
+	var v2 = vertex_indices[1]
 	
-	# Calcular centro del lane en la base
-	var lane_center = (lane_vertices[0] + lane_vertices[1] + lane_vertices[2] + lane_vertices[3]) / 4.0
+	# Normalizar para que v1 < v2 (excepto caso wrap-around)
+	if v1 > v2:
+		var temp = v1
+		v1 = v2
+		v2 = temp
 	
-	# Definición de las 4 caras laterales
-	# Cada cara conecta dos vértices base consecutivos
-	var lateral_faces = [
-		{"index": 2, "v1": 0, "v2": 1},  # BL→BR
-		{"index": 3, "v1": 1, "v2": 2},  # BR→TR
-		{"index": 4, "v1": 2, "v2": 3},  # TR→TL
-		{"index": 5, "v1": 3, "v2": 0}   # TL→BL
-	]
-	
-	var best_face = 2
-	var best_alignment = -999.0
-	
-	for face_data in lateral_faces:
-		var v1_idx = face_data["v1"]
-		var v2_idx = face_data["v2"]
-		
-		# Centro de esta cara (en la base)
-		var face_center = (lane_vertices[v1_idx] + lane_vertices[v2_idx]) / 2.0
-		
-		# Vector desde el centro del lane hacia el centro de esta cara
-		var to_face = (face_center - lane_center).normalized()
-		
-		# Producto punto: mide qué tan alineada está esta cara con la dirección del lane
-		var alignment = to_face.dot(lane_direction)
-		
-		# La cara con mayor alignment positivo es la cara final (hacia donde apunta)
-		if alignment > best_alignment:
-			best_alignment = alignment
-			best_face = face_data["index"]
-	
-	return best_face
+	# Mapeo de pares de vértices a caras laterales
+	# Face i conecta vértice i con vértice (i+1)%4
+	match [v1, v2]:
+		[0, 1]:
+			return 2  # Face 2: BL→BR
+		[1, 2]:
+			return 3  # Face 3: BR→TR
+		[2, 3]:
+			return 4  # Face 4: TR→TL
+		[0, 3]:
+			return 5  # Face 5: TL→BL (wrap-around)
+		_:
+			return 2  # Fallback
 
 
 # ============================================

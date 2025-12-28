@@ -640,6 +640,35 @@ func _get_lane_cells_for_street_type(street_type: int, side: String) -> Array[Di
 				cell1 = Vector2i(x, 0)
 				cell2 = Vector2i(x, grid_geometry.rows - 1)
 		
+		# Normalizar dirección para que siempre sea clockwise relativo al bloque
+		# cell1 = base (rojo), cell2 = punta (verde)
+		# Dirección CW canónica (asumiendo bloque CW):
+		# - North: este → oeste (invertir inicial)
+		# - East: sur → norte (invertir inicial)
+		# - South: oeste → este (mantener inicial)
+		# - West: norte → sur (mantener inicial)
+		
+		var needs_swap = false
+		
+		match side:
+			"north":
+				# CW: este→oeste (invertir), CCW: oeste→este (mantener)
+				needs_swap = is_clockwise
+			"south":
+				# CW: oeste→este (mantener), CCW: este→oeste (invertir)
+				needs_swap = not is_clockwise
+			"west":
+				# CW: norte→sur (mantener), CCW: sur→norte (invertir)
+				needs_swap = not is_clockwise
+			"east":
+				# CW: sur→norte (invertir), CCW: norte→sur (mantener)
+				needs_swap = is_clockwise
+		
+		if needs_swap:
+			var temp = cell1
+			cell1 = cell2
+			cell2 = temp
+		
 		lane_cells.append({
 			"cell1": cell1,
 			"cell2": cell2,
@@ -669,57 +698,117 @@ func get_all_lanes() -> Array[Dictionary]:
 	return all_lanes
 
 
-func get_lane_corner_vertices(cell1: Vector2i, cell2: Vector2i, additional_width: int, side: String) -> Array[Vector3]:
-	var corners: Array[Vector3] = []
+func get_lane_edges(cell1: Vector2i, cell2: Vector2i, additional_width: int, side: String) -> Dictionary:
+	"""
+	Devuelve los edges de inicio y fin del lane como 2 pares de vértices.
 	
-	# Calcular las 4 celdas de esquina según el lado
-	var corner_cells: Array[Vector2i] = []
+	Retorna:
+	{
+		"start_edge": [vertex1, vertex2],  # Edge cerca de cell1 (base de la flecha)
+		"end_edge": [vertex3, vertex4]      # Edge cerca de cell2 (punta de la flecha)
+	}
+	"""
+	var result = {
+		"start_edge": [],
+		"end_edge": []
+	}
 	
 	match side:
 		"north", "south":
-			# Lanes horizontales: ancho adicional en Z
-			corner_cells.append(Vector2i(cell1.x, cell1.y - additional_width))  # BL
-			corner_cells.append(Vector2i(cell2.x, cell2.y - additional_width))  # BR
-			corner_cells.append(Vector2i(cell2.x, cell2.y + additional_width))  # TR
-			corner_cells.append(Vector2i(cell1.x, cell1.y + additional_width))  # TL
+			# Lane horizontal: dirección X
+			# Ancho adicional en Z (norte-sur)
+			
+			# Identificar cuál celda está al oeste y cuál al este
+			var west_x = min(cell1.x, cell2.x)
+			var east_x = max(cell1.x, cell2.x)
+			
+			# Determinar cuál es start y cuál es end basándose en cell1
+			var start_is_west = (cell1.x == west_x)
+			
+			# Celda inferior y superior (para el ancho del lane)
+			var z_min = min(cell1.y, cell2.y) - additional_width
+			var z_max = max(cell1.y, cell2.y) + additional_width
+			
+			# Obtener vértices del lado OESTE (celda en west_x)
+			var cell_sw = GridHelper.get_cell_base_vertices(
+				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
+				west_x, z_min
+			)
+			var cell_nw = GridHelper.get_cell_base_vertices(
+				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
+				west_x, z_max
+			)
+			# Lado oeste de una celda = vértices 0 (BL) y 3 (TL)
+			var west_edge = [cell_sw[0], cell_nw[3]]
+			
+			# Obtener vértices del lado ESTE (celda en east_x)
+			var cell_se = GridHelper.get_cell_base_vertices(
+				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
+				east_x, z_min
+			)
+			var cell_ne = GridHelper.get_cell_base_vertices(
+				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
+				east_x, z_max
+			)
+			# Lado este de una celda = vértices 1 (BR) y 2 (TR)
+			var east_edge = [cell_se[1], cell_ne[2]]
+			
+			# Asignar start y end según la dirección
+			if start_is_west:
+				result["start_edge"] = west_edge
+				result["end_edge"] = east_edge
+			else:
+				result["start_edge"] = east_edge
+				result["end_edge"] = west_edge
 		
 		"west", "east":
-			# Lanes verticales: ancho adicional en X
-			corner_cells.append(Vector2i(cell1.x - additional_width, cell1.y))  # BL
-			corner_cells.append(Vector2i(cell1.x + additional_width, cell1.y))  # BR
-			corner_cells.append(Vector2i(cell2.x + additional_width, cell2.y))  # TR
-			corner_cells.append(Vector2i(cell2.x - additional_width, cell2.y))  # TL
+			# Lane vertical: dirección Z
+			# Ancho adicional en X (oeste-este)
+			
+			# Identificar cuál celda está al norte y cuál al sur
+			var north_z = min(cell1.y, cell2.y)
+			var south_z = max(cell1.y, cell2.y)
+			
+			# Determinar cuál es start y cuál es end basándose en cell1
+			var start_is_north = (cell1.y == north_z)
+			
+			# Celda izquierda y derecha (para el ancho del lane)
+			var x_min = min(cell1.x, cell2.x) - additional_width
+			var x_max = max(cell1.x, cell2.x) + additional_width
+			
+			# Obtener vértices del lado NORTE (celda en north_z)
+			var cell_nw = GridHelper.get_cell_base_vertices(
+				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
+				x_min, north_z
+			)
+			var cell_ne = GridHelper.get_cell_base_vertices(
+				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
+				x_max, north_z
+			)
+			# Lado norte de una celda = vértices 0 (BL) y 1 (BR)
+			var north_edge = [cell_nw[0], cell_ne[1]]
+			
+			# Obtener vértices del lado SUR (celda en south_z)
+			var cell_sw = GridHelper.get_cell_base_vertices(
+				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
+				x_min, south_z
+			)
+			var cell_se = GridHelper.get_cell_base_vertices(
+				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
+				x_max, south_z
+			)
+			# Lado sur de una celda = vértices 3 (TL) y 2 (TR)
+			var south_edge = [cell_sw[3], cell_se[2]]
+			
+			# Asignar start y end según la dirección
+			if start_is_north:
+				result["start_edge"] = north_edge
+				result["end_edge"] = south_edge
+			else:
+				result["start_edge"] = south_edge
+				result["end_edge"] = north_edge
 	
-	# Obtener el vértice apropiado de cada celda de esquina
-	for i in range(4):
-		var cell = corner_cells[i]
-		var cell_vertices = GridHelper.get_cell_base_vertices(
-			grid_geometry.vertices,
-			grid_geometry.rows,
-			grid_geometry.columns,
-			cell.x,
-			cell.y
-		)
-		
-		if cell_vertices.size() != 4:
-			continue
-		
-		# Seleccionar el vértice correcto según la esquina
-		# i=0: BL -> usar vértice BL de la celda
-		# i=1: BR -> usar vértice BR de la celda
-		# i=2: TR -> usar vértice TR de la celda
-		# i=3: TL -> usar vértice TL de la celda
-		corners.append(cell_vertices[i])
-	
-	# Ajustar el orden de los vértices según is_clockwise
-	# Si is_clockwise es true, intercambiar vértices para mantener winding consistente
-	if is_clockwise and corners.size() == 4:
-		# Intercambiar BR y TL para invertir el winding
-		var temp = corners[1]
-		corners[1] = corners[3]
-		corners[3] = temp
-	
-	return corners
+	return result
 
 
 func get_block_corners() -> Array[Vector3]:
