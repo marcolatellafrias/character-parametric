@@ -807,6 +807,21 @@ func get_all_block_faces() -> Array[int]:
 func has_block_grid(face_idx: int) -> bool:
 	return face_idx in block_grids
 
+func get_max_building_height_global() -> float:
+	"""
+	Retorna la altura máxima de todos los buildings en toda la ciudad.
+	"""
+	var max_height = 0.0
+	
+	for face_idx in block_grids:
+		var block: BlockGenerator = block_grids[face_idx]
+		var block_max_height = block.get_max_building_height()
+		
+		if block_max_height > max_height:
+			max_height = block_max_height
+	
+	return max_height
+
 # ============================================
 # GESTIÓN DE PLANOS PEATONALES
 # ============================================

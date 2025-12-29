@@ -41,7 +41,7 @@ var available_max_z: int
 # Carriles por lado de la manzana - AHORA ALMACENA COORDENADAS DE CELDAS
 var lanes: Dictionary = {}
 var lane_additional_width: int = 0  # Celdas adicionales a cada lado del centro
-var lane_height_cells: int = 1  # Altura del lane en celdas
+var lane_height_cells: int = 1 # Altura del lane en celdas
 
 # Buildings
 var buildings: Dictionary = {}
@@ -102,7 +102,7 @@ func _init(
 	p_max_floors_per_cluster: int = 8,
 	p_block_heart_probability: float = 0.0,
 	p_lane_additional_width: int = 0,
-	p_lane_height_cells: int = 1
+	p_lane_height_cells: int = 2
 ) -> void:
 	street_types = p_street_types
 	is_clockwise = p_is_clockwise
@@ -122,7 +122,7 @@ func _init(
 	# Configurar offsets de alleyways con valores por defecto si no se proporcionan
 	if p_building_alleyway_offsets.is_empty():
 		building_alleyway_offsets = {
-			-1: 4,  # BOUNDARY
+			-1: 3,  # BOUNDARY
 			0: 0,   # NORMAL
 			1: 4,   # SMALL
 			2: 4,   # BIG
@@ -908,6 +908,21 @@ func get_lane_width() -> int:
 
 func get_lane_height() -> float:
 	return lane_height_cells * grid_geometry.cell_height
+
+func get_max_building_height() -> float:
+	"""
+	Retorna la altura máxima de todos los clusters en este bloque.
+	"""
+	var max_height = 0.0
+	
+	for cluster in building_clusters:
+		var cluster_floors = cluster.get_floor_count()
+		var cluster_height = cluster_floors * grid_geometry.cells_per_floor * grid_geometry.cell_height
+		
+		if cluster_height > max_height:
+			max_height = cluster_height
+	
+	return max_height
 
 func get_lanes_per_street_type(street_type: int) -> int:
 	return LANES_PER_STREET_TYPE.get(street_type, 0)

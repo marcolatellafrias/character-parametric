@@ -895,8 +895,20 @@ func _visualize_distorted_grids() -> void:
 # Fragmento modificado del visualizador para _visualize_lanes()
 # Visualiza solo las caras de inicio (rojo) y fin (verde) para debug
 
+
 func _visualize_lanes() -> void:
 	var all_block_faces = generator.get_all_block_faces()
+	
+	# Colores para índices pares
+	var red_even = Color(1.0, 0.0, 0.0, 0.5)    # Rojo brillante
+	var green_even = Color(0.0, 1.0, 0.0, 0.5)  # Verde brillante
+	
+	# Colores para índices impares
+	var red_odd = Color(0.6, 0.0, 0.0, 0.5)     # Rojo oscuro
+	var green_odd = Color(0.0, 0.6, 0.0, 0.5)   # Verde oscuro
+	
+	# Calcular altura máxima global de toda la ciudad (una sola vez)
+	var max_building_height_global = generator.get_max_building_height_global()
 	
 	for face_idx in all_block_faces:
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -905,6 +917,12 @@ func _visualize_lanes() -> void:
 			continue
 		
 		var lane_height = block.get_lane_height()
+		
+		# Calcular cuántos pisos de lanes caben basado en la altura global
+		var num_lane_floors = 0
+		if lane_height > 0:
+			num_lane_floors = int(ceil(max_building_height_global / lane_height))
+		
 		var all_lanes = block.get_all_lanes()
 		
 		for lane_data in all_lanes:
@@ -918,34 +936,42 @@ func _visualize_lanes() -> void:
 			if lane_edges["start_edge"].size() != 2 or lane_edges["end_edge"].size() != 2:
 				continue
 			
-			var start_v1 = lane_edges["start_edge"][0]
-			var start_v2 = lane_edges["start_edge"][1]
-			var end_v1 = lane_edges["end_edge"][0]
-			var end_v2 = lane_edges["end_edge"][1]
+			var start_v1_base = lane_edges["start_edge"][0]
+			var start_v2_base = lane_edges["start_edge"][1]
+			var end_v1_base = lane_edges["end_edge"][0]
+			var end_v2_base = lane_edges["end_edge"][1]
 			
-			# Plano ROJO - inicio (base de la flecha)
-			var start_plane = DebugUtil.create_debug_plane(
-				start_v1,
-				start_v2,
-				start_v2 + Vector3(0, lane_height, 0),
-				start_v1 + Vector3(0, lane_height, 0),
-				Color.RED,
-				0.3
-			)
-			add_child(start_plane)
-			
-			# Plano VERDE - fin (punta de la flecha)
-			var end_plane = DebugUtil.create_debug_plane(
-				end_v1,
-				end_v2,
-				end_v2 + Vector3(0, lane_height, 0),
-				end_v1 + Vector3(0, lane_height, 0),
-				Color.GREEN,
-				0.3
-			)
-			add_child(end_plane)
+			# Repetir para cada piso de lane
+			for floor_idx in range(num_lane_floors):
+				var floor_y = floor_idx * lane_height
+				
+				# Elegir colores según si el índice es par o impar
+				var red_color = red_even if floor_idx % 2 == 0 else red_odd
+				var green_color = green_even if floor_idx % 2 == 0 else green_odd
+				
+				# Plano ROJO - inicio (base de la flecha)
+				var start_plane = DebugUtil.create_debug_plane(
+					start_v1_base + Vector3(0, floor_y, 0),
+					start_v2_base + Vector3(0, floor_y, 0),
+					start_v2_base + Vector3(0, floor_y + lane_height, 0),
+					start_v1_base + Vector3(0, floor_y + lane_height, 0),
+					red_color,
+					0.5
+				)
+				add_child(start_plane)
+				
+				# Plano VERDE - fin (punta de la flecha)
+				var end_plane = DebugUtil.create_debug_plane(
+					end_v1_base + Vector3(0, floor_y, 0),
+					end_v2_base + Vector3(0, floor_y, 0),
+					end_v2_base + Vector3(0, floor_y + lane_height, 0),
+					end_v1_base + Vector3(0, floor_y + lane_height, 0),
+					green_color,
+					0.5
+				)
+				add_child(end_plane)
 	
-	print("[Visualizer] Planos de lanes: ROJO=inicio (base), VERDE=fin (punta)")
+	print("[Visualizer] Planos de lanes verticales (altura global): ROJO=inicio, VERDE=fin (brillante=par, oscuro=impar)")
 
 
 func _find_face_connecting_vertices(vertex_indices: Array[int]) -> int:
