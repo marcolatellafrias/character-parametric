@@ -1,7 +1,6 @@
 class_name GraphCityGenerator
 extends RefCounted
 
-# Tipos de barrios
 enum NeighborhoodType {
 	INDUSTRIAL = 0,
 	RESIDENTIAL = 1,
@@ -10,28 +9,21 @@ enum NeighborhoodType {
 
 var plain_graph: GraphGenerator  
 var neighborhoods: Dictionary = {}
-var neighborhood_distances: Dictionary = {}  # {face_idx: distance_from_seed}
+var neighborhood_distances: Dictionary = {}
 var street_types: Dictionary = {}
 var block_grids: Dictionary = {}
 var region_size: Vector2 = Vector2.ZERO
 var pedestrian_planes: Dictionary = {}
 var root_floors: Array[int] = []
 
-# Rangos de altura por tipo de barrio
-var neighborhood_floor_ranges: Dictionary = {}  # {NeighborhoodType: {min: int, max: int}}
-var neighborhood_height_falloff: float = 1.0  # Controla qué tan rápido disminuyen las alturas
+var neighborhood_floor_ranges: Dictionary = {}
+var neighborhood_height_falloff: float = 1.0
+var neighborhood_block_heart_probabilities: Dictionary = {}
 
-# Probabilidades de corazón de manzana por tipo de barrio
-var neighborhood_block_heart_probabilities: Dictionary = {}  # {NeighborhoodType: float}
-
-# Configuración de grillas
 var block_rows: int
 var block_columns: int
-
-# Offsets de calles
 var street_offsets: Dictionary = {}
 
-# Configuración de DistortedGrid
 var distorted_grid_rows: int
 var distorted_grid_columns: int
 var wave_amplitude_x: float
@@ -42,13 +34,11 @@ var wave_phase_x: float
 var wave_phase_z: float
 var edge_falloff_sharpness: float
 
-# Configuración de PathGenerator
 var small_alleyways_count: int
 var big_alleyways_count: int
 var min_steps_before_turn: int
 var grid_seed: int
 
-# Configuración de grilla de Buildings
 var building_grid_rows: int
 var building_grid_columns: int
 
@@ -60,12 +50,6 @@ func generate_city_graph(
 	generation_seed: int,
 	num_large_streets: int,
 	num_small_streets: int,
-	num_small_tunnels: int,
-	num_large_tunnels: int,
-	tunnel_min_length: int,
-	tunnel_max_length: int,
-	tunnel_max_angle_degrees: float,
-	tunnel_min_gap: int,
 	block_grid_rows: int,
 	block_grid_columns: int,
 	block_grid_floors: int,
@@ -74,8 +58,6 @@ func generate_city_graph(
 	small_street_offset: int,
 	medium_street_offset: int,
 	large_street_offset: int,
-	small_tunnel_offset: int,
-	large_tunnel_offset: int,
 	p_distorted_grid_rows: int = 10,
 	p_distorted_grid_columns: int = 10,
 	p_wave_amplitude_x: float = 0.1,
@@ -113,21 +95,18 @@ func generate_city_graph(
 	self.root_floors = p_root_floors
 	self.neighborhood_height_falloff = p_neighborhood_height_falloff
 	
-	# Configurar rangos de altura por tipo de barrio
 	neighborhood_floor_ranges = {
 		NeighborhoodType.INDUSTRIAL: {"min": p_industrial_min_floors, "max": p_industrial_max_floors},
 		NeighborhoodType.RESIDENTIAL: {"min": p_residential_min_floors, "max": p_residential_max_floors},
 		NeighborhoodType.FINANCIAL: {"min": p_financial_min_floors, "max": p_financial_max_floors}
 	}
 	
-	# Configurar probabilidades de corazón de manzana por tipo de barrio
 	neighborhood_block_heart_probabilities = {
 		NeighborhoodType.INDUSTRIAL: p_industrial_block_heart_probability,
 		NeighborhoodType.RESIDENTIAL: p_residential_block_heart_probability,
 		NeighborhoodType.FINANCIAL: p_financial_block_heart_probability
 	}
 	
-	# Guardar configuración de DistortedGrid
 	self.distorted_grid_rows = p_distorted_grid_rows
 	self.distorted_grid_columns = p_distorted_grid_columns
 	self.wave_amplitude_x = p_wave_amplitude_x
@@ -138,24 +117,19 @@ func generate_city_graph(
 	self.wave_phase_z = p_wave_phase_z
 	self.edge_falloff_sharpness = p_edge_falloff_sharpness
 	
-	# Guardar configuración de PathGenerator
 	self.small_alleyways_count = p_small_alleyways_count
 	self.big_alleyways_count = p_big_alleyways_count
 	self.min_steps_before_turn = p_min_steps_before_turn
 	self.grid_seed = p_grid_seed
 	
-	# Guardar configuración de grilla de Buildings
 	self.building_grid_rows = p_building_grid_rows
 	self.building_grid_columns = p_building_grid_columns
 	
-	# Configurar offsets de calles
 	street_offsets = {
 		-1: boundary_offset,
 		0: small_street_offset,
 		1: medium_street_offset,
-		2: large_street_offset,
-		3: small_tunnel_offset,
-		4: large_tunnel_offset
+		2: large_street_offset
 	}
 	
 	plain_graph = GraphGenerator.new()
@@ -171,10 +145,8 @@ func generate_city_graph(
 	_mark_boundary_streets()
 	_generate_small_streets(num_small_streets)
 	_generate_large_streets(num_large_streets)
-	_generate_small_tunnels(num_small_tunnels, tunnel_min_length, tunnel_max_length, tunnel_max_angle_degrees, tunnel_min_gap)
-	_generate_large_tunnels(num_large_tunnels, tunnel_min_length, tunnel_max_length, tunnel_max_angle_degrees, tunnel_min_gap)
 	_initialize_neighborhoods()
-	_assign_neighborhoods()  # Ya no necesita num_neighborhoods
+	_assign_neighborhoods()
 	
 	_generate_block_grids(
 		block_grid_floors,
@@ -313,9 +285,6 @@ func _can_overwrite_street(edge_key: String, new_type: int) -> bool:
 	if current_type == -1:
 		return false
 	
-	if current_type == 3 or current_type == 4:
-		return false
-	
 	if new_type == 0:
 		return current_type == 1
 	
@@ -372,193 +341,7 @@ func get_streets_of_type(street_type: int) -> Array:
 	return result
 
 # ============================================
-# GESTIÓN DE TÚNELES
-# ============================================
-
-func _generate_small_tunnels(
-	num_tunnels: int, 
-	min_length: int, 
-	max_length: int, 
-	max_angle_degrees: float, 
-	min_gap: int
-) -> void:
-	for i in range(num_tunnels):
-		_generate_tunnel_path(0, 3, min_length, max_length, max_angle_degrees, min_gap)
-
-func _generate_large_tunnels(
-	num_tunnels: int, 
-	min_length: int, 
-	max_length: int, 
-	max_angle_degrees: float, 
-	min_gap: int
-) -> void:
-	for i in range(num_tunnels):
-		_generate_tunnel_path(2, 4, min_length, max_length, max_angle_degrees, min_gap)
-
-func _generate_tunnel_path(
-	base_street_type: int,
-	tunnel_type: int,
-	min_length: int,
-	max_length: int,
-	max_angle_degrees: float,
-	min_gap: int
-) -> void:
-	var candidate_edges: Array = []
-	
-	for edge in plain_graph.edges:
-		var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
-		var current_type = street_types.get(edge_key, 1)
-		
-		if current_type == base_street_type:
-			if _has_nearby_tunnels(edge[0], edge[1], min_gap):
-				continue
-			
-			candidate_edges.append(edge)
-	
-	if candidate_edges.is_empty():
-		return
-	
-	var initial_edge = candidate_edges[randi() % candidate_edges.size()]
-	var node1 = initial_edge[0]
-	var node2 = initial_edge[1]
-	
-	var tunnel_length = randi_range(min_length, max_length)
-	
-	var edge_key = GraphGenerator._get_edge_key(node1, node2)
-	street_types[edge_key] = tunnel_type
-	
-	var pos1 = plain_graph.points[node1]
-	var pos2 = plain_graph.points[node2]
-	var initial_direction = (pos2 - pos1).normalized()
-	
-	_expand_tunnel_from_edge(
-		node2, 
-		node1, 
-		base_street_type, 
-		tunnel_type, 
-		initial_direction, 
-		tunnel_length - 1,
-		max_angle_degrees
-	)
-
-func _expand_tunnel_from_edge(
-	current_node: int,
-	previous_node: int,
-	base_street_type: int,
-	tunnel_type: int,
-	previous_direction: Vector3,
-	remaining_length: int,
-	max_angle_degrees: float
-) -> void:
-	if remaining_length <= 0:
-		return
-	
-	var connected_edges = plain_graph.get_edges_for_node(current_node)
-	var current_pos = plain_graph.points[current_node]
-	
-	var best_edge: Array = []
-	var best_score = -INF
-	
-	for edge in connected_edges:
-		var other_node = edge[1] if edge[0] == current_node else edge[0]
-		
-		if other_node == previous_node:
-			continue
-		
-		var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
-		var current_type = street_types.get(edge_key, 1)
-		
-		if current_type != base_street_type:
-			continue
-		
-		var other_pos = plain_graph.points[other_node]
-		var edge_direction = (other_pos - current_pos).normalized()
-		
-		var dot_product = previous_direction.dot(edge_direction)
-		dot_product = clamp(dot_product, -1.0, 1.0)
-		var angle_radians = acos(dot_product)
-		var angle_degrees = rad_to_deg(angle_radians)
-		
-		if angle_degrees > max_angle_degrees:
-			continue
-		
-		var score = dot_product
-		
-		if score > best_score:
-			best_score = score
-			best_edge = edge
-	
-	if best_edge.is_empty():
-		return
-	
-	var edge_key = GraphGenerator._get_edge_key(best_edge[0], best_edge[1])
-	street_types[edge_key] = tunnel_type
-	
-	var next_node = best_edge[1] if best_edge[0] == current_node else best_edge[0]
-	var next_pos = plain_graph.points[next_node]
-	var new_direction = (next_pos - current_pos).normalized()
-	
-	_expand_tunnel_from_edge(
-		next_node,
-		current_node,
-		base_street_type,
-		tunnel_type,
-		new_direction,
-		remaining_length - 1,
-		max_angle_degrees
-	)
-
-func _has_nearby_tunnels(node1: int, node2: int, min_gap: int) -> bool:
-	var visited: Dictionary = {}
-	var queue: Array = [[node1, node2, 0]]
-	
-	while not queue.is_empty():
-		var current = queue.pop_front()
-		var current_node = current[0]
-		var previous_node = current[1]
-		var distance = current[2]
-		
-		if distance >= min_gap:
-			continue
-		
-		var visit_key = str(current_node) + "_" + str(previous_node)
-		if visit_key in visited:
-			continue
-		visited[visit_key] = true
-		
-		var connected_edges = plain_graph.get_edges_for_node(current_node)
-		
-		for edge in connected_edges:
-			var other_node = edge[1] if edge[0] == current_node else edge[0]
-			
-			var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
-			var edge_type = street_types.get(edge_key, 1)
-			
-			if edge_type == 3 or edge_type == 4:
-				return true
-			
-			if other_node != previous_node:
-				queue.append([other_node, current_node, distance + 1])
-	
-	return false
-
-func get_all_tunnels() -> Array:
-	var result: Array = []
-	
-	for edge_key in street_types:
-		var street_type = street_types[edge_key]
-		if street_type == 3 or street_type == 4:
-			result.append(edge_key)
-	
-	return result
-
-func is_tunnel(node1_idx: int, node2_idx: int) -> bool:
-	var edge_key = GraphGenerator._get_edge_key(node1_idx, node2_idx)
-	var street_type = street_types.get(edge_key, 1)
-	return street_type == 3 or street_type == 4
-
-# ============================================
-# GESTIÓN DE BARRIOS (3 TIPOS)
+# GESTIÓN DE BARRIOS
 # ============================================
 
 func _initialize_neighborhoods() -> void:
@@ -572,18 +355,15 @@ func _assign_neighborhoods() -> void:
 		push_warning("No hay caras en el grafo para asignar barrios")
 		return
 	
-	# Siempre hay 3 tipos de barrios
 	var num_neighborhood_types = 3
 	
 	var available_faces = range(total_faces)
 	available_faces.shuffle()
 	
-	# Inicializar distancias
 	neighborhood_distances.clear()
 	for face_idx in range(total_faces):
-		neighborhood_distances[face_idx] = 999999  # Distancia infinita inicial
+		neighborhood_distances[face_idx] = 999999
 	
-	# Elegir semillas para cada tipo de barrio
 	var expansion_fronts: Array[Array] = []
 	var seed_faces: Array[int] = []
 	
@@ -591,14 +371,13 @@ func _assign_neighborhoods() -> void:
 		if neighborhood_type < total_faces:
 			var seed_face = available_faces[neighborhood_type]
 			neighborhoods[seed_face] = neighborhood_type
-			neighborhood_distances[seed_face] = 0  # Las semillas tienen distancia 0
+			neighborhood_distances[seed_face] = 0
 			seed_faces.append(seed_face)
-			var queue: Array = [[seed_face, 0]]  # [face_idx, distance]
+			var queue: Array = [[seed_face, 0]]
 			expansion_fronts.append(queue)
 	
 	var active_fronts = true
 	
-	# Expansión BFS para los 3 tipos, guardando distancias
 	while active_fronts:
 		active_fronts = false
 		
@@ -627,13 +406,11 @@ func _assign_neighborhoods() -> void:
 						neighborhood_distances[adj_face] = current_distance + 1
 						queue.append([adj_face, current_distance + 1])
 	
-	# Calcular distancia máxima para normalización
 	var max_distance = 0
 	for face_idx in neighborhood_distances:
 		if neighborhood_distances[face_idx] > max_distance and neighborhood_distances[face_idx] < 999999:
 			max_distance = neighborhood_distances[face_idx]
 	
-	# Normalizar distancias (0.0 = semilla, 1.0 = borde más lejano)
 	for face_idx in neighborhood_distances:
 		if neighborhood_distances[face_idx] < 999999 and max_distance > 0:
 			neighborhood_distances[face_idx] = float(neighborhood_distances[face_idx]) / float(max_distance)
@@ -699,25 +476,16 @@ func _generate_block_grids(
 		
 		var is_clockwise = _is_face_clockwise(face_vertices)
 		
-		# Generar seed único por bloque si grid_seed es -1
 		var block_seed = grid_seed
 		if grid_seed == -1:
 			block_seed = hash(face_idx)
 		
-		# Obtener tipo de barrio para esta cara
 		var neighborhood_type = get_neighborhood_for_face(face_idx)
-		
-		# Obtener distancia normalizada desde la semilla (0.0 = semilla, 1.0 = borde)
 		var distance_from_seed = neighborhood_distances.get(face_idx, 1.0)
-		
-		# Aplicar falloff (curva de potencia)
 		var falloff_factor = pow(distance_from_seed, neighborhood_height_falloff)
 		
-		# Obtener rangos de altura según el tipo de barrio
 		var min_floors = 1
 		var max_floors = 8
-		
-		# Obtener probabilidad de corazón de manzana según tipo de barrio
 		var block_heart_prob = 0.0
 		
 		if neighborhood_type in neighborhood_floor_ranges:
@@ -725,7 +493,6 @@ func _generate_block_grids(
 			var target_min = range_data["min"]
 			var target_max = range_data["max"]
 			
-			# Calcular promedio global de todos los tipos (punto de convergencia)
 			var global_min = 0
 			var global_max = 0
 			var type_count = 0
@@ -740,15 +507,12 @@ func _generate_block_grids(
 				global_min = int(float(global_min) / float(type_count))
 				global_max = int(float(global_max) / float(type_count))
 			
-			# Interpolar entre el rango del barrio y el rango global
 			min_floors = int(lerp(float(target_min), float(global_min), falloff_factor))
 			max_floors = int(lerp(float(target_max), float(global_max), falloff_factor))
 			
-			# Asegurar que min <= max
 			if min_floors > max_floors:
 				min_floors = max_floors
 		
-		# Obtener probabilidad de corazón de manzana
 		if neighborhood_type in neighborhood_block_heart_probabilities:
 			block_heart_prob = neighborhood_block_heart_probabilities[neighborhood_type]
 		
@@ -808,9 +572,6 @@ func has_block_grid(face_idx: int) -> bool:
 	return face_idx in block_grids
 
 func get_max_building_height_global() -> float:
-	"""
-	Retorna la altura máxima de todos los buildings en toda la ciudad.
-	"""
 	var max_height = 0.0
 	
 	for face_idx in block_grids:
