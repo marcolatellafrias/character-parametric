@@ -38,8 +38,6 @@ extends Node3D
 @export var node_radius: float = 0.08
 @export var normal_node_color: Color = Color.CHARTREUSE
 @export var boundary_node_color: Color = Color.ORANGE_RED
-@export var inscribed_square_color: Color = Color.RED
-@export var inscribed_square_width: float = 0.03
 @export var auto_generate: bool = true
 
 @export_group("Tipos de Calles")
@@ -68,17 +66,6 @@ extends Node3D
 @export var block_grid_floors: int = 8
 @export var block_cells_per_floor: int = 5
 
-@export_subgroup("Root Floors")
-@export var min_root_floor_height: int = 2
-@export var max_root_floor_height: int = 3
-@export var use_generation_seed_for_roots: bool = true
-
-@export_subgroup("Offsets de Calles (en celdas)")
-@export var boundary_offset: int = 0
-@export var small_street_offset: int = 7
-@export var medium_street_offset: int = 12
-@export var large_street_offset: int = 17
-
 @export_group("Grilla Distorsionada")
 @export var distorted_grid_rows: int = 6
 @export var distorted_grid_columns: int = 6
@@ -105,10 +92,6 @@ extends Node3D
 @export var distorted_grid_floor_to_show: int = 0
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
-@export var distorted_grid_small_vertex_color: Color = Color.YELLOW
-@export var distorted_grid_big_vertex_color: Color = Color.ORANGE
-@export var distorted_grid_small_origin_vertex_color: Color = Color.GREEN
-@export var distorted_grid_big_origin_vertex_color: Color = Color.MAGENTA
 @export var distorted_grid_boundary_vertex_color: Color = Color.RED
 @export var distorted_grid_normal_edge_color: Color = Color.WHITE
 @export var distorted_grid_small_edge_color: Color = Color.YELLOW
@@ -121,13 +104,7 @@ extends Node3D
 
 @export_group("Buildings")
 @export var show_buildings: bool = true
-@export var building_color: Color = Color(0.6, 0.6, 0.6, 0.8)
 @export var show_building_colliders: bool = true
-
-@export_group("Carriles")
-@export var show_lanes: bool = true
-@export var lane_color: Color = Color.YELLOW
-@export var lane_width: float = 0.02
 
 @export_group("Planos Peatonales")
 @export var show_pedestrian_planes: bool = false
@@ -136,17 +113,14 @@ extends Node3D
 
 @export_group("Planos de Pisos")
 @export var show_floor_planes: bool = false
-@export var root_floor_plane_color: Color = Color(1.0, 0.0, 0.5, 0.4)
-@export_range(0.0, 1.0) var root_floor_plane_transparency: float = 0.4
-@export var normal_floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
-@export_range(0.0, 1.0) var normal_floor_plane_transparency: float = 0.3
+@export var floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
+@export_range(0.0, 1.0) var floor_plane_transparency: float = 0.3
 
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
 var generator: GraphCityGenerator = null
 var neighborhood_colors: Dictionary = {}
-var root_floors: Array[int] = []
 
 # ============================================
 # INICIALIZACIÓN
@@ -169,8 +143,6 @@ func generate_graph() -> void:
 	var block_cell_height = min_distance / block_grid_rows
 	var building_cell_height = min_distance / building_grid_rows
 	
-	_generate_root_floors()
-	
 	generator.generate_city_graph(
 		smoothing_steps,
 		region_size,
@@ -183,10 +155,6 @@ func generate_graph() -> void:
 		block_grid_columns,
 		block_grid_floors,
 		block_cells_per_floor,
-		boundary_offset,
-		small_street_offset,
-		medium_street_offset,
-		large_street_offset,
 		distorted_grid_rows,
 		distorted_grid_columns,
 		wave_amplitude_x,
@@ -204,7 +172,6 @@ func generate_graph() -> void:
 		building_grid_columns,
 		block_cell_height,
 		building_cell_height,
-		root_floors,
 		industrial_min_floors,
 		industrial_max_floors,
 		residential_min_floors,
@@ -218,24 +185,6 @@ func generate_graph() -> void:
 	)
 	
 	_generate_neighborhood_colors()
-
-func _generate_root_floors() -> void:
-	root_floors.clear()
-	root_floors.append(0)
-	
-	if use_generation_seed_for_roots:
-		seed(generation_seed)
-	
-	var current_floor = 0
-	
-	while current_floor < block_grid_floors:
-		var root_height = randi_range(min_root_floor_height, max_root_floor_height)
-		current_floor += root_height
-		
-		if current_floor < block_grid_floors:
-			root_floors.append(current_floor)
-	
-	print("[Visualizer] Root floors generados: %s" % str(root_floors))
 
 func _generate_neighborhood_colors() -> void:
 	neighborhood_colors.clear()
@@ -265,9 +214,6 @@ func visualize_graph() -> void:
 	
 	if show_distorted_grid:
 		_visualize_distorted_grids()
-	
-	if show_lanes:
-		_visualize_lanes()
 	
 	if show_pedestrian_planes:
 		_visualize_pedestrian_planes()
@@ -332,7 +278,6 @@ func _visualize_nodes() -> void:
 func _visualize_floor_planes() -> void:
 	var all_block_faces = generator.get_all_block_faces()
 	var total_planes = 0
-	var total_root_planes = 0
 	
 	for face_idx in all_block_faces:
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -356,29 +301,16 @@ func _visualize_floor_planes() -> void:
 		for floor in range(floors):
 			var y = floor * cells_per_floor * cell_height
 			
-			var is_root_floor = floor in root_floors
-			
-			var color: Color
-			var transparency: float
-			
-			if is_root_floor:
-				color = root_floor_plane_color
-				transparency = root_floor_plane_transparency
-				total_root_planes += 1
-			else:
-				color = normal_floor_plane_color
-				transparency = normal_floor_plane_transparency
-			
 			var v1 = Vector3(face_vertices_3d[0].x, y, face_vertices_3d[0].z)
 			var v2 = Vector3(face_vertices_3d[1].x, y, face_vertices_3d[1].z)
 			var v3 = Vector3(face_vertices_3d[2].x, y, face_vertices_3d[2].z)
 			var v4 = Vector3(face_vertices_3d[3].x, y, face_vertices_3d[3].z)
 			
-			var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, color, transparency)
+			var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, floor_plane_color, floor_plane_transparency)
 			add_child(plane)
 			total_planes += 1
 	
-	print("[Visualizer] Planos de pisos: %d (%d root, %d normal) en %d bloques" % [total_planes, total_root_planes, total_planes - total_root_planes, all_block_faces.size()])
+	print("[Visualizer] Planos de pisos: %d en %d bloques" % [total_planes, all_block_faces.size()])
 
 # ============================================
 # VISUALIZACIÓN DE BUILDINGS (CON CLUSTERS)
@@ -697,77 +629,6 @@ func _visualize_distorted_grids() -> void:
 				total_edges += 1
 	
 	print("[Visualizer] Grillas distorsionadas: %d vértices, %d edges en %d bloques" % [total_vertices, total_edges, all_block_faces.size()])
-
-# ============================================
-# VISUALIZACIÓN DE CARRILES
-# ============================================
-func _visualize_lanes() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	
-	var red_even = Color(1.0, 0.0, 0.0, 0.5)
-	var green_even = Color(0.0, 1.0, 0.0, 0.5)
-	var red_odd = Color(0.6, 0.0, 0.0, 0.5)
-	var green_odd = Color(0.0, 0.6, 0.0, 0.5)
-	
-	var max_building_height_global = generator.get_max_building_height_global()
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		var lane_height = block.get_lane_height()
-		
-		var num_lane_floors = 0
-		if lane_height > 0:
-			num_lane_floors = int(ceil(max_building_height_global / lane_height))
-		
-		var all_lanes = block.get_all_lanes()
-		
-		for lane_data in all_lanes:
-			var cell1: Vector2i = lane_data["cell1"]
-			var cell2: Vector2i = lane_data["cell2"]
-			var additional_width: int = lane_data["additional_width"]
-			var side: String = lane_data["side"]
-			
-			var lane_edges = block.get_lane_edges(cell1, cell2, additional_width, side)
-			
-			if lane_edges["start_edge"].size() != 2 or lane_edges["end_edge"].size() != 2:
-				continue
-			
-			var start_v1_base = lane_edges["start_edge"][0]
-			var start_v2_base = lane_edges["start_edge"][1]
-			var end_v1_base = lane_edges["end_edge"][0]
-			var end_v2_base = lane_edges["end_edge"][1]
-			
-			for floor_idx in range(num_lane_floors):
-				var floor_y = floor_idx * lane_height
-				
-				var red_color = red_even if floor_idx % 2 == 0 else red_odd
-				var green_color = green_even if floor_idx % 2 == 0 else green_odd
-				
-				var start_plane = DebugUtil.create_debug_plane(
-					start_v1_base + Vector3(0, floor_y, 0),
-					start_v2_base + Vector3(0, floor_y, 0),
-					start_v2_base + Vector3(0, floor_y + lane_height, 0),
-					start_v1_base + Vector3(0, floor_y + lane_height, 0),
-					red_color,
-					0.5
-				)
-				add_child(start_plane)
-				
-				var end_plane = DebugUtil.create_debug_plane(
-					end_v1_base + Vector3(0, floor_y, 0),
-					end_v2_base + Vector3(0, floor_y, 0),
-					end_v2_base + Vector3(0, floor_y + lane_height, 0),
-					end_v1_base + Vector3(0, floor_y + lane_height, 0),
-					green_color,
-					0.5
-				)
-				add_child(end_plane)
-	
-	print("[Visualizer] Planos de lanes verticales (altura global): ROJO=inicio, VERDE=fin")
 
 # ============================================
 # VISUALIZACIÓN DE PLANOS PEATONALES

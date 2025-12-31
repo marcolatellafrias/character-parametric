@@ -54,10 +54,6 @@ func generate_city_graph(
 	block_grid_columns: int,
 	block_grid_floors: int,
 	block_cells_per_floor: int,
-	boundary_offset: int,
-	small_street_offset: int,
-	medium_street_offset: int,
-	large_street_offset: int,
 	p_distorted_grid_rows: int = 10,
 	p_distorted_grid_columns: int = 10,
 	p_wave_amplitude_x: float = 0.1,
@@ -75,7 +71,6 @@ func generate_city_graph(
 	p_building_grid_columns: int = 10,
 	p_block_cell_height: float = 0.01,
 	p_building_cell_height: float = 0.005,
-	p_root_floors: Array[int] = [],
 	p_industrial_min_floors: int = 1,
 	p_industrial_max_floors: int = 3,
 	p_residential_min_floors: int = 4,
@@ -92,7 +87,6 @@ func generate_city_graph(
 	self.region_size = region_size
 	self.block_rows = block_grid_rows
 	self.block_columns = block_grid_columns
-	self.root_floors = p_root_floors
 	self.neighborhood_height_falloff = p_neighborhood_height_falloff
 	
 	neighborhood_floor_ranges = {
@@ -124,13 +118,6 @@ func generate_city_graph(
 	
 	self.building_grid_rows = p_building_grid_rows
 	self.building_grid_columns = p_building_grid_columns
-	
-	street_offsets = {
-		-1: boundary_offset,
-		0: small_street_offset,
-		1: medium_street_offset,
-		2: large_street_offset
-	}
 	
 	plain_graph = GraphGenerator.new()
 	plain_graph.generate_graph(
@@ -543,7 +530,6 @@ func _generate_block_grids(
 			building_grid_columns,
 			building_cell_height,
 			{},
-			root_floors,
 			min_floors,
 			max_floors,
 			block_heart_prob

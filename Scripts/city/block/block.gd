@@ -7,11 +7,12 @@ enum StreetType {
 	LARGE = 2
 }
 
-const LANES_PER_STREET_TYPE: Dictionary = {
+# Ancho de media calle en celdas por tipo
+const STREET_HALF_WIDTH_CELLS: Dictionary = {
 	StreetType.BOUNDARY: 0,
-	StreetType.SMALL: 2,
-	StreetType.MEDIUM: 4,
-	StreetType.LARGE: 6
+	StreetType.SMALL: 3,
+	StreetType.MEDIUM: 6,
+	StreetType.LARGE: 9
 }
 
 var grid_geometry: GridGeometry
@@ -27,10 +28,6 @@ var available_max_x: int
 var available_min_z: int
 var available_max_z: int
 
-var lanes: Dictionary = {}
-var lane_additional_width: int = 0
-var lane_height_cells: int = 1
-
 var buildings: Dictionary = {}
 var building_clusters: Array[BuildingCluster] = []
 var cell_to_cluster: Dictionary = {}
@@ -44,7 +41,6 @@ var building_columns: int
 var building_cell_height: float
 var building_alleyway_offsets: Dictionary
 
-var root_floors: Array[int] = []
 var cluster_seed: int
 
 func _init(
@@ -74,19 +70,13 @@ func _init(
 	p_building_columns: int = 10,
 	p_building_cell_height: float = 0.005,
 	p_building_alleyway_offsets: Dictionary = {},
-	p_root_floors: Array[int] = [],
 	p_min_floors_per_cluster: int = 1,
 	p_max_floors_per_cluster: int = 8,
-	p_block_heart_probability: float = 0.0,
-	p_lane_additional_width: int = 0,
-	p_lane_height_cells: int = 2
+	p_block_heart_probability: float = 0.0
 ) -> void:
 	street_types = p_street_types
 	is_clockwise = p_is_clockwise
 	street_offsets = p_street_offsets
-	root_floors = p_root_floors
-	lane_additional_width = p_lane_additional_width
-	lane_height_cells = p_lane_height_cells
 	
 	building_rows = p_building_rows
 	building_columns = p_building_columns
@@ -118,7 +108,6 @@ func _init(
 	)
 	
 	_calculate_available_area()
-	_calculate_lanes()
 	
 	_create_distorted_grid(
 		p_distorted_rows,
@@ -162,35 +151,10 @@ func _calculate_available_area() -> void:
 func _calculate_street_offsets() -> Dictionary:
 	var offsets: Dictionary = {}
 	
-	for street_type in LANES_PER_STREET_TYPE.keys():
-		var num_lanes = LANES_PER_STREET_TYPE[street_type]
-		var lane_width = _get_lane_width()
-		
-		var total_offset = (num_lanes * lane_width) / 2
-		offsets[street_type] = total_offset
+	for street_type in STREET_HALF_WIDTH_CELLS.keys():
+		offsets[street_type] = STREET_HALF_WIDTH_CELLS[street_type]
 	
 	return offsets
-
-func _get_lane_width() -> int:
-	return 1 + (2 * lane_additional_width)
-
-func _get_lane_center_offsets(street_type: int) -> Array[int]:
-	var centers: Array[int] = []
-	var num_lanes = LANES_PER_STREET_TYPE.get(street_type, 0)
-	
-	if num_lanes == 0:
-		return centers
-	
-	var lane_width = _get_lane_width()
-	var lanes_per_half = num_lanes / 2
-	var offset_total = street_offsets.get(street_type, 0)
-	
-	for i in range(lanes_per_half):
-		var center_from_edge = int((i * lane_width) + float(lane_width) / 2.0)
-		var center_offset = offset_total - center_from_edge
-		centers.append(center_offset)
-	
-	return centers
 
 func _create_distorted_grid(
 	distorted_rows: int,
@@ -233,7 +197,6 @@ func _create_path_generator(
 		min_steps_before_turn,
 		grid_seed,
 		0.5,
-		root_floors,
 		grid_geometry.floors
 	)
 	
@@ -520,159 +483,6 @@ func _get_core_block_vertices() -> Array[Vector2]:
 	
 	return vertices
 
-func _calculate_lanes() -> void:
-	lanes["north"] = _get_lane_cells_for_street_type(street_types[0], "north")
-	lanes["east"] = _get_lane_cells_for_street_type(street_types[1], "east")
-	lanes["south"] = _get_lane_cells_for_street_type(street_types[2], "south")
-	lanes["west"] = _get_lane_cells_for_street_type(street_types[3], "west")
-
-func _get_lane_cells_for_street_type(street_type: int, side: String) -> Array[Dictionary]:
-	var lane_cells: Array[Dictionary] = []
-	var center_offsets = _get_lane_center_offsets(street_type)
-	
-	for offset in center_offsets:
-		var cell1: Vector2i
-		var cell2: Vector2i
-		
-		match side:
-			"north":
-				var z = available_min_z - offset
-				cell1 = Vector2i(0, z)
-				cell2 = Vector2i(grid_geometry.columns - 1, z)
-			"south":
-				var z = available_max_z + offset
-				cell1 = Vector2i(0, z)
-				cell2 = Vector2i(grid_geometry.columns - 1, z)
-			"west":
-				var x = available_min_x - offset
-				cell1 = Vector2i(x, 0)
-				cell2 = Vector2i(x, grid_geometry.rows - 1)
-			"east":
-				var x = available_max_x + offset
-				cell1 = Vector2i(x, 0)
-				cell2 = Vector2i(x, grid_geometry.rows - 1)
-		
-		var needs_swap = false
-		
-		match side:
-			"north":
-				needs_swap = is_clockwise
-			"south":
-				needs_swap = not is_clockwise
-			"west":
-				needs_swap = not is_clockwise
-			"east":
-				needs_swap = is_clockwise
-		
-		if needs_swap:
-			var temp = cell1
-			cell1 = cell2
-			cell2 = temp
-		
-		lane_cells.append({
-			"cell1": cell1,
-			"cell2": cell2,
-			"additional_width": lane_additional_width
-		})
-	
-	return lane_cells
-
-func get_all_lanes() -> Array[Dictionary]:
-	var all_lanes: Array[Dictionary] = []
-	
-	for side in ["north", "south", "east", "west"]:
-		var side_lanes = lanes.get(side, [])
-		for lane_idx in range(side_lanes.size()):
-			var lane_data = side_lanes[lane_idx]
-			all_lanes.append({
-				"cell1": lane_data["cell1"],
-				"cell2": lane_data["cell2"],
-				"additional_width": lane_data["additional_width"],
-				"side": side,
-				"index": lane_idx
-			})
-	
-	return all_lanes
-
-func get_lane_edges(cell1: Vector2i, cell2: Vector2i, additional_width: int, side: String) -> Dictionary:
-	var result = {
-		"start_edge": [],
-		"end_edge": []
-	}
-	
-	match side:
-		"north", "south":
-			var west_x = min(cell1.x, cell2.x)
-			var east_x = max(cell1.x, cell2.x)
-			var start_is_west = (cell1.x == west_x)
-			
-			var z_min = min(cell1.y, cell2.y) - additional_width
-			var z_max = max(cell1.y, cell2.y) + additional_width
-			
-			var cell_sw = GridHelper.get_cell_base_vertices(
-				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
-				west_x, z_min
-			)
-			var cell_nw = GridHelper.get_cell_base_vertices(
-				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
-				west_x, z_max
-			)
-			var west_edge = [cell_sw[0], cell_nw[3]]
-			
-			var cell_se = GridHelper.get_cell_base_vertices(
-				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
-				east_x, z_min
-			)
-			var cell_ne = GridHelper.get_cell_base_vertices(
-				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
-				east_x, z_max
-			)
-			var east_edge = [cell_se[1], cell_ne[2]]
-			
-			if start_is_west:
-				result["start_edge"] = west_edge
-				result["end_edge"] = east_edge
-			else:
-				result["start_edge"] = east_edge
-				result["end_edge"] = west_edge
-		
-		"west", "east":
-			var north_z = min(cell1.y, cell2.y)
-			var south_z = max(cell1.y, cell2.y)
-			var start_is_north = (cell1.y == north_z)
-			
-			var x_min = min(cell1.x, cell2.x) - additional_width
-			var x_max = max(cell1.x, cell2.x) + additional_width
-			
-			var cell_nw = GridHelper.get_cell_base_vertices(
-				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
-				x_min, north_z
-			)
-			var cell_ne = GridHelper.get_cell_base_vertices(
-				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
-				x_max, north_z
-			)
-			var north_edge = [cell_nw[0], cell_ne[1]]
-			
-			var cell_sw = GridHelper.get_cell_base_vertices(
-				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
-				x_min, south_z
-			)
-			var cell_se = GridHelper.get_cell_base_vertices(
-				grid_geometry.vertices, grid_geometry.rows, grid_geometry.columns,
-				x_max, south_z
-			)
-			var south_edge = [cell_sw[3], cell_se[2]]
-			
-			if start_is_north:
-				result["start_edge"] = north_edge
-				result["end_edge"] = south_edge
-			else:
-				result["start_edge"] = south_edge
-				result["end_edge"] = north_edge
-	
-	return result
-
 func get_block_corners() -> Array[Vector3]:
 	var corners: Array[Vector3] = []
 	
@@ -753,17 +563,8 @@ func get_building_columns() -> int:
 func get_building_cell_height() -> float:
 	return building_cell_height
 
-func get_root_floors() -> Array[int]:
-	return root_floors
-
 func get_street_offset(street_type: int) -> int:
 	return street_offsets.get(street_type, 0)
-
-func get_lane_width() -> int:
-	return _get_lane_width()
-
-func get_lane_height() -> float:
-	return lane_height_cells * grid_geometry.cell_height
 
 func get_max_building_height() -> float:
 	var max_height = 0.0
@@ -776,6 +577,3 @@ func get_max_building_height() -> float:
 			max_height = cluster_height
 	
 	return max_height
-
-func get_lanes_per_street_type(street_type: int) -> int:
-	return LANES_PER_STREET_TYPE.get(street_type, 0)

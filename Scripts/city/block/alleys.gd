@@ -13,8 +13,6 @@ var min_steps_before_turn: int
 var straight_probability: float
 var rng: RandomNumberGenerator
 
-# Root floors (mantenidos para uso futuro)
-var root_floors: Array[int] = []
 var total_floors: int = 0
 
 
@@ -25,7 +23,6 @@ func _init(
 	p_min_steps_before_turn: int = 2,
 	p_seed: int = -1,
 	p_straight_probability: float = 0.5,
-	p_root_floors: Array[int] = [],
 	p_total_floors: int = 1
 ) -> void:
 	grid = p_grid
@@ -33,7 +30,6 @@ func _init(
 	big_alleyways_count = p_big_alleyways_count
 	min_steps_before_turn = p_min_steps_before_turn
 	straight_probability = p_straight_probability
-	root_floors = p_root_floors
 	total_floors = p_total_floors
 	
 	rng = RandomNumberGenerator.new()
@@ -46,7 +42,6 @@ func _init(
 func generate() -> void:
 	print("\n=== GENERANDO ALLEYWAYS (CONFIGURACIÓN ÚNICA PARA TODOS LOS PISOS) ===")
 	print("Total pisos: %d" % total_floors)
-	print("Root floors: %s (mantenidos para uso futuro)" % str(root_floors))
 	
 	# Generar solo una vez para todos los pisos
 	_generate_alleyways()
