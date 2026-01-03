@@ -775,7 +775,132 @@ static func create_debug_cylinder(color: Color, radius: float, height: float, se
 	
 # DebugUtil - Función para agregar
 
-## Función: create_skewed_cube_from_planes
+static func create_debug_ring_volume(color: Color, outer_radius: float, inner_radius: float, height: float, segments: int = 16) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	
+	# Cara exterior del anillo
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		
+		var x1 := cos(angle1) * outer_radius
+		var z1 := sin(angle1) * outer_radius
+		var x2 := cos(angle2) * outer_radius
+		var z2 := sin(angle2) * outer_radius
+		
+		# Quad lateral exterior (2 triángulos)
+		st.set_color(color)
+		st.add_vertex(Vector3(x1, 0, z1))
+		st.set_color(color)
+		st.add_vertex(Vector3(x1, height, z1))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2, height, z2))
+		
+		st.set_color(color)
+		st.add_vertex(Vector3(x1, 0, z1))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2, height, z2))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2, 0, z2))
+	
+	# Cara interior del anillo (invertida)
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		
+		var x1 := cos(angle1) * inner_radius
+		var z1 := sin(angle1) * inner_radius
+		var x2 := cos(angle2) * inner_radius
+		var z2 := sin(angle2) * inner_radius
+		
+		# Quad lateral interior invertido (2 triángulos)
+		st.set_color(color)
+		st.add_vertex(Vector3(x1, 0, z1))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2, height, z2))
+		st.set_color(color)
+		st.add_vertex(Vector3(x1, height, z1))
+		
+		st.set_color(color)
+		st.add_vertex(Vector3(x1, 0, z1))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2, 0, z2))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2, height, z2))
+	
+	# Tapa inferior del anillo
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		
+		var x1_outer := cos(angle1) * outer_radius
+		var z1_outer := sin(angle1) * outer_radius
+		var x2_outer := cos(angle2) * outer_radius
+		var z2_outer := sin(angle2) * outer_radius
+		
+		var x1_inner := cos(angle1) * inner_radius
+		var z1_inner := sin(angle1) * inner_radius
+		var x2_inner := cos(angle2) * inner_radius
+		var z2_inner := sin(angle2) * inner_radius
+		
+		# Quad de tapa inferior (2 triángulos)
+		st.set_color(color)
+		st.add_vertex(Vector3(x1_outer, 0, z1_outer))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2_outer, 0, z2_outer))
+		st.set_color(color)
+		st.add_vertex(Vector3(x1_inner, 0, z1_inner))
+		
+		st.set_color(color)
+		st.add_vertex(Vector3(x2_outer, 0, z2_outer))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2_inner, 0, z2_inner))
+		st.set_color(color)
+		st.add_vertex(Vector3(x1_inner, 0, z1_inner))
+	
+	# Tapa superior del anillo
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		
+		var x1_outer := cos(angle1) * outer_radius
+		var z1_outer := sin(angle1) * outer_radius
+		var x2_outer := cos(angle2) * outer_radius
+		var z2_outer := sin(angle2) * outer_radius
+		
+		var x1_inner := cos(angle1) * inner_radius
+		var z1_inner := sin(angle1) * inner_radius
+		var x2_inner := cos(angle2) * inner_radius
+		var z2_inner := sin(angle2) * inner_radius
+		
+		# Quad de tapa superior (2 triángulos)
+		st.set_color(color)
+		st.add_vertex(Vector3(x1_outer, height, z1_outer))
+		st.set_color(color)
+		st.add_vertex(Vector3(x1_inner, height, z1_inner))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2_outer, height, z2_outer))
+		
+		st.set_color(color)
+		st.add_vertex(Vector3(x2_outer, height, z2_outer))
+		st.set_color(color)
+		st.add_vertex(Vector3(x1_inner, height, z1_inner))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2_inner, height, z2_inner))
+	
+	var mesh := st.commit()
+	mesh_instance.mesh = mesh
+	
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mesh_instance.material_override = material
+	
+	return mesh_instance
 
 # Crea un skewed cube (cubo deformado) a partir de dos planos paralelos
 # plane1_vertices: Array de 4 Vector3 representando el primer plano [v1_base, v2_base, v3_top, v4_top]
@@ -866,3 +991,105 @@ static func _add_quad_to_arrays(
 	indices.append(start_idx + 0)
 	indices.append(start_idx + 2)
 	indices.append(start_idx + 3)
+
+static func create_debug_ring_volume_wireframe(color: Color, outer_radius: float, inner_radius: float, height: float, segments: int = 16, valid_segment_indices: Array = []) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_LINES)
+	
+	var valid_color := Color(0.0, 1.0, 0.0, 0.8)  # Verde para válidos
+	var invalid_color := Color(1.0, 0.0, 0.0, 0.8)  # Rojo para inválidos
+	
+	# Anillo inferior interior
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		var x1 := cos(angle1) * inner_radius
+		var z1 := sin(angle1) * inner_radius
+		var x2 := cos(angle2) * inner_radius
+		var z2 := sin(angle2) * inner_radius
+		var segment_color = valid_color if i in valid_segment_indices else invalid_color
+		
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x1, 0, z1))
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x2, 0, z2))
+	
+	# Anillo inferior exterior
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		var x1 := cos(angle1) * outer_radius
+		var z1 := sin(angle1) * outer_radius
+		var x2 := cos(angle2) * outer_radius
+		var z2 := sin(angle2) * outer_radius
+		var segment_color = valid_color if i in valid_segment_indices else invalid_color
+		
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x1, 0, z1))
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x2, 0, z2))
+	
+	# Anillo superior interior
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		var x1 := cos(angle1) * inner_radius
+		var z1 := sin(angle1) * inner_radius
+		var x2 := cos(angle2) * inner_radius
+		var z2 := sin(angle2) * inner_radius
+		var segment_color = valid_color if i in valid_segment_indices else invalid_color
+		
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x1, height, z1))
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x2, height, z2))
+	
+	# Anillo superior exterior
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		var x1 := cos(angle1) * outer_radius
+		var z1 := sin(angle1) * outer_radius
+		var x2 := cos(angle2) * outer_radius
+		var z2 := sin(angle2) * outer_radius
+		var segment_color = valid_color if i in valid_segment_indices else invalid_color
+		
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x1, height, z1))
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x2, height, z2))
+	
+	# Líneas verticales conectando los anillos
+	for i in range(segments):
+		var angle := TAU * float(i) / float(segments)
+		var segment_color = valid_color if i in valid_segment_indices else invalid_color
+		
+		# Líneas para el anillo interior
+		var x_inner := cos(angle) * inner_radius
+		var z_inner := sin(angle) * inner_radius
+		
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x_inner, 0, z_inner))
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x_inner, height, z_inner))
+		
+		# Líneas para el anillo exterior
+		var x_outer := cos(angle) * outer_radius
+		var z_outer := sin(angle) * outer_radius
+		
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x_outer, 0, z_outer))
+		st.set_color(segment_color)
+		st.add_vertex(Vector3(x_outer, height, z_outer))
+	
+	var mesh := st.commit()
+	mesh_instance.mesh = mesh
+	
+	var material := StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh_instance.material_override = material
+	
+	return mesh_instance
