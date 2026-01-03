@@ -766,8 +766,9 @@ func _line_intersection_2d(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2) -
 # Obtiene todos los BlockGenerators que intersectan con un disco circular
 # center: Vector2 o Vector3 (centro del disco en el espacio global, Y es ignorada si es Vector3)
 # radius: Radio del disco
+# segments: Número de segmentos para discretizar el perímetro del círculo (mayor = más preciso)
 # Retorna: Array[int] con los índices de los faces cuyos BlockGenerators intersectan el disco
-func get_blocks_in_circular_area(center, radius: float) -> Array[int]:
+func get_blocks_in_circular_area(center, radius: float, segments: int = 32) -> Array[int]:
 	var center_2d: Vector2
 	
 	# Convertir center a Vector2 si es Vector3 (proyectar al plano XZ)
@@ -777,6 +778,10 @@ func get_blocks_in_circular_area(center, radius: float) -> Array[int]:
 		center_2d = center
 	else:
 		push_error("get_blocks_in_circular_area: center debe ser Vector2 o Vector3")
+		return []
+	
+	if segments < 3:
+		push_error("get_blocks_in_circular_area: segments debe ser al menos 3")
 		return []
 	
 	var intersecting_faces: Array[int] = []
@@ -791,13 +796,104 @@ func get_blocks_in_circular_area(center, radius: float) -> Array[int]:
 			face_vertices_2d.append(Vector2(pos_3d.x, pos_3d.z))
 		
 		# Verificar si el disco circular intersecta con este quad
-		if _circle_intersects_quad(center_2d, radius, face_vertices_2d):
+		if _circle_intersects_quad(center_2d, radius, face_vertices_2d, segments):
 			intersecting_faces.append(face_idx)
 	
 	return intersecting_faces
 
+# Obtiene todos los lane volumes que intersectan con un volumen cilíndrico
+# center: Vector3 (centro del cilindro en el espacio global - centro del volumen, no de la base)
+# radius: Radio del cilindro
+# height: Altura del cilindro
+# Retorna: Array[Dictionary] donde cada Dictionary contiene:
+#   - face_idx: int
+#   - edge_idx: int
+#   - start_plane_vertices: Array[Vector3] (4 vértices)
+#   - end_plane_vertices: Array[Vector3] (4 vértices)
+#   - height: float
+func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height: float) -> Array[Dictionary]:
+	# Calcular el rango Y del cilindro
+	# El centro está en el medio del cilindro, no en la base
+	var cylinder_y_min = center.y - height / 2.0
+	var cylinder_y_max = center.y + height / 2.0
+	
+	var intersecting_volumes: Array[Dictionary] = []
+	
+	# Primero obtener los bloques en el área circular (proyección 2D)
+	var blocks_in_area = get_blocks_in_circular_area(center, radius)
+	
+	# Para cada bloque, verificar sus lane volumes
+	for face_idx in blocks_in_area:
+		var block: BlockGenerator = block_grids.get(face_idx, null)
+		if block == null:
+			continue
+		
+		# Cada bloque tiene 4 edges
+		for edge_idx in range(4):
+			var volume_data = block.get_edge_lane_volume(edge_idx)
+			
+			if volume_data.is_empty():
+				continue
+			
+			var volume_height = volume_data["height"]
+			
+			# Verificar si el lane volume intersecta con el rango Y del cilindro
+			# Lane volume va de y=0 a y=volume_height
+			if volume_height < cylinder_y_min or 0.0 > cylinder_y_max:
+				# No hay intersección en Y
+				continue
+			
+			var start_plane_verts = volume_data["start_plane_vertices"]
+			var end_plane_verts = volume_data["end_plane_vertices"]
+			
+			# Verificar si alguno de los vértices del volumen está dentro del cilindro 2D
+			var intersects = false
+			var center_2d = Vector2(center.x, center.z)
+			
+			# Verificar vértices del start plane
+			for vertex in start_plane_verts:
+				var vertex_2d = Vector2(vertex.x, vertex.z)
+				if center_2d.distance_to(vertex_2d) <= radius:
+					intersects = true
+					break
+			
+			# Si no intersectó con start plane, verificar end plane
+			if not intersects:
+				for vertex in end_plane_verts:
+					var vertex_2d = Vector2(vertex.x, vertex.z)
+					if center_2d.distance_to(vertex_2d) <= radius:
+						intersects = true
+						break
+			
+			# También verificar si el cilindro intersecta los edges del volumen
+			if not intersects:
+				# Obtener los edges del volumen en 2D y verificar intersección con círculo
+				var volume_edges_2d = [
+					[Vector2(start_plane_verts[0].x, start_plane_verts[0].z), Vector2(start_plane_verts[1].x, start_plane_verts[1].z)],
+					[Vector2(start_plane_verts[1].x, start_plane_verts[1].z), Vector2(end_plane_verts[1].x, end_plane_verts[1].z)],
+					[Vector2(end_plane_verts[1].x, end_plane_verts[1].z), Vector2(end_plane_verts[0].x, end_plane_verts[0].z)],
+					[Vector2(end_plane_verts[0].x, end_plane_verts[0].z), Vector2(start_plane_verts[0].x, start_plane_verts[0].z)]
+				]
+				
+				for edge_2d in volume_edges_2d:
+					if _circle_intersects_line_segment(center_2d, radius, edge_2d[0], edge_2d[1]):
+						intersects = true
+						break
+			
+			if intersects:
+				intersecting_volumes.append({
+					"face_idx": face_idx,
+					"edge_idx": edge_idx,
+					"start_plane_vertices": start_plane_verts,
+					"end_plane_vertices": end_plane_verts,
+					"height": volume_height
+				})
+	
+	return intersecting_volumes
+
 # Verifica si un círculo intersecta con un quad (polígono de 4 vértices)
-func _circle_intersects_quad(circle_center: Vector2, circle_radius: float, quad_vertices: Array[Vector2]) -> bool:
+# segments: Número de segmentos para discretizar el perímetro del círculo
+func _circle_intersects_quad(circle_center: Vector2, circle_radius: float, quad_vertices: Array[Vector2], segments: int) -> bool:
 	if quad_vertices.size() != 4:
 		return false
 	
@@ -816,6 +912,17 @@ func _circle_intersects_quad(circle_center: Vector2, circle_radius: float, quad_
 		var v2 = quad_vertices[(i + 1) % 4]
 		
 		if _circle_intersects_line_segment(circle_center, circle_radius, v1, v2):
+			return true
+	
+	# Test 4: Verificar si algún punto del perímetro del círculo está dentro del quad
+	# Esto captura casos donde el quad está completamente dentro del círculo
+	# o casos donde ninguno de los tests anteriores detecta la intersección
+	var angle_step = TAU / segments
+	for i in range(segments):
+		var angle = i * angle_step
+		var point_on_circle = circle_center + Vector2(cos(angle), sin(angle)) * circle_radius
+		
+		if _point_in_quad(point_on_circle, quad_vertices):
 			return true
 	
 	return false
