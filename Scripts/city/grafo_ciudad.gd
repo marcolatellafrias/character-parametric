@@ -144,7 +144,7 @@ func generate_city_graph(
 	
 	_generate_pedestrian_planes()
 	_calculate_temporal_lane_points()
-	_calculate_lane_lines()
+	_calculate_lane_planes()
 
 # ============================================
 # GESTIÓN DE TIPOS DE CALLES
@@ -668,8 +668,11 @@ func _calculate_temporal_lane_points() -> void:
 	
 	print("[GraphCityGenerator] Puntos temporales de lane lines calculados: %d puntos" % total_points)
 
-func _calculate_lane_lines() -> void:
-	var total_lines = 0
+func _calculate_lane_planes() -> void:
+	# Primero, calcular la altura máxima global de todos los edificios
+	var max_height_global = get_max_building_height_global()
+	
+	var total_planes = 0
 	
 	for face_idx in block_grids:
 		var block: BlockGenerator = block_grids[face_idx]
@@ -686,7 +689,7 @@ func _calculate_lane_lines() -> void:
 			var edge_start_2d = Vector2(edge_start_3d.x, edge_start_3d.z)
 			var edge_end_2d = Vector2(edge_end_3d.x, edge_end_3d.z)
 			
-			# Calcular lane lines para cada nodo del edge
+			# Calcular lane planes para cada nodo del edge
 			for node_local_idx in range(2):
 				var key = "%d_%d" % [edge_idx, node_local_idx]
 				
@@ -701,7 +704,7 @@ func _calculate_lane_lines() -> void:
 				var intersection = _line_intersection_2d(point_a, point_b, edge_start_2d, edge_end_2d)
 				
 				if intersection != Vector2.ZERO:
-					# Determinar si esta lane line es "start" o "end"
+					# Determinar si esta lane plane es "start" o "end"
 					# Esto depende de si el face es clockwise o counter-clockwise
 					var is_start_lane: bool
 					if block.is_clockwise:
@@ -711,15 +714,16 @@ func _calculate_lane_lines() -> void:
 						# Face counter-clockwise: node_local_idx 0 es start, 1 es end
 						is_start_lane = (node_local_idx == 0)
 					
-					# Lane line final: desde point_a hasta el punto de intersección
-					block.lane_lines[key] = {
+					# Lane plane final: desde point_a hasta el punto de intersección, con altura máxima
+					block.lane_planes[key] = {
 						"start": point_a,
 						"end": intersection,
-						"is_start_lane": is_start_lane
+						"is_start_lane": is_start_lane,
+						"height": max_height_global
 					}
-					total_lines += 1
+					total_planes += 1
 	
-	print("[GraphCityGenerator] Lane lines finales calculadas: %d líneas" % total_lines)
+	print("[GraphCityGenerator] Lane planes finales calculadas: %d planos (altura: %.2f)" % [total_planes, max_height_global])
 
 # Calcula la intersección entre dos líneas 2D
 func _line_intersection_2d(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2) -> Vector2:

@@ -121,9 +121,9 @@ extends Node3D
 @export var temporal_point_radius: float = 0.5
 @export var temporal_point_height_offset: float = 2.0
 
-@export_group("Lane Lines - Líneas Finales")
-@export var show_lane_lines: bool = true
-@export var lane_line_width: float = 0.1
+@export_group("Lane Planes - Planos Finales")
+@export var show_lane_planes: bool = true
+@export_range(0.0, 1.0) var lane_plane_transparency: float = 0.5
 
 # ============================================
 # DATOS DEL GRAFO
@@ -230,8 +230,8 @@ func visualize_graph() -> void:
     if show_temporal_lane_points:
         _visualize_temporal_lane_points()
     
-    if show_lane_lines:
-        _visualize_lane_lines()
+    if show_lane_planes:
+        _visualize_lane_planes()
     
     if show_nodes:
         _visualize_nodes()
@@ -742,13 +742,13 @@ func _visualize_temporal_lane_points() -> void:
     print("[Visualizer] Puntos temporales de lane lines: %d puntos en %d bloques" % [total_points, all_block_faces.size()])
 
 # ============================================
-# VISUALIZACIÓN DE LANE LINES FINALES
+# VISUALIZACIÓN DE LANE PLANES FINALES
 # ============================================
-func _visualize_lane_lines() -> void:
+func _visualize_lane_planes() -> void:
     var all_block_faces = generator.get_all_block_faces()
-    var total_lines = 0
-    var start_lines = 0
-    var end_lines = 0
+    var total_planes = 0
+    var start_planes = 0
+    var end_planes = 0
     
     for face_idx in all_block_faces:
         var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -756,36 +756,37 @@ func _visualize_lane_lines() -> void:
         if block == null:
             continue
         
-        var lane_lines_dict = block.get_lane_lines()
+        var lane_planes_dict = block.get_lane_planes()
         
-        for key in lane_lines_dict:
-            var line_data = lane_lines_dict[key]
-            var start: Vector2 = line_data["start"]
-            var end: Vector2 = line_data["end"]
-            var is_start_lane: bool = line_data["is_start_lane"]
+        for key in lane_planes_dict:
+            var plane_data = lane_planes_dict[key]
+            var start: Vector2 = plane_data["start"]
+            var end: Vector2 = plane_data["end"]
+            var is_start_lane: bool = plane_data["is_start_lane"]
+            var height: float = plane_data["height"]
             
             # Color basado en direccionalidad almacenada:
             # Start lane (nodo inicial del edge en sentido horario) → ROJO
             # End lane (nodo final del edge en sentido horario) → VERDE
-            var color: Color
+            var base_color: Color
             if is_start_lane:
-                color = Color.RED
-                start_lines += 1
+                base_color = Color.RED
+                start_planes += 1
             else:
-                color = Color.GREEN
-                end_lines += 1
+                base_color = Color.GREEN
+                end_planes += 1
             
-            # Convertir a 3D y visualizar
-            var start_3d = Vector3(start.x, 0.0, start.y)
-            var end_3d = Vector3(end.x, 0.0, end.y)
+            # Crear los 4 vértices del plano
+            # Base (y = 0)
+            var v1 = Vector3(start.x, 0.0, start.y)
+            var v2 = Vector3(end.x, 0.0, end.y)
+            # Top (y = height)
+            var v3 = Vector3(end.x, height, end.y)
+            var v4 = Vector3(start.x, height, start.y)
             
-            var line = DebugUtil.create_debug_line_to_from(
-                start_3d,
-                end_3d,
-                color,
-                lane_line_width
-            )
-            add_child(line)
-            total_lines += 1
+            # Crear plano semitransparente
+            var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, base_color, lane_plane_transparency)
+            add_child(plane)
+            total_planes += 1
     
-    print("[Visualizer] Lane lines finales: %d líneas (%d rojas/start, %d verdes/end) en %d bloques" % [total_lines, start_lines, end_lines, all_block_faces.size()])
+    print("[Visualizer] Lane planes finales: %d planos (%d rojos/start, %d verdes/end) en %d bloques" % [total_planes, start_planes, end_planes, all_block_faces.size()])
