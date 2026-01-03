@@ -43,6 +43,14 @@ var building_alleyway_offsets: Dictionary
 
 var cluster_seed: int
 
+# Lane lines - puntos temporales para visualización
+# key: "edge_idx_node_idx" -> {point_a: Vector2, point_b: Vector2}
+var temporal_lane_points: Dictionary = {}
+
+# Lane lines finales
+# key: "edge_idx_node_idx" -> {start: Vector2, end: Vector2}
+var lane_lines: Dictionary = {}
+
 func _init(
 	p_rows: int,
 	p_columns: int,
@@ -577,3 +585,16 @@ func get_max_building_height() -> float:
 			max_height = cluster_height
 	
 	return max_height
+
+# ============================================
+# LANE LINES - ACCESO A PUNTOS TEMPORALES
+# ============================================
+
+func get_temporal_lane_points() -> Dictionary:
+	return temporal_lane_points
+
+func get_core_vertices() -> Array[Vector2]:
+	return _get_core_block_vertices()
+
+func get_lane_lines() -> Dictionary:
+	return lane_lines

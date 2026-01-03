@@ -143,6 +143,8 @@ func generate_city_graph(
 	)
 	
 	_generate_pedestrian_planes()
+	_calculate_temporal_lane_points()
+	_calculate_lane_lines()
 
 # ============================================
 # GESTIÓN DE TIPOS DE CALLES
@@ -623,6 +625,117 @@ func get_all_pedestrian_planes() -> Dictionary:
 	return pedestrian_planes
 
 # ============================================
+# GESTIÓN DE LANE LINES
+# ============================================
+
+func _calculate_temporal_lane_points() -> void:
+	var total_points = 0
+	
+	for face_idx in block_grids:
+		var block: BlockGenerator = block_grids[face_idx]
+		var face = plain_graph.faces[face_idx]
+		
+		# Cada face tiene 4 edges
+		for edge_idx in range(face.size()):
+			var node1 = face[edge_idx]
+			var node2 = face[(edge_idx + 1) % face.size()]
+			var edge = [node1, node2]
+			
+			# Encontrar face vecino
+			var neighbor_faces = _find_faces_sharing_edge(node1, node2)
+			if neighbor_faces.size() != 2:
+				continue
+			
+			var neighbor_face_idx = neighbor_faces[0] if neighbor_faces[0] != face_idx else neighbor_faces[1]
+			
+			# Calcular puntos para cada nodo del edge
+			for node_local_idx in range(2):
+				var node_idx = edge[node_local_idx]
+				
+				# Punto A: usando el face actual
+				var point_a = get_block_corner_with_offset(node_idx, edge, face_idx)
+				
+				# Punto B: usando el face vecino
+				var point_b = get_block_corner_with_offset(node_idx, edge, neighbor_face_idx)
+				
+				if point_a != Vector2.ZERO and point_b != Vector2.ZERO:
+					var key = "%d_%d" % [edge_idx, node_local_idx]
+					block.temporal_lane_points[key] = {
+						"point_a": point_a,
+						"point_b": point_b
+					}
+					total_points += 1
+	
+	print("[GraphCityGenerator] Puntos temporales de lane lines calculados: %d puntos" % total_points)
+
+func _calculate_lane_lines() -> void:
+	var total_lines = 0
+	
+	for face_idx in block_grids:
+		var block: BlockGenerator = block_grids[face_idx]
+		var face = plain_graph.faces[face_idx]
+		
+		# Cada face tiene 4 edges
+		for edge_idx in range(face.size()):
+			var node1_idx = face[edge_idx]
+			var node2_idx = face[(edge_idx + 1) % face.size()]
+			
+			# Obtener posiciones 3D de los nodos del edge original
+			var edge_start_3d = plain_graph.points[node1_idx]
+			var edge_end_3d = plain_graph.points[node2_idx]
+			var edge_start_2d = Vector2(edge_start_3d.x, edge_start_3d.z)
+			var edge_end_2d = Vector2(edge_end_3d.x, edge_end_3d.z)
+			
+			# Calcular lane lines para cada nodo del edge
+			for node_local_idx in range(2):
+				var key = "%d_%d" % [edge_idx, node_local_idx]
+				
+				if key not in block.temporal_lane_points:
+					continue
+				
+				var point_data = block.temporal_lane_points[key]
+				var point_a: Vector2 = point_data["point_a"]
+				var point_b: Vector2 = point_data["point_b"]
+				
+				# Calcular intersección entre línea temporal (point_a -> point_b) y edge original
+				var intersection = _line_intersection_2d(point_a, point_b, edge_start_2d, edge_end_2d)
+				
+				if intersection != Vector2.ZERO:
+					# Lane line final: desde point_a hasta el punto de intersección
+					block.lane_lines[key] = {
+						"start": point_a,
+						"end": intersection
+					}
+					total_lines += 1
+	
+	print("[GraphCityGenerator] Lane lines finales calculadas: %d líneas" % total_lines)
+
+# Calcula la intersección entre dos líneas 2D
+func _line_intersection_2d(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2) -> Vector2:
+	var x1 = p1.x
+	var y1 = p1.y
+	var x2 = p2.x
+	var y2 = p2.y
+	var x3 = p3.x
+	var y3 = p3.y
+	var x4 = p4.x
+	var y4 = p4.y
+	
+	var denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+	
+	# Líneas paralelas o coincidentes
+	if abs(denominator) < 0.0001:
+		return Vector2.ZERO
+	
+	var t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denominator
+	
+	# Calcular punto de intersección
+	var intersection_x = x1 + t * (x2 - x1)
+	var intersection_y = y1 + t * (y2 - y1)
+	
+	return Vector2(intersection_x, intersection_y)
+
+# ============================================
 # HELPERS DE GEOMETRÍA
 # ============================================
 
@@ -646,69 +759,34 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 		push_error("El nodo %d no es parte del edge [%d, %d]" % [node_idx, edge[0], edge[1]])
 		return Vector2.ZERO
 	
-	var face_vertices: Array[Vector2] = []
-	for node_idx_in_face in face:
-		var pos_3d = plain_graph.points[node_idx_in_face]
-		face_vertices.append(Vector2(pos_3d.x, pos_3d.z))
-	
-	var street_types_array: Array[int] = []
-	for i in range(face.size()):
-		var node1 = face[i]
-		var node2 = face[(i + 1) % face.size()]
-		street_types_array.append(get_street_type(node1, node2))
-	
-	var available_area = GridHelper.calculate_available_area(
-		block_rows,
-		block_columns,
-		street_offsets,
-		street_types_array
-	)
-	
-	if available_area.is_empty():
-		push_error("No se pudo calcular el área disponible para la face %d" % face_idx)
+	# Obtener el BlockGenerator para esta face
+	var block: BlockGenerator = block_grids.get(face_idx, null)
+	if block == null:
+		push_error("No existe BlockGenerator para face %d" % face_idx)
 		return Vector2.ZERO
 	
-	var grid_x: int
-	var grid_z: int
+	# Usar directamente las esquinas del core block
+	# Las esquinas están ordenadas: [bottom-left, bottom-right, top-right, top-left]
+	var core_vertices = block.get_core_vertices()
 	
+	if core_vertices.size() != 4:
+		push_error("Core vertices no tiene 4 elementos para face %d" % face_idx)
+		return Vector2.ZERO
+	
+	# Mapear el índice del nodo en la face a la esquina correspondiente del core block
+	# Asumiendo que la face está ordenada como: [BL, BR, TR, TL]
+	var corner: Vector2
 	match node_index_in_face:
-		0:
-			grid_x = available_area.min_x
-			grid_z = available_area.min_z
-		1:
-			grid_x = available_area.max_x
-			grid_z = available_area.min_z
-		2:
-			grid_x = available_area.max_x
-			grid_z = available_area.max_z
-		3:
-			grid_x = available_area.min_x
-			grid_z = available_area.max_z
+		0:  # Bottom-left
+			corner = core_vertices[0]
+		1:  # Bottom-right
+			corner = core_vertices[1]
+		2:  # Top-right
+			corner = core_vertices[2]
+		3:  # Top-left
+			corner = core_vertices[3]
 		_:
 			push_error("Índice de nodo en face inválido: %d" % node_index_in_face)
 			return Vector2.ZERO
 	
-	var cell_vertices = GridHelper.get_cell_base_vertices(
-		face_vertices,
-		block_rows,
-		block_columns,
-		grid_x,
-		grid_z
-	)
-	
-	if cell_vertices.is_empty():
-		push_error("No se pudieron obtener vértices para la celda (%d, %d)" % [grid_x, grid_z])
-		return Vector2.ZERO
-	
-	var node_pos = plain_graph.points[node_idx]
-	
-	var closest_vertex = cell_vertices[0]
-	var min_distance = node_pos.distance_to(cell_vertices[0])
-	
-	for i in range(1, cell_vertices.size()):
-		var distance = node_pos.distance_to(cell_vertices[i])
-		if distance < min_distance:
-			min_distance = distance
-			closest_vertex = cell_vertices[i]
-	
-	return Vector2(closest_vertex.x, closest_vertex.z)
+	return corner
