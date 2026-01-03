@@ -126,9 +126,26 @@ extends Node3D
 @export_range(0.0, 1.0) var lane_plane_transparency: float = 0.5
 
 @export_group("Lane Volumes - Volúmenes de Edges")
-@export var show_lane_volumes: bool = false
+@export var show_lane_volumes: bool = true
 @export_range(0.0, 1.0) var lane_volume_transparency: float = 0.3
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
+
+@export_group("Area Selection - Selección Circular")
+@export var show_circular_area: bool = false
+@export var circular_area_center: Vector3 = Vector3.ZERO
+@export var circular_area_radius: float = 50.0
+@export var circular_area_color: Color = Color.YELLOW
+@export var highlight_selected_blocks: bool = false
+@export var selected_blocks_color: Color = Color(1.0, 1.0, 0.0, 0.3)
+
+@export_group("Cylindrical Selection - Selección Cilíndrica")
+@export var show_cylindrical_area: bool = false
+@export var cylindrical_area_center: Vector3 = Vector3(0, 50, 0)
+@export var cylindrical_area_radius: float = 30.0
+@export var cylindrical_area_height: float = 100.0
+@export var cylindrical_area_color: Color = Color.CYAN
+@export var highlight_selected_volumes: bool = false
+@export var selected_volumes_color: Color = Color(0.0, 1.0, 1.0, 0.4)
 
 # ============================================
 # DATOS DEL GRAFO
@@ -140,6 +157,9 @@ var neighborhood_colors: Dictionary = {}
 # INICIALIZACIÓN
 # ============================================
 func _ready() -> void:
+    # Agregar a grupo para acceso desde otras entidades
+    add_to_group("city_generator")
+    
     if auto_generate:
         generate_and_visualize()
 
@@ -240,6 +260,12 @@ func visualize_graph() -> void:
     
     if show_lane_volumes:
         _visualize_lane_volumes()
+    
+    if show_circular_area:
+        _visualize_circular_area_selection()
+    
+    if show_cylindrical_area:
+        _visualize_cylindrical_area_selection()
     
     if show_nodes:
         _visualize_nodes()
@@ -839,3 +865,125 @@ func _visualize_lane_volumes() -> void:
                 total_volumes += 1
     
     print("[Visualizer] Lane volumes: %d volúmenes visualizados en %d bloques" % [total_volumes, all_block_faces.size()])
+
+# ============================================
+# VISUALIZACIÓN DE SELECCIÓN CIRCULAR
+# ============================================
+func _visualize_circular_area_selection() -> void:
+    # Obtener los bloques en el área circular
+    var selected_blocks = generator.get_blocks_in_circular_area(circular_area_center, circular_area_radius)
+    
+    # Visualizar el círculo en el suelo (y = 0)
+    _draw_circle_outline(circular_area_center, circular_area_radius, circular_area_color, 32)
+    
+    # Highlight de los bloques seleccionados
+    if highlight_selected_blocks:
+        for face_idx in selected_blocks:
+            var face = generator.plain_graph.faces[face_idx]
+            
+            # Crear un quad semi-transparente sobre el bloque
+            var vertices: Array[Vector3] = []
+            for node_idx in face:
+                var pos = generator.plain_graph.points[node_idx]
+                vertices.append(Vector3(pos.x, 0.5, pos.z))
+            
+            if vertices.size() == 4:
+                var highlight = DebugUtil.create_debug_plane(
+                    vertices[0], vertices[1], vertices[2], vertices[3],
+                    selected_blocks_color, 0.5
+                )
+                add_child(highlight)
+    
+    print("[Visualizer] Área circular: %d bloques seleccionados (centro: %s, radio: %.2f)" % [selected_blocks.size(), circular_area_center, circular_area_radius])
+
+func _visualize_cylindrical_area_selection() -> void:
+    # Obtener los lane volumes en el área cilíndrica
+    var selected_volumes = generator.get_lane_volumes_in_cylindrical_area(
+        cylindrical_area_center,
+        cylindrical_area_radius,
+        cylindrical_area_height
+    )
+    
+    # Visualizar el cilindro
+    var cylinder = DebugUtil.create_debug_cylinder(
+        cylindrical_area_color,
+        cylindrical_area_radius,
+        cylindrical_area_height,
+        32
+    )
+    cylinder.position = cylindrical_area_center - Vector3(0, cylindrical_area_height / 2.0, 0)
+    add_child(cylinder)
+    
+    # Highlight de los volumes seleccionados
+    if highlight_selected_volumes:
+        for volume_data in selected_volumes:
+            var start_verts = volume_data["start_plane_vertices"]
+            var end_verts = volume_data["end_plane_vertices"]
+            
+            # Crear skewed cube con color de highlight
+            var volume_mesh = DebugUtil.create_skewed_cube_from_planes(
+                start_verts,
+                end_verts,
+                selected_volumes_color,
+                0.5
+            )
+            
+            if volume_mesh != null:
+                add_child(volume_mesh)
+    
+    print("[Visualizer] Área cilíndrica: %d lane volumes seleccionados (centro: %s, radio: %.2f, altura: %.2f)" % [selected_volumes.size(), cylindrical_area_center, cylindrical_area_radius, cylindrical_area_height])
+
+# Dibuja el contorno de un círculo en 3D
+func _draw_circle_outline(center: Vector3, radius: float, color: Color, segments: int = 32) -> void:
+    var points: PackedVector3Array = []
+    var angle_step = TAU / segments
+    
+    for i in range(segments + 1):
+        var angle = i * angle_step
+        var x = center.x + cos(angle) * radius
+        var z = center.z + sin(angle) * radius
+        points.append(Vector3(x, 0.1, z))
+    
+    # Crear líneas conectando los puntos
+    for i in range(segments):
+        var line = DebugUtil.create_debug_line_to_from(
+            points[i],
+            points[i + 1],
+            color,
+            0.2
+        )
+        add_child(line)
+
+
+# ============================================
+# HELPERS PÚBLICOS PARA OTRAS ENTIDADES
+# ============================================
+
+# Acceso directo al GraphCityGenerator
+func get_generator() -> GraphCityGenerator:
+    return generator
+
+# Helper para obtener lane volumes en área cilíndrica
+# Permite a otras entidades acceder sin tener que ir a .generator
+func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height: float) -> Array[Dictionary]:
+    if generator == null:
+        push_error("CityVisualizer: generator no inicializado")
+        return []
+    
+    return generator.get_lane_volumes_in_cylindrical_area(center, radius, height)
+
+# Helper para obtener bloques en área circular
+func get_blocks_in_circular_area(center, radius: float) -> Array[int]:
+    if generator == null:
+        push_error("CityVisualizer: generator no inicializado")
+        return []
+    
+    return generator.get_blocks_in_circular_area(center, radius)
+
+# Helper para obtener un BlockGenerator específico
+func get_block_grid(face_idx: int) -> BlockGenerator:
+    if generator == null:
+        push_error("CityVisualizer: generator no inicializado")
+        return null
+    
+    return generator.get_block_grid(face_idx)
