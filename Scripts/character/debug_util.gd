@@ -729,3 +729,140 @@ static func create_skewed_cube_debug(base_vertices: Array, height: float, color:
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	
 	return mesh_instance
+
+
+static func create_debug_cylinder(color: Color, radius: float, height: float, segments: int = 16) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	
+	# Caras laterales
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		
+		var x1 := cos(angle1) * radius
+		var z1 := sin(angle1) * radius
+		var x2 := cos(angle2) * radius
+		var z2 := sin(angle2) * radius
+		
+		# Quad lateral (2 triángulos)
+		st.set_color(color)
+		st.add_vertex(Vector3(x1, 0, z1))
+		st.set_color(color)
+		st.add_vertex(Vector3(x1, height, z1))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2, height, z2))
+		
+		st.set_color(color)
+		st.add_vertex(Vector3(x1, 0, z1))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2, height, z2))
+		st.set_color(color)
+		st.add_vertex(Vector3(x2, 0, z2))
+	
+	var mesh := st.commit()
+	mesh_instance.mesh = mesh
+	
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mesh_instance.material_override = material
+	
+	return mesh_instance
+	
+# DebugUtil - Función para agregar
+
+## Función: create_skewed_cube_from_planes
+
+# Crea un skewed cube (cubo deformado) a partir de dos planos paralelos
+# plane1_vertices: Array de 4 Vector3 representando el primer plano [v1_base, v2_base, v3_top, v4_top]
+# plane2_vertices: Array de 4 Vector3 representando el segundo plano [v1_base, v2_base, v3_top, v4_top]
+# color: Color del mesh
+# transparency: Transparencia (0.0 = opaco, 1.0 = transparente)
+# Retorna: MeshInstance3D con el skewed cube
+static func create_skewed_cube_from_planes(
+	plane1_vertices: Array, 
+	plane2_vertices: Array, 
+	color: Color, 
+	transparency: float
+) -> MeshInstance3D:
+	
+	if plane1_vertices.size() != 4 or plane2_vertices.size() != 4:
+		push_error("create_skewed_cube_from_planes requiere 4 vértices por plano")
+		return null
+	
+	var mesh_instance = MeshInstance3D.new()
+	var array_mesh = ArrayMesh.new()
+	var arrays = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	
+	var mesh_vertices = PackedVector3Array()
+	var mesh_indices = PackedInt32Array()
+	
+	# Los vertices están ordenados como:
+	# [0]: v1 base, [1]: v2 base, [2]: v3 top, [3]: v4 top
+	
+	# Plane 1 (cara frontal)
+	_add_quad_to_arrays(mesh_vertices, mesh_indices,
+		plane1_vertices[0], plane1_vertices[1], plane1_vertices[2], plane1_vertices[3])
+	
+	# Plane 2 (cara trasera) - invertir orden para normal correcta
+	_add_quad_to_arrays(mesh_vertices, mesh_indices,
+		plane2_vertices[3], plane2_vertices[2], plane2_vertices[1], plane2_vertices[0])
+	
+	# Bottom face (conecta bases)
+	_add_quad_to_arrays(mesh_vertices, mesh_indices,
+		plane1_vertices[0], plane2_vertices[0], plane2_vertices[1], plane1_vertices[1])
+	
+	# Top face (conecta tops)
+	_add_quad_to_arrays(mesh_vertices, mesh_indices,
+		plane1_vertices[3], plane1_vertices[2], plane2_vertices[2], plane2_vertices[3])
+	
+	# Left face
+	_add_quad_to_arrays(mesh_vertices, mesh_indices,
+		plane1_vertices[0], plane1_vertices[3], plane2_vertices[3], plane2_vertices[0])
+	
+	# Right face
+	_add_quad_to_arrays(mesh_vertices, mesh_indices,
+		plane1_vertices[1], plane2_vertices[1], plane2_vertices[2], plane1_vertices[2])
+	
+	arrays[Mesh.ARRAY_VERTEX] = mesh_vertices
+	arrays[Mesh.ARRAY_INDEX] = mesh_indices
+	
+	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh_instance.mesh = array_mesh
+	
+	# Material semitransparente
+	var material = StandardMaterial3D.new()
+	material.albedo_color = Color(color.r, color.g, color.b, transparency)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mesh_instance.material_override = material
+	
+	return mesh_instance
+
+# Función helper para agregar un quad a los arrays de mesh
+static func _add_quad_to_arrays(
+	vertices: PackedVector3Array, 
+	indices: PackedInt32Array,
+	v1: Vector3, v2: Vector3, v3: Vector3, v4: Vector3
+) -> void:
+	var start_idx = vertices.size()
+	
+	vertices.append(v1)
+	vertices.append(v2)
+	vertices.append(v3)
+	vertices.append(v4)
+	
+	# Primer triángulo
+	indices.append(start_idx + 0)
+	indices.append(start_idx + 1)
+	indices.append(start_idx + 2)
+	
+	# Segundo triángulo
+	indices.append(start_idx + 0)
+	indices.append(start_idx + 2)
+	indices.append(start_idx + 3)

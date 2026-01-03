@@ -1,3 +1,4 @@
+AreaInstantiator
 OmniLight3D
 WorldEnvironment
 CharacterBody3D
@@ -12,4 +13,3 @@ RayCast3D
 CharacterRigidBody3D
 CanvasLayer
 Control
-BoneAttachment3D

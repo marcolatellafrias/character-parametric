@@ -601,3 +601,77 @@ func get_lane_planes() -> Dictionary:
 
 func get_is_clockwise() -> bool:
 	return is_clockwise
+
+# ============================================
+# LANE PLANES - HELPERS
+# ============================================
+
+# Obtiene el volumen formado por las dos lane planes de un edge específico
+# Retorna un Dictionary con los 8 vértices que forman el "skewed cube"
+# edge_idx: índice del edge (0, 1, 2, o 3)
+# Retorna: {
+#   "vertices": Array[Vector3] (8 vértices),
+#   "start_plane_vertices": Array[Vector3] (4 vértices de la start lane plane),
+#   "end_plane_vertices": Array[Vector3] (4 vértices de la end lane plane)
+# }
+# Retorna Dictionary vacío si el edge es boundary o no tiene ambas lane planes
+func get_edge_lane_volume(edge_idx: int) -> Dictionary:
+	if edge_idx < 0 or edge_idx > 3:
+		push_error("Edge index debe estar entre 0 y 3, recibido: %d" % edge_idx)
+		return {}
+	
+	# Buscar las dos lane planes del edge (una start y una end)
+	var start_lane_key = "%d_0" % edge_idx
+	var end_lane_key = "%d_1" % edge_idx
+	
+	# Dependiendo de clockwiseness, determinar cuál es start y cuál es end
+	var start_plane_data = null
+	var end_plane_data = null
+	
+	# Verificar ambas posibilidades ya que la asignación de start/end depende del clockwiseness
+	if start_lane_key in lane_planes:
+		var plane_data = lane_planes[start_lane_key]
+		if plane_data["is_start_lane"]:
+			start_plane_data = plane_data
+		else:
+			end_plane_data = plane_data
+	
+	if end_lane_key in lane_planes:
+		var plane_data = lane_planes[end_lane_key]
+		if plane_data["is_start_lane"]:
+			start_plane_data = plane_data
+		else:
+			end_plane_data = plane_data
+	
+	# Si no se encontraron ambas lane planes, retornar vacío silenciosamente
+	# Esto es normal para edges boundary (límites de la ciudad)
+	if start_plane_data == null or end_plane_data == null:
+		return {}
+	
+	var height = start_plane_data["height"]
+	
+	# Crear los 4 vértices de la start lane plane
+	var start_plane_v1 = Vector3(start_plane_data["start"].x, 0.0, start_plane_data["start"].y)
+	var start_plane_v2 = Vector3(start_plane_data["end"].x, 0.0, start_plane_data["end"].y)
+	var start_plane_v3 = Vector3(start_plane_data["end"].x, height, start_plane_data["end"].y)
+	var start_plane_v4 = Vector3(start_plane_data["start"].x, height, start_plane_data["start"].y)
+	
+	# Crear los 4 vértices de la end lane plane
+	var end_plane_v1 = Vector3(end_plane_data["start"].x, 0.0, end_plane_data["start"].y)
+	var end_plane_v2 = Vector3(end_plane_data["end"].x, 0.0, end_plane_data["end"].y)
+	var end_plane_v3 = Vector3(end_plane_data["end"].x, height, end_plane_data["end"].y)
+	var end_plane_v4 = Vector3(end_plane_data["start"].x, height, end_plane_data["start"].y)
+	
+	# Array con los 8 vértices del volumen
+	# Orden: 4 vértices de start plane + 4 vértices de end plane
+	var all_vertices: Array[Vector3] = [
+		start_plane_v1, start_plane_v2, start_plane_v3, start_plane_v4,
+		end_plane_v1, end_plane_v2, end_plane_v3, end_plane_v4
+	]
+	
+	return {
+		"vertices": all_vertices,
+		"start_plane_vertices": [start_plane_v1, start_plane_v2, start_plane_v3, start_plane_v4],
+		"end_plane_vertices": [end_plane_v1, end_plane_v2, end_plane_v3, end_plane_v4],
+		"height": height
+	}

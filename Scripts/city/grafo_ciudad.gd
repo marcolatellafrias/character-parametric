@@ -673,6 +673,7 @@ func _calculate_lane_planes() -> void:
 	var max_height_global = get_max_building_height_global()
 	
 	var total_planes = 0
+	var skipped_boundary = 0
 	
 	for face_idx in block_grids:
 		var block: BlockGenerator = block_grids[face_idx]
@@ -682,6 +683,14 @@ func _calculate_lane_planes() -> void:
 		for edge_idx in range(face.size()):
 			var node1_idx = face[edge_idx]
 			var node2_idx = face[(edge_idx + 1) % face.size()]
+			
+			# Verificar si este edge es boundary (tipo -1)
+			# Los edges boundary no tienen 2 faces adyacentes, solo tienen 1
+			# Por lo tanto no pueden generar lane planes correctamente
+			var edge_street_type = get_street_type(node1_idx, node2_idx)
+			if edge_street_type == -1:
+				skipped_boundary += 1
+				continue
 			
 			# Obtener posiciones 3D de los nodos del edge original
 			var edge_start_3d = plain_graph.points[node1_idx]
@@ -723,7 +732,7 @@ func _calculate_lane_planes() -> void:
 					}
 					total_planes += 1
 	
-	print("[GraphCityGenerator] Lane planes finales calculadas: %d planos (altura: %.2f)" % [total_planes, max_height_global])
+	print("[GraphCityGenerator] Lane planes finales calculadas: %d planos (altura: %.2f, boundary edges saltados: %d)" % [total_planes, max_height_global, skipped_boundary])
 
 # Calcula la intersección entre dos líneas 2D
 func _line_intersection_2d(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2) -> Vector2:
@@ -749,6 +758,104 @@ func _line_intersection_2d(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2) -
 	var intersection_y = y1 + t * (y2 - y1)
 	
 	return Vector2(intersection_x, intersection_y)
+
+# ============================================
+# HELPERS - SELECCIÓN POR ÁREA
+# ============================================
+
+# Obtiene todos los BlockGenerators que intersectan con un disco circular
+# center: Vector2 o Vector3 (centro del disco en el espacio global, Y es ignorada si es Vector3)
+# radius: Radio del disco
+# Retorna: Array[int] con los índices de los faces cuyos BlockGenerators intersectan el disco
+func get_blocks_in_circular_area(center, radius: float) -> Array[int]:
+	var center_2d: Vector2
+	
+	# Convertir center a Vector2 si es Vector3 (proyectar al plano XZ)
+	if center is Vector3:
+		center_2d = Vector2(center.x, center.z)
+	elif center is Vector2:
+		center_2d = center
+	else:
+		push_error("get_blocks_in_circular_area: center debe ser Vector2 o Vector3")
+		return []
+	
+	var intersecting_faces: Array[int] = []
+	
+	for face_idx in block_grids:
+		var face = plain_graph.faces[face_idx]
+		
+		# Obtener los vértices 2D de este face
+		var face_vertices_2d: Array[Vector2] = []
+		for node_idx in face:
+			var pos_3d = plain_graph.points[node_idx]
+			face_vertices_2d.append(Vector2(pos_3d.x, pos_3d.z))
+		
+		# Verificar si el disco circular intersecta con este quad
+		if _circle_intersects_quad(center_2d, radius, face_vertices_2d):
+			intersecting_faces.append(face_idx)
+	
+	return intersecting_faces
+
+# Verifica si un círculo intersecta con un quad (polígono de 4 vértices)
+func _circle_intersects_quad(circle_center: Vector2, circle_radius: float, quad_vertices: Array[Vector2]) -> bool:
+	if quad_vertices.size() != 4:
+		return false
+	
+	# Test 1: Verificar si el centro del círculo está dentro del quad
+	if _point_in_quad(circle_center, quad_vertices):
+		return true
+	
+	# Test 2: Verificar si algún vértice del quad está dentro del círculo
+	for vertex in quad_vertices:
+		if circle_center.distance_to(vertex) <= circle_radius:
+			return true
+	
+	# Test 3: Verificar si algún edge del quad intersecta con el círculo
+	for i in range(4):
+		var v1 = quad_vertices[i]
+		var v2 = quad_vertices[(i + 1) % 4]
+		
+		if _circle_intersects_line_segment(circle_center, circle_radius, v1, v2):
+			return true
+	
+	return false
+
+# Verifica si un punto está dentro de un quad usando el algoritmo de ray casting
+func _point_in_quad(point: Vector2, quad_vertices: Array[Vector2]) -> bool:
+	var inside = false
+	var j = quad_vertices.size() - 1
+	
+	for i in range(quad_vertices.size()):
+		var vi = quad_vertices[i]
+		var vj = quad_vertices[j]
+		
+		if ((vi.y > point.y) != (vj.y > point.y)) and \
+		   (point.x < (vj.x - vi.x) * (point.y - vi.y) / (vj.y - vi.y) + vi.x):
+			inside = !inside
+		
+		j = i
+	
+	return inside
+
+# Verifica si un círculo intersecta con un segmento de línea
+func _circle_intersects_line_segment(circle_center: Vector2, circle_radius: float, line_start: Vector2, line_end: Vector2) -> bool:
+	# Calcular el punto más cercano en el segmento de línea al centro del círculo
+	var line_vec = line_end - line_start
+	var line_len_squared = line_vec.length_squared()
+	
+	if line_len_squared == 0:
+		# El segmento es un punto
+		return circle_center.distance_to(line_start) <= circle_radius
+	
+	# Parámetro t que representa la proyección del centro del círculo sobre la línea
+	var t = ((circle_center - line_start).dot(line_vec)) / line_len_squared
+	t = clamp(t, 0.0, 1.0)
+	
+	# Punto más cercano en el segmento
+	var closest_point = line_start + t * line_vec
+	
+	# Verificar si la distancia es menor o igual al radio
+	return circle_center.distance_to(closest_point) <= circle_radius
 
 # ============================================
 # HELPERS DE GEOMETRÍA

@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=25 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://by0al5irc1r60" path="res://Materials/Floor.tres" id="1_lpcab"]
 [ext_resource type="Material" uid="uid://bq5ujksxl5avb" path="res://Materials/Shapes.tres" id="2_fnnck"]
@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="PackedScene" uid="uid://depimbd5eofjb" path="res://Scenes/car.tscn" id="12_h3puh"]
+[ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/player/area_instantiator.gd" id="12_k27g2"]
 [ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/city.gd" id="12_v3boh"]
 [ext_resource type="PackedScene" uid="uid://qbf2ejaplhko" path="res://Scenes/barquetesimple3.blend" id="13_h3puh"]
 
@@ -171,83 +172,6 @@ current = true
 
 [node name="city" type="Node3D" parent="."]
 script = ExtResource("12_v3boh")
-region_size = null
-min_distance = null
-rejection_samples = null
-generation_seed = null
-show_neighborhoods = null
-neighborhood_height_falloff = null
-industrial_min_floors = null
-industrial_max_floors = null
-industrial_block_heart_probability = null
-residential_min_floors = null
-residential_max_floors = null
-residential_block_heart_probability = null
-financial_min_floors = null
-financial_max_floors = null
-financial_block_heart_probability = null
-smoothing_steps = null
-show_nodes = null
-node_radius = null
-normal_node_color = null
-boundary_node_color = null
-auto_generate = null
-num_large_streets = null
-num_small_streets = null
-small_street_color = null
-small_street_width = null
-medium_street_color = null
-medium_street_width = null
-large_street_color = null
-large_street_width = null
-boundary_street_color = null
-boundary_street_width = null
-block_grid_rows = null
-block_grid_columns = null
-block_grid_floors = null
-block_cells_per_floor = null
-distorted_grid_rows = null
-distorted_grid_columns = null
-wave_amplitude_x = null
-wave_amplitude_z = null
-wave_frequency_x = null
-wave_frequency_z = null
-wave_phase_x = null
-wave_phase_z = null
-edge_falloff_sharpness = null
-small_alleyways_count = null
-big_alleyways_count = null
-min_steps_before_turn = null
-grid_seed = null
-building_grid_rows = null
-building_grid_columns = null
-show_distorted_grid = null
-distorted_grid_floor_to_show = null
-distorted_grid_vertex_radius = null
-distorted_grid_normal_vertex_color = null
-distorted_grid_boundary_vertex_color = null
-distorted_grid_normal_edge_color = null
-distorted_grid_small_edge_color = null
-distorted_grid_big_edge_color = null
-distorted_grid_small_origin_edge_color = null
-distorted_grid_big_origin_edge_color = null
-distorted_grid_boundary_edge_color = null
-distorted_grid_edge_width = null
-distorted_grid_height_offset = null
-show_buildings = null
-show_building_colliders = null
-show_pedestrian_planes = null
-pedestrian_plane_color = null
-pedestrian_plane_transparency = null
-show_floor_planes = null
-floor_plane_color = null
-floor_plane_transparency = null
-show_temporal_lane_points = null
-temporal_point_radius = null
-temporal_point_height_offset = null
-show_lane_lines = null
-lane_line_width = null
-lane_line_height_offset = null
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 script = ExtResource("8_oilx1")
@@ -257,6 +181,12 @@ visible = false
 light_energy = 50.0
 omni_range = 50.0
 omni_attenuation = 2.0
+
+[node name="AreaInstantiator" type="Node3D" parent="CharacterBody3D" node_paths=PackedStringArray("world")]
+visible = false
+script = ExtResource("12_k27g2")
+world = NodePath("../../world")
+metadata/_custom_type_script = "uid://btuoiwrmahgt4"
 
 [node name="RigidBody3D" parent="." instance=ExtResource("12_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.9507675, 0.9780211, 10.36355)

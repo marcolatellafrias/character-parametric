@@ -122,8 +122,13 @@ extends Node3D
 @export var temporal_point_height_offset: float = 2.0
 
 @export_group("Lane Planes - Planos Finales")
-@export var show_lane_planes: bool = true
+@export var show_lane_planes: bool = false
 @export_range(0.0, 1.0) var lane_plane_transparency: float = 0.5
+
+@export_group("Lane Volumes - Volúmenes de Edges")
+@export var show_lane_volumes: bool = false
+@export_range(0.0, 1.0) var lane_volume_transparency: float = 0.3
+@export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 
 # ============================================
 # DATOS DEL GRAFO
@@ -232,6 +237,9 @@ func visualize_graph() -> void:
     
     if show_lane_planes:
         _visualize_lane_planes()
+    
+    if show_lane_volumes:
+        _visualize_lane_volumes()
     
     if show_nodes:
         _visualize_nodes()
@@ -790,3 +798,44 @@ func _visualize_lane_planes() -> void:
             total_planes += 1
     
     print("[Visualizer] Lane planes finales: %d planos (%d rojos/start, %d verdes/end) en %d bloques" % [total_planes, start_planes, end_planes, all_block_faces.size()])
+
+# ============================================
+# VISUALIZACIÓN DE LANE VOLUMES (VOLÚMENES DE EDGES)
+# ============================================
+func _visualize_lane_volumes() -> void:
+    var all_block_faces = generator.get_all_block_faces()
+    var total_volumes = 0
+    
+    for face_idx in all_block_faces:
+        var block: BlockGenerator = generator.get_block_grid(face_idx)
+        
+        if block == null:
+            continue
+        
+        # Cada BlockGenerator tiene 4 edges (0, 1, 2, 3)
+        for edge_idx in range(4):
+            var volume_data = block.get_edge_lane_volume(edge_idx)
+            
+            if volume_data.is_empty():
+                continue
+            
+            var start_plane_verts = volume_data["start_plane_vertices"]
+            var end_plane_verts = volume_data["end_plane_vertices"]
+            
+            if start_plane_verts.size() != 4 or end_plane_verts.size() != 4:
+                push_warning("Volume de edge %d del bloque %d no tiene vértices correctos" % [edge_idx, face_idx])
+                continue
+            
+            # Crear skewed cube usando DebugUtil
+            var skewed_cube = DebugUtil.create_skewed_cube_from_planes(
+                start_plane_verts,
+                end_plane_verts,
+                lane_volume_color,
+                lane_volume_transparency
+            )
+            
+            if skewed_cube != null:
+                add_child(skewed_cube)
+                total_volumes += 1
+    
+    print("[Visualizer] Lane volumes: %d volúmenes visualizados en %d bloques" % [total_volumes, all_block_faces.size()])

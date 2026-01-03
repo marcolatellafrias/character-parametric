@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://nukouuyfrbyj"]
+
+[ext_resource type="Script" uid="uid://dpm1a6kas33eu" path="res://Scripts/city/entities/flying_car.gd" id="1_k7uax"]
+
+[node name="FlyingCarScn" type="Node3D"]
+script = ExtResource("1_k7uax")
