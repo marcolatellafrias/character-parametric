@@ -699,18 +699,6 @@ func _visualize_temporal_lane_points() -> void:
     var all_block_faces = generator.get_all_block_faces()
     var total_points = 0
     
-    # Colores para cada combinación edge_idx + node_idx
-    var point_colors = [
-        Color.RED,        # edge 0, node 0
-        Color.GREEN,      # edge 0, node 1
-        Color.BLUE,       # edge 1, node 0
-        Color.YELLOW,     # edge 1, node 1
-        Color.MAGENTA,    # edge 2, node 0
-        Color.CYAN,       # edge 2, node 1
-        Color.ORANGE,     # edge 3, node 0
-        Color.PURPLE      # edge 3, node 1
-    ]
-    
     for face_idx in all_block_faces:
         var block: BlockGenerator = generator.get_block_grid(face_idx)
         
@@ -728,10 +716,15 @@ func _visualize_temporal_lane_points() -> void:
             var parts = key.split("_")
             var edge_idx = int(parts[0])
             var node_idx = int(parts[1])
-            var color_idx = edge_idx * 2 + node_idx
-            var color = point_colors[color_idx % point_colors.size()]
             
-            # Visualizar point_a
+            # Determinar color basado en si es start o end node del edge
+            var color: Color
+            if node_idx == 0:
+                color = Color.RED  # Start node
+            else:
+                color = Color.GREEN  # End node
+            
+            # Visualizar point_a (opaco)
             var pos_a_3d = Vector3(point_a.x, temporal_point_height_offset, point_a.y)
             var sphere_a = DebugUtil.create_debug_sphere(color, temporal_point_radius)
             sphere_a.position = pos_a_3d
@@ -754,14 +747,8 @@ func _visualize_temporal_lane_points() -> void:
 func _visualize_lane_lines() -> void:
     var all_block_faces = generator.get_all_block_faces()
     var total_lines = 0
-    
-    # Colores para cada edge (cada edge tendrá sus 2 lane lines del mismo color)
-    var edge_colors = [
-        Color.RED,        # edge 0
-        Color.GREEN,      # edge 1
-        Color.BLUE,       # edge 2
-        Color.YELLOW      # edge 3
-    ]
+    var start_lines = 0
+    var end_lines = 0
     
     for face_idx in all_block_faces:
         var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -775,11 +762,18 @@ func _visualize_lane_lines() -> void:
             var line_data = lane_lines_dict[key]
             var start: Vector2 = line_data["start"]
             var end: Vector2 = line_data["end"]
+            var is_start_lane: bool = line_data["is_start_lane"]
             
-            # Extraer edge_idx para determinar el color
-            var parts = key.split("_")
-            var edge_idx = int(parts[0])
-            var color = edge_colors[edge_idx % edge_colors.size()]
+            # Color basado en direccionalidad almacenada:
+            # Start lane (nodo inicial del edge en sentido horario) → ROJO
+            # End lane (nodo final del edge en sentido horario) → VERDE
+            var color: Color
+            if is_start_lane:
+                color = Color.RED
+                start_lines += 1
+            else:
+                color = Color.GREEN
+                end_lines += 1
             
             # Convertir a 3D y visualizar
             var start_3d = Vector3(start.x, 0.0, start.y)
@@ -794,4 +788,4 @@ func _visualize_lane_lines() -> void:
             add_child(line)
             total_lines += 1
     
-    print("[Visualizer] Lane lines finales: %d líneas en %d bloques" % [total_lines, all_block_faces.size()])
+    print("[Visualizer] Lane lines finales: %d líneas (%d rojas/start, %d verdes/end) en %d bloques" % [total_lines, start_lines, end_lines, all_block_faces.size()])

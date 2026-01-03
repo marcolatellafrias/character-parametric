@@ -48,7 +48,7 @@ var cluster_seed: int
 var temporal_lane_points: Dictionary = {}
 
 # Lane lines finales
-# key: "edge_idx_node_idx" -> {start: Vector2, end: Vector2}
+# key: "edge_idx_node_idx" -> {start: Vector2, end: Vector2, is_start_lane: bool}
 var lane_lines: Dictionary = {}
 
 func _init(
@@ -598,3 +598,6 @@ func get_core_vertices() -> Array[Vector2]:
 
 func get_lane_lines() -> Dictionary:
 	return lane_lines
+
+func get_is_clockwise() -> bool:
+	return is_clockwise

@@ -701,10 +701,21 @@ func _calculate_lane_lines() -> void:
 				var intersection = _line_intersection_2d(point_a, point_b, edge_start_2d, edge_end_2d)
 				
 				if intersection != Vector2.ZERO:
+					# Determinar si esta lane line es "start" o "end"
+					# Esto depende de si el face es clockwise o counter-clockwise
+					var is_start_lane: bool
+					if block.is_clockwise:
+						# Face clockwise: node_local_idx 0 es end, 1 es start
+						is_start_lane = (node_local_idx == 1)
+					else:
+						# Face counter-clockwise: node_local_idx 0 es start, 1 es end
+						is_start_lane = (node_local_idx == 0)
+					
 					# Lane line final: desde point_a hasta el punto de intersección
 					block.lane_lines[key] = {
 						"start": point_a,
-						"end": intersection
+						"end": intersection,
+						"is_start_lane": is_start_lane
 					}
 					total_lines += 1
 	
