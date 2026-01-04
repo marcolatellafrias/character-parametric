@@ -431,7 +431,7 @@ static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vect
 	
 	return mesh_instance
 
-static func create_skewed_cube(base_vertices: Array, height: float, color: Color) -> MeshInstance3D:
+static func create_skewed_cube(base_vertices: Array, height: float, color: Color, use_transparency: bool = false) -> MeshInstance3D:
 	if base_vertices.size() != 4:
 		push_error("Se requieren exactamente 4 vértices para la base")
 		return null
@@ -507,8 +507,12 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 	var material = StandardMaterial3D.new()
 	material.albedo_color = color
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	material.cull_mode = BaseMaterial3D.CULL_BACK
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
+	
+	if use_transparency:
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	
 	st.set_material(material)
 	
 	mesh_instance.mesh = st.commit()
@@ -992,104 +996,32 @@ static func _add_quad_to_arrays(
 	indices.append(start_idx + 2)
 	indices.append(start_idx + 3)
 
-static func create_debug_ring_volume_wireframe(color: Color, outer_radius: float, inner_radius: float, height: float, segments: int = 16, valid_segment_indices: Array = []) -> MeshInstance3D:
-	var mesh_instance := MeshInstance3D.new()
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_LINES)
+static func create_debug_ring_volume_wireframe(color: Color, outer_radius: float, inner_radius: float, height: float, segments: int = 16, valid_segment_indices: Array = []) -> Node3D:
+	var container := Node3D.new()
 	
-	var valid_color := Color(0.0, 1.0, 0.0, 0.8)  # Verde para válidos
-	var invalid_color := Color(1.0, 0.0, 0.0, 0.8)  # Rojo para inválidos
+	var valid_color := Color(0.0, 1.0, 0.0, 0.25)  # Verde semitransparente para válidos
+	var invalid_color := Color(1.0, 0.0, 0.0, 0.15)  # Rojo muy transparente para inválidos
 	
-	# Anillo inferior interior
-	for i in range(segments):
-		var angle1 := TAU * float(i) / float(segments)
-		var angle2 := TAU * float(i + 1) / float(segments)
-		var x1 := cos(angle1) * inner_radius
-		var z1 := sin(angle1) * inner_radius
-		var x2 := cos(angle2) * inner_radius
-		var z2 := sin(angle2) * inner_radius
-		var segment_color = valid_color if i in valid_segment_indices else invalid_color
+	# Crear cubos para TODOS los segmentos
+	for segment_idx in range(segments):
+		var angle1 := TAU * float(segment_idx) / float(segments)
+		var angle2 := TAU * float(segment_idx + 1) / float(segments)
 		
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x1, 0, z1))
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x2, 0, z2))
-	
-	# Anillo inferior exterior
-	for i in range(segments):
-		var angle1 := TAU * float(i) / float(segments)
-		var angle2 := TAU * float(i + 1) / float(segments)
-		var x1 := cos(angle1) * outer_radius
-		var z1 := sin(angle1) * outer_radius
-		var x2 := cos(angle2) * outer_radius
-		var z2 := sin(angle2) * outer_radius
-		var segment_color = valid_color if i in valid_segment_indices else invalid_color
+		# Crear los 4 vértices de la base del segmento en orden CCW (visto desde arriba)
+		var base_verts = [
+			Vector3(cos(angle1) * inner_radius, 0, sin(angle1) * inner_radius),
+			Vector3(cos(angle1) * outer_radius, 0, sin(angle1) * outer_radius),
+			Vector3(cos(angle2) * outer_radius, 0, sin(angle2) * outer_radius),
+			Vector3(cos(angle2) * inner_radius, 0, sin(angle2) * inner_radius)
+		]
 		
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x1, 0, z1))
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x2, 0, z2))
-	
-	# Anillo superior interior
-	for i in range(segments):
-		var angle1 := TAU * float(i) / float(segments)
-		var angle2 := TAU * float(i + 1) / float(segments)
-		var x1 := cos(angle1) * inner_radius
-		var z1 := sin(angle1) * inner_radius
-		var x2 := cos(angle2) * inner_radius
-		var z2 := sin(angle2) * inner_radius
-		var segment_color = valid_color if i in valid_segment_indices else invalid_color
+		# Determinar si el segmento es válido o no
+		var is_valid = segment_idx in valid_segment_indices
+		var segment_color = valid_color if is_valid else invalid_color
 		
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x1, height, z1))
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x2, height, z2))
+		# Crear el cubo semitransparente para este segmento
+		var segment_cube = DebugUtil.create_skewed_cube(base_verts, height, segment_color, true)
+		if segment_cube:
+			container.add_child(segment_cube)
 	
-	# Anillo superior exterior
-	for i in range(segments):
-		var angle1 := TAU * float(i) / float(segments)
-		var angle2 := TAU * float(i + 1) / float(segments)
-		var x1 := cos(angle1) * outer_radius
-		var z1 := sin(angle1) * outer_radius
-		var x2 := cos(angle2) * outer_radius
-		var z2 := sin(angle2) * outer_radius
-		var segment_color = valid_color if i in valid_segment_indices else invalid_color
-		
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x1, height, z1))
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x2, height, z2))
-	
-	# Líneas verticales conectando los anillos
-	for i in range(segments):
-		var angle := TAU * float(i) / float(segments)
-		var segment_color = valid_color if i in valid_segment_indices else invalid_color
-		
-		# Líneas para el anillo interior
-		var x_inner := cos(angle) * inner_radius
-		var z_inner := sin(angle) * inner_radius
-		
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x_inner, 0, z_inner))
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x_inner, height, z_inner))
-		
-		# Líneas para el anillo exterior
-		var x_outer := cos(angle) * outer_radius
-		var z_outer := sin(angle) * outer_radius
-		
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x_outer, 0, z_outer))
-		st.set_color(segment_color)
-		st.add_vertex(Vector3(x_outer, height, z_outer))
-	
-	var mesh := st.commit()
-	mesh_instance.mesh = mesh
-	
-	var material := StandardMaterial3D.new()
-	material.vertex_color_use_as_albedo = true
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mesh_instance.material_override = material
-	
-	return mesh_instance
+	return container

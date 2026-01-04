@@ -183,8 +183,8 @@ omni_range = 50.0
 omni_attenuation = 2.0
 
 [node name="AreaInstantiator" type="Node3D" parent="CharacterBody3D" node_paths=PackedStringArray("world")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -7)
 script = ExtResource("12_k27g2")
+height = 10.0
 world = NodePath("../../world")
 metadata/_custom_type_script = "uid://btuoiwrmahgt4"
 
