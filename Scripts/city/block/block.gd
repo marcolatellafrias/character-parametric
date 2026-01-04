@@ -96,7 +96,7 @@ func _init(
 	
 	if p_building_alleyway_offsets.is_empty():
 		building_alleyway_offsets = {
-			-1: 3,
+			-1: 6,
 			0: 0,
 			1: 4,
 			2: 4,

@@ -126,7 +126,7 @@ extends Node3D
 @export_range(0.0, 1.0) var lane_plane_transparency: float = 0.5
 
 @export_group("Lane Volumes - Volúmenes de Edges")
-@export var show_lane_volumes: bool = true
+@export var show_lane_volumes: bool = false
 @export_range(0.0, 1.0) var lane_volume_transparency: float = 0.3
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 

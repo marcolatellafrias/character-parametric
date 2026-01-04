@@ -1,19 +1,19 @@
 extends Node3D
 class_name AreaInstantiator
 
-@export var outer_radius: float = 4.0
-@export var inner_radius: float = 1.5
-@export var height: float = 2.0
+@export var outer_radius: float = 20.0
+@export var inner_radius: float = 5.5
+@export var height: float = 15.0
 @export var segments: int = 16
 @export var debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
-@export var show_debug: bool = true
+@export var show_debug: bool = false
 
 @export var world: Node3D
-@export var spawn_interval: float = 3.0
+@export var spawn_interval: float = 0.3
 @export var max_spawn_attempts: int = 50
 
 @export_group("Car Size Ranges")
-@export var debug_size_factor: float = 0.1
+@export var debug_size_factor: float = 1.0
 @export var min_car_width: float = 1.5 * debug_size_factor
 @export var max_car_width: float = 2.5 * debug_size_factor
 @export var min_car_height: float = 0.8 * debug_size_factor
@@ -69,14 +69,14 @@ func _spawn_car() -> void:
     car.car_color = Color(randf(), randf(), randf(), 1.0)
     
     world.add_child(car)
-    car.global_position = spawn_data["start_position"]
+    car.global_position = spawn_data["spawn_position"]
     
     # Orientar el auto hacia el end_position
     var direction = (spawn_data["end_position"] - spawn_data["start_position"]).normalized()
     if direction.length() > 0.001:
         car.look_at(spawn_data["end_position"], Vector3.UP)
     
-    # Configurar el path en el auto
+    # Configurar el path completo desde start a end
     car.set_path(spawn_data["start_position"], spawn_data["end_position"])
 
 func _update_valid_segments() -> void:
@@ -166,8 +166,9 @@ func _get_random_valid_path():
     
     var fail_reasons = {
         "start_point_null": 0,
-        "start_not_in_volume": 0,
-        "end_not_in_volume": 0,
+        "spawn_not_in_volume": 0,
+        "projected_start_invalid": 0,
+        "projected_end_invalid": 0,
         "path_invalid": 0,
         "success": 0
     }
@@ -179,42 +180,65 @@ func _get_random_valid_path():
         var start_plane_verts = volume["start_plane_vertices"]
         var end_plane_verts = volume["end_plane_vertices"]
         
-        # Generar punto en el start_plane dentro del área de spawn
-        var start_point_local = _get_random_point_in_segment(segment["index"])
-        if start_point_local == null:
+        # Generar punto aleatorio en el spawn area (dentro del ring)
+        var spawn_point_local = _get_random_point_in_segment(segment["index"])
+        if spawn_point_local == null:
             fail_reasons["start_point_null"] += 1
             continue
         
-        var start_position = global_transform * start_point_local
+        var spawn_position = global_transform * spawn_point_local
         
-        # Verificar que el punto esté en el start_plane del volumen
+        # Verificar que el spawn point esté dentro del volumen
+        if not _is_point_inside_lane_volume(spawn_position, start_plane_verts, end_plane_verts):
+            fail_reasons["spawn_not_in_volume"] += 1
+            if show_debug:
+                _show_spawn_attempt(spawn_position, false)
+            continue
+        
+        # Calcular la dirección del volumen (de start a end)
+        var volume_direction = _get_volume_direction(start_plane_verts, end_plane_verts)
+        
+        # Proyectar el spawn point hacia el start plane y end plane
+        var path_points = _calculate_full_path_through_volume(
+            spawn_position,
+            start_plane_verts,
+            end_plane_verts,
+            volume_direction
+        )
+        
+        if path_points == null:
+            fail_reasons["projected_start_invalid"] += 1
+            if show_debug:
+                _show_spawn_attempt(spawn_position, false)
+            continue
+        
+        var start_position = path_points["start"]
+        var end_position = path_points["end"]
+        
+        # Verificar que ambos puntos estén dentro del volumen
         if not _is_point_inside_lane_volume(start_position, start_plane_verts, end_plane_verts):
-            fail_reasons["start_not_in_volume"] += 1
+            fail_reasons["projected_start_invalid"] += 1
             if show_debug:
-                _show_spawn_attempt(start_position, false)
+                _show_spawn_attempt(spawn_position, false)
             continue
         
-        # Proyectar el punto al end_plane manteniendo posición relativa
-        var end_position = _project_point_to_end_plane(start_position, start_plane_verts, end_plane_verts)
-        
-        # Verificar que el end_position también esté dentro del volumen
         if not _is_point_inside_lane_volume(end_position, start_plane_verts, end_plane_verts):
-            fail_reasons["end_not_in_volume"] += 1
+            fail_reasons["projected_end_invalid"] += 1
             if show_debug:
-                _show_spawn_attempt(start_position, false)
+                _show_spawn_attempt(spawn_position, false)
             continue
         
-        # Verificar que el path completo sea válido (sin clipping)
+        # Verificar que el path completo sea válido
         if not _is_path_valid(start_position, end_position, start_plane_verts, end_plane_verts):
             fail_reasons["path_invalid"] += 1
             if show_debug:
-                _show_spawn_attempt(start_position, false)
+                _show_spawn_attempt(spawn_position, false)
             continue
         
         # Path válido encontrado
         fail_reasons["success"] += 1
         if show_debug:
-            _show_spawn_attempt(start_position, true)
+            _show_spawn_attempt(spawn_position, true)
         
         print("Spawn attempt succeeded after ", attempt + 1, " tries")
         print("Fail reasons: ", fail_reasons)
@@ -222,6 +246,7 @@ func _get_random_valid_path():
         return {
             "start_position": start_position,
             "end_position": end_position,
+            "spawn_position": spawn_position,
             "volume": volume
         }
     
@@ -229,8 +254,9 @@ func _get_random_valid_path():
     print("All ", max_spawn_attempts, " spawn attempts failed!")
     print("Fail breakdown:")
     print("  - start_point_null: ", fail_reasons["start_point_null"])
-    print("  - start_not_in_volume: ", fail_reasons["start_not_in_volume"])
-    print("  - end_not_in_volume: ", fail_reasons["end_not_in_volume"])
+    print("  - spawn_not_in_volume: ", fail_reasons["spawn_not_in_volume"])
+    print("  - projected_start_invalid: ", fail_reasons["projected_start_invalid"])
+    print("  - projected_end_invalid: ", fail_reasons["projected_end_invalid"])
     print("  - path_invalid: ", fail_reasons["path_invalid"])
     
     return null
@@ -248,55 +274,88 @@ func _get_random_point_in_segment(segment_index: int):
     
     return Vector3(local_x, random_height, local_z)
 
-func _project_point_to_end_plane(point: Vector3, start_plane_verts: Array, end_plane_verts: Array) -> Vector3:
-    # Los vértices están ordenados como: [v1_base, v2_base, v3_top, v4_top]
-    # Formar un quad con estos 4 puntos
-    var v0 = start_plane_verts[0]  # base izquierda
-    var v1 = start_plane_verts[1]  # base derecha
-    var v2 = start_plane_verts[2]  # top derecha
-    var v3 = start_plane_verts[3]  # top izquierda
+func _get_volume_direction(start_plane_verts: Array, end_plane_verts: Array) -> Vector3:
+    # Calcular el centro de cada plano
+    var start_center = Vector3.ZERO
+    for v in start_plane_verts:
+        start_center += v
+    start_center /= start_plane_verts.size()
     
-    # Proyectar el punto al plano del start_plane
-    var plane_normal = (v1 - v0).cross(v3 - v0).normalized()
-    var point_to_plane = point - v0
-    var projected_point = point - plane_normal * point_to_plane.dot(plane_normal)
+    var end_center = Vector3.ZERO
+    for v in end_plane_verts:
+        end_center += v
+    end_center /= end_plane_verts.size()
     
-    # Encontrar coordenadas paramétricas (u, v) en el quad
-    # u va de v0 a v1 (eje base)
-    # v va de v0 a v3 (eje lateral)
-    var base_vec = v1 - v0
-    var side_vec = v3 - v0
-    var point_vec = projected_point - v0
+    # Dirección del flujo
+    return (end_center - start_center).normalized()
+
+func _calculate_full_path_through_volume(
+    spawn_point: Vector3,
+    start_plane_verts: Array,
+    end_plane_verts: Array,
+    volume_direction: Vector3
+):
+    # Calcular los planos como ecuaciones
+    var start_plane_normal = _get_plane_normal(start_plane_verts)
+    var end_plane_normal = _get_plane_normal(end_plane_verts)
     
-    # Resolver para u y v (aproximación simple)
-    var u = 0.5
-    var v = 0.5
+    # Proyectar el spawn point hacia atrás hasta el start plane
+    var start_position = _intersect_ray_with_plane(
+        spawn_point,
+        -volume_direction,
+        start_plane_verts[0],
+        start_plane_normal
+    )
     
-    if base_vec.length_squared() > 0.0001:
-        u = point_vec.dot(base_vec) / base_vec.length_squared()
+    if start_position == null:
+        return null
     
-    if side_vec.length_squared() > 0.0001:
-        v = point_vec.dot(side_vec) / side_vec.length_squared()
+    # Proyectar el spawn point hacia adelante hasta el end plane
+    var end_position = _intersect_ray_with_plane(
+        spawn_point,
+        volume_direction,
+        end_plane_verts[0],
+        end_plane_normal
+    )
     
-    # Clampar u y v para mantenerlos en el quad
-    u = clamp(u, 0.0, 1.0)
-    v = clamp(v, 0.0, 1.0)
+    if end_position == null:
+        return null
     
-    # Aplicar interpolación bilineal en el end_plane
-    var end_v0 = end_plane_verts[0]
-    var end_v1 = end_plane_verts[1]
-    var end_v2 = end_plane_verts[2]
-    var end_v3 = end_plane_verts[3]
+    return {
+        "start": start_position,
+        "end": end_position
+    }
+
+func _get_plane_normal(plane_verts: Array) -> Vector3:
+    # Usar los primeros 3 vértices para calcular la normal
+    var v0 = plane_verts[0]
+    var v1 = plane_verts[1]
+    var v2 = plane_verts[2]
     
-    # Interpolación bilineal: 
-    # bottom = lerp(v0, v1, u)
-    # top = lerp(v3, v2, u)
-    # result = lerp(bottom, top, v)
-    var bottom = end_v0.lerp(end_v1, u)
-    var top = end_v3.lerp(end_v2, u)
-    var result = bottom.lerp(top, v)
+    var edge1 = v1 - v0
+    var edge2 = v2 - v0
     
-    return result
+    return edge1.cross(edge2).normalized()
+
+func _intersect_ray_with_plane(
+    ray_origin: Vector3,
+    ray_direction: Vector3,
+    plane_point: Vector3,
+    plane_normal: Vector3
+):
+    var denom = plane_normal.dot(ray_direction)
+    
+    # Rayo paralelo al plano
+    if abs(denom) < 0.0001:
+        return null
+    
+    var t = (plane_point - ray_origin).dot(plane_normal) / denom
+    
+    # Intersección detrás del origen
+    if t < 0:
+        return null
+    
+    return ray_origin + ray_direction * t
 
 func _is_path_valid(start_pos: Vector3, end_pos: Vector3, start_plane_verts: Array, end_plane_verts: Array) -> bool:
     # Samplear puntos a lo largo del path y verificar que todos estén dentro del volumen
@@ -312,7 +371,7 @@ func _is_path_valid(start_pos: Vector3, end_pos: Vector3, start_plane_verts: Arr
 
 func _show_spawn_attempt(position: Vector3, success: bool) -> void:
     var color = Color(0.0, 1.0, 0.0, 0.8) if success else Color(1.0, 0.0, 0.0, 0.8)
-    var sphere = DebugUtil.create_debug_sphere(color, 1.0)
+    var sphere = DebugUtil.create_debug_sphere(color, 0.005)
     world.add_child(sphere)
     sphere.global_position = position
     
