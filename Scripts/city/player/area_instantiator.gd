@@ -14,16 +14,21 @@ class_name AreaInstantiator
 @export var show_lane_volumes: bool = true
 @export var lane_volume_color: Color = Color(1.0, 0.5, 0.0)
 @export var lane_volume_transparency: float = 0.3
+@export var show_grid_points: bool = true
+@export var grid_point_color: Color = Color(1.0, 1.0, 0.0)
+@export var grid_point_size: float = 0.05
+@export_range(1, 10) var granularity: int = 2 # Multiplicador para filas y columnas
 
 @export_group("Performance")
 @export var update_interval: float = 0.1
-@export var position_threshold: float = 0.5  # Distancia mínima para actualizar
-@export var rotation_threshold: float = 0.1  # Radianes mínimos para actualizar (~5.7 grados)
+@export var position_threshold: float = 0.5
+@export var rotation_threshold: float = 0.1
 
 var debug_mesh: Node3D
 var city = null
 var valid_segments: Array = []
 var lane_volumes_container: Node3D
+var grid_points_container: Node3D
 
 var cached_volumes: Array = []
 var cached_position: Vector3 = Vector3.ZERO
@@ -37,6 +42,10 @@ func _ready() -> void:
 		lane_volumes_container = Node3D.new()
 		lane_volumes_container.name = "LaneVolumesDebug_" + str(get_instance_id())
 		world.add_child(lane_volumes_container)
+		
+		grid_points_container = Node3D.new()
+		grid_points_container.name = "GridPointsDebug_" + str(get_instance_id())
+		world.add_child(grid_points_container)
 	
 	if show_debug:
 		_create_debug_visualization()
@@ -44,6 +53,8 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if lane_volumes_container and is_instance_valid(lane_volumes_container):
 		lane_volumes_container.queue_free()
+	if grid_points_container and is_instance_valid(grid_points_container):
+		grid_points_container.queue_free()
 
 func _process(delta: float) -> void:
 	if city == null:
@@ -54,7 +65,6 @@ func _process(delta: float) -> void:
 	if update_timer >= update_interval:
 		update_timer = 0.0
 		
-		# Verificar si cambió la posición O la rotación
 		var position_changed = global_position.distance_to(cached_position) > position_threshold
 		var rotation_changed = _rotation_changed()
 		
@@ -73,10 +83,16 @@ func _process(delta: float) -> void:
 			)
 			
 			if _volumes_changed(volumes):
+				# Detectar nuevos volumes ANTES de actualizar el caché
+				_detect_new_volumes(volumes)
+				
 				cached_volumes = volumes
 				
 				if show_lane_volumes and lane_volumes_container:
 					_update_lane_volumes(volumes)
+				
+				if show_grid_points and grid_points_container:
+					_update_grid_points(volumes)
 
 func _rotation_changed() -> bool:
 	var current_rotation = global_rotation
@@ -103,6 +119,25 @@ func _volumes_changed(new_volumes: Array) -> bool:
 			return true
 	
 	return false
+
+func _detect_new_volumes(new_volumes: Array) -> void:
+	for vol in new_volumes:
+		var face_idx = vol.get("face_idx", -1)
+		var edge_idx = vol.get("edge_idx", -1)
+		
+		# Verificar si es un volume nuevo
+		var is_new_volume = true
+		for cached_vol in cached_volumes:
+			if cached_vol.get("face_idx") == face_idx and cached_vol.get("edge_idx") == edge_idx:
+				is_new_volume = false
+				break
+		
+		if is_new_volume:
+			var width_cells = vol.get("width_cells", 3)
+			var height_cells = vol.get("height_cells", 10)
+			var effective_width = width_cells * granularity
+			var effective_height = height_cells * granularity
+			print("NUEVO VOLUME - Face: %d, Edge: %d | Grilla base: %dx%d | Con granularidad %d: %dx%d" % [face_idx, edge_idx, width_cells, height_cells, granularity, effective_width, effective_height])
 
 func _create_debug_visualization() -> void:
 	_refresh_debug_visualization()
@@ -146,6 +181,44 @@ func _update_lane_volumes(volumes: Array) -> void:
 		if volume_mesh:
 			lane_volumes_container.add_child(volume_mesh)
 
+func _update_grid_points(volumes: Array) -> void:
+	# Limpiar puntos anteriores
+	for child in grid_points_container.get_children():
+		child.queue_free()
+	
+	for vol in volumes:
+		var width_cells = vol.get("width_cells", 3)
+		var height_cells = vol.get("height_cells", 10)
+		
+		# Aplicar granularidad
+		var effective_width = width_cells * granularity
+		var effective_height = height_cells * granularity
+		
+		# Crear puntos para el plano inicial (start_plane)
+		_create_grid_for_plane(vol["start_plane_vertices"], effective_width, effective_height)
+		
+		# Crear puntos para el plano final (end_plane)
+		_create_grid_for_plane(vol["end_plane_vertices"], effective_width, effective_height)
+
+func _create_grid_for_plane(plane_verts: Array, width_cells: int, height_cells: int) -> void:
+	# plane_verts = [v1_base, v2_base, v3_top, v4_top]
+	# Crear grilla de width_cells x height_cells puntos
+	
+	for i in range(width_cells + 1):  # +1 para incluir ambos extremos
+		for j in range(height_cells + 1):
+			var u = float(i) / float(width_cells)  # 0.0 a 1.0 en ancho
+			var v = float(j) / float(height_cells)  # 0.0 a 1.0 en altura
+			
+			# Interpolación bilineal
+			var bottom = plane_verts[0].lerp(plane_verts[1], u)
+			var top = plane_verts[3].lerp(plane_verts[2], u)
+			var point = bottom.lerp(top, v)
+			
+			# Crear esfera en el punto
+			var sphere = DebugUtil.create_debug_sphere(grid_point_color, grid_point_size)
+			grid_points_container.add_child(sphere)
+			sphere.global_position = point
+
 func _refresh_debug_visualization() -> void:
 	if debug_mesh:
 		debug_mesh.queue_free()
@@ -169,7 +242,7 @@ func _get_segment_vertices(segment_index: int) -> Array:
 	vertices.append(Vector3(cos(angle2) * outer_radius, 0, sin(angle2) * outer_radius))
 	vertices.append(Vector3(cos(angle1) * inner_radius, height, sin(angle1) * inner_radius))
 	vertices.append(Vector3(cos(angle2) * inner_radius, height, sin(angle2) * inner_radius))
-	vertices.append(Vector3(cos(angle1) * outer_radius, height, sin(angle1) * outer_radius))
+	vertices.append(Vector3(cos(angle1) * outer_radius, height, sin(angle1) * inner_radius))
 	vertices.append(Vector3(cos(angle2) * outer_radius, height, sin(angle2) * outer_radius))
 	
 	return vertices

@@ -10,7 +10,7 @@ enum StreetType {
 # Ancho de media calle en celdas por tipo
 const STREET_HALF_WIDTH_CELLS: Dictionary = {
 	StreetType.BOUNDARY: 0,
-	StreetType.SMALL: 3,
+	StreetType.SMALL: 4,
 	StreetType.MEDIUM: 6,
 	StreetType.LARGE: 9
 }
@@ -96,7 +96,7 @@ func _init(
 	
 	if p_building_alleyway_offsets.is_empty():
 		building_alleyway_offsets = {
-			-1: 6,
+			-1: 3,
 			0: 0,
 			1: 4,
 			2: 4,
@@ -649,6 +649,7 @@ func get_edge_lane_volume(edge_idx: int) -> Dictionary:
 		return {}
 	
 	var height = start_plane_data["height"]
+	var street_type = start_plane_data.get("street_type", 0)  # Default a SMALL si no existe
 	
 	# Crear los 4 vértices de la start lane plane
 	var start_plane_v1 = Vector3(start_plane_data["start"].x, 0.0, start_plane_data["start"].y)
@@ -673,5 +674,6 @@ func get_edge_lane_volume(edge_idx: int) -> Dictionary:
 		"vertices": all_vertices,
 		"start_plane_vertices": [start_plane_v1, start_plane_v2, start_plane_v3, start_plane_v4],
 		"end_plane_vertices": [end_plane_v1, end_plane_v2, end_plane_v3, end_plane_v4],
-		"height": height
+		"height": height,
+		"street_type": street_type
 	}

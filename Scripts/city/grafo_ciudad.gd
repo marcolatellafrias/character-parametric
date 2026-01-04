@@ -41,6 +41,9 @@ var grid_seed: int
 
 var building_grid_rows: int
 var building_grid_columns: int
+var block_cell_height: float
+var building_cell_height: float
+var cells_per_floor: int
 
 func generate_city_graph(
 	smooth_steps: int,
@@ -118,6 +121,9 @@ func generate_city_graph(
 	
 	self.building_grid_rows = p_building_grid_rows
 	self.building_grid_columns = p_building_grid_columns
+	self.block_cell_height = p_block_cell_height
+	self.building_cell_height = p_building_cell_height
+	self.cells_per_floor = block_cells_per_floor
 	
 	plain_graph = GraphGenerator.new()
 	plain_graph.generate_graph(
@@ -728,7 +734,8 @@ func _calculate_lane_planes() -> void:
 						"start": point_a,
 						"end": intersection,
 						"is_start_lane": is_start_lane,
-						"height": max_height_global
+						"height": max_height_global,
+						"street_type": edge_street_type
 					}
 					total_planes += 1
 	
@@ -811,6 +818,9 @@ func get_blocks_in_circular_area(center, radius: float, segments: int = 32) -> A
 #   - start_plane_vertices: Array[Vector3] (4 vértices)
 #   - end_plane_vertices: Array[Vector3] (4 vértices)
 #   - height: float
+#   - street_type: int (0=SMALL, 1=MEDIUM, 2=LARGE)
+#   - width_cells: int (celdas de ancho de este lane)
+#   - height_cells: int (celdas de altura total)
 func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height: float) -> Array[Dictionary]:
 	# Calcular el rango Y del cilindro
 	# El centro está en el medio del cilindro, no en la base
@@ -881,12 +891,31 @@ func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height
 						break
 			
 			if intersects:
+				var street_type = volume_data.get("street_type", 0)
+				
+				# Calcular ancho en celdas
+				# Cada lane es media calle, así que usamos STREET_HALF_WIDTH_CELLS directamente
+				var width_cells = BlockGenerator.STREET_HALF_WIDTH_CELLS.get(street_type, 3)
+				
+				# Calcular altura en celdas
+				# La altura del volumen se calcula como: floors * cells_per_floor * block_cell_height
+				# Entonces: floors = altura / (cells_per_floor * block_cell_height)
+				# Y height_cells = floors * cells_per_floor
+				var height_cells = 0
+				if block_cell_height > 0 and cells_per_floor > 0:
+					var floor_height = cells_per_floor * block_cell_height
+					var num_floors = ceil(volume_height / floor_height)
+					height_cells = int(num_floors * cells_per_floor)
+				
 				intersecting_volumes.append({
 					"face_idx": face_idx,
 					"edge_idx": edge_idx,
 					"start_plane_vertices": start_plane_verts,
 					"end_plane_vertices": end_plane_verts,
-					"height": volume_height
+					"height": volume_height,
+					"street_type": street_type,
+					"width_cells": width_cells,
+					"height_cells": height_cells
 				})
 	
 	return intersecting_volumes
