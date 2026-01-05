@@ -62,7 +62,7 @@ static func _static_init() -> void:
 		"Car",
 		0.15, 0.2,    # width
 		0.08, 0.12,   # height
-		0.3, 0.45,    # depth
+		0.5, 0.7,    # depth
 		8.0, 15.0,    # speed
 		[
 			Color(0.8, 0.1, 0.1),  # Rojo
@@ -76,10 +76,10 @@ static func _static_init() -> void:
 	
 	archetypes[Type.TRUCK] = Archetype.new(
 		"Truck",
-		0.2, 0.3,     # width
-		0.15, 0.25,   # height
-		0.5, 0.8,     # depth
-		5.0, 10.0,    # speed
+		0.4, 0.6,     # width
+		0.35, 0.40,   # height
+		0.9, 1.3,     # depth
+		4.0, 6.0,    # speed
 		[
 			Color(0.3, 0.3, 0.3),  # Gris oscuro
 			Color(0.5, 0.2, 0.1),  # Café

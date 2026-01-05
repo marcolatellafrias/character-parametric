@@ -920,6 +920,111 @@ func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height
 	
 	return intersecting_volumes
 
+# ============================================
+# LANE VOLUMES - CONTINUACIONES
+# ============================================
+
+# Obtiene el nodo del grafo asociado al start plane de un lane volume
+# face_idx: Índice del face
+# edge_idx: Índice del edge (0-3)
+# Retorna: Índice del nodo, o -1 si no se encuentra
+func get_lane_volume_start_node(face_idx: int, edge_idx: int) -> int:
+	if face_idx not in plain_graph.faces:
+		return -1
+	
+	var face = plain_graph.faces[face_idx]
+	if edge_idx < 0 or edge_idx >= face.size():
+		return -1
+	
+	var block: BlockGenerator = block_grids.get(face_idx, null)
+	if block == null:
+		return -1
+	
+	# Los nodos del edge
+	var node1_idx = face[edge_idx]
+	var node2_idx = face[(edge_idx + 1) % face.size()]
+	
+	# Determinar cuál nodo corresponde al start plane basado en clockwiseness
+	if block.is_clockwise:
+		# En clockwise: node_local_idx=1 es start, que corresponde a node2
+		return node2_idx
+	else:
+		# En counter-clockwise: node_local_idx=0 es start, que corresponde a node1
+		return node1_idx
+
+# Obtiene el nodo del grafo asociado al end plane de un lane volume
+# face_idx: Índice del face
+# edge_idx: Índice del edge (0-3)
+# Retorna: Índice del nodo, o -1 si no se encuentra
+func get_lane_volume_end_node(face_idx: int, edge_idx: int) -> int:
+	if face_idx not in plain_graph.faces:
+		return -1
+	
+	var face = plain_graph.faces[face_idx]
+	if edge_idx < 0 or edge_idx >= face.size():
+		return -1
+	
+	var block: BlockGenerator = block_grids.get(face_idx, null)
+	if block == null:
+		return -1
+	
+	# Los nodos del edge
+	var node1_idx = face[edge_idx]
+	var node2_idx = face[(edge_idx + 1) % face.size()]
+	
+	# Determinar cuál nodo corresponde al end plane basado en clockwiseness
+	if block.is_clockwise:
+		# En clockwise: node_local_idx=0 es end, que corresponde a node1
+		return node1_idx
+	else:
+		# En counter-clockwise: node_local_idx=1 es end, que corresponde a node2
+		return node2_idx
+
+# Obtiene las continuaciones posibles de un lane volume
+# Un lane volume B continúa a lane volume A si:
+# el start_plane de B comparte nodo con el end_plane de A
+# 
+# face_idx: Índice del face del lane volume
+# edge_idx: Índice del edge del lane volume (0-3)
+# Retorna: Array[Dictionary] donde cada Dictionary contiene:
+#   - face_idx: int
+#   - edge_idx: int
+#   - shared_node: int (el nodo compartido)
+func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[Dictionary]:
+	var continuations: Array[Dictionary] = []
+	
+	# Obtener el nodo del end plane de este lane volume
+	var end_node = get_lane_volume_end_node(face_idx, edge_idx)
+	if end_node == -1:
+		return continuations
+	
+	# Buscar todos los lane volumes cuyo start plane tenga este nodo
+	for other_face_idx in block_grids:
+		var other_face = plain_graph.faces[other_face_idx]
+		
+		# Verificar cada edge del face
+		for other_edge_idx in range(other_face.size()):
+			# Saltar el mismo lane volume
+			if other_face_idx == face_idx and other_edge_idx == edge_idx:
+				continue
+			
+			# Verificar si el start node de este lane volume coincide con nuestro end node
+			var other_start_node = get_lane_volume_start_node(other_face_idx, other_edge_idx)
+			
+			if other_start_node == end_node:
+				# Verificar que el lane volume realmente existe (no es boundary)
+				var other_block: BlockGenerator = block_grids.get(other_face_idx, null)
+				if other_block != null:
+					var volume_data = other_block.get_edge_lane_volume(other_edge_idx)
+					if not volume_data.is_empty():
+						continuations.append({
+							"face_idx": other_face_idx,
+							"edge_idx": other_edge_idx,
+							"shared_node": end_node
+						})
+	
+	return continuations
+
 # Verifica si un círculo intersecta con un quad (polígono de 4 vértices)
 # segments: Número de segmentos para discretizar el perímetro del círculo
 func _circle_intersects_quad(circle_center: Vector2, circle_radius: float, quad_vertices: Array[Vector2], segments: int) -> bool:
