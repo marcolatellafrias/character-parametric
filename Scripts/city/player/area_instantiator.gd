@@ -1,10 +1,10 @@
 extends Node3D
 class_name AreaInstantiator
 
-@export var outer_radius: float = 4.0
-@export var inner_radius: float = 2.5
-@export var height: float = 2.0
-@export var segments: int = 64  # Solo para fidelidad visual
+@export var outer_radius: float = 8.0
+@export var inner_radius: float = 4.5
+@export var height: float = 4.5
+@export var segments: int = 32  # Solo para fidelidad visual
 @export var debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
 @export var show_debug: bool = true
 
@@ -22,6 +22,15 @@ class_name AreaInstantiator
 @export var flow_arrow_color: Color = Color(0.0, 0.5, 1.0)
 @export var flow_arrow_width: float = 0.02
 
+# Reemplazar el grupo "Car Spawning" con esto:
+@export_group("Car Spawning")
+@export var enable_car_spawning: bool = true
+@export var spawn_interval: float = 2.0
+@export_subgroup("Spawn Weights")
+@export_range(0.0, 1.0) var car_weight: float = 0.7
+@export_range(0.0, 1.0) var truck_weight: float = 0.1
+@export_range(0.0, 1.0) var motorcycle_weight: float = 0.2
+
 @export_group("Performance")
 @export var update_interval: float = 0.01
 @export var position_threshold: float = 0.01
@@ -37,6 +46,10 @@ var cached_volumes: Array = []
 var cached_position: Vector3 = Vector3.ZERO
 var cached_rotation: Vector3 = Vector3.ZERO
 var update_timer: float = 0.0
+var spawn_timer: float = 0.0
+
+# Almacenar segmentos válidos para spawning
+var valid_spawn_segments: Array = []  # Array de {start: Vector3, end: Vector3, volume: Dictionary}
 
 func _ready() -> void:
 	city = get_tree().get_first_node_in_group("city_generator")
@@ -102,6 +115,13 @@ func _process(delta: float) -> void:
 				
 				if show_grid_points and grid_points_container:
 					_update_grid_points(volumes)
+	
+	# Sistema de spawn de autos basado en delta
+	if enable_car_spawning:
+		spawn_timer += delta
+		if spawn_timer >= spawn_interval:
+			spawn_timer = 0.0
+			_try_spawn_car()
 
 func _rotation_changed() -> bool:
 	var current_rotation = global_rotation
@@ -165,6 +185,9 @@ func _update_flow_arrows(volumes: Array) -> void:
 	for child in flow_arrows_container.get_children():
 		child.queue_free()
 	
+	# Limpiar segmentos válidos previos
+	valid_spawn_segments.clear()
+	
 	for vol in volumes:
 		var width_cells = vol.get("width_cells", 3)
 		var height_cells = vol.get("height_cells", 10)
@@ -172,9 +195,9 @@ func _update_flow_arrows(volumes: Array) -> void:
 		var effective_width = width_cells * granularity
 		var effective_height = height_cells * granularity
 		
-		_create_flow_arrows_for_volume(vol["start_plane_vertices"], vol["end_plane_vertices"], effective_width, effective_height)
+		_create_flow_arrows_for_volume(vol["start_plane_vertices"], vol["end_plane_vertices"], effective_width, effective_height, vol)
 
-func _create_flow_arrows_for_volume(start_plane: Array, end_plane: Array, width_cells: int, height_cells: int) -> void:
+func _create_flow_arrows_for_volume(start_plane: Array, end_plane: Array, width_cells: int, height_cells: int, volume: Dictionary) -> void:
 	for i in range(width_cells + 1):
 		for j in range(height_cells + 1):
 			var u = float(i) / float(width_cells)
@@ -192,10 +215,439 @@ func _create_flow_arrows_for_volume(start_plane: Array, end_plane: Array, width_
 			# Obtener segmentos de la línea que están dentro del anillo
 			var segments_array = _get_line_segments_in_ring(point_start, point_end)
 			
-			# Crear flechas para cada segmento
+			# Crear flechas para cada segmento y almacenarlos para spawning
 			for segment in segments_array:
 				var arrow = DebugUtil.create_debug_arrow_to_from(segment[0], segment[1], flow_arrow_color, flow_arrow_width)
 				flow_arrows_container.add_child(arrow)
+				
+				# Almacenar segmento válido para spawning con el path original completo
+				valid_spawn_segments.append({
+					"start": segment[0],
+					"end": segment[1],
+					"original_start": point_start,  # Path completo original
+					"original_end": point_end,
+					"volume": volume
+				})
+
+func _try_spawn_car() -> void:
+	print("=== Intentando spawnear auto ===")
+	print("Valid spawn segments: ", valid_spawn_segments.size())
+	print("World exists: ", world != null)
+	
+	if valid_spawn_segments.is_empty() or not world:
+		print("ABORTADO: No hay segmentos válidos o no hay world")
+		return
+	
+	# Intentar varias veces encontrar un spawn válido
+	var max_attempts = 10
+	for attempt in range(max_attempts):
+		print("  Intento ", attempt + 1, "/", max_attempts)
+		var custom_weights = {
+		CarArchetypes.Type.CAR: car_weight,
+		CarArchetypes.Type.TRUCK: truck_weight,
+		CarArchetypes.Type.MOTORCYCLE: motorcycle_weight
+		}
+		var archetype = CarArchetypes.get_weighted_random_archetype(custom_weights)
+
+		var dims = archetype.get_random_dimensions()
+		
+		var car_width = dims["width"]
+		var car_height = dims["height"]
+		var car_depth = dims["depth"]
+		var car_speed = dims["speed"]
+		
+		print("    Arquetipo: ", archetype.name)
+		print("    Dimensiones: w=%.2f h=%.2f d=%.2f speed=%.2f" % [car_width, car_height, car_depth, car_speed])
+		
+		# Filtrar segmentos que sean lo suficientemente largos
+		var suitable_segments = []
+		for seg_data in valid_spawn_segments:
+			var seg_length = seg_data["start"].distance_to(seg_data["end"])
+			if seg_length >= car_depth:
+				suitable_segments.append(seg_data)
+		
+		print("    Segmentos adecuados (>= %.2f): %d" % [car_depth, suitable_segments.size()])
+		
+		if suitable_segments.is_empty():
+			print("    ✗ No hay segmentos lo suficientemente largos")
+			continue
+		
+		# Elegir un segmento adecuado aleatorio
+		var spawn_data = suitable_segments[randi() % suitable_segments.size()]
+		
+		print("    Spawn path original: ", spawn_data["start"], " -> ", spawn_data["end"])
+		
+		# Calcular el subtramo válido del spawn path donde el auto cabe en el anillo
+		var valid_spawn_path = _calculate_valid_subpath(spawn_data["start"], spawn_data["end"], car_width, car_height, car_depth, spawn_data["volume"])
+		
+		if valid_spawn_path != null:
+			# Calcular el travel path completo (a través de todo el cilindro)
+			var travel_path = _calculate_travel_path(spawn_data["original_start"], spawn_data["original_end"], car_width, car_height, car_depth, spawn_data["volume"])
+			
+			if travel_path != null:
+				print("    ✓ AUTO SPAWNEADO EXITOSAMENTE")
+				print("    Spawn path: ", valid_spawn_path["start"], " -> ", valid_spawn_path["end"])
+				print("    Travel path: ", travel_path["start"], " -> ", travel_path["end"])
+				
+				# Crear y spawnear el auto
+				var car = FlyingCar.new()
+				car.width = car_width
+				car.height = car_height
+				car.depth = car_depth
+				car.speed = car_speed
+				car.car_color = archetype.get_random_color()
+				
+				world.add_child(car)
+				# Posicionar el auto en el inicio del spawn path, pero darle el travel path completo
+				car.global_position = valid_spawn_path["start"]
+				car.set_path(travel_path["start"], travel_path["end"])
+				
+				return  # Spawn exitoso
+			else:
+				print("    ✗ No se pudo calcular travel path")
+		else:
+			print("    ✗ No se pudo encontrar un subtramo válido para spawn")
+	
+	print("FALLO: No se pudo spawnear después de ", max_attempts, " intentos")
+
+func _can_car_fit_in_path(start: Vector3, end: Vector3, car_width: float, car_height: float, car_depth: float, volume: Dictionary) -> bool:
+	# Dirección del path
+	var direction = (end - start).normalized()
+	
+	# Crear un basis orientado al path
+	var forward = direction
+	var up = Vector3.UP
+	if abs(forward.dot(up)) > 0.99:
+		up = Vector3.RIGHT
+	var right = forward.cross(up).normalized()
+	up = right.cross(forward).normalized()
+	
+	# 8 esquinas del auto en espacio local
+	var half_extents = [
+		Vector3(-car_width/2, -car_height/2, -car_depth/2),
+		Vector3(car_width/2, -car_height/2, -car_depth/2),
+		Vector3(-car_width/2, car_height/2, -car_depth/2),
+		Vector3(car_width/2, car_height/2, -car_depth/2),
+		Vector3(-car_width/2, -car_height/2, car_depth/2),
+		Vector3(car_width/2, -car_height/2, car_depth/2),
+		Vector3(-car_width/2, car_height/2, car_depth/2),
+		Vector3(car_width/2, car_height/2, car_depth/2)
+	]
+	
+	# Verificar múltiples puntos a lo largo del path
+	var num_samples = 10
+	for i in range(num_samples + 1):
+		var t = float(i) / float(num_samples)
+		var pos = start.lerp(end, t)
+		
+		# Verificar las 8 esquinas del auto en esta posición
+		for corner_idx in range(half_extents.size()):
+			var corner_local = half_extents[corner_idx]
+			# Transformar esquina a coordenadas globales
+			var corner_global = pos + right * corner_local.x + up * corner_local.y + forward * corner_local.z
+			
+			# Verificar que está dentro del anillo
+			var local_corner = global_transform.affine_inverse() * corner_global
+			if not _is_point_in_ring(local_corner):
+				print("      Fallo en anillo: sample=%d corner=%d" % [i, corner_idx])
+				return false
+			
+			# Verificar que está dentro del lane volume
+			if not _is_point_inside_lane_volume(corner_global, volume["start_plane_vertices"], volume["end_plane_vertices"]):
+				print("      Fallo en lane volume: sample=%d corner=%d" % [i, corner_idx])
+				return false
+	
+	return true
+
+func _calculate_travel_path(original_start: Vector3, original_end: Vector3, car_width: float, car_height: float, car_depth: float, volume: Dictionary):
+	# El travel path es el segmento completo que cruza el cilindro exterior
+	# (ignorando el cilindro interior, solo considerando outer_radius)
+	
+	var direction = (original_end - original_start).normalized()
+	var path_length = original_start.distance_to(original_end)
+	
+	# Crear un basis orientado al path
+	var forward = direction
+	var up = Vector3.UP
+	if abs(forward.dot(up)) > 0.99:
+		up = Vector3.RIGHT
+	var right = forward.cross(up).normalized()
+	up = right.cross(forward).normalized()
+	
+	# 8 esquinas del auto en espacio local
+	var half_extents = [
+		Vector3(-car_width/2, -car_height/2, -car_depth/2),
+		Vector3(car_width/2, -car_height/2, -car_depth/2),
+		Vector3(-car_width/2, car_height/2, -car_depth/2),
+		Vector3(car_width/2, car_height/2, -car_depth/2),
+		Vector3(-car_width/2, -car_height/2, car_depth/2),
+		Vector3(car_width/2, -car_height/2, car_depth/2),
+		Vector3(-car_width/2, car_height/2, car_depth/2),
+		Vector3(car_width/2, car_height/2, car_depth/2)
+	]
+	
+	var valid_t_min = 0.0
+	var valid_t_max = 1.0
+	
+	# Para cada esquina, calcular dónde está dentro del cilindro exterior
+	for corner_local in half_extents:
+		var corner_at_start = original_start + right * corner_local.x + up * corner_local.y + forward * corner_local.z
+		var corner_direction = direction
+		
+		var local_corner_start = global_transform.affine_inverse() * corner_at_start
+		var local_corner_direction = global_transform.affine_inverse().basis * corner_direction
+		
+		# Solo intersecciones con cilindro exterior
+		var t_outer = _intersect_cylinder_parametric(local_corner_start, local_corner_direction, outer_radius, path_length)
+		
+		var corner_t_min = 0.0
+		var corner_t_max = 1.0
+		
+		if t_outer.size() >= 2:
+			corner_t_min = max(corner_t_min, t_outer[0])
+			corner_t_max = min(corner_t_max, t_outer[1])
+		elif t_outer.size() == 1:
+			var test_t = clamp(0.5, corner_t_min, corner_t_max)
+			var test_pos = local_corner_start + local_corner_direction * test_t * path_length
+			var test_r = sqrt(test_pos.x * test_pos.x + test_pos.z * test_pos.z)
+			if test_r > outer_radius:
+				return null
+		else:
+			var test_pos = local_corner_start
+			var test_r = sqrt(test_pos.x * test_pos.x + test_pos.z * test_pos.z)
+			if test_r > outer_radius:
+				return null
+		
+		# Verificar restricciones de altura
+		var half_height = height / 2.0
+		if abs(local_corner_direction.y) > 0.001:
+			var t_bottom = (-half_height - local_corner_start.y) / (local_corner_direction.y * path_length)
+			var t_top = (half_height - local_corner_start.y) / (local_corner_direction.y * path_length)
+			
+			var t_y_min = min(t_bottom, t_top)
+			var t_y_max = max(t_bottom, t_top)
+			
+			corner_t_min = max(corner_t_min, t_y_min)
+			corner_t_max = min(corner_t_max, t_y_max)
+		else:
+			if local_corner_start.y < -half_height or local_corner_start.y > half_height:
+				return null
+		
+		valid_t_min = max(valid_t_min, corner_t_min)
+		valid_t_max = min(valid_t_max, corner_t_max)
+		
+		if valid_t_min >= valid_t_max:
+			return null
+	
+	var valid_start = original_start.lerp(original_end, valid_t_min)
+	var valid_end = original_start.lerp(original_end, valid_t_max)
+	
+	# Verificar que esté dentro del lane volume
+	for i in range(5):
+		var t = float(i) / 4.0
+		var sample_t = valid_t_min + (valid_t_max - valid_t_min) * t
+		var sample_pos = original_start.lerp(original_end, sample_t)
+		
+		if not _is_point_inside_lane_volume(sample_pos, volume["start_plane_vertices"], volume["end_plane_vertices"]):
+			return null
+	
+	return {
+		"start": valid_start,
+		"end": valid_end
+	}
+
+func _calculate_valid_subpath(start: Vector3, end: Vector3, car_width: float, car_height: float, car_depth: float, volume: Dictionary):
+	# Dirección del path
+	var direction = (end - start).normalized()
+	var path_length = start.distance_to(end)
+	
+	# Crear un basis orientado al path
+	var forward = direction
+	var up = Vector3.UP
+	if abs(forward.dot(up)) > 0.99:
+		up = Vector3.RIGHT
+	var right = forward.cross(up).normalized()
+	up = right.cross(forward).normalized()
+	
+	# 8 esquinas del auto en espacio local (relativo al centro del auto)
+	var half_extents = [
+		Vector3(-car_width/2, -car_height/2, -car_depth/2),
+		Vector3(car_width/2, -car_height/2, -car_depth/2),
+		Vector3(-car_width/2, car_height/2, -car_depth/2),
+		Vector3(car_width/2, car_height/2, -car_depth/2),
+		Vector3(-car_width/2, -car_height/2, car_depth/2),
+		Vector3(car_width/2, -car_height/2, car_depth/2),
+		Vector3(-car_width/2, car_height/2, car_depth/2),
+		Vector3(car_width/2, car_height/2, car_depth/2)
+	]
+	
+	# Para cada esquina, calcular el rango válido t donde está dentro del anillo
+	var valid_t_min = 0.0
+	var valid_t_max = 1.0
+	
+	for corner_local in half_extents:
+		# Posición de la esquina cuando el auto está en t=0
+		var corner_at_start = start + right * corner_local.x + up * corner_local.y + forward * corner_local.z
+		
+		# Dirección de la línea de esta esquina (paralela al path)
+		var corner_direction = direction
+		
+		# Calcular intersecciones de esta línea con los cilindros
+		var local_corner_start = global_transform.affine_inverse() * corner_at_start
+		var local_corner_direction = global_transform.affine_inverse().basis * corner_direction
+		
+		# Intersecciones con cilindro exterior
+		var t_outer = _intersect_cylinder_parametric(local_corner_start, local_corner_direction, outer_radius, path_length)
+		
+		# Intersecciones con cilindro interior
+		var t_inner = _intersect_cylinder_parametric(local_corner_start, local_corner_direction, inner_radius, path_length)
+		
+		# Calcular rango válido para esta esquina (dentro del anillo)
+		var corner_t_min = 0.0
+		var corner_t_max = 1.0
+		
+		# Si intersecta con el cilindro exterior
+		if t_outer.size() >= 2:
+			# La esquina debe estar entre las dos intersecciones del outer cylinder
+			corner_t_min = max(corner_t_min, t_outer[0])
+			corner_t_max = min(corner_t_max, t_outer[1])
+		elif t_outer.size() == 1:
+			# Tangente - verificar si está dentro o fuera
+			var test_t = clamp(0.5, corner_t_min, corner_t_max)
+			var test_pos = local_corner_start + local_corner_direction * test_t * path_length
+			var test_r = sqrt(test_pos.x * test_pos.x + test_pos.z * test_pos.z)
+			if test_r > outer_radius:
+				return null  # Completamente fuera
+		else:
+			# No intersecta - verificar si está completamente dentro o fuera
+			var test_pos = local_corner_start
+			var test_r = sqrt(test_pos.x * test_pos.x + test_pos.z * test_pos.z)
+			if test_r > outer_radius:
+				return null  # Completamente fuera del outer cylinder
+		
+		# Si intersecta con el cilindro interior
+		if t_inner.size() >= 2:
+			# La esquina NO debe estar entre las dos intersecciones del inner cylinder
+			# Esto significa que el rango válido se divide en dos partes
+			# Por simplicidad, tomamos solo el rango antes de entrar al cilindro interior
+			# o después de salir
+			if t_inner[1] < corner_t_max:
+				# Hay espacio después de salir del inner cylinder
+				corner_t_min = max(corner_t_min, t_inner[1])
+			elif t_inner[0] > corner_t_min:
+				# Hay espacio antes de entrar al inner cylinder
+				corner_t_max = min(corner_t_max, t_inner[0])
+			else:
+				return null  # El inner cylinder bloquea todo el path
+		
+		# Verificar restricciones de altura
+		var half_height = height / 2.0
+		# Calcular t donde la esquina entra y sale del rango de altura
+		if abs(local_corner_direction.y) > 0.001:
+			var t_bottom = (-half_height - local_corner_start.y) / (local_corner_direction.y * path_length)
+			var t_top = (half_height - local_corner_start.y) / (local_corner_direction.y * path_length)
+			
+			var t_y_min = min(t_bottom, t_top)
+			var t_y_max = max(t_bottom, t_top)
+			
+			corner_t_min = max(corner_t_min, t_y_min)
+			corner_t_max = min(corner_t_max, t_y_max)
+		else:
+			# Línea horizontal - verificar si está en rango
+			if local_corner_start.y < -half_height or local_corner_start.y > half_height:
+				return null
+		
+		# Actualizar el rango global válido (intersección de todos los rangos)
+		valid_t_min = max(valid_t_min, corner_t_min)
+		valid_t_max = min(valid_t_max, corner_t_max)
+		
+		# Si no hay rango válido, retornar null
+		if valid_t_min >= valid_t_max:
+			return null
+	
+	# Verificar que el subpath válido sea lo suficientemente largo para el auto
+	var valid_length = (valid_t_max - valid_t_min) * path_length
+	if valid_length < car_depth:
+		print("      Subpath válido muy corto: %.2f < %.2f" % [valid_length, car_depth])
+		return null
+	
+	# Calcular las posiciones start y end del subpath válido
+	var valid_start = start.lerp(end, valid_t_min)
+	var valid_end = start.lerp(end, valid_t_max)
+	
+	# Verificar que el subpath esté dentro del lane volume
+	# Muestrear algunos puntos
+	for i in range(5):
+		var t = float(i) / 4.0
+		var sample_t = valid_t_min + (valid_t_max - valid_t_min) * t
+		var sample_pos = start.lerp(end, sample_t)
+		
+		if not _is_point_inside_lane_volume(sample_pos, volume["start_plane_vertices"], volume["end_plane_vertices"]):
+			print("      Subpath sale del lane volume")
+			return null
+	
+	return {
+		"start": valid_start,
+		"end": valid_end
+	}
+
+func _intersect_cylinder_parametric(origin: Vector3, direction: Vector3, radius: float, total_length: float) -> Array:
+	# Similar a _intersect_cylinder pero retorna t en términos del path completo [0,1]
+	var a = direction.x * direction.x + direction.z * direction.z
+	var b = 2.0 * (origin.x * direction.x + origin.z * direction.z)
+	var c = origin.x * origin.x + origin.z * origin.z - radius * radius
+	
+	# Línea vertical
+	if abs(a) < 0.0001:
+		return []
+	
+	var discriminant = b * b - 4.0 * a * c
+	
+	if discriminant < 0:
+		return []
+	
+	if abs(discriminant) < 0.0001:
+		# Una intersección (tangente)
+		var t = (-b) / (2.0 * a)
+		return [t / total_length]
+	
+	# Dos intersecciones
+	var sqrt_disc = sqrt(discriminant)
+	var t1 = (-b - sqrt_disc) / (2.0 * a)
+	var t2 = (-b + sqrt_disc) / (2.0 * a)
+	
+	return [
+		t1 / total_length,
+		t2 / total_length
+	]
+
+func _is_point_inside_lane_volume(point: Vector3, plane1_verts: Array, plane2_verts: Array) -> bool:
+	if not _is_point_on_correct_side(point, plane1_verts[0], plane1_verts[1], plane1_verts[2], true):
+		return false
+	
+	if not _is_point_on_correct_side(point, plane2_verts[3], plane2_verts[2], plane2_verts[1], true):
+		return false
+	
+	if not _is_point_on_correct_side(point, plane1_verts[0], plane2_verts[0], plane2_verts[1], true):
+		return false
+	
+	if not _is_point_on_correct_side(point, plane1_verts[3], plane1_verts[2], plane2_verts[2], true):
+		return false
+	
+	if not _is_point_on_correct_side(point, plane1_verts[0], plane1_verts[3], plane2_verts[3], true):
+		return false
+	
+	if not _is_point_on_correct_side(point, plane1_verts[1], plane2_verts[1], plane2_verts[2], true):
+		return false
+	
+	return true
+
+func _is_point_on_correct_side(point: Vector3, v1: Vector3, v2: Vector3, v3: Vector3, inside: bool) -> bool:
+	var normal = (v2 - v1).cross(v3 - v1).normalized()
+	var to_point = point - v1
+	var dot = normal.dot(to_point)
+	
+	return dot >= 0 if inside else dot <= 0
 
 func _get_line_segments_in_ring(line_start: Vector3, line_end: Vector3) -> Array:
 	# Convertir a coordenadas locales

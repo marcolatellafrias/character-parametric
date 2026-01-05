@@ -24,6 +24,11 @@ func _process(delta: float) -> void:
 			queue_free()
 		else:
 			global_position = start_position.lerp(end_position, travel_progress)
+			
+			# Orientar el auto en la dirección del path
+			var direction = (end_position - start_position).normalized()
+			if direction.length() > 0.001:
+				look_at(global_position + direction, Vector3.UP)
 
 func _create_visual() -> void:
 	mesh_instance = MeshInstance3D.new()
@@ -42,3 +47,8 @@ func set_path(start: Vector3, end: Vector3) -> void:
 	end_position = end
 	has_path = true
 	travel_progress = 0.0
+	
+	# Orientar inicialmente en la dirección del path
+	var direction = (end_position - start_position).normalized()
+	if direction.length() > 0.001:
+		look_at(start_position + direction, Vector3.UP)
