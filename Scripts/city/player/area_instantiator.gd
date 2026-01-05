@@ -25,7 +25,7 @@ class_name AreaInstantiator
 # Reemplazar el grupo "Car Spawning" con esto:
 @export_group("Car Spawning")
 @export var enable_car_spawning: bool = true
-@export var spawn_interval: float = 0.1
+@export var spawn_interval: float = 2.0
 @export_subgroup("Spawn Weights")
 @export_range(0.0, 1.0) var car_weight: float = 0.7
 @export_range(0.0, 1.0) var truck_weight: float = 0.1
@@ -242,7 +242,6 @@ func _try_spawn_car() -> void:
 	var max_attempts = 10
 	for attempt in range(max_attempts):
 		print("  Intento ", attempt + 1, "/", max_attempts)
-		
 		var custom_weights = {
 		CarArchetypes.Type.CAR: car_weight,
 		CarArchetypes.Type.TRUCK: truck_weight,

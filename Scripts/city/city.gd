@@ -135,7 +135,7 @@ extends Node3D
 @export var circular_area_center: Vector3 = Vector3.ZERO
 @export var circular_area_radius: float = 50.0
 @export var circular_area_color: Color = Color.YELLOW
-@export var highlight_selected_blocks: bool = true
+@export var highlight_selected_blocks: bool = false
 @export var selected_blocks_color: Color = Color(1.0, 1.0, 0.0, 0.3)
 
 @export_group("Cylindrical Selection - Selección Cilíndrica")
@@ -144,7 +144,7 @@ extends Node3D
 @export var cylindrical_area_radius: float = 30.0
 @export var cylindrical_area_height: float = 100.0
 @export var cylindrical_area_color: Color = Color.CYAN
-@export var highlight_selected_volumes: bool = true
+@export var highlight_selected_volumes: bool = false
 @export var selected_volumes_color: Color = Color(0.0, 1.0, 1.0, 0.4)
 
 # ============================================
@@ -987,27 +987,3 @@ func get_block_grid(face_idx: int) -> BlockGenerator:
 		return null
 	
 	return generator.get_block_grid(face_idx)
-
-# Helper para obtener continuaciones de un lane volume
-func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[Dictionary]:
-	if generator == null:
-		push_error("CityVisualizer: generator no inicializado")
-		return []
-	
-	return generator.get_lane_volume_continuations(face_idx, edge_idx)
-
-# Helper para obtener el nodo start de un lane volume
-func get_lane_volume_start_node(face_idx: int, edge_idx: int) -> int:
-	if generator == null:
-		push_error("CityVisualizer: generator no inicializado")
-		return -1
-	
-	return generator.get_lane_volume_start_node(face_idx, edge_idx)
-
-# Helper para obtener el nodo end de un lane volume
-func get_lane_volume_end_node(face_idx: int, edge_idx: int) -> int:
-	if generator == null:
-		push_error("CityVisualizer: generator no inicializado")
-		return -1
-	
-	return generator.get_lane_volume_end_node(face_idx, edge_idx)
