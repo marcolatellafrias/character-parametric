@@ -987,3 +987,11 @@ func get_block_grid(face_idx: int) -> BlockGenerator:
 		return null
 	
 	return generator.get_block_grid(face_idx)
+
+# Helper para obtener continuaciones de un lane volume
+func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[Dictionary]:
+	if generator == null:
+		push_error("CityVisualizer: generator no inicializado")
+		return []
+	
+	return generator.get_lane_volume_continuations(face_idx, edge_idx)

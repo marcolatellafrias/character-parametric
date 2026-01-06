@@ -14,6 +14,9 @@ class_name AreaInstantiator
 @export var show_lane_volumes: bool = true
 @export var lane_volume_color: Color = Color(1.0, 0.5, 0.0)
 @export var lane_volume_transparency: float = 0.3
+@export var show_continuations: bool = true
+@export var continuation_color: Color = Color(0.0, 1.0, 1.0)
+@export var continuation_transparency: float = 0.2
 @export var show_grid_points: bool = true
 @export var grid_point_color: Color = Color(1.0, 1.0, 0.0)
 @export var grid_point_size: float = 0.05
@@ -25,7 +28,7 @@ class_name AreaInstantiator
 # Reemplazar el grupo "Car Spawning" con esto:
 @export_group("Car Spawning")
 @export var enable_car_spawning: bool = true
-@export var spawn_interval: float = 2.0
+@export var spawn_interval: float = 0.05
 @export_subgroup("Spawn Weights")
 @export_range(0.0, 1.0) var car_weight: float = 0.7
 @export_range(0.0, 1.0) var truck_weight: float = 0.1
@@ -156,7 +159,13 @@ func _update_lane_volumes(volumes: Array) -> void:
 	for child in lane_volumes_container.get_children():
 		child.queue_free()
 	
+	# Set para rastrear volumes ya visualizados (evitar duplicados)
+	var visualized_volumes: Dictionary = {}
+	
+	# Visualizar volumes primarios (intersectados)
 	for vol in volumes:
+		var key = "%d_%d" % [vol["face_idx"], vol["edge_idx"]]
+		
 		var volume_mesh = DebugUtil.create_skewed_cube_from_planes(
 			vol["start_plane_vertices"],
 			vol["end_plane_vertices"],
@@ -166,6 +175,41 @@ func _update_lane_volumes(volumes: Array) -> void:
 		
 		if volume_mesh:
 			lane_volumes_container.add_child(volume_mesh)
+			visualized_volumes[key] = true
+	
+	# Visualizar continuaciones si está habilitado
+	if show_continuations:
+		for vol in volumes:
+			var continuations = city.get_lane_volume_continuations(vol["face_idx"], vol["edge_idx"])
+			
+			for cont in continuations:
+				var cont_key = "%d_%d" % [cont["face_idx"], cont["edge_idx"]]
+				
+				# Evitar visualizar volumes ya mostrados
+				if cont_key in visualized_volumes:
+					continue
+				
+				# Obtener el BlockGenerator del face continuación
+				var cont_block = city.get_block_grid(cont["face_idx"])
+				if cont_block == null:
+					continue
+				
+				# Obtener el volume data completo
+				var cont_volume_data = cont_block.get_edge_lane_volume(cont["edge_idx"])
+				
+				if cont_volume_data.is_empty():
+					continue
+				
+				var cont_mesh = DebugUtil.create_skewed_cube_from_planes(
+					cont_volume_data["start_plane_vertices"],
+					cont_volume_data["end_plane_vertices"],
+					continuation_color,
+					continuation_transparency
+				)
+				
+				if cont_mesh:
+					lane_volumes_container.add_child(cont_mesh)
+					visualized_volumes[cont_key] = true
 
 func _update_grid_points(volumes: Array) -> void:
 	for child in grid_points_container.get_children():

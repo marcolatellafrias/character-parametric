@@ -1048,3 +1048,75 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 			return Vector2.ZERO
 	
 	return corner
+
+# Obtiene todos los lane volumes que continúan desde el lane volume dado
+# face_idx: ID de la manzana (face) del lane volume origen
+# edge_idx: ID del edge (0-3) dentro de esa face
+# Retorna: Array[Dictionary] con {face_idx: int, edge_idx: int} de las continuaciones
+# NOTA: Excluye lane volumes que compartan el mismo edge (no son continuaciones)
+func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[Dictionary]:
+	var continuations: Array[Dictionary] = []
+	
+	# Validar que existe el block
+	var block: BlockGenerator = block_grids.get(face_idx, null)
+	if block == null:
+		return continuations
+	
+	var face = plain_graph.faces[face_idx]
+	
+	# Obtener los dos nodos que forman el edge original
+	var original_node1 = face[edge_idx]
+	var original_node2 = face[(edge_idx + 1) % face.size()]
+	
+	# Determinar cuál nodo corresponde al end plane del lane volume dado
+	var end_node_idx: int
+	if block.is_clockwise:
+		# En clockwise: node_local_idx=0 es end plane
+		end_node_idx = original_node1
+	else:
+		# En counter-clockwise: node_local_idx=1 es end plane
+		end_node_idx = original_node2
+	
+	# Buscar en todas las faces que contengan este nodo
+	for other_face_idx in block_grids:
+		var other_face = plain_graph.faces[other_face_idx]
+		
+		# Si esta face no contiene el nodo, skip
+		if end_node_idx not in other_face:
+			continue
+		
+		var other_block: BlockGenerator = block_grids[other_face_idx]
+		if other_block == null:
+			continue
+		
+		# Revisar cada edge de esta face
+		for other_edge_idx in range(other_face.size()):
+			var other_node1 = other_face[other_edge_idx]
+			var other_node2 = other_face[(other_edge_idx + 1) % other_face.size()]
+			
+			# Verificar que NO sea el mismo edge (no comparten ambos nodos)
+			if (other_node1 == original_node1 and other_node2 == original_node2) or \
+			   (other_node1 == original_node2 and other_node2 == original_node1):
+				continue
+			
+			# Determinar cuál nodo es el start plane de este edge
+			var start_node_idx: int
+			if other_block.is_clockwise:
+				# En clockwise: node_local_idx=1 es start plane
+				start_node_idx = other_node2
+			else:
+				# En counter-clockwise: node_local_idx=0 es start plane
+				start_node_idx = other_node1
+			
+			# Si el start plane de este volume coincide con el end plane del original
+			if start_node_idx == end_node_idx:
+				# Verificar que este edge tiene un lane volume válido (no boundary)
+				var volume_data = other_block.get_edge_lane_volume(other_edge_idx)
+				
+				if not volume_data.is_empty():
+					continuations.append({
+						"face_idx": other_face_idx,
+						"edge_idx": other_edge_idx
+					})
+	
+	return continuations
