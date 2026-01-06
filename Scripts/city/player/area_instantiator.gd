@@ -215,7 +215,14 @@ func _update_grid_points(volumes: Array) -> void:
 	for child in grid_points_container.get_children():
 		child.queue_free()
 	
+	# Set para rastrear volumes ya visualizados (evitar duplicados)
+	var visualized_volumes: Dictionary = {}
+	
+	# Visualizar grid points de volumes primarios (intersectados)
 	for vol in volumes:
+		var key = "%d_%d" % [vol["face_idx"], vol["edge_idx"]]
+		visualized_volumes[key] = true
+		
 		var width_cells = vol.get("width_cells", 3)
 		var height_cells = vol.get("height_cells", 10)
 		
@@ -224,6 +231,53 @@ func _update_grid_points(volumes: Array) -> void:
 		
 		_create_grid_for_plane(vol["start_plane_vertices"], effective_width, effective_height)
 		_create_grid_for_plane(vol["end_plane_vertices"], effective_width, effective_height)
+	
+	# Visualizar grid points de continuaciones si está habilitado
+	if show_continuations and city:
+		# Obtener el generator del city visualizer
+		var gen = city.get_generator()
+		if gen == null:
+			return
+		
+		# Obtener parámetros del city generator para calcular cells
+		var city_block_cell_height = gen.block_cell_height
+		var city_cells_per_floor = gen.cells_per_floor
+		
+		for vol in volumes:
+			var continuations = city.get_lane_volume_continuations(vol["face_idx"], vol["edge_idx"])
+			
+			for cont in continuations:
+				var cont_key = "%d_%d" % [cont["face_idx"], cont["edge_idx"]]
+				
+				# Evitar visualizar volumes ya mostrados
+				if cont_key in visualized_volumes:
+					continue
+				
+				# Obtener el BlockGenerator del face continuación
+				var cont_block = city.get_block_grid(cont["face_idx"])
+				if cont_block == null:
+					continue
+				
+				# Obtener el volume data completo
+				var cont_volume_data = cont_block.get_edge_lane_volume(cont["edge_idx"])
+				
+				if cont_volume_data.is_empty():
+					continue
+				
+				var width_cells = BlockGenerator.STREET_HALF_WIDTH_CELLS.get(cont_volume_data.get("street_type", 0), 3)
+				var height_cells = 0
+				if city_block_cell_height > 0 and city_cells_per_floor > 0:
+					var floor_height = city_cells_per_floor * city_block_cell_height
+					var num_floors = ceil(cont_volume_data["height"] / floor_height)
+					height_cells = int(num_floors * city_cells_per_floor)
+				
+				var effective_width = width_cells * granularity
+				var effective_height = height_cells * granularity
+				
+				_create_grid_for_plane(cont_volume_data["start_plane_vertices"], effective_width, effective_height)
+				_create_grid_for_plane(cont_volume_data["end_plane_vertices"], effective_width, effective_height)
+				
+				visualized_volumes[cont_key] = true
 
 func _update_flow_arrows(volumes: Array) -> void:
 	for child in flow_arrows_container.get_children():
@@ -232,7 +286,14 @@ func _update_flow_arrows(volumes: Array) -> void:
 	# Limpiar segmentos válidos previos
 	valid_spawn_segments.clear()
 	
+	# Set para rastrear volumes ya visualizados (evitar duplicados)
+	var visualized_volumes: Dictionary = {}
+	
+	# Visualizar flow arrows de volumes primarios (intersectados)
 	for vol in volumes:
+		var key = "%d_%d" % [vol["face_idx"], vol["edge_idx"]]
+		visualized_volumes[key] = true
+		
 		var width_cells = vol.get("width_cells", 3)
 		var height_cells = vol.get("height_cells", 10)
 		
@@ -240,6 +301,52 @@ func _update_flow_arrows(volumes: Array) -> void:
 		var effective_height = height_cells * granularity
 		
 		_create_flow_arrows_for_volume(vol["start_plane_vertices"], vol["end_plane_vertices"], effective_width, effective_height, vol)
+	
+	# Visualizar flow arrows de continuaciones si está habilitado
+	if show_continuations and city:
+		# Obtener el generator del city visualizer
+		var gen = city.get_generator()
+		if gen == null:
+			return
+		
+		# Obtener parámetros del city generator para calcular cells
+		var city_block_cell_height = gen.block_cell_height
+		var city_cells_per_floor = gen.cells_per_floor
+		
+		for vol in volumes:
+			var continuations = city.get_lane_volume_continuations(vol["face_idx"], vol["edge_idx"])
+			
+			for cont in continuations:
+				var cont_key = "%d_%d" % [cont["face_idx"], cont["edge_idx"]]
+				
+				# Evitar visualizar volumes ya mostrados
+				if cont_key in visualized_volumes:
+					continue
+				
+				# Obtener el BlockGenerator del face continuación
+				var cont_block = city.get_block_grid(cont["face_idx"])
+				if cont_block == null:
+					continue
+				
+				# Obtener el volume data completo
+				var cont_volume_data = cont_block.get_edge_lane_volume(cont["edge_idx"])
+				
+				if cont_volume_data.is_empty():
+					continue
+				
+				var width_cells = BlockGenerator.STREET_HALF_WIDTH_CELLS.get(cont_volume_data.get("street_type", 0), 3)
+				var height_cells = 0
+				if city_block_cell_height > 0 and city_cells_per_floor > 0:
+					var floor_height = city_cells_per_floor * city_block_cell_height
+					var num_floors = ceil(cont_volume_data["height"] / floor_height)
+					height_cells = int(num_floors * city_cells_per_floor)
+				
+				var effective_width = width_cells * granularity
+				var effective_height = height_cells * granularity
+				
+				_create_flow_arrows_for_volume(cont_volume_data["start_plane_vertices"], cont_volume_data["end_plane_vertices"], effective_width, effective_height, cont_volume_data)
+				
+				visualized_volumes[cont_key] = true
 
 func _create_flow_arrows_for_volume(start_plane: Array, end_plane: Array, width_cells: int, height_cells: int, volume: Dictionary) -> void:
 	for i in range(width_cells + 1):

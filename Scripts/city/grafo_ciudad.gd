@@ -1049,10 +1049,12 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 	
 	return corner
 
+# En GraphCityGenerator
+
 # Obtiene todos los lane volumes que continúan desde el lane volume dado
 # face_idx: ID de la manzana (face) del lane volume origen
 # edge_idx: ID del edge (0-3) dentro de esa face
-# Retorna: Array[Dictionary] con {face_idx: int, edge_idx: int} de las continuaciones
+# Retorna: Array[Dictionary] en el mismo formato que get_lane_volumes_in_cylindrical_area
 # NOTA: Excluye lane volumes que compartan el mismo edge (no son continuaciones)
 func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[Dictionary]:
 	var continuations: Array[Dictionary] = []
@@ -1110,13 +1112,32 @@ func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[Dictio
 			
 			# Si el start plane de este volume coincide con el end plane del original
 			if start_node_idx == end_node_idx:
-				# Verificar que este edge tiene un lane volume válido (no boundary)
+				# Obtener datos completos del lane volume
 				var volume_data = other_block.get_edge_lane_volume(other_edge_idx)
 				
 				if not volume_data.is_empty():
+					var street_type = volume_data.get("street_type", 0)
+					var volume_height = volume_data["height"]
+					
+					# Calcular ancho en celdas
+					var width_cells = BlockGenerator.STREET_HALF_WIDTH_CELLS.get(street_type, 3)
+					
+					# Calcular altura en celdas
+					var height_cells = 0
+					if block_cell_height > 0 and cells_per_floor > 0:
+						var floor_height = cells_per_floor * block_cell_height
+						var num_floors = ceil(volume_height / floor_height)
+						height_cells = int(num_floors * cells_per_floor)
+					
 					continuations.append({
 						"face_idx": other_face_idx,
-						"edge_idx": other_edge_idx
+						"edge_idx": other_edge_idx,
+						"start_plane_vertices": volume_data["start_plane_vertices"],
+						"end_plane_vertices": volume_data["end_plane_vertices"],
+						"height": volume_height,
+						"street_type": street_type,
+						"width_cells": width_cells,
+						"height_cells": height_cells
 					})
 	
 	return continuations
