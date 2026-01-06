@@ -9,14 +9,14 @@ class_name FlyingCar
 @export var show_path_debug: bool = true
 @export var path_debug_color: Color = Color(1.0, 1.0, 0.0, 1.0)
 @export var path_debug_width: float = 0.05
+@export var path_debug_segments: int = 20
 
 var mesh_instance: MeshInstance3D
-var path_debug_line: MeshInstance3D
+var path_debug_mesh: MeshInstance3D
 var detection_area: Area3D
-var start_position: Vector3
-var end_position: Vector3
+var path_3d: Path3D
+var path_follow: PathFollow3D
 var has_path: bool = false
-var travel_progress: float = 0.0
 var world_node: Node3D
 
 func _ready() -> void:
@@ -24,24 +24,18 @@ func _ready() -> void:
 	_create_detection_area()
 
 func _process(delta: float) -> void:
-	if has_path:
-		var total_distance = start_position.distance_to(end_position)
-		travel_progress += delta * speed / total_distance
+	if has_path and path_follow:
+		path_follow.progress += delta * speed
 		
-		if travel_progress >= 1.0:
-			# Auto llegó al final del path
-			queue_free()
-			return
-		
-		global_position = start_position.lerp(end_position, travel_progress)
-		
-		var direction = (end_position - start_position).normalized()
-		if direction.length() > 0.001:
-			look_at(global_position + direction, Vector3.UP)
+		# Sincronizar posición global con PathFollow3D
+		global_position = path_follow.global_position
+		global_rotation = path_follow.global_rotation
 
 func _exit_tree() -> void:
-	if path_debug_line and is_instance_valid(path_debug_line):
-		path_debug_line.queue_free()
+	if path_debug_mesh and is_instance_valid(path_debug_mesh):
+		path_debug_mesh.queue_free()
+	if path_3d and is_instance_valid(path_3d):
+		path_3d.queue_free()
 
 func _create_visual() -> void:
 	mesh_instance = MeshInstance3D.new()
@@ -57,9 +51,9 @@ func _create_visual() -> void:
 
 func _create_detection_area() -> void:
 	detection_area = Area3D.new()
-	detection_area.collision_layer = 1  # El auto está en layer 1
-	detection_area.collision_mask = 0   # No necesita detectar nada
-	detection_area.monitorable = true   # Puede ser detectado por otras áreas
+	detection_area.collision_layer = 1
+	detection_area.collision_mask = 0
+	detection_area.monitorable = true
 	
 	var collision_shape = CollisionShape3D.new()
 	var sphere_shape = SphereShape3D.new()
@@ -70,23 +64,62 @@ func _create_detection_area() -> void:
 	add_child(detection_area)
 
 func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0) -> void:
-	start_position = start
-	end_position = end
-	has_path = true
-	travel_progress = initial_progress
+	# Crear Path3D y Curve3D
+	path_3d = Path3D.new()
+	var curve = Curve3D.new()
+	
+	# Agregar puntos a la curva (línea recta)
+	curve.add_point(start, Vector3.ZERO, Vector3.ZERO)
+	curve.add_point(end, Vector3.ZERO, Vector3.ZERO)
+	
+	path_3d.curve = curve
+	
+	# El Path3D va al world, no como hijo del auto
+	if world_node:
+		world_node.add_child(path_3d)
+	else:
+		get_parent().add_child(path_3d)
+	
+	# Crear PathFollow3D
+	path_follow = PathFollow3D.new()
+	path_follow.loop = false
+	path_follow.rotation_mode = PathFollow3D.ROTATION_ORIENTED
+	path_3d.add_child(path_follow)
+	
+	# Establecer progreso inicial
+	var curve_length = curve.get_baked_length()
+	path_follow.progress = initial_progress * curve_length
 	
 	# Posicionar el auto en el progreso inicial
-	global_position = start_position.lerp(end_position, travel_progress)
+	global_position = path_follow.global_position
+	global_rotation = path_follow.global_rotation
 	
-	var direction = (end_position - start_position).normalized()
-	if direction.length() > 0.001:
-		look_at(global_position + direction, Vector3.UP)
+	has_path = true
 	
+	# Visualizar el path
 	if show_path_debug and world_node:
-		path_debug_line = DebugUtil.create_debug_line_to_from(
-			start_position, 
-			end_position, 
-			path_debug_color, 
+		var points = [
+			{"pos": start, "in": Vector3.ZERO, "out": Vector3.ZERO},
+			{"pos": end, "in": Vector3.ZERO, "out": Vector3.ZERO}
+		]
+		
+		path_debug_mesh = DebugUtil.create_debug_path3d(
+			points,
+			path_debug_segments,
+			path_debug_color,
 			path_debug_width
 		)
-		world_node.add_child(path_debug_line)
+		world_node.add_child(path_debug_mesh)
+	
+	# Timer para verificar si llegó al final
+	var timer = Timer.new()
+	timer.wait_time = 0.1
+	timer.timeout.connect(_check_path_complete)
+	add_child(timer)
+	timer.start()
+
+func _check_path_complete() -> void:
+	if path_follow and path_3d:
+		var curve_length = path_3d.curve.get_baked_length()
+		if path_follow.progress >= curve_length:
+			queue_free()
