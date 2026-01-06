@@ -207,4 +207,3 @@ mesh = SubResource("BoxMesh_6aqh6")
 [node name="AreaInstantiator" type="Node3D" parent="box" node_paths=PackedStringArray("world")]
 script = ExtResource("12_k27g2")
 world = NodePath("../../world")
-metadata/_custom_type_script = "uid://btuoiwrmahgt4"
