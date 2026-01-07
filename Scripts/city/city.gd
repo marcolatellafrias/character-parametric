@@ -4,7 +4,7 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(700, 700)
+@export var region_size: Vector2 = Vector2(700/2, 700/3)
 @export var min_distance: float = 150.5
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
@@ -34,6 +34,7 @@ extends Node3D
 @export var smoothing_steps: int = 50
 
 @export_group("Visualización General")
+@export var show_streets: bool = false
 @export var show_nodes: bool = false
 @export var node_radius: float = 0.08
 @export var normal_node_color: Color = Color.CHARTREUSE
@@ -88,7 +89,7 @@ extends Node3D
 @export var building_grid_columns: int = 20
 
 @export_subgroup("Visualización de Grilla Distorsionada")
-@export var show_distorted_grid: bool = true
+@export var show_distorted_grid: bool = false
 @export var distorted_grid_floor_to_show: int = 0
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
@@ -235,7 +236,8 @@ func visualize_graph() -> void:
 		push_error("No hay grafo generado para visualizar")
 		return
 	
-	_visualize_streets()
+	if show_streets:
+		_visualize_streets()
 	
 	if show_floor_planes:
 		_visualize_floor_planes()

@@ -1,9 +1,9 @@
 extends Node3D
 class_name AreaInstantiator
 
-@export var outer_radius: float = 8.0
-@export var inner_radius: float = 4.5
-@export var height: float = 4.5
+@export var outer_radius: float = 40.0
+@export var inner_radius: float = 20.5
+@export var height: float = 5.5
 @export var segments: int = 32
 @export var debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
 @export var show_debug: bool = true
@@ -27,16 +27,16 @@ class_name AreaInstantiator
 
 @export_group("Car Spawning")
 @export var enable_car_spawning: bool = true
-@export var spawn_interval: float = 1.0
+@export var spawn_interval: float = 0.1
 @export_subgroup("Spawn Weights")
 @export_range(0.0, 1.0) var car_weight: float = 0.7
 @export_range(0.0, 1.0) var truck_weight: float = 0.1
 @export_range(0.0, 1.0) var motorcycle_weight: float = 0.2
 
 @export_group("Performance")
-@export var update_interval: float = 0.01
-@export var position_threshold: float = 0.01
-@export var rotation_threshold: float = 0.01
+@export var update_interval: float = 0.5
+@export var position_threshold: float = 0.5
+@export var rotation_threshold: float = 0.5
 
 var debug_mesh: Node3D
 var city = null
@@ -86,10 +86,10 @@ func _exit_tree() -> void:
 
 func _create_destruction_area() -> void:
 	destruction_area = Area3D.new()
-	destruction_area.collision_layer = 0   # No está en ningún layer
-	destruction_area.collision_mask = 1    # Detecta layer 1 (los autos)
-	destruction_area.monitoring = true     # Activa el monitoreo
-	destruction_area.monitorable = false   # No necesita ser detectada
+	destruction_area.collision_layer = 0
+	destruction_area.collision_mask = 1
+	destruction_area.monitoring = true
+	destruction_area.monitorable = false
 	
 	var collision_shape = CollisionShape3D.new()
 	var cylinder_shape = CylinderShape3D.new()
@@ -104,7 +104,6 @@ func _create_destruction_area() -> void:
 func _on_area_exited_area(area: Area3D) -> void:
 	var parent = area.get_parent()
 	if parent is FlyingCar:
-		print("Auto salió del área, destruyendo: ", parent.name)
 		parent.queue_free()
 
 func _process(delta: float) -> void:
@@ -376,33 +375,37 @@ func _create_flow_arrows_for_volume(start_plane: Array, end_plane: Array, width_
 				var arrow = DebugUtil.create_debug_arrow_to_from(segment[0], segment[1], flow_arrow_color, flow_arrow_width)
 				flow_arrows_container.add_child(arrow)
 				
+				# Guardar información de celda (coordenadas u, v en la grilla)
 				valid_spawn_segments.append({
 					"start": segment[0],
 					"end": segment[1],
 					"original_start": point_start,
 					"original_end": point_end,
-					"volume": volume
+					"volume": volume,
+					"grid_u": u,  # Coordenada horizontal en la grilla
+					"grid_v": v,  # Coordenada vertical en la grilla
+					"width_cells": width_cells,
+					"height_cells": height_cells
 				})
 
+# ============================================================================
+# NUEVO SISTEMA DE VALIDACIÓN POR PROYECCIÓN DE EDGES FRONTALES
+# ============================================================================
+
 func _try_spawn_car() -> void:
-	print("=== Intentando spawnear auto ===")
-	print("Valid spawn segments: ", valid_spawn_segments.size())
-	print("World exists: ", world != null)
-	
 	if valid_spawn_segments.is_empty() or not world:
-		print("ABORTADO: No hay segmentos válidos o no hay world")
 		return
 	
 	var max_attempts = 10
 	for attempt in range(max_attempts):
-		print("  Intento ", attempt + 1, "/", max_attempts)
+		print("\n=== INTENTO DE SPAWN %d/%d ===" % [attempt + 1, max_attempts])
+		
 		var custom_weights = {
 			CarArchetypes.Type.CAR: car_weight,
 			CarArchetypes.Type.TRUCK: truck_weight,
 			CarArchetypes.Type.MOTORCYCLE: motorcycle_weight
 		}
 		var archetype = CarArchetypes.get_weighted_random_archetype(custom_weights)
-
 		var dims = archetype.get_random_dimensions()
 		
 		var car_width = dims["width"]
@@ -410,37 +413,38 @@ func _try_spawn_car() -> void:
 		var car_depth = dims["depth"]
 		var car_speed = dims["speed"]
 		
-		print("    Arquetipo: ", archetype.name)
-		print("    Dimensiones: w=%.2f h=%.2f d=%.2f speed=%.2f" % [car_width, car_height, car_depth, car_speed])
+		print("Arquetipo: %s | Dims: w=%.2f h=%.2f d=%.2f" % [archetype.name, car_width, car_height, car_depth])
 		
+		# Filtrar segmentos adecuados
 		var suitable_segments = []
 		for seg_data in valid_spawn_segments:
 			var seg_length = seg_data["start"].distance_to(seg_data["end"])
 			if seg_length >= car_depth:
 				suitable_segments.append(seg_data)
 		
-		print("    Segmentos adecuados (>= %.2f): %d" % [car_depth, suitable_segments.size()])
+		print("Segmentos disponibles: %d" % suitable_segments.size())
 		
 		if suitable_segments.is_empty():
-			print("    ✗ No hay segmentos lo suficientemente largos")
+			print("  ✗ No hay segmentos adecuados")
 			continue
 		
-		var spawn_data = suitable_segments[randi() % suitable_segments.size()]
+		var base_spawn_data = suitable_segments[randi() % suitable_segments.size()]
+		print("Segmento elegido: u=%.3f v=%.3f" % [base_spawn_data["grid_u"], base_spawn_data["grid_v"]])
 		
-		print("    Spawn path original: ", spawn_data["start"], " -> ", spawn_data["end"])
+		# Intentar validación con hasta 5 carriles alternativos
+		var validation_result = _validate_and_find_alternative(
+			base_spawn_data, 
+			car_width, 
+			car_height, 
+			car_depth
+		)
 		
-		var valid_spawn_path = _calculate_valid_subpath(spawn_data["start"], spawn_data["end"], car_width, car_height, car_depth, spawn_data["volume"])
-		
-		if valid_spawn_path != null:
-			# Calcular el progreso inicial basado en la posición de spawn
-			var full_path_length = spawn_data["original_start"].distance_to(spawn_data["original_end"])
-			var distance_to_spawn = spawn_data["original_start"].distance_to(valid_spawn_path["start"])
+		if validation_result != null:
+			var full_path_length = validation_result["original_start"].distance_to(validation_result["original_end"])
+			var distance_to_spawn = validation_result["original_start"].distance_to(validation_result["spawn_pos"])
 			var initial_progress = distance_to_spawn / full_path_length if full_path_length > 0 else 0.0
 			
-			print("    ✓ AUTO SPAWNEADO EXITOSAMENTE")
-			print("    Spawn position: ", valid_spawn_path["start"])
-			print("    Full path: ", spawn_data["original_start"], " -> ", spawn_data["original_end"])
-			print("    Initial progress: %.2f%%" % (initial_progress * 100.0))
+			print("  ✓ SPAWN EXITOSO en progreso %.1f%%" % (initial_progress * 100.0))
 			
 			var car = FlyingCar.new()
 			car.width = car_width
@@ -451,247 +455,294 @@ func _try_spawn_car() -> void:
 			car.world_node = world
 			
 			world.add_child(car)
-			car.set_path(spawn_data["original_start"], spawn_data["original_end"], initial_progress)
-			
+			car.set_path(validation_result["original_start"], validation_result["original_end"], initial_progress)
 			return
 		else:
-			print("    ✗ No se pudo encontrar un subtramo válido para spawn")
-	
-	print("FALLO: No se pudo spawnear después de ", max_attempts, " intentos")
+			print("  ✗ Validación falló después de 5 reintentos")
 
-func _can_car_fit_in_path(start: Vector3, end: Vector3, car_width: float, car_height: float, car_depth: float, volume: Dictionary) -> bool:
-	var direction = (end - start).normalized()
+# Valida un spawn y busca alternativas si falla
+func _validate_and_find_alternative(spawn_data: Dictionary, car_width: float, car_height: float, car_depth: float) -> Variant:
+	var current_u = spawn_data["grid_u"]
+	var current_v = spawn_data["grid_v"]
 	
-	var forward = direction
-	var up = Vector3.UP
-	if abs(forward.dot(up)) > 0.99:
-		up = Vector3.RIGHT
-	var right = forward.cross(up).normalized()
-	up = right.cross(forward).normalized()
+	print("  >> Iniciando validación en u=%.3f v=%.3f" % [current_u, current_v])
 	
-	var half_extents = [
-		Vector3(-car_width/2, -car_height/2, -car_depth/2),
-		Vector3(car_width/2, -car_height/2, -car_depth/2),
-		Vector3(-car_width/2, car_height/2, -car_depth/2),
-		Vector3(car_width/2, car_height/2, -car_depth/2),
-		Vector3(-car_width/2, -car_height/2, car_depth/2),
-		Vector3(car_width/2, -car_height/2, car_depth/2),
-		Vector3(-car_width/2, car_height/2, car_depth/2),
-		Vector3(car_width/2, car_height/2, car_depth/2)
-	]
-	
-	var num_samples = 10
-	for i in range(num_samples + 1):
-		var t = float(i) / float(num_samples)
-		var pos = start.lerp(end, t)
+	for retry in range(5):
+		print("    [Reintento %d/5] Testing u=%.3f v=%.3f" % [retry + 1, current_u, current_v])
 		
-		for corner_idx in range(half_extents.size()):
-			var corner_local = half_extents[corner_idx]
-			var corner_global = pos + right * corner_local.x + up * corner_local.y + forward * corner_local.z
-			
-			var local_corner = global_transform.affine_inverse() * corner_global
-			if not GeometryUtils.is_point_in_ring_volume(local_corner, inner_radius, outer_radius, height):
-				print("      Fallo en anillo: sample=%d corner=%d" % [i, corner_idx])
-				return false
-			
-			if not GeometryUtils.is_point_inside_lane_volume(corner_global, volume["start_plane_vertices"], volume["end_plane_vertices"]):
-				print("      Fallo en lane volume: sample=%d corner=%d" % [i, corner_idx])
-				return false
-	
-	return true
-
-func _calculate_travel_path(original_start: Vector3, original_end: Vector3, car_width: float, car_height: float, car_depth: float, volume: Dictionary):
-	var direction = (original_end - original_start).normalized()
-	var path_length = original_start.distance_to(original_end)
-	
-	var forward = direction
-	var up = Vector3.UP
-	if abs(forward.dot(up)) > 0.99:
-		up = Vector3.RIGHT
-	var right = forward.cross(up).normalized()
-	up = right.cross(forward).normalized()
-	
-	var half_extents = [
-		Vector3(-car_width/2, -car_height/2, -car_depth/2),
-		Vector3(car_width/2, -car_height/2, -car_depth/2),
-		Vector3(-car_width/2, car_height/2, -car_depth/2),
-		Vector3(car_width/2, car_height/2, -car_depth/2),
-		Vector3(-car_width/2, -car_height/2, car_depth/2),
-		Vector3(car_width/2, -car_height/2, car_depth/2),
-		Vector3(-car_width/2, car_height/2, car_depth/2),
-		Vector3(car_width/2, car_height/2, car_depth/2)
-	]
-	
-	var valid_t_min = 0.0
-	var valid_t_max = 1.0
-	
-	for corner_local in half_extents:
-		var corner_at_start = original_start + right * corner_local.x + up * corner_local.y + forward * corner_local.z
-		var corner_direction = direction
+		var test_spawn = _find_spawn_at_grid_coords(
+			spawn_data["volume"],
+			current_u,
+			current_v,
+			spawn_data["width_cells"],
+			spawn_data["height_cells"]
+		)
 		
-		var local_corner_start = global_transform.affine_inverse() * corner_at_start
-		var local_corner_direction = global_transform.affine_inverse().basis * corner_direction
-		
-		var t_outer = GeometryUtils.intersect_cylinder_normalized(local_corner_start, local_corner_direction, outer_radius, path_length)
-		
-		var corner_t_min = 0.0
-		var corner_t_max = 1.0
-		
-		if t_outer.size() >= 2:
-			corner_t_min = max(corner_t_min, t_outer[0])
-			corner_t_max = min(corner_t_max, t_outer[1])
-		elif t_outer.size() == 1:
-			var test_t = clamp(0.5, corner_t_min, corner_t_max)
-			var test_pos = local_corner_start + local_corner_direction * test_t * path_length
-			var test_r = sqrt(test_pos.x * test_pos.x + test_pos.z * test_pos.z)
-			if test_r > outer_radius:
-				return null
-		else:
-			var test_pos = local_corner_start
-			var test_r = sqrt(test_pos.x * test_pos.x + test_pos.z * test_pos.z)
-			if test_r > outer_radius:
-				return null
-		
-		var half_height = height / 2.0
-		if abs(local_corner_direction.y) > 0.001:
-			var t_bottom = (-half_height - local_corner_start.y) / (local_corner_direction.y * path_length)
-			var t_top = (half_height - local_corner_start.y) / (local_corner_direction.y * path_length)
-			
-			var t_y_min = min(t_bottom, t_top)
-			var t_y_max = max(t_bottom, t_top)
-			
-			corner_t_min = max(corner_t_min, t_y_min)
-			corner_t_max = min(corner_t_max, t_y_max)
-		else:
-			if local_corner_start.y < -half_height or local_corner_start.y > half_height:
-				return null
-		
-		valid_t_min = max(valid_t_min, corner_t_min)
-		valid_t_max = min(valid_t_max, corner_t_max)
-		
-		if valid_t_min >= valid_t_max:
+		if test_spawn == null:
+			print("      ✗ No se pudo encontrar spawn en estas coordenadas")
 			return null
-	
-	var valid_start = original_start.lerp(original_end, valid_t_min)
-	var valid_end = original_start.lerp(original_end, valid_t_max)
-	
-	for i in range(5):
-		var t = float(i) / 4.0
-		var sample_t = valid_t_min + (valid_t_max - valid_t_min) * t
-		var sample_pos = original_start.lerp(original_end, sample_t)
 		
-		if not GeometryUtils.is_point_inside_lane_volume(sample_pos, volume["start_plane_vertices"], volume["end_plane_vertices"]):
-			return null
-	
-	return {
-		"start": valid_start,
-		"end": valid_end
-	}
-
-func _calculate_valid_subpath(start: Vector3, end: Vector3, car_width: float, car_height: float, car_depth: float, volume: Dictionary):
-	var direction = (end - start).normalized()
-	var path_length = start.distance_to(end)
-	
-	var forward = direction
-	var up = Vector3.UP
-	if abs(forward.dot(up)) > 0.99:
-		up = Vector3.RIGHT
-	var right = forward.cross(up).normalized()
-	up = right.cross(forward).normalized()
-	
-	var half_extents = [
-		Vector3(-car_width/2, -car_height/2, -car_depth/2),
-		Vector3(car_width/2, -car_height/2, -car_depth/2),
-		Vector3(-car_width/2, car_height/2, -car_depth/2),
-		Vector3(car_width/2, car_height/2, -car_depth/2),
-		Vector3(-car_width/2, -car_height/2, car_depth/2),
-		Vector3(car_width/2, -car_height/2, car_depth/2),
-		Vector3(-car_width/2, car_height/2, car_depth/2),
-		Vector3(car_width/2, car_height/2, car_depth/2)
-	]
-	
-	var valid_t_min = 0.0
-	var valid_t_max = 1.0
-	
-	for corner_local in half_extents:
-		var corner_at_start = start + right * corner_local.x + up * corner_local.y + forward * corner_local.z
-		var corner_direction = direction
+		var validation = _validate_car_front_projection(
+			test_spawn["original_start"],
+			test_spawn["original_end"],
+			test_spawn["start"],
+			car_width,
+			car_height,
+			car_depth,
+			spawn_data["volume"]
+		)
 		
-		var local_corner_start = global_transform.affine_inverse() * corner_at_start
-		var local_corner_direction = global_transform.affine_inverse().basis * corner_direction
+		if validation["valid"]:
+			print("      ✓ Validación EXITOSA")
+			return {
+				"spawn_pos": test_spawn["start"],
+				"original_start": test_spawn["original_start"],
+				"original_end": test_spawn["original_end"]
+			}
 		
-		var t_outer = GeometryUtils.intersect_cylinder_normalized(local_corner_start, local_corner_direction, outer_radius, path_length)
-		var t_inner = GeometryUtils.intersect_cylinder_normalized(local_corner_start, local_corner_direction, inner_radius, path_length)
+		print("      ✗ Colisión detectada con plano: %s" % validation["collision_plane"])
 		
-		var corner_t_min = 0.0
-		var corner_t_max = 1.0
-		
-		if t_outer.size() >= 2:
-			corner_t_min = max(corner_t_min, t_outer[0])
-			corner_t_max = min(corner_t_max, t_outer[1])
-		elif t_outer.size() == 1:
-			var test_t = clamp(0.5, corner_t_min, corner_t_max)
-			var test_pos = local_corner_start + local_corner_direction * test_t * path_length
-			var test_r = sqrt(test_pos.x * test_pos.x + test_pos.z * test_pos.z)
-			if test_r > outer_radius:
-				return null
+		# Si falló, moverse una celda lejos del plano que chocó
+		var collision_plane = validation["collision_plane"]
+		if collision_plane == "left":
+			current_u = min(current_u + (1.0 / spawn_data["width_cells"]), 1.0)
+			print("        → Moviendo a la DERECHA: u=%.3f" % current_u)
+		elif collision_plane == "right":
+			current_u = max(current_u - (1.0 / spawn_data["width_cells"]), 0.0)
+			print("        → Moviendo a la IZQUIERDA: u=%.3f" % current_u)
+		elif collision_plane == "bottom":
+			current_v = min(current_v + (1.0 / spawn_data["height_cells"]), 1.0)
+			print("        → Moviendo ARRIBA: v=%.3f" % current_v)
+		elif collision_plane == "top":
+			current_v = max(current_v - (1.0 / spawn_data["height_cells"]), 0.0)
+			print("        → Moviendo ABAJO: v=%.3f" % current_v)
 		else:
-			var test_pos = local_corner_start
-			var test_r = sqrt(test_pos.x * test_pos.x + test_pos.z * test_pos.z)
-			if test_r > outer_radius:
-				return null
-		
-		if t_inner.size() >= 2:
-			if t_inner[1] < corner_t_max:
-				corner_t_min = max(corner_t_min, t_inner[1])
-			elif t_inner[0] > corner_t_min:
-				corner_t_max = min(corner_t_max, t_inner[0])
+			# Si no se identificó el plano, intentar dirección aleatoria
+			if randf() > 0.5:
+				current_u += (randf() - 0.5) * (2.0 / spawn_data["width_cells"])
 			else:
-				return null
-		
-		var half_height = height / 2.0
-		if abs(local_corner_direction.y) > 0.001:
-			var t_bottom = (-half_height - local_corner_start.y) / (local_corner_direction.y * path_length)
-			var t_top = (half_height - local_corner_start.y) / (local_corner_direction.y * path_length)
-			
-			var t_y_min = min(t_bottom, t_top)
-			var t_y_max = max(t_bottom, t_top)
-			
-			corner_t_min = max(corner_t_min, t_y_min)
-			corner_t_max = min(corner_t_max, t_y_max)
-		else:
-			if local_corner_start.y < -half_height or local_corner_start.y > half_height:
-				return null
-		
-		valid_t_min = max(valid_t_min, corner_t_min)
-		valid_t_max = min(valid_t_max, corner_t_max)
-		
-		if valid_t_min >= valid_t_max:
-			return null
+				current_v += (randf() - 0.5) * (2.0 / spawn_data["height_cells"])
+			current_u = clamp(current_u, 0.0, 1.0)
+			current_v = clamp(current_v, 0.0, 1.0)
+			print("        → Movimiento ALEATORIO: u=%.3f v=%.3f" % [current_u, current_v])
 	
-	var valid_length = (valid_t_max - valid_t_min) * path_length
-	if valid_length < car_depth:
-		print("      Subpath válido muy corto: %.2f < %.2f" % [valid_length, car_depth])
+	print("      ✗ Agotados los 5 reintentos")
+	return null
+
+# Encuentra un punto de spawn en coordenadas de grilla específicas
+func _find_spawn_at_grid_coords(volume: Dictionary, u: float, v: float, width_cells: int, height_cells: int) -> Variant:
+	var start_plane = volume["start_plane_vertices"]
+	var end_plane = volume["end_plane_vertices"]
+	
+	var bottom_start = start_plane[0].lerp(start_plane[1], u)
+	var top_start = start_plane[3].lerp(start_plane[2], u)
+	var point_start = bottom_start.lerp(top_start, v)
+	
+	var bottom_end = end_plane[0].lerp(end_plane[1], u)
+	var top_end = end_plane[3].lerp(end_plane[2], u)
+	var point_end = bottom_end.lerp(top_end, v)
+	
+	var segments_array = GeometryUtils.clip_line_to_ring_volume(
+		point_start, 
+		point_end, 
+		global_transform, 
+		inner_radius, 
+		outer_radius, 
+		height
+	)
+	
+	if segments_array.is_empty():
 		return null
 	
-	var valid_start = start.lerp(end, valid_t_min)
-	var valid_end = start.lerp(end, valid_t_max)
-	
-	for i in range(5):
-		var t = float(i) / 4.0
-		var sample_t = valid_t_min + (valid_t_max - valid_t_min) * t
-		var sample_pos = start.lerp(end, sample_t)
-		
-		if not GeometryUtils.is_point_inside_lane_volume(sample_pos, volume["start_plane_vertices"], volume["end_plane_vertices"]):
-			print("      Subpath sale del lane volume")
-			return null
-	
 	return {
-		"start": valid_start,
-		"end": valid_end
+		"start": segments_array[0][0],
+		"end": segments_array[0][1],
+		"original_start": point_start,
+		"original_end": point_end
 	}
 
-# En AreaInstantiator
+# Valida proyectando los 4 edges de la cara frontal a lo largo del path
+func _validate_car_front_projection(original_start: Vector3, original_end: Vector3, spawn_pos: Vector3, 
+									car_width: float, car_height: float, car_depth: float, 
+									volume: Dictionary) -> Dictionary:
+	
+	print("        >> Validando proyección frontal")
+	print("           Spawn: %s" % spawn_pos)
+	print("           Path: %s -> %s" % [original_start, original_end])
+	print("           Dimensiones auto: w=%.2f h=%.2f d=%.2f" % [car_width, car_height, car_depth])
+	
+	# Calcular orientación del auto
+	var direction = (original_end - original_start).normalized()
+	var forward = direction
+	var up = Vector3.UP
+	if abs(forward.dot(up)) > 0.99:
+		up = Vector3.RIGHT
+	var right = forward.cross(up).normalized()
+	up = right.cross(forward).normalized()
+	
+	print("           Orientación: forward=%s right=%s up=%s" % [forward, right, up])
+	
+	# Los 4 vértices de la cara frontal del auto (centrados en spawn_pos)
+	var front_corners = [
+		spawn_pos + right * (-car_width/2) + up * (-car_height/2),  # bottom-left
+		spawn_pos + right * (car_width/2) + up * (-car_height/2),   # bottom-right
+		spawn_pos + right * (car_width/2) + up * (car_height/2),    # top-right
+		spawn_pos + right * (-car_width/2) + up * (car_height/2)    # top-left
+	]
+	
+	print("           Vértices cara frontal:")
+	for i in range(front_corners.size()):
+		print("             [%d] %s" % [i, front_corners[i]])
+	
+	# NUEVA VALIDACIÓN: Verificar que todos los vértices iniciales estén dentro del lane volume
+	print("           >> Verificando vértices iniciales dentro del volumen...")
+	var start_plane = volume["start_plane_vertices"]
+	var end_plane = volume["end_plane_vertices"]
+	
+	for i in range(front_corners.size()):
+		var corner = front_corners[i]
+		if not GeometryUtils.is_point_inside_lane_volume(corner, start_plane, end_plane):
+			print("             ✗✗✗ VÉRTICE [%d] FUERA DEL VOLUMEN ✗✗✗" % i)
+			print("             Posición: %s" % corner)
+			
+			# Determinar qué plano lateral está más cerca para reportar la colisión
+			var lateral_planes = _get_lane_volume_lateral_planes(volume)
+			var closest_plane_name = ""
+			var min_distance = INF
+			
+			for plane_name in lateral_planes.keys():
+				var plane = lateral_planes[plane_name]
+				var distance = abs(plane[0].dot(corner - plane[1]))
+				if distance < min_distance:
+					min_distance = distance
+					closest_plane_name = plane_name
+			
+			print("             Plano más cercano: %s (distancia: %.3f)" % [closest_plane_name, min_distance])
+			
+			return {
+				"valid": false,
+				"collision_plane": closest_plane_name,
+				"collision_point": corner,
+				"collision_t": 0.0  # Colisión en posición inicial
+			}
+	
+	print("           ✓ Todos los vértices iniciales dentro del volumen")
+	
+	# Los 4 edges de la cara frontal
+	var front_edges = [
+		[front_corners[0], front_corners[1]],  # bottom edge
+		[front_corners[1], front_corners[2]],  # right edge
+		[front_corners[2], front_corners[3]],  # top edge
+		[front_corners[3], front_corners[0]]   # left edge
+	]
+	
+	var edge_names = ["bottom", "right", "top", "left"]
+	
+	# Calcular los 4 planos laterales del lane volume
+	var lateral_planes = _get_lane_volume_lateral_planes(volume)
+	
+	print("           Planos laterales del lane volume:")
+	for plane_name in lateral_planes.keys():
+		var plane = lateral_planes[plane_name]
+		print("             %s: normal=%s point=%s" % [plane_name, plane[0], plane[1]])
+	
+	# Proyectar cada edge a lo largo del path completo
+	for edge_idx in range(front_edges.size()):
+		var edge = front_edges[edge_idx]
+		print("           Testeando edge %s..." % edge_names[edge_idx])
+		
+		# Proyectar ambos vértices del edge desde spawn_pos hasta original_end
+		for vert_idx in range(2):
+			var vertex_start = edge[vert_idx]
+			var offset_from_spawn = vertex_start - spawn_pos
+			var vertex_end = original_end + offset_from_spawn
+			
+			print("             Vértice %d: %s -> %s" % [vert_idx, vertex_start, vertex_end])
+			
+			# Probar intersección con cada plano lateral
+			for plane_name in lateral_planes.keys():
+				var plane = lateral_planes[plane_name]
+				var intersection = _ray_plane_intersection(vertex_start, vertex_end - vertex_start, plane)
+				
+				if intersection != null:
+					# Verificar que la intersección esté dentro del segmento
+					var segment_length = vertex_start.distance_to(vertex_end)
+					var t = vertex_start.distance_to(intersection) / segment_length if segment_length > 0 else 0.0
+					
+					print("               Intersección con plano %s en t=%.3f pos=%s" % [plane_name, t, intersection])
+					
+					if t >= 0.0 and t <= 1.0:
+						print("               ✗✗✗ COLISIÓN DETECTADA ✗✗✗")
+						return {
+							"valid": false,
+							"collision_plane": plane_name,
+							"collision_point": intersection,
+							"collision_t": t
+						}
+	
+	print("           ✓ Sin colisiones detectadas")
+	return {"valid": true, "collision_plane": ""}
+
+# Calcula los 4 planos laterales que conectan start_plane con end_plane
+func _get_lane_volume_lateral_planes(volume: Dictionary) -> Dictionary:
+	var start = volume["start_plane_vertices"]
+	var end = volume["end_plane_vertices"]
+	
+	# Cada plano se define por 3 puntos (o normal + punto)
+	# Plano inferior: start[0]-start[1]-end[1]-end[0]
+	# Plano derecho: start[1]-start[2]-end[2]-end[1]
+	# Plano superior: start[2]-start[3]-end[3]-end[2]
+	# Plano izquierdo: start[3]-start[0]-end[0]-end[3]
+	
+	return {
+		"bottom": _plane_from_points(start[0], start[1], end[1]),
+		"right": _plane_from_points(start[1], start[2], end[2]),
+		"top": _plane_from_points(start[2], start[3], end[3]),
+		"left": _plane_from_points(start[3], start[0], end[0])
+	}
+
+# Crea un plano a partir de 3 puntos (devuelve [normal, point])
+func _plane_from_points(p1: Vector3, p2: Vector3, p3: Vector3) -> Array:
+	var v1 = p2 - p1
+	var v2 = p3 - p1
+	var normal = v1.cross(v2).normalized()
+	return [normal, p1]
+
+# Calcula intersección ray-plano, retorna punto o null
+func _ray_plane_intersection(ray_origin: Vector3, ray_direction: Vector3, plane: Array) -> Variant:
+	var plane_normal = plane[0]
+	var plane_point = plane[1]
+	
+	var denom = plane_normal.dot(ray_direction)
+	if abs(denom) < 0.0001:  # Ray paralelo al plano
+		return null
+	
+	var t = plane_normal.dot(plane_point - ray_origin) / denom
+	if t < 0:  # Intersección detrás del origen del ray
+		return null
+	
+	return ray_origin + ray_direction * t
+
+# ============================================================================
+# FUNCIONES OBSOLETAS (mantenidas por compatibilidad temporal)
+# ============================================================================
+
+func _can_car_fit_in_path(start: Vector3, end: Vector3, car_width: float, car_height: float, car_depth: float, volume: Dictionary) -> bool:
+	# Esta función ya no se usa pero se mantiene temporalmente
+	return false
+
+func _calculate_travel_path(original_start: Vector3, original_end: Vector3, car_width: float, car_height: float, car_depth: float, volume: Dictionary) -> Variant:
+	# Esta función ya no se usa pero se mantiene temporalmente
+	return null
+
+func _calculate_valid_subpath(start: Vector3, end: Vector3, car_width: float, car_height: float, car_depth: float, volume: Dictionary) -> Variant:
+	# Esta función ya no se usa pero se mantiene temporalmente
+	return null
+
+# ============================================================================
+# FUNCIONES DE VISUALIZACIÓN (sin cambios)
+# ============================================================================
+
 func _create_grid_for_plane(plane_verts: Array, width_cells: int, height_cells: int) -> void:
 	for i in range(width_cells + 1):
 		for j in range(height_cells + 1):

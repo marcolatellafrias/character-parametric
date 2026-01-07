@@ -195,7 +195,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.9507675, 0.9780211, 10.36
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21.46107, 0.7125503, -1.5130081)
 
 [node name="box" type="RigidBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.178652, 3.755167, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 117.41937, 3.755167, 20.857616)
 lock_rotation = true
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="box"]
@@ -206,31 +206,4 @@ mesh = SubResource("BoxMesh_6aqh6")
 
 [node name="AreaInstantiator" type="Node3D" parent="box" node_paths=PackedStringArray("world")]
 script = ExtResource("12_k27g2")
-outer_radius = null
-inner_radius = null
-height = null
-segments = null
-debug_color = null
-show_debug = null
 world = NodePath("../../world")
-show_lane_volumes = null
-lane_volume_color = null
-lane_volume_transparency = null
-show_continuations = null
-continuation_color = null
-continuation_transparency = null
-show_grid_points = null
-grid_point_color = null
-grid_point_size = null
-granularity = null
-show_flow_arrows = null
-flow_arrow_color = null
-flow_arrow_width = null
-enable_car_spawning = null
-spawn_interval = null
-car_weight = null
-truck_weight = null
-motorcycle_weight = null
-update_interval = null
-position_threshold = null
-rotation_threshold = null

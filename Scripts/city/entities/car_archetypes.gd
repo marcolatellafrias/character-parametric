@@ -1,7 +1,7 @@
 extends Object
 class_name CarArchetypes
 
-static var speed_debug_factor: float = 0.05
+static var speed_debug_factor: float = 5.0
 static var size_debug_factor: float = 10.0
 
 enum Type {
@@ -79,7 +79,7 @@ static func _static_init() -> void:
 	
 	archetypes[Type.TRUCK] = Archetype.new(
 		"Truck",
-		0.2 * size_debug_factor, 0.3 * size_debug_factor,     # width
+		0.2*6 * size_debug_factor, 0.3 *3* size_debug_factor,     # width
 		0.15 * size_debug_factor, 0.25 * size_debug_factor,   # height
 		0.5 * size_debug_factor, 0.8 * size_debug_factor,     # depth
 		5.0 * speed_debug_factor, 10.0 * speed_debug_factor,    # speed
