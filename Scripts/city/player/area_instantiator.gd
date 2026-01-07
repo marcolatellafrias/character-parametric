@@ -691,6 +691,7 @@ func _calculate_valid_subpath(start: Vector3, end: Vector3, car_width: float, ca
 		"end": valid_end
 	}
 
+# En AreaInstantiator
 func _create_grid_for_plane(plane_verts: Array, width_cells: int, height_cells: int) -> void:
 	for i in range(width_cells + 1):
 		for j in range(height_cells + 1):
@@ -701,7 +702,10 @@ func _create_grid_for_plane(plane_verts: Array, width_cells: int, height_cells: 
 			var top = plane_verts[3].lerp(plane_verts[2], u)
 			var point = bottom.lerp(top, v)
 			
-			var sphere = DebugUtil.create_debug_sphere(grid_point_color, grid_point_size)
+			var grid_coords = Vector2i(i, j)
+			var sphere = DebugUtil.create_debug_sphere_print(grid_coords, grid_point_color, grid_point_size)
+			sphere.set_meta("grid_coords", grid_coords)
+			sphere.set_meta("world_position", point)
 			grid_points_container.add_child(sphere)
 			sphere.global_position = point
 

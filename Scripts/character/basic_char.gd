@@ -82,7 +82,8 @@ func _physics_process(delta: float) -> void:
 		_push_ground_down()
 
 	move_and_slide()
-	_update_grab(delta)  # after move_and_slide() and your push-assist loop
+	_update_grab(delta)
+	_check_sphere_look()
 
 func _push_ground_down() -> void:
 	var space := get_world_3d().direct_space_state
@@ -342,3 +343,25 @@ func _grabged_sleep_guard() -> void:
 	# Tiny poke if it tries to fall asleep while grabbed
 	if _grabbed.sleeping:
 		_grabbed.sleeping = false
+
+func _check_sphere_look() -> void:
+	if not is_instance_valid(_camera):
+		return
+	
+	var vp_size := get_viewport().get_visible_rect().size
+	var screen_center := vp_size * 0.5
+	var from := _camera.project_ray_origin(screen_center)
+	var dir := _camera.project_ray_normal(screen_center)
+	var to := from + dir * 10.0
+	
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.exclude = [self]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	
+	if hit:
+		var collider = hit.collider
+		if collider and collider.get_parent() and collider.get_parent().has_meta("grid_coords"):
+			var grid_coords: Vector2i = collider.get_parent().get_meta("grid_coords")
+			var world_pos: Vector3 = collider.get_parent().get_meta("world_position")
+			# Ahora tienes acceso a las coordenadas de grilla [i, j]
+			# y a la posición del mundo si la necesitas

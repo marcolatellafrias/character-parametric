@@ -1196,3 +1196,38 @@ static func create_debug_path3d(
 	mesh_instance.material_override = material
 	
 	return mesh_instance
+
+# En DebugUtil - versión actualizada
+static func create_debug_sphere_print(grid_coords: Vector2i, color: Color, size: float = 0.1, on_top: bool = false, radial_segments: int = 8, rings: int = 8) -> Node3D:
+	var container := Node3D.new()
+	
+	# Crear la esfera
+	var mesh_instance := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radial_segments = radial_segments
+	sphere.rings = rings
+	mesh_instance.mesh = sphere
+	mesh_instance.scale = Vector3(size, size, size)
+	
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if on_top:
+		material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
+	mesh_instance.material_override = material
+	
+	container.add_child(mesh_instance)
+	
+	# Crear el label con las coordenadas de grilla
+	var label := Label3D.new()
+	label.text = "[%d, %d]" % [grid_coords.x, grid_coords.y]
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.font_size = 16
+	label.outline_size = 4
+	label.outline_modulate = Color.BLACK
+	label.modulate = Color.WHITE
+	label.position = Vector3(0, size * 1.5, 0)
+	
+	container.add_child(label)
+	
+	return container
