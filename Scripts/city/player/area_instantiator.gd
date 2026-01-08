@@ -1,9 +1,9 @@
 extends Node3D
 class_name AreaInstantiator
 
-@export var outer_radius: float = 40.0
-@export var inner_radius: float = 20.5
-@export var height: float = 5.5
+@export var outer_radius: float = 4.0
+@export var inner_radius: float = 2.5
+@export var height: float = 2.5
 @export var segments: int = 32
 @export var debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
 @export var show_debug: bool = true
@@ -34,7 +34,7 @@ class_name AreaInstantiator
 @export_range(0.0, 1.0) var motorcycle_weight: float = 0.2
 
 @export_group("Performance")
-@export var update_interval: float = 0.5
+@export var update_interval: float = 0.05
 @export var position_threshold: float = 0.5
 @export var rotation_threshold: float = 0.5
 
@@ -398,8 +398,6 @@ func _try_spawn_car() -> void:
 	
 	var max_attempts = 10
 	for attempt in range(max_attempts):
-		print("\n=== INTENTO DE SPAWN %d/%d ===" % [attempt + 1, max_attempts])
-		
 		var custom_weights = {
 			CarArchetypes.Type.CAR: car_weight,
 			CarArchetypes.Type.TRUCK: truck_weight,
@@ -413,8 +411,6 @@ func _try_spawn_car() -> void:
 		var car_depth = dims["depth"]
 		var car_speed = dims["speed"]
 		
-		print("Arquetipo: %s | Dims: w=%.2f h=%.2f d=%.2f" % [archetype.name, car_width, car_height, car_depth])
-		
 		# Filtrar segmentos adecuados
 		var suitable_segments = []
 		for seg_data in valid_spawn_segments:
@@ -422,14 +418,10 @@ func _try_spawn_car() -> void:
 			if seg_length >= car_depth:
 				suitable_segments.append(seg_data)
 		
-		print("Segmentos disponibles: %d" % suitable_segments.size())
-		
 		if suitable_segments.is_empty():
-			print("  ✗ No hay segmentos adecuados")
 			continue
 		
 		var base_spawn_data = suitable_segments[randi() % suitable_segments.size()]
-		print("Segmento elegido: u=%.3f v=%.3f" % [base_spawn_data["grid_u"], base_spawn_data["grid_v"]])
 		
 		# Intentar validación con hasta 5 carriles alternativos
 		var validation_result = _validate_and_find_alternative(
@@ -444,7 +436,7 @@ func _try_spawn_car() -> void:
 			var distance_to_spawn = validation_result["original_start"].distance_to(validation_result["spawn_pos"])
 			var initial_progress = distance_to_spawn / full_path_length if full_path_length > 0 else 0.0
 			
-			print("  ✓ SPAWN EXITOSO en progreso %.1f%%" % (initial_progress * 100.0))
+			print("\n✓ SPAWN EXITOSO: %s" % archetype.name)
 			
 			var car = FlyingCar.new()
 			car.width = car_width
@@ -453,23 +445,27 @@ func _try_spawn_car() -> void:
 			car.speed = car_speed
 			car.car_color = archetype.get_random_color()
 			car.world_node = world
+			car.city = city
 			
 			world.add_child(car)
-			car.set_path(validation_result["original_start"], validation_result["original_end"], initial_progress)
+			car.set_path(
+				validation_result["original_start"], 
+				validation_result["original_end"], 
+				initial_progress,
+				validation_result.get("grid_u", 0.0),
+				validation_result.get("grid_v", 0.0),
+				validation_result.get("volume", {}),
+				validation_result.get("width_cells", 3),
+				validation_result.get("height_cells", 10)
+			)
 			return
-		else:
-			print("  ✗ Validación falló después de 5 reintentos")
 
 # Valida un spawn y busca alternativas si falla
 func _validate_and_find_alternative(spawn_data: Dictionary, car_width: float, car_height: float, car_depth: float) -> Variant:
 	var current_u = spawn_data["grid_u"]
 	var current_v = spawn_data["grid_v"]
 	
-	print("  >> Iniciando validación en u=%.3f v=%.3f" % [current_u, current_v])
-	
 	for retry in range(5):
-		print("    [Reintento %d/5] Testing u=%.3f v=%.3f" % [retry + 1, current_u, current_v])
-		
 		var test_spawn = _find_spawn_at_grid_coords(
 			spawn_data["volume"],
 			current_u,
@@ -479,7 +475,6 @@ func _validate_and_find_alternative(spawn_data: Dictionary, car_width: float, ca
 		)
 		
 		if test_spawn == null:
-			print("      ✗ No se pudo encontrar spawn en estas coordenadas")
 			return null
 		
 		var validation = _validate_car_front_projection(
@@ -493,29 +488,27 @@ func _validate_and_find_alternative(spawn_data: Dictionary, car_width: float, ca
 		)
 		
 		if validation["valid"]:
-			print("      ✓ Validación EXITOSA")
 			return {
 				"spawn_pos": test_spawn["start"],
 				"original_start": test_spawn["original_start"],
-				"original_end": test_spawn["original_end"]
+				"original_end": test_spawn["original_end"],
+				"grid_u": current_u,
+				"grid_v": current_v,
+				"volume": spawn_data["volume"],
+				"width_cells": spawn_data["width_cells"],
+				"height_cells": spawn_data["height_cells"]
 			}
-		
-		print("      ✗ Colisión detectada con plano: %s" % validation["collision_plane"])
 		
 		# Si falló, moverse una celda lejos del plano que chocó
 		var collision_plane = validation["collision_plane"]
 		if collision_plane == "left":
 			current_u = min(current_u + (1.0 / spawn_data["width_cells"]), 1.0)
-			print("        → Moviendo a la DERECHA: u=%.3f" % current_u)
 		elif collision_plane == "right":
 			current_u = max(current_u - (1.0 / spawn_data["width_cells"]), 0.0)
-			print("        → Moviendo a la IZQUIERDA: u=%.3f" % current_u)
 		elif collision_plane == "bottom":
 			current_v = min(current_v + (1.0 / spawn_data["height_cells"]), 1.0)
-			print("        → Moviendo ARRIBA: v=%.3f" % current_v)
 		elif collision_plane == "top":
 			current_v = max(current_v - (1.0 / spawn_data["height_cells"]), 0.0)
-			print("        → Moviendo ABAJO: v=%.3f" % current_v)
 		else:
 			# Si no se identificó el plano, intentar dirección aleatoria
 			if randf() > 0.5:
@@ -524,9 +517,7 @@ func _validate_and_find_alternative(spawn_data: Dictionary, car_width: float, ca
 				current_v += (randf() - 0.5) * (2.0 / spawn_data["height_cells"])
 			current_u = clamp(current_u, 0.0, 1.0)
 			current_v = clamp(current_v, 0.0, 1.0)
-			print("        → Movimiento ALEATORIO: u=%.3f v=%.3f" % [current_u, current_v])
 	
-	print("      ✗ Agotados los 5 reintentos")
 	return null
 
 # Encuentra un punto de spawn en coordenadas de grilla específicas
@@ -566,11 +557,6 @@ func _validate_car_front_projection(original_start: Vector3, original_end: Vecto
 									car_width: float, car_height: float, car_depth: float, 
 									volume: Dictionary) -> Dictionary:
 	
-	print("        >> Validando proyección frontal")
-	print("           Spawn: %s" % spawn_pos)
-	print("           Path: %s -> %s" % [original_start, original_end])
-	print("           Dimensiones auto: w=%.2f h=%.2f d=%.2f" % [car_width, car_height, car_depth])
-	
 	# Calcular orientación del auto
 	var direction = (original_end - original_start).normalized()
 	var forward = direction
@@ -580,8 +566,6 @@ func _validate_car_front_projection(original_start: Vector3, original_end: Vecto
 	var right = forward.cross(up).normalized()
 	up = right.cross(forward).normalized()
 	
-	print("           Orientación: forward=%s right=%s up=%s" % [forward, right, up])
-	
 	# Los 4 vértices de la cara frontal del auto (centrados en spawn_pos)
 	var front_corners = [
 		spawn_pos + right * (-car_width/2) + up * (-car_height/2),  # bottom-left
@@ -590,21 +574,13 @@ func _validate_car_front_projection(original_start: Vector3, original_end: Vecto
 		spawn_pos + right * (-car_width/2) + up * (car_height/2)    # top-left
 	]
 	
-	print("           Vértices cara frontal:")
-	for i in range(front_corners.size()):
-		print("             [%d] %s" % [i, front_corners[i]])
-	
-	# NUEVA VALIDACIÓN: Verificar que todos los vértices iniciales estén dentro del lane volume
-	print("           >> Verificando vértices iniciales dentro del volumen...")
+	# Verificar que todos los vértices iniciales estén dentro del lane volume
 	var start_plane = volume["start_plane_vertices"]
 	var end_plane = volume["end_plane_vertices"]
 	
 	for i in range(front_corners.size()):
 		var corner = front_corners[i]
 		if not GeometryUtils.is_point_inside_lane_volume(corner, start_plane, end_plane):
-			print("             ✗✗✗ VÉRTICE [%d] FUERA DEL VOLUMEN ✗✗✗" % i)
-			print("             Posición: %s" % corner)
-			
 			# Determinar qué plano lateral está más cerca para reportar la colisión
 			var lateral_planes = _get_lane_volume_lateral_planes(volume)
 			var closest_plane_name = ""
@@ -617,16 +593,12 @@ func _validate_car_front_projection(original_start: Vector3, original_end: Vecto
 					min_distance = distance
 					closest_plane_name = plane_name
 			
-			print("             Plano más cercano: %s (distancia: %.3f)" % [closest_plane_name, min_distance])
-			
 			return {
 				"valid": false,
 				"collision_plane": closest_plane_name,
 				"collision_point": corner,
-				"collision_t": 0.0  # Colisión en posición inicial
+				"collision_t": 0.0
 			}
-	
-	print("           ✓ Todos los vértices iniciales dentro del volumen")
 	
 	# Los 4 edges de la cara frontal
 	var front_edges = [
@@ -636,28 +608,18 @@ func _validate_car_front_projection(original_start: Vector3, original_end: Vecto
 		[front_corners[3], front_corners[0]]   # left edge
 	]
 	
-	var edge_names = ["bottom", "right", "top", "left"]
-	
 	# Calcular los 4 planos laterales del lane volume
 	var lateral_planes = _get_lane_volume_lateral_planes(volume)
-	
-	print("           Planos laterales del lane volume:")
-	for plane_name in lateral_planes.keys():
-		var plane = lateral_planes[plane_name]
-		print("             %s: normal=%s point=%s" % [plane_name, plane[0], plane[1]])
 	
 	# Proyectar cada edge a lo largo del path completo
 	for edge_idx in range(front_edges.size()):
 		var edge = front_edges[edge_idx]
-		print("           Testeando edge %s..." % edge_names[edge_idx])
 		
 		# Proyectar ambos vértices del edge desde spawn_pos hasta original_end
 		for vert_idx in range(2):
 			var vertex_start = edge[vert_idx]
 			var offset_from_spawn = vertex_start - spawn_pos
 			var vertex_end = original_end + offset_from_spawn
-			
-			print("             Vértice %d: %s -> %s" % [vert_idx, vertex_start, vertex_end])
 			
 			# Probar intersección con cada plano lateral
 			for plane_name in lateral_planes.keys():
@@ -669,10 +631,7 @@ func _validate_car_front_projection(original_start: Vector3, original_end: Vecto
 					var segment_length = vertex_start.distance_to(vertex_end)
 					var t = vertex_start.distance_to(intersection) / segment_length if segment_length > 0 else 0.0
 					
-					print("               Intersección con plano %s en t=%.3f pos=%s" % [plane_name, t, intersection])
-					
 					if t >= 0.0 and t <= 1.0:
-						print("               ✗✗✗ COLISIÓN DETECTADA ✗✗✗")
 						return {
 							"valid": false,
 							"collision_plane": plane_name,
@@ -680,7 +639,6 @@ func _validate_car_front_projection(original_start: Vector3, original_end: Vecto
 							"collision_t": t
 						}
 	
-	print("           ✓ Sin colisiones detectadas")
 	return {"valid": true, "collision_plane": ""}
 
 # Calcula los 4 planos laterales que conectan start_plane con end_plane

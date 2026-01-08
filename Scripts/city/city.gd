@@ -34,7 +34,7 @@ extends Node3D
 @export var smoothing_steps: int = 50
 
 @export_group("Visualización General")
-@export var show_streets: bool = false
+@export var show_streets: bool = true
 @export var show_nodes: bool = false
 @export var node_radius: float = 0.08
 @export var normal_node_color: Color = Color.CHARTREUSE
@@ -42,8 +42,8 @@ extends Node3D
 @export var auto_generate: bool = true
 
 @export_group("Tipos de Calles")
-@export var num_large_streets: int = 6
-@export var num_small_streets: int = 10
+@export var num_large_streets: int = 1
+@export var num_small_streets: int = 1
 
 @export_subgroup("Calles Pequeñas (Tipo 0)")
 @export var small_street_color: Color = Color.DEEP_PINK
