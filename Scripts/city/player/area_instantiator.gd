@@ -404,12 +404,19 @@ func _try_spawn_car() -> void:
 	if suitable_segments.is_empty():
 		return
 	
+	# Crear instancia temporal del auto para obtener su geometría
+	var temp_car = FlyingCar.new()
+	temp_car.width = car_width
+	temp_car.height = car_height
+	temp_car.depth = car_depth
+	
 	# Intentar spawn con validación de proyección (máximo 5 intentos)
 	var max_tries = 5
 	var remaining_segments = suitable_segments.duplicate()
 	
 	for try_count in range(max_tries):
 		if remaining_segments.is_empty():
+			temp_car.free()
 			return
 		
 		# Seleccionar segmento aleatorio
@@ -417,8 +424,11 @@ func _try_spawn_car() -> void:
 		var spawn_data = remaining_segments[random_idx]
 		var lane_vol: LaneVolume = spawn_data["lane_volume"]
 		
-		# Construir cara frontal del auto
-		var front_face = _build_car_front_face(spawn_data, car_width, car_height)
+		# Usar el método del auto para construir su cara frontal
+		var front_face = temp_car.get_front_face_at_segment(
+			spawn_data["start"],
+			spawn_data["end"]
+		)
 		
 		# Validar proyección
 		var validation = lane_vol.validate_face_projection(
@@ -429,6 +439,7 @@ func _try_spawn_car() -> void:
 		
 		if validation["valid"]:
 			# ¡Spawn exitoso! Crear el auto
+			temp_car.free()
 			_spawn_car_at_segment(spawn_data, lane_vol, car_width, car_height, car_depth, car_speed, archetype)
 			return
 		else:
@@ -440,33 +451,7 @@ func _try_spawn_car() -> void:
 				lane_vol
 			)
 	
-	# No se pudo spawnear después de todos los intentos
-
-func _build_car_front_face(spawn_data: Dictionary, car_width: float, car_height: float) -> Array:
-	var start = spawn_data["start"]
-	var end = spawn_data["end"]
-	var direction = (end - start).normalized()
-	
-	# Calcular vectores perpendiculares
-	var up = Vector3.UP
-	if abs(direction.dot(up)) > 0.99:
-		up = Vector3.RIGHT
-	
-	var right = direction.cross(up).normalized()
-	var true_up = right.cross(direction).normalized()
-	
-	# Construir los 4 vértices de la cara frontal como offsets desde el origen
-	# CENTRADOS tanto horizontal como verticalmente
-	# [bottom-left, bottom-right, top-right, top-left]
-	var half_width = car_width * 0.5
-	var half_height = car_height * 0.5
-	
-	return [
-		-right * half_width - true_up * half_height,  # bottom-left
-		right * half_width - true_up * half_height,   # bottom-right
-		right * half_width + true_up * half_height,   # top-right
-		-right * half_width + true_up * half_height   # top-left
-	]
+	temp_car.free()
 
 func _filter_segments_away_from_plane(segments: Array, collision_plane: String, 
 									   lane_vol: LaneVolume) -> Array:

@@ -144,9 +144,9 @@ func _visualize_continuations(cell_x: int, cell_y: int, volume: Dictionary) -> v
 	var continuations = city.get_lane_volume_continuations(face_idx, edge_idx)
 	
 	for cont_vol in continuations:
-		var result = _get_continuation_path(cont_vol, cell_x, cell_y)
+		var result = _get_validated_continuation_path(cont_vol, cell_x, cell_y)
 		
-		if result.has("start") and result.has("end"):
+		if result != null and result.has("start") and result.has("end"):
 			var color = continuation_exact_color if result["is_exact"] else continuation_approx_color
 			
 			var points = [
@@ -162,6 +162,96 @@ func _visualize_continuations(cell_x: int, cell_y: int, volume: Dictionary) -> v
 			)
 			world_node.add_child(debug_mesh)
 			continuation_debug_meshes.append(debug_mesh)
+
+func _get_validated_continuation_path(lane_vol: LaneVolume, target_cell_x: int, target_cell_y: int) -> Variant:
+	var cont_width_cells = lane_vol.width_cells
+	var cont_height_cells = lane_vol.height_cells
+	
+	# Verificar si las celdas están dentro del rango
+	var x_in_range = (target_cell_x >= 0 and target_cell_x <= cont_width_cells)
+	var y_in_range = (target_cell_y >= 0 and target_cell_y <= cont_height_cells)
+	
+	var current_cell_x = target_cell_x
+	var current_cell_y = target_cell_y
+	var is_exact = true
+	
+	# Si están fuera de rango, clampear
+	if not x_in_range or not y_in_range:
+		current_cell_x = clampi(target_cell_x, 0, cont_width_cells)
+		current_cell_y = clampi(target_cell_y, 0, cont_height_cells)
+		is_exact = false
+	
+	# Intentar validar la posición hasta 5 veces
+	var max_tries = 5
+	for attempt in range(max_tries):
+		# Convertir celdas a coordenadas normalizadas
+		var u = float(current_cell_x) / float(cont_width_cells) if cont_width_cells > 0 else 0.0
+		var v = float(current_cell_y) / float(cont_height_cells) if cont_height_cells > 0 else 0.0
+		
+		# Obtener el segmento de path
+		var path_segment = lane_vol.get_path_segment_at_grid(u, v)
+		
+		# Construir cara frontal del auto en este segmento
+		var front_face = get_front_face_at_segment(path_segment["start"], path_segment["end"])
+		
+		# Validar proyección
+		var validation = lane_vol.validate_face_projection(front_face, u, v)
+		
+		if validation["valid"]:
+			# Posición válida encontrada
+			return {
+				"start": path_segment["start"],
+				"end": path_segment["end"],
+				"is_exact": is_exact and (attempt == 0),
+				"used_cell_x": current_cell_x,
+				"used_cell_y": current_cell_y,
+				"attempts": attempt + 1
+			}
+		
+		# Colisión detectada, alejarse del plano problemático
+		var collision_plane = validation["collision_plane"]
+		var moved = _move_away_from_plane(
+			collision_plane, 
+			current_cell_x, 
+			current_cell_y, 
+			cont_width_cells, 
+			cont_height_cells
+		)
+		
+		if moved.has("cell_x") and moved.has("cell_y"):
+			current_cell_x = moved["cell_x"]
+			current_cell_y = moved["cell_y"]
+			is_exact = false  # Ya no es exacta porque nos movimos
+		else:
+			# No se puede mover más, abandonar
+			break
+	
+	# No se encontró posición válida después de todos los intentos
+	return null
+	
+func _move_away_from_plane(plane_name: String, current_x: int, current_y: int, 
+						   max_width: int, max_height: int) -> Dictionary:
+	var new_x = current_x
+	var new_y = current_y
+	
+	match plane_name:
+		"bottom":
+			new_y = current_y + 1  # Subir
+		"top":
+			new_y = current_y - 1  # Bajar
+		"left":
+			new_x = current_x + 1  # Ir a la derecha
+		"right":
+			new_x = current_x - 1  # Ir a la izquierda
+	
+	# Verificar que la nueva posición esté dentro de los límites
+	if new_x < 0 or new_x > max_width or new_y < 0 or new_y > max_height:
+		return {}  # No se puede mover, fuera de límites
+	
+	return {
+		"cell_x": new_x,
+		"cell_y": new_y
+	}
 
 func _get_continuation_path(lane_vol: LaneVolume, target_cell_x: int, target_cell_y: int) -> Dictionary:
 	# Obtener dimensiones del volumen de continuación
@@ -202,3 +292,46 @@ func _check_path_complete() -> void:
 		var curve_length = path_3d.curve.get_baked_length()
 		if path_follow.progress >= curve_length:
 			queue_free()
+
+func build_front_face() -> Array:
+	"""Construye los 4 vértices de la cara frontal del auto como offsets desde el origen."""
+	var direction = -global_transform.basis.z.normalized()
+	
+	var up = Vector3.UP
+	if abs(direction.dot(up)) > 0.99:
+		up = Vector3.RIGHT
+	
+	var right = direction.cross(up).normalized()
+	var true_up = right.cross(direction).normalized()
+	
+	var half_width = width * 0.5
+	var half_height = height * 0.5
+	
+	# [bottom-left, bottom-right, top-right, top-left]
+	return [
+		-right * half_width - true_up * half_height,
+		right * half_width - true_up * half_height,
+		right * half_width + true_up * half_height,
+		-right * half_width + true_up * half_height
+	]
+
+func get_front_face_at_segment(start: Vector3, end: Vector3) -> Array:
+	"""Construye cara frontal en un segmento específico sin depender del transform global."""
+	var direction = (end - start).normalized()
+	
+	var up = Vector3.UP
+	if abs(direction.dot(up)) > 0.99:
+		up = Vector3.RIGHT
+	
+	var right = direction.cross(up).normalized()
+	var true_up = right.cross(direction).normalized()
+	
+	var half_width = width * 0.5
+	var half_height = height * 0.5
+	
+	return [
+		-right * half_width - true_up * half_height,
+		right * half_width - true_up * half_height,
+		right * half_width + true_up * half_height,
+		-right * half_width + true_up * half_height
+	]
