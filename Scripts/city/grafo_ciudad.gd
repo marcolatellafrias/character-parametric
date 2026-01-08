@@ -812,22 +812,14 @@ func get_blocks_in_circular_area(center, radius: float, segments: int = 32) -> A
 # center: Vector3 (centro del cilindro en el espacio global - centro del volumen, no de la base)
 # radius: Radio del cilindro
 # height: Altura del cilindro
-# Retorna: Array[Dictionary] donde cada Dictionary contiene:
-#   - face_idx: int
-#   - edge_idx: int
-#   - start_plane_vertices: Array[Vector3] (4 vértices)
-#   - end_plane_vertices: Array[Vector3] (4 vértices)
-#   - height: float
-#   - street_type: int (0=SMALL, 1=MEDIUM, 2=LARGE)
-#   - width_cells: int (celdas de ancho de este lane)
-#   - height_cells: int (celdas de altura total)
-func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height: float) -> Array[Dictionary]:
+# Retorna: Array[LaneVolume]
+func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height: float) -> Array[LaneVolume]:
 	# Calcular el rango Y del cilindro
 	# El centro está en el medio del cilindro, no en la base
 	var cylinder_y_min = center.y - height / 2.0
 	var cylinder_y_max = center.y + height / 2.0
 	
-	var intersecting_volumes: Array[Dictionary] = []
+	var intersecting_volumes: Array[LaneVolume] = []
 	
 	# Primero obtener los bloques en el área circular (proyección 2D)
 	var blocks_in_area = get_blocks_in_circular_area(center, radius)
@@ -894,29 +886,23 @@ func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height
 				var street_type = volume_data.get("street_type", 0)
 				
 				# Calcular ancho en celdas
-				# Cada lane es media calle, así que usamos STREET_HALF_WIDTH_CELLS directamente
 				var width_cells = BlockGenerator.STREET_HALF_WIDTH_CELLS.get(street_type, 3)
 				
 				# Calcular altura en celdas
-				# La altura del volumen se calcula como: floors * cells_per_floor * block_cell_height
-				# Entonces: floors = altura / (cells_per_floor * block_cell_height)
-				# Y height_cells = floors * cells_per_floor
 				var height_cells = 0
 				if block_cell_height > 0 and cells_per_floor > 0:
 					var floor_height = cells_per_floor * block_cell_height
 					var num_floors = ceil(volume_height / floor_height)
 					height_cells = int(num_floors * cells_per_floor)
 				
-				intersecting_volumes.append({
-					"face_idx": face_idx,
-					"edge_idx": edge_idx,
-					"start_plane_vertices": start_plane_verts,
-					"end_plane_vertices": end_plane_verts,
-					"height": volume_height,
-					"street_type": street_type,
-					"width_cells": width_cells,
-					"height_cells": height_cells
-				})
+				# Enriquecer volume_data con información adicional antes de crear LaneVolume
+				var enriched_data = volume_data.duplicate()
+				enriched_data["face_idx"] = face_idx
+				enriched_data["edge_idx"] = edge_idx
+				enriched_data["width_cells"] = width_cells
+				enriched_data["height_cells"] = height_cells
+				
+				intersecting_volumes.append(LaneVolume.new(enriched_data))
 	
 	return intersecting_volumes
 
@@ -1054,10 +1040,10 @@ func get_block_corner_with_offset(node_idx: int, edge: Array, face_idx: int) -> 
 # Obtiene todos los lane volumes que continúan desde el lane volume dado
 # face_idx: ID de la manzana (face) del lane volume origen
 # edge_idx: ID del edge (0-3) dentro de esa face
-# Retorna: Array[Dictionary] en el mismo formato que get_lane_volumes_in_cylindrical_area
+# Retorna: Array[LaneVolume]
 # NOTA: Excluye lane volumes que compartan el mismo edge (no son continuaciones)
-func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[Dictionary]:
-	var continuations: Array[Dictionary] = []
+func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVolume]:
+	var continuations: Array[LaneVolume] = []
 	
 	# Validar que existe el block
 	var block: BlockGenerator = block_grids.get(face_idx, null)
@@ -1129,15 +1115,13 @@ func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[Dictio
 						var num_floors = ceil(volume_height / floor_height)
 						height_cells = int(num_floors * cells_per_floor)
 					
-					continuations.append({
-						"face_idx": other_face_idx,
-						"edge_idx": other_edge_idx,
-						"start_plane_vertices": volume_data["start_plane_vertices"],
-						"end_plane_vertices": volume_data["end_plane_vertices"],
-						"height": volume_height,
-						"street_type": street_type,
-						"width_cells": width_cells,
-						"height_cells": height_cells
-					})
+					# Enriquecer volume_data con información adicional antes de crear LaneVolume
+					var enriched_data = volume_data.duplicate()
+					enriched_data["face_idx"] = other_face_idx
+					enriched_data["edge_idx"] = other_edge_idx
+					enriched_data["width_cells"] = width_cells
+					enriched_data["height_cells"] = height_cells
+					
+					continuations.append(LaneVolume.new(enriched_data))
 	
 	return continuations

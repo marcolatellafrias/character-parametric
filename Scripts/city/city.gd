@@ -898,6 +898,7 @@ func _visualize_circular_area_selection() -> void:
 	
 	print("[Visualizer] Área circular: %d bloques seleccionados (centro: %s, radio: %.2f)" % [selected_blocks.size(), circular_area_center, circular_area_radius])
 
+# Actualizar la visualización de área cilíndrica
 func _visualize_cylindrical_area_selection() -> void:
 	# Obtener los lane volumes en el área cilíndrica
 	var selected_volumes = generator.get_lane_volumes_in_cylindrical_area(
@@ -918,14 +919,11 @@ func _visualize_cylindrical_area_selection() -> void:
 	
 	# Highlight de los volumes seleccionados
 	if highlight_selected_volumes:
-		for volume_data in selected_volumes:
-			var start_verts = volume_data["start_plane_vertices"]
-			var end_verts = volume_data["end_plane_vertices"]
-			
+		for lane_vol in selected_volumes:
 			# Crear skewed cube con color de highlight
 			var volume_mesh = DebugUtil.create_skewed_cube_from_planes(
-				start_verts,
-				end_verts,
+				lane_vol.start_plane_vertices,
+				lane_vol.end_plane_vertices,
 				selected_volumes_color,
 				0.5
 			)
@@ -967,7 +965,7 @@ func get_generator() -> GraphCityGenerator:
 
 # Helper para obtener lane volumes en área cilíndrica
 # Permite a otras entidades acceder sin tener que ir a .generator
-func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height: float) -> Array[Dictionary]:
+func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height: float) -> Array[LaneVolume]:
 	if generator == null:
 		push_error("CityVisualizer: generator no inicializado")
 		return []
@@ -991,7 +989,7 @@ func get_block_grid(face_idx: int) -> BlockGenerator:
 	return generator.get_block_grid(face_idx)
 
 # Helper para obtener continuaciones de un lane volume
-func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[Dictionary]:
+func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVolume]:
 	if generator == null:
 		push_error("CityVisualizer: generator no inicializado")
 		return []
