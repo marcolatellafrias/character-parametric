@@ -1198,7 +1198,7 @@ static func create_debug_path3d(
 	return mesh_instance
 
 # En DebugUtil - versión actualizada
-static func create_debug_sphere_print(grid_coords: Vector2i, color: Color, size: float = 0.1, on_top: bool = false, radial_segments: int = 8, rings: int = 8) -> Node3D:
+static func create_debug_sphere_print(grid_coords: Vector2i, color: Color, size: float = 0.1, on_top: bool = false, radial_segments: int = 4, rings: int = 4) -> Node3D:
 	var container := Node3D.new()
 	
 	# Crear la esfera

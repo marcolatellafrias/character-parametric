@@ -21,13 +21,10 @@ class_name AreaInstantiator
 @export var show_continuations: bool = true
 @export var continuation_color: Color = Color(0.0, 1.0, 1.0)
 @export var continuation_transparency: float = 0.2
-@export var show_grid_points: bool = false
+@export var show_grid_points: bool = true
 @export var grid_point_color: Color = Color(1.0, 1.0, 0.0)
 @export var grid_point_size: float = 0.05
 @export_range(1, 10) var granularity: int = 1
-@export var show_flow_arrows: bool = false
-@export var flow_arrow_color: Color = Color(0.0, 0.5, 1.0)
-@export var flow_arrow_width: float = 0.02
 
 @export_group("Car Spawning")
 @export var enable_car_spawning: bool = true
@@ -49,7 +46,6 @@ var destruction_area: Area3D
 
 # MultiMesh para visualización eficiente
 var grid_multimesh: MultiMeshInstance3D
-var arrows_multimesh: MultiMeshInstance3D
 
 # Cache de volúmenes (Dictionary para búsqueda O(1))
 var cached_lane_volumes_dict: Dictionary = {} # key: volume_id, value: LaneVolume
@@ -64,7 +60,6 @@ var spawn_segments_dirty: bool = true
 
 # Meshes base para MultiMesh (reutilizables)
 var sphere_mesh: SphereMesh
-var arrow_mesh: BoxMesh
 
 func _ready() -> void:
 	city = get_tree().get_first_node_in_group("city_generator")
@@ -100,24 +95,12 @@ func _setup_visualization_containers() -> void:
 	grid_multimesh.multimesh.transform_format = MultiMesh.TRANSFORM_3D
 	grid_multimesh.multimesh.mesh = sphere_mesh
 	world.add_child(grid_multimesh)
-	
-	# MultiMesh para flechas de flujo
-	arrow_mesh = BoxMesh.new()
-	
-	arrows_multimesh = MultiMeshInstance3D.new()
-	arrows_multimesh.name = "FlowArrowsMultiMesh_" + str(get_instance_id())
-	arrows_multimesh.multimesh = MultiMesh.new()
-	arrows_multimesh.multimesh.transform_format = MultiMesh.TRANSFORM_3D
-	arrows_multimesh.multimesh.mesh = arrow_mesh
-	world.add_child(arrows_multimesh)
 
 func _cleanup_containers() -> void:
 	if lane_volumes_container and is_instance_valid(lane_volumes_container):
 		lane_volumes_container.queue_free()
 	if grid_multimesh and is_instance_valid(grid_multimesh):
 		grid_multimesh.queue_free()
-	if arrows_multimesh and is_instance_valid(arrows_multimesh):
-		arrows_multimesh.queue_free()
 	if destruction_area and is_instance_valid(destruction_area):
 		destruction_area.queue_free()
 
@@ -178,16 +161,11 @@ func _process(delta: float) -> void:
 				if show_lane_volumes:
 					_update_lane_volumes_incremental()
 	
-	# Actualizar visualización de grilla y flechas (solo si es necesario)
+	# Actualizar visualización de grilla (solo si es necesario)
 	if show_grid_points and grid_multimesh.visible != show_grid_points:
 		grid_multimesh.visible = show_grid_points
 		if show_grid_points:
 			_rebuild_grid_points()
-	
-	if show_flow_arrows and arrows_multimesh.visible != show_flow_arrows:
-		arrows_multimesh.visible = show_flow_arrows
-		if show_flow_arrows:
-			_rebuild_flow_arrows()
 	
 	# Calcular segmentos de spawn (independiente de visualización)
 	if spawn_segments_dirty:
@@ -197,8 +175,6 @@ func _process(delta: float) -> void:
 		# Aprovechar para actualizar visualizaciones si están activas
 		if show_grid_points:
 			_rebuild_grid_points()
-		if show_flow_arrows:
-			_rebuild_flow_arrows()
 	
 	# Sistema de spawn
 	if enable_car_spawning:
@@ -396,52 +372,6 @@ func _rebuild_grid_points() -> void:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	grid_multimesh.material_override = material
 
-func _rebuild_flow_arrows() -> void:
-	if not arrows_multimesh or not arrows_multimesh.multimesh:
-		return
-	
-	var transforms: Array[Transform3D] = []
-	
-	# Usar los segmentos ya calculados
-	for seg_data in valid_spawn_segments:
-		var start = seg_data["start"]
-		var end = seg_data["end"]
-		
-		var arrow_transform = _create_arrow_transform(start, end)
-		transforms.append(arrow_transform)
-	
-	# Actualizar MultiMesh
-	arrows_multimesh.multimesh.instance_count = transforms.size()
-	for i in range(transforms.size()):
-		arrows_multimesh.multimesh.set_instance_transform(i, transforms[i])
-	
-	# Aplicar material con color
-	var material = StandardMaterial3D.new()
-	material.albedo_color = flow_arrow_color
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	arrows_multimesh.material_override = material
-
-func _create_arrow_transform(start: Vector3, end: Vector3) -> Transform3D:
-	var direction = (end - start).normalized()
-	var length = start.distance_to(end)
-	var center = (start + end) * 0.5
-	
-	var transform = Transform3D()
-	transform.origin = center
-	
-	# Orientar hacia la dirección del flujo
-	var up = Vector3.UP
-	if abs(direction.dot(up)) > 0.99:
-		up = Vector3.RIGHT
-	
-	var right = direction.cross(up).normalized()
-	up = right.cross(direction).normalized()
-	
-	transform.basis = Basis(right, up, direction)
-	transform = transform.scaled(Vector3(flow_arrow_width, flow_arrow_width, length))
-	
-	return transform
-
 # ============================================================================
 # SISTEMA DE SPAWN DE AUTOS
 # ============================================================================
@@ -474,10 +404,103 @@ func _try_spawn_car() -> void:
 	if suitable_segments.is_empty():
 		return
 	
-	# Seleccionar segmento aleatorio
-	var spawn_data = suitable_segments[randi() % suitable_segments.size()]
-	var lane_vol: LaneVolume = spawn_data["lane_volume"]
+	# Intentar spawn con validación de proyección (máximo 5 intentos)
+	var max_tries = 5
+	var remaining_segments = suitable_segments.duplicate()
 	
+	for try_count in range(max_tries):
+		if remaining_segments.is_empty():
+			return
+		
+		# Seleccionar segmento aleatorio
+		var random_idx = randi() % remaining_segments.size()
+		var spawn_data = remaining_segments[random_idx]
+		var lane_vol: LaneVolume = spawn_data["lane_volume"]
+		
+		# Construir cara frontal del auto
+		var front_face = _build_car_front_face(spawn_data, car_width, car_height)
+		
+		# Validar proyección
+		var validation = lane_vol.validate_face_projection(
+			front_face,
+			spawn_data["grid_u"],
+			spawn_data["grid_v"]
+		)
+		
+		if validation["valid"]:
+			# ¡Spawn exitoso! Crear el auto
+			_spawn_car_at_segment(spawn_data, lane_vol, car_width, car_height, car_depth, car_speed, archetype)
+			return
+		else:
+			# Colisión detectada, buscar segmento más alejado del plano problemático
+			var collision_plane = validation["collision_plane"]
+			remaining_segments = _filter_segments_away_from_plane(
+				remaining_segments,
+				collision_plane,
+				lane_vol
+			)
+	
+	# No se pudo spawnear después de todos los intentos
+
+func _build_car_front_face(spawn_data: Dictionary, car_width: float, car_height: float) -> Array:
+	var start = spawn_data["start"]
+	var end = spawn_data["end"]
+	var direction = (end - start).normalized()
+	
+	# Calcular vectores perpendiculares
+	var up = Vector3.UP
+	if abs(direction.dot(up)) > 0.99:
+		up = Vector3.RIGHT
+	
+	var right = direction.cross(up).normalized()
+	var true_up = right.cross(direction).normalized()
+	
+	# Construir los 4 vértices de la cara frontal como offsets desde el origen
+	# CENTRADOS tanto horizontal como verticalmente
+	# [bottom-left, bottom-right, top-right, top-left]
+	var half_width = car_width * 0.5
+	var half_height = car_height * 0.5
+	
+	return [
+		-right * half_width - true_up * half_height,  # bottom-left
+		right * half_width - true_up * half_height,   # bottom-right
+		right * half_width + true_up * half_height,   # top-right
+		-right * half_width + true_up * half_height   # top-left
+	]
+
+func _filter_segments_away_from_plane(segments: Array, collision_plane: String, 
+									   lane_vol: LaneVolume) -> Array:
+	var lateral_planes = lane_vol.get_lateral_planes()
+	if not lateral_planes.has(collision_plane):
+		return segments
+	
+	var problem_plane = lateral_planes[collision_plane]
+	var plane_normal = problem_plane[0]
+	var plane_point = problem_plane[1]
+	
+	# Calcular distancia de cada segmento al plano problemático
+	var segments_with_distance = []
+	for seg in segments:
+		var seg_center = (seg["start"] + seg["end"]) * 0.5
+		var distance = abs(plane_normal.dot(seg_center - plane_point))
+		segments_with_distance.append({
+			"segment": seg,
+			"distance": distance
+		})
+	
+	# Ordenar por distancia descendente (más alejados primero)
+	segments_with_distance.sort_custom(func(a, b): return a["distance"] > b["distance"])
+	
+	# Extraer solo los segmentos ordenados
+	var filtered = []
+	for item in segments_with_distance:
+		filtered.append(item["segment"])
+	
+	return filtered
+
+func _spawn_car_at_segment(spawn_data: Dictionary, lane_vol: LaneVolume, 
+							car_width: float, car_height: float, car_depth: float, 
+							car_speed: float, archetype) -> void:
 	# Calcular progreso inicial
 	var full_path_segment = lane_vol.get_path_segment_at_grid(
 		spawn_data["grid_u"], 

@@ -203,3 +203,53 @@ func create_flow_arrows(width_steps: int, height_steps: int, container: Node3D,
 				})
 	
 	return valid_segments
+	
+# Valida si una cara frontal proyectada a través del path cruza algún plano lateral
+# face_vertices: Array de 4 Vector3 en orden [bottom-left, bottom-right, top-right, top-left]
+#                Offsets relativos CENTRADOS respecto al punto del path (tanto horizontal como verticalmente)
+# grid_u: coordenada horizontal (0.0 a 1.0)  
+# grid_v: coordenada vertical (0.0 a 1.0)
+# Retorna: {"valid": bool, "collision_plane": String}
+func validate_face_projection(face_vertices: Array, grid_u: float, grid_v: float) -> Dictionary:
+	var path_start = get_point_at_grid(grid_u, grid_v, true)
+	var path_end = get_point_at_grid(grid_u, grid_v, false)
+	
+	var lateral_planes = get_lateral_planes()
+	
+	# Para cada plano lateral, verificar si la cara lo atraviesa
+	for plane_name in lateral_planes.keys():
+		var plane = lateral_planes[plane_name]
+		var plane_normal = plane[0]
+		var plane_point = plane[1]
+		
+		# Evaluar todos los vértices de la cara en start y end
+		var has_positive_start = false
+		var has_negative_start = false
+		var has_positive_end = false
+		var has_negative_end = false
+		
+		for vertex_offset in face_vertices:
+			# Vértice en posición de inicio (offset centrado + punto del path)
+			var vertex_at_start = path_start + vertex_offset
+			var dist_start = plane_normal.dot(vertex_at_start - plane_point)
+			if dist_start > 0.001:
+				has_positive_start = true
+			elif dist_start < -0.001:
+				has_negative_start = true
+			
+			# Vértice en posición final (offset centrado + punto del path)
+			var vertex_at_end = path_end + vertex_offset
+			var dist_end = plane_normal.dot(vertex_at_end - plane_point)
+			if dist_end > 0.001:
+				has_positive_end = true
+			elif dist_end < -0.001:
+				has_negative_end = true
+		
+		# Si hay vértices en ambos lados del plano (en start o en end), la cara atraviesa el plano
+		if (has_positive_start and has_negative_start) or (has_positive_end and has_negative_end):
+			return {
+				"valid": false,
+				"collision_plane": plane_name
+			}
+	
+	return {"valid": true, "collision_plane": ""}
