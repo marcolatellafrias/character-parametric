@@ -5,29 +5,29 @@ class_name AreaInstantiator
 # AREA INSTANTIATOR - OPTIMIZADO
 # ============================================================================
 
-@export var outer_radius: float = 4.0
-@export var inner_radius: float = 2.5
-@export var height: float = 2.5
+@export var outer_radius: float = 150.0
+@export var inner_radius: float = 100.5
+@export var height: float = 80.5
 @export var segments: int = 32
 @export var debug_volume_ring_color: Color = Color(0.0, 1.0, 0.0, 0.3)
-@export var show_debug_volume_ring: bool = true
+@export var show_debug_volume_ring: bool = false
 
 @export var world: Node3D
 
 @export_group("Lane Volume Visualization")
-@export var show_lane_volumes: bool = true
+@export var show_lane_volumes: bool = false
 @export var lane_volume_color: Color = Color(1.0, 0.5, 0.0)
 @export var lane_volume_transparency: float = 0.3
-@export var show_continuations: bool = true
+@export var show_continuations: bool = false
 @export var continuation_color: Color = Color(0.0, 1.0, 1.0)
 @export var continuation_transparency: float = 0.2
-@export var show_grid_points: bool = true
+@export var show_grid_points: bool = false
 @export var grid_point_color: Color = Color(1.0, 1.0, 0.0)
 @export var grid_point_size: float = 0.05
 @export_range(1, 10) var granularity: int = 1
 
 @export_group("Car Spawning")
-@export var enable_car_spawning: bool = true
+@export var enable_car_spawning: bool = false
 @export var spawn_interval: float = 0.1
 @export_subgroup("Spawn Weights")
 @export_range(0.0, 1.0) var car_weight: float = 0.7
@@ -35,7 +35,7 @@ class_name AreaInstantiator
 @export_range(0.0, 1.0) var motorcycle_weight: float = 0.2
 
 @export_group("Performance")
-@export var update_interval: float = 0.05
+@export var update_interval: float = 0.5
 @export var position_threshold: float = 0.5
 @export var rotation_threshold: float = 0.5
 
@@ -380,19 +380,24 @@ func _try_spawn_car() -> void:
 	if valid_spawn_segments.is_empty() or not world:
 		return
 	
-	# Seleccionar tipo de auto
+	# Generar seed única para este auto
+	var car_seed = randi()
+	
+	# Crear auto temporal con la seed para obtener dimensiones
+	var temp_car = FlyingCar.new()
 	var custom_weights = {
 		CarArchetypes.Type.CAR: car_weight,
 		CarArchetypes.Type.TRUCK: truck_weight,
 		CarArchetypes.Type.MOTORCYCLE: motorcycle_weight
 	}
-	var archetype = CarArchetypes.get_weighted_random_archetype(custom_weights)
-	var dims = archetype.get_random_dimensions()
+	temp_car.initialize_from_seed(car_seed, custom_weights)
 	
-	var car_width = dims["width"]
-	var car_height = dims["height"]
-	var car_depth = dims["depth"]
-	var car_speed = dims["speed"]
+	var car_width = temp_car.width
+	var car_height = temp_car.height
+	var car_depth = temp_car.depth
+	var car_speed = temp_car.speed
+	var car_color = temp_car.car_color
+	var car_archetype = temp_car.car_archetype
 	
 	# Filtrar segmentos donde quepa el auto
 	var suitable_segments = []
@@ -402,13 +407,8 @@ func _try_spawn_car() -> void:
 			suitable_segments.append(seg_data)
 	
 	if suitable_segments.is_empty():
+		temp_car.free()
 		return
-	
-	# Crear instancia temporal del auto para obtener su geometría
-	var temp_car = FlyingCar.new()
-	temp_car.width = car_width
-	temp_car.height = car_height
-	temp_car.depth = car_depth
 	
 	# Intentar spawn con validación de proyección (máximo 5 intentos)
 	var max_tries = 5
@@ -440,7 +440,8 @@ func _try_spawn_car() -> void:
 		if validation["valid"]:
 			# ¡Spawn exitoso! Crear el auto
 			temp_car.free()
-			_spawn_car_at_segment(spawn_data, lane_vol, car_width, car_height, car_depth, car_speed, archetype)
+			_spawn_car_at_segment(spawn_data, lane_vol, car_seed, car_width, car_height, 
+								  car_depth, car_speed, car_color, car_archetype, custom_weights)
 			return
 		else:
 			# Colisión detectada, buscar segmento más alejado del plano problemático
@@ -483,9 +484,10 @@ func _filter_segments_away_from_plane(segments: Array, collision_plane: String,
 	
 	return filtered
 
-func _spawn_car_at_segment(spawn_data: Dictionary, lane_vol: LaneVolume, 
+func _spawn_car_at_segment(spawn_data: Dictionary, lane_vol: LaneVolume, car_seed: int,
 							car_width: float, car_height: float, car_depth: float, 
-							car_speed: float, archetype) -> void:
+							car_speed: float, car_color: Color, car_archetype: FlyingCar.Type,
+							custom_weights: Dictionary) -> void:
 	# Calcular progreso inicial
 	var full_path_segment = lane_vol.get_path_segment_at_grid(
 		spawn_data["grid_u"], 
@@ -495,15 +497,14 @@ func _spawn_car_at_segment(spawn_data: Dictionary, lane_vol: LaneVolume,
 	var distance_to_spawn = full_path_segment["start"].distance_to(spawn_data["start"])
 	var initial_progress = distance_to_spawn / full_path_length if full_path_length > 0 else 0.0
 	
-	# Crear auto
+	# Crear auto con la seed
 	var car = FlyingCar.new()
-	car.width = car_width
-	car.height = car_height
-	car.depth = car_depth
-	car.speed = car_speed
-	car.car_color = archetype.get_random_color()
 	car.world_node = world
 	car.city = city
+	car.spawn_time = Time.get_ticks_msec() / 1000.0  # Tiempo en segundos
+	
+	# Inicializar con la seed
+	car.initialize_from_seed(car_seed, custom_weights)
 	
 	world.add_child(car)
 	car.set_path(

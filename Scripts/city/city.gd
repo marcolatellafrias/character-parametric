@@ -4,7 +4,7 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(700/2, 700/2)
+@export var region_size: Vector2 = Vector2(700, 700)
 @export var min_distance: float = 150.5
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
@@ -34,7 +34,7 @@ extends Node3D
 @export var smoothing_steps: int = 50
 
 @export_group("Visualización General")
-@export var show_streets: bool = true
+@export var show_streets: bool = false
 @export var show_nodes: bool = false
 @export var node_radius: float = 0.08
 @export var normal_node_color: Color = Color.CHARTREUSE

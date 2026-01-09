@@ -1,8 +1,8 @@
 extends Object
 class_name CarArchetypes
 
-static var speed_debug_factor: float = 2.0
-static var size_debug_factor: float = 1.0
+static var speed_debug_factor: float = 1.0
+static var size_debug_factor: float = 10.0
 
 enum Type {
 	CAR,
@@ -66,7 +66,7 @@ static func _static_init() -> void:
 		0.15 * size_debug_factor, 0.2 * size_debug_factor,    # width
 		0.08 * size_debug_factor, 0.12 * size_debug_factor,   # height
 		0.3 * size_debug_factor, 0.45 * size_debug_factor,    # depth
-		8.0 * speed_debug_factor, 15.0 * speed_debug_factor,    # speed
+		12.0 * speed_debug_factor, 15.0 * speed_debug_factor,    # speed
 		[
 			Color(0.8, 0.1, 0.1),  # Rojo
 			Color(0.1, 0.1, 0.8),  # Azul
@@ -79,10 +79,10 @@ static func _static_init() -> void:
 	
 	archetypes[Type.TRUCK] = Archetype.new(
 		"Truck",
-		0.2*12 * size_debug_factor, 0.3 *12* size_debug_factor,     # width
-		0.15 *4* size_debug_factor, 0.25 *4* size_debug_factor,   # height
-		0.5 * size_debug_factor, 0.8 * size_debug_factor,     # depth
-		5.0 * speed_debug_factor, 10.0 * speed_debug_factor,    # speed
+		0.5 * size_debug_factor, 0.7 * size_debug_factor,     # width
+		0.35 * size_debug_factor, 0.5 * size_debug_factor,   # height
+		0.9 * size_debug_factor, 1.4 * size_debug_factor,     # depth
+		4.0 * speed_debug_factor, 5.0 * speed_debug_factor,    # speed
 		[
 			Color(0.3, 0.3, 0.3),  # Gris oscuro
 			Color(0.5, 0.2, 0.1),  # Café
@@ -93,10 +93,10 @@ static func _static_init() -> void:
 	
 	archetypes[Type.MOTORCYCLE] = Archetype.new(
 		"Motorcycle",
-		0.08 * size_debug_factor, 0.12 * size_debug_factor,   # width
-		0.06 * size_debug_factor, 0.1 * size_debug_factor,    # height
+		0.04 * size_debug_factor, 0.06 * size_debug_factor,   # width
+		0.03 * size_debug_factor, 0.04 * size_debug_factor,    # height
 		0.15 * size_debug_factor, 0.25 * size_debug_factor,   # depth
-		12.0 * speed_debug_factor, 20.0 * speed_debug_factor,   # speed
+		20.0 * speed_debug_factor, 26.0 * speed_debug_factor,   # speed
 		[
 			Color(0.9, 0.1, 0.1),  # Rojo brillante
 			Color(0.1, 0.9, 0.1),  # Verde brillante
