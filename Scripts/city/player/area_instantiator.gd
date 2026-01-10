@@ -27,8 +27,8 @@ class_name AreaInstantiator
 @export_range(1, 10) var granularity: int = 1
 
 @export_group("Car Spawning")
-@export var enable_car_spawning: bool = false
-@export var spawn_interval: float = 0.1
+@export var enable_car_spawning: bool = true
+@export var spawn_interval: float = 0.05
 @export_subgroup("Spawn Weights")
 @export_range(0.0, 1.0) var car_weight: float = 0.7
 @export_range(0.0, 1.0) var truck_weight: float = 0.1
@@ -54,9 +54,9 @@ var cached_rotation: Vector3 = Vector3.ZERO
 var update_timer: float = 0.0
 var spawn_timer: float = 0.0
 
-# Segmentos válidos para spawn (SEPARADO de visualización)
-var valid_spawn_segments: Array = []
-var spawn_segments_dirty: bool = true
+# Puntos de spawn (solo intersecciones con radio interno)
+var spawn_points: Array = []  # Array de {position: Vector3, direction: Vector3, lane_volume: LaneVolume, grid_u: float, grid_v: float}
+var spawn_points_dirty: bool = true
 
 # Meshes base para MultiMesh (reutilizables)
 var sphere_mesh: SphereMesh
@@ -155,7 +155,7 @@ func _process(delta: float) -> void:
 			# Actualizar si cambiaron los volúmenes
 			if _volumes_changed(lane_volumes):
 				_update_cached_volumes(lane_volumes)
-				spawn_segments_dirty = true
+				spawn_points_dirty = true
 				
 				# Actualizar visualización incremental
 				if show_lane_volumes:
@@ -167,10 +167,10 @@ func _process(delta: float) -> void:
 		if show_grid_points:
 			_rebuild_grid_points()
 	
-	# Calcular segmentos de spawn (independiente de visualización)
-	if spawn_segments_dirty:
-		_calculate_spawn_segments()
-		spawn_segments_dirty = false
+	# Calcular puntos de spawn (independiente de visualización)
+	if spawn_points_dirty:
+		_calculate_spawn_points()
+		spawn_points_dirty = false
 		
 		# Aprovechar para actualizar visualizaciones si están activas
 		if show_grid_points:
@@ -220,11 +220,11 @@ func _update_cached_volumes(new_volumes: Array[LaneVolume]) -> void:
 	cached_lane_volumes_dict = new_dict
 
 # ============================================================================
-# CÁLCULO DE SEGMENTOS DE SPAWN (SEPARADO DE VISUALIZACIÓN)
+# CÁLCULO DE PUNTOS DE SPAWN (OPTIMIZADO)
 # ============================================================================
 
-func _calculate_spawn_segments() -> void:
-	valid_spawn_segments.clear()
+func _calculate_spawn_points() -> void:
+	spawn_points.clear()
 	
 	var effective_width = granularity
 	var effective_height = granularity
@@ -240,26 +240,92 @@ func _calculate_spawn_segments() -> void:
 				
 				var path_segment = vol.get_path_segment_at_grid(u, v)
 				
-				# Recortar al anillo cilíndrico
-				var segments_array = GeometryUtils.clip_line_to_ring_volume(
-					path_segment["start"], 
-					path_segment["end"], 
-					global_transform, 
-					inner_radius, 
-					outer_radius, 
-					height
+				# Encontrar intersección con cilindro interno
+				var intersection = _find_inner_cylinder_intersection(
+					path_segment["start"],
+					path_segment["end"]
 				)
 				
-				for segment in segments_array:
-					valid_spawn_segments.append({
-						"start": segment[0],
-						"end": segment[1],
+				if intersection:
+					spawn_points.append({
+						"position": intersection["position"],
+						"direction": intersection["direction"],
 						"lane_volume": vol,
 						"grid_u": u,
 						"grid_v": v,
 						"width_cells": width_steps,
 						"height_cells": height_steps
 					})
+
+func _find_inner_cylinder_intersection(start: Vector3, end: Vector3) -> Dictionary:
+	# Convertir a espacio local del cilindro
+	var local_start = to_local(start)
+	var local_end = to_local(end)
+	
+	# Verificar altura
+	var half_height = height * 0.5
+	if (local_start.y < -half_height and local_end.y < -half_height) or \
+	   (local_start.y > half_height and local_end.y > half_height):
+		return {}
+	
+	# Proyectar a plano XZ
+	var start_2d = Vector2(local_start.x, local_start.z)
+	var end_2d = Vector2(local_end.x, local_end.z)
+	
+	var dist_start = start_2d.length()
+	var dist_end = end_2d.length()
+	
+	# Verificar si cruza el radio interno desde afuera
+	if dist_start <= inner_radius and dist_end <= inner_radius:
+		return {}  # Ambos dentro, no cruza desde afuera
+	
+	if dist_start >= inner_radius and dist_end >= inner_radius:
+		# Verificar si pasa por el círculo
+		var closest = _closest_point_on_segment_2d(Vector2.ZERO, start_2d, end_2d)
+		if closest.length() > inner_radius:
+			return {}  # No intersecta
+	
+	# Calcular punto de intersección con círculo
+	var dir_2d = (end_2d - start_2d).normalized()
+	var to_start = start_2d
+	
+	# Resolver ecuación cuadrática: |start + t*dir|² = radius²
+	var a = dir_2d.dot(dir_2d)
+	var b = 2.0 * to_start.dot(dir_2d)
+	var c = to_start.dot(to_start) - inner_radius * inner_radius
+	
+	var discriminant = b * b - 4 * a * c
+	if discriminant < 0:
+		return {}
+	
+	var t1 = (-b - sqrt(discriminant)) / (2 * a)
+	var t2 = (-b + sqrt(discriminant)) / (2 * a)
+	
+	# Queremos el primer punto de entrada (desde afuera hacia adentro)
+	var t = t1 if dist_start > inner_radius else t2
+	
+	if t < 0 or t > start_2d.distance_to(end_2d):
+		return {}
+	
+	# Interpolar en 3D
+	var segment_length = start.distance_to(end)
+	var t_3d = t / start_2d.distance_to(end_2d) if start_2d.distance_to(end_2d) > 0 else 0
+	var intersection_pos = start.lerp(end, t_3d)
+	
+	# Calcular dirección
+	var direction = (end - start).normalized()
+	
+	return {
+		"position": intersection_pos,
+		"direction": direction
+	}
+
+func _closest_point_on_segment_2d(point: Vector2, a: Vector2, b: Vector2) -> Vector2:
+	var ab = b - a
+	var ap = point - a
+	var t = ap.dot(ab) / ab.dot(ab)
+	t = clamp(t, 0.0, 1.0)
+	return a + ab * t
 
 # ============================================================================
 # VISUALIZACIÓN DEBUG - OPTIMIZADA
@@ -373,17 +439,16 @@ func _rebuild_grid_points() -> void:
 	grid_multimesh.material_override = material
 
 # ============================================================================
-# SISTEMA DE SPAWN DE AUTOS
+# SISTEMA DE SPAWN DE AUTOS (OPTIMIZADO)
 # ============================================================================
 
 func _try_spawn_car() -> void:
-	if valid_spawn_segments.is_empty() or not world:
+	if spawn_points.is_empty() or not world:
 		return
 	
-	# Generar seed única para este auto
 	var car_seed = randi()
 	
-	# Crear auto temporal con la seed para obtener dimensiones
+	# Crear auto temporal para obtener dimensiones
 	var temp_car = FlyingCar.new()
 	var custom_weights = {
 		CarArchetypes.Type.CAR: car_weight,
@@ -399,36 +464,25 @@ func _try_spawn_car() -> void:
 	var car_color = temp_car.car_color
 	var car_archetype = temp_car.car_archetype
 	
-	# Filtrar segmentos donde quepa el auto
-	var suitable_segments = []
-	for seg_data in valid_spawn_segments:
-		var seg_length = seg_data["start"].distance_to(seg_data["end"])
-		if seg_length >= car_depth:
-			suitable_segments.append(seg_data)
-	
-	if suitable_segments.is_empty():
-		temp_car.free()
-		return
-	
-	# Intentar spawn con validación de proyección (máximo 5 intentos)
+	# Intentar spawn (máximo 5 intentos)
 	var max_tries = 5
-	var remaining_segments = suitable_segments.duplicate()
+	var remaining_points = spawn_points.duplicate()
 	
 	for try_count in range(max_tries):
-		if remaining_segments.is_empty():
+		if remaining_points.is_empty():
 			temp_car.free()
 			return
 		
-		# Seleccionar segmento aleatorio
-		var random_idx = randi() % remaining_segments.size()
-		var spawn_data = remaining_segments[random_idx]
+		# Seleccionar punto aleatorio
+		var random_idx = randi() % remaining_points.size()
+		var spawn_data = remaining_points[random_idx]
 		var lane_vol: LaneVolume = spawn_data["lane_volume"]
 		
-		# Usar el método del auto para construir su cara frontal
-		var front_face = temp_car.get_front_face_at_segment(
-			spawn_data["start"],
-			spawn_data["end"]
-		)
+		# Construir segmento temporal para la cara frontal
+		var spawn_pos = spawn_data["position"]
+		var end_pos = spawn_pos + spawn_data["direction"] * car_depth
+		
+		var front_face = temp_car.get_front_face_at_segment(spawn_pos, end_pos)
 		
 		# Validar proyección
 		var validation = lane_vol.validate_face_projection(
@@ -438,79 +492,40 @@ func _try_spawn_car() -> void:
 		)
 		
 		if validation["valid"]:
-			# ¡Spawn exitoso! Crear el auto
 			temp_car.free()
-			_spawn_car_at_segment(spawn_data, lane_vol, car_seed, car_width, car_height, 
-								  car_depth, car_speed, car_color, car_archetype, custom_weights)
+			_spawn_car_at_point(spawn_data, lane_vol, car_seed, car_width, car_height,
+							   car_depth, car_speed, car_color, car_archetype, custom_weights)
 			return
 		else:
-			# Colisión detectada, buscar segmento más alejado del plano problemático
-			var collision_plane = validation["collision_plane"]
-			remaining_segments = _filter_segments_away_from_plane(
-				remaining_segments,
-				collision_plane,
-				lane_vol
-			)
+			# Remover este punto y continuar
+			remaining_points.remove_at(random_idx)
 	
 	temp_car.free()
 
-func _filter_segments_away_from_plane(segments: Array, collision_plane: String, 
-									   lane_vol: LaneVolume) -> Array:
-	var lateral_planes = lane_vol.get_lateral_planes()
-	if not lateral_planes.has(collision_plane):
-		return segments
+func _spawn_car_at_point(spawn_data: Dictionary, lane_vol: LaneVolume, car_seed: int,
+						car_width: float, car_height: float, car_depth: float,
+						car_speed: float, car_color: Color, car_archetype: FlyingCar.Type,
+						custom_weights: Dictionary) -> void:
 	
-	var problem_plane = lateral_planes[collision_plane]
-	var plane_normal = problem_plane[0]
-	var plane_point = problem_plane[1]
-	
-	# Calcular distancia de cada segmento al plano problemático
-	var segments_with_distance = []
-	for seg in segments:
-		var seg_center = (seg["start"] + seg["end"]) * 0.5
-		var distance = abs(plane_normal.dot(seg_center - plane_point))
-		segments_with_distance.append({
-			"segment": seg,
-			"distance": distance
-		})
-	
-	# Ordenar por distancia descendente (más alejados primero)
-	segments_with_distance.sort_custom(func(a, b): return a["distance"] > b["distance"])
-	
-	# Extraer solo los segmentos ordenados
-	var filtered = []
-	for item in segments_with_distance:
-		filtered.append(item["segment"])
-	
-	return filtered
-
-func _spawn_car_at_segment(spawn_data: Dictionary, lane_vol: LaneVolume, car_seed: int,
-							car_width: float, car_height: float, car_depth: float, 
-							car_speed: float, car_color: Color, car_archetype: FlyingCar.Type,
-							custom_weights: Dictionary) -> void:
-	# Calcular progreso inicial
+	# Construir segmento completo del path
 	var full_path_segment = lane_vol.get_path_segment_at_grid(
-		spawn_data["grid_u"], 
+		spawn_data["grid_u"],
 		spawn_data["grid_v"]
 	)
-	var full_path_length = full_path_segment["start"].distance_to(full_path_segment["end"])
-	var distance_to_spawn = full_path_segment["start"].distance_to(spawn_data["start"])
-	var initial_progress = distance_to_spawn / full_path_length if full_path_length > 0 else 0.0
 	
-	# Crear auto con la seed
+	# Crear auto
 	var car = FlyingCar.new()
 	car.world_node = world
 	car.city = city
-	car.spawn_time = Time.get_ticks_msec() / 1000.0  # Tiempo en segundos
+	car.spawn_time = Time.get_ticks_msec() / 1000.0
 	
-	# Inicializar con la seed
 	car.initialize_from_seed(car_seed, custom_weights)
 	
 	world.add_child(car)
 	car.set_path(
-		full_path_segment["start"], 
-		full_path_segment["end"], 
-		initial_progress,
+		full_path_segment["start"],
+		full_path_segment["end"],
+		0.0,  # Siempre empieza desde el inicio del segmento
 		spawn_data["grid_u"],
 		spawn_data["grid_v"],
 		lane_vol.get_raw_data(),

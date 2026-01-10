@@ -42,8 +42,8 @@ extends Node3D
 @export var auto_generate: bool = true
 
 @export_group("Tipos de Calles")
-@export var num_large_streets: int = 0
-@export var num_small_streets: int = 2
+@export var num_large_streets: int = 6
+@export var num_small_streets: int = 12
 
 @export_subgroup("Calles Pequeñas (Tipo 0)")
 @export var small_street_color: Color = Color.DEEP_PINK

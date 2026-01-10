@@ -1,9 +1,9 @@
+AreaInstantiator
 Node3D
 Area3D
 MeshInstance3D
 CollisionShape3D
 RigidBody3D
-AreaInstantiator
 OmniLight3D
 WorldEnvironment
 CharacterBody3D
