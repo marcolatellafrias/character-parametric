@@ -53,10 +53,10 @@ fog_light_color = Color(0.7659111, 0.46699548, 0.23651671, 1)
 fog_density = 1.0
 fog_sky_affect = 0.0
 fog_depth_begin = 50.0
-volumetric_fog_density = 0.1
+volumetric_fog_density = 0.0125
 volumetric_fog_albedo = Color(0.9072337, 0.6909475, 0.34785485, 1)
 volumetric_fog_emission = Color(0.80489886, 0.5607987, 0.35002738, 1)
-volumetric_fog_sky_affect = 0.405
+volumetric_fog_sky_affect = 0.35
 adjustment_enabled = true
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_oilx1"]
@@ -190,7 +190,31 @@ omni_attenuation = 2.0
 
 [node name="AreaInstantiator" type="Node3D" parent="CharacterBody3D" node_paths=PackedStringArray("world")]
 script = ExtResource("12_k27g2")
+outer_radius = null
+inner_radius = null
+height = null
+segments = null
+debug_volume_ring_color = null
+show_debug_volume_ring = null
 world = NodePath("../../world")
+show_lane_volumes = null
+lane_volume_color = null
+lane_volume_transparency = null
+show_continuations = null
+continuation_color = null
+continuation_transparency = null
+show_grid_points = null
+grid_point_color = null
+grid_point_size = null
+granularity = null
+enable_car_spawning = null
+spawn_interval = null
+car_weight = null
+truck_weight = null
+motorcycle_weight = null
+update_interval = null
+position_threshold = null
+rotation_threshold = null
 metadata/_custom_type_script = "uid://btuoiwrmahgt4"
 
 [node name="RigidBody3D" parent="." instance=ExtResource("12_h3puh")]

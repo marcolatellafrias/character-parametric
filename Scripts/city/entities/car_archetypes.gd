@@ -66,7 +66,7 @@ static func _static_init() -> void:
 		0.15 * size_debug_factor, 0.2 * size_debug_factor,    # width
 		0.08 * size_debug_factor, 0.12 * size_debug_factor,   # height
 		0.3 * size_debug_factor, 0.45 * size_debug_factor,    # depth
-		12.0 * speed_debug_factor, 15.0 * speed_debug_factor,    # speed
+		16.0 * speed_debug_factor, 20.0 * speed_debug_factor,    # speed
 		[
 			Color(0.8, 0.1, 0.1),  # Rojo
 			Color(0.1, 0.1, 0.8),  # Azul
@@ -79,7 +79,7 @@ static func _static_init() -> void:
 	
 	archetypes[Type.TRUCK] = Archetype.new(
 		"Truck",
-		0.5 * size_debug_factor, 0.7 * size_debug_factor,     # width
+		0.35 * size_debug_factor, 0.35 * size_debug_factor,     # width
 		0.35 * size_debug_factor, 0.5 * size_debug_factor,   # height
 		0.9 * size_debug_factor, 1.4 * size_debug_factor,     # depth
 		4.0 * speed_debug_factor, 5.0 * speed_debug_factor,    # speed

@@ -1,4 +1,4 @@
-extends RefCounted
+extends Area3D
 class_name LaneVolume
 
 # ============================================================================
@@ -14,7 +14,8 @@ class_name LaneVolume
 # - Interpolar puntos en coordenadas de grilla (u, v)
 # - Validar si puntos están dentro del volumen
 # - Obtener planos laterales para detección de colisiones
-# - Visualización debug de grillas, volúmenes y flechas de flujo
+# - Visualización debug de grillas y volúmenes
+# - Funcionalidad de Area3D con collision automático
 # ============================================================================
 
 var face_idx: int
@@ -29,6 +30,9 @@ var volume_height: float
 # Datos originales del volumen (preservados por compatibilidad)
 var raw_data: Dictionary
 
+# CollisionShape3D generado
+var collision_shape: CollisionShape3D
+
 func _init(volume_data: Dictionary) -> void:
 	raw_data = volume_data
 	face_idx = volume_data.get("face_idx", -1)
@@ -39,6 +43,36 @@ func _init(volume_data: Dictionary) -> void:
 	height_cells = volume_data.get("height_cells", 10)
 	street_type = volume_data.get("street_type", 0)
 	volume_height = volume_data.get("height", 0.0)
+	
+	_setup_area()
+	_generate_collision()
+
+func _setup_area() -> void:
+	# Configuración básica del Area3D
+	monitoring = true
+	monitorable = true
+	
+	# CRÍTICO: Configurar collision layer para que otros Area3D nos detecten
+	collision_layer = 2  # Ponemos los LaneVolume en el layer 2
+	collision_mask = 0   # No necesitamos detectar nada
+	
+	# Agregar al grupo para fácil acceso
+	add_to_group("lane_volumes")
+	
+	# Metadata útil
+	set_meta("face_idx", face_idx)
+	set_meta("edge_idx", edge_idx)
+	set_meta("street_type", street_type)
+	set_meta("lane_id", get_id())
+
+func _generate_collision() -> void:
+	collision_shape = DebugUtil.create_collision_shape_from_planes(
+		start_plane_vertices,
+		end_plane_vertices
+	)
+	
+	if collision_shape:
+		add_child(collision_shape)
 
 # ============================================================================
 # MÉTODOS DE GEOMETRÍA Y PATH
@@ -65,14 +99,6 @@ func get_path_segment_at_grid(u: float, v: float) -> Dictionary:
 		"start": get_point_at_grid(u, v, true),
 		"end": get_point_at_grid(u, v, false)
 	}
-
-# Verifica si un punto está dentro del lane volume
-func contains_point(point: Vector3) -> bool:
-	return GeometryUtils.is_point_inside_lane_volume(
-		point, 
-		start_plane_vertices, 
-		end_plane_vertices
-	)
 
 # Obtiene los 4 planos laterales que conectan start_plane con end_plane
 # Retorna un diccionario con claves: "bottom", "right", "top", "left"
@@ -159,51 +185,6 @@ func create_grid_points(width_steps: int, height_steps: int, container: Node3D,
 			container.add_child(sphere_end)
 			sphere_end.global_position = point_end
 
-# Crea flechas de flujo para este lane volume, retornando segmentos válidos
-# Los segmentos se recortan al área cilíndrica especificada
-func create_flow_arrows(width_steps: int, height_steps: int, container: Node3D,
-						arrow_color: Color, arrow_width: float,
-						area_transform: Transform3D, inner_radius: float, 
-						outer_radius: float, area_height: float) -> Array:
-	var valid_segments = []
-	
-	for i in range(width_steps + 1):
-		for j in range(height_steps + 1):
-			var u = float(i) / float(width_steps)
-			var v = float(j) / float(height_steps)
-			
-			# Obtener el segmento de path en estas coordenadas
-			var path_segment = get_path_segment_at_grid(u, v)
-			
-			# Recortar al anillo cilíndrico
-			var segments_array = GeometryUtils.clip_line_to_ring_volume(
-				path_segment["start"], 
-				path_segment["end"], 
-				area_transform, 
-				inner_radius, 
-				outer_radius, 
-				area_height
-			)
-			
-			for segment in segments_array:
-				var arrow = DebugUtil.create_debug_arrow_to_from(
-					segment[0], segment[1], arrow_color, arrow_width
-				)
-				container.add_child(arrow)
-				
-				# Guardar información del segmento para spawn
-				valid_segments.append({
-					"start": segment[0],
-					"end": segment[1],
-					"lane_volume": self,
-					"grid_u": u,
-					"grid_v": v,
-					"width_cells": width_steps,
-					"height_cells": height_steps
-				})
-	
-	return valid_segments
-	
 # Valida si una cara frontal proyectada a través del path cruza algún plano lateral
 # face_vertices: Array de 4 Vector3 en orden [bottom-left, bottom-right, top-right, top-left]
 #                Offsets relativos CENTRADOS respecto al punto del path (tanto horizontal como verticalmente)

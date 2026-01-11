@@ -52,73 +52,6 @@ static func create_debug_cube(color: Color) -> MeshInstance3D:
 	mesh_instance.material_override = material
 	return mesh_instance
 
-static func create_wireframe_cube(color: Color, size: float = 1.0, transparency: float = 0.5) -> Node3D:
-	var container := Node3D.new()
-	
-	# Definir los 8 vértices del cubo
-	var half := size / 2.0
-	var vertices := [
-		Vector3(-half, -half, -half),  # 0
-		Vector3(half, -half, -half),   # 1
-		Vector3(half, -half, half),    # 2
-		Vector3(-half, -half, half),   # 3
-		Vector3(-half, half, -half),   # 4
-		Vector3(half, half, -half),    # 5
-		Vector3(half, half, half),     # 6
-		Vector3(-half, half, half)     # 7
-	]
-	
-	# Definir las 12 aristas (pares de vértices)
-	var edges := [
-		[0, 1], [1, 2], [2, 3], [3, 0],  # Base inferior
-		[4, 5], [5, 6], [6, 7], [7, 4],  # Base superior
-		[0, 4], [1, 5], [2, 6], [3, 7]   # Columnas verticales
-	]
-	
-	# Crear material semitransparente
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.albedo_color.a = transparency
-	
-	# Grosor de las aristas
-	var edge_thickness := size * 0.02
-	
-	# Crear cada arista como un cilindro estirado
-	for edge in edges:
-		var start: Vector3 = vertices[edge[0]]
-		var end: Vector3 = vertices[edge[1]]
-		
-		var mesh_instance := MeshInstance3D.new()
-		var cylinder := CylinderMesh.new()
-		cylinder.top_radius = edge_thickness
-		cylinder.bottom_radius = edge_thickness
-		
-		# Calcular longitud y posición
-		var length := start.distance_to(end)
-		cylinder.height = length
-		
-		mesh_instance.mesh = cylinder
-		mesh_instance.material_override = material
-		
-		# Posicionar en el punto medio
-		mesh_instance.position = (start + end) / 2.0
-		
-		# Rotar para alinear con la arista
-		var direction := (end - start).normalized()
-		var up := Vector3.UP
-		
-		# Evitar problemas cuando la dirección es paralela a UP
-		if abs(direction.dot(up)) > 0.99:
-			up = Vector3.RIGHT
-		
-		mesh_instance.look_at(mesh_instance.position + direction, up)
-		mesh_instance.rotate_object_local(Vector3.RIGHT, PI / 2.0)
-		
-		container.add_child(mesh_instance)
-	
-	return container
-
 static func create_debug_capsule(radius: float, height: float, y_offset: float) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	
@@ -906,6 +839,70 @@ static func create_debug_ring_volume(color: Color, outer_radius: float, inner_ra
 	
 	return mesh_instance
 
+
+static func create_cylinder_colliders(radius: float, height: float, segments: int = 16) -> Array[CollisionShape3D]:
+	var colliders: Array[CollisionShape3D] = []
+	
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		
+		var x1 := cos(angle1) * radius
+		var z1 := sin(angle1) * radius
+		var x2 := cos(angle2) * radius
+		var z2 := sin(angle2) * radius
+		
+		# Centro del segmento
+		var center_x := (x1 + x2) / 2.0
+		var center_z := (z1 + z2) / 2.0
+		
+		# Dimensiones del box
+		var segment_width := Vector2(x1, z1).distance_to(Vector2(x2, z2))
+		var segment_depth := radius * 0.15  # Profundidad aproximada
+		
+		var collision_shape := CollisionShape3D.new()
+		var box_shape := BoxShape3D.new()
+		box_shape.size = Vector3(segment_width, height, segment_depth)
+		collision_shape.shape = box_shape
+		
+		# Posicionar y rotar
+		var angle_mid := (angle1 + angle2) / 2.0
+		collision_shape.position = Vector3(center_x, height / 2.0, center_z)
+		collision_shape.rotation.y = angle_mid
+		
+		colliders.append(collision_shape)
+	
+	return colliders
+
+static func create_ring_volume_colliders(outer_radius: float, inner_radius: float, height: float, segments: int = 16) -> Array[CollisionShape3D]:
+	var colliders: Array[CollisionShape3D] = []
+	var ring_thickness := outer_radius - inner_radius
+	var ring_mid_radius := (outer_radius + inner_radius) / 2.0
+	
+	for i in range(segments):
+		var angle1 := TAU * float(i) / float(segments)
+		var angle2 := TAU * float(i + 1) / float(segments)
+		var angle_mid := (angle1 + angle2) / 2.0
+		
+		# Posición en el radio medio del anillo
+		var x := cos(angle_mid) * ring_mid_radius
+		var z := sin(angle_mid) * ring_mid_radius
+		
+		# Ancho del segmento en el arco
+		var segment_width := ring_mid_radius * TAU / float(segments)
+		
+		var collision_shape := CollisionShape3D.new()
+		var box_shape := BoxShape3D.new()
+		box_shape.size = Vector3(segment_width, height, ring_thickness)
+		collision_shape.shape = box_shape
+		
+		collision_shape.position = Vector3(x, height / 2.0, z)
+		collision_shape.rotation.y = angle_mid
+		
+		colliders.append(collision_shape)
+	
+	return colliders
+
 # Crea un skewed cube (cubo deformado) a partir de dos planos paralelos
 # plane1_vertices: Array de 4 Vector3 representando el primer plano [v1_base, v2_base, v3_top, v4_top]
 # plane2_vertices: Array de 4 Vector3 representando el segundo plano [v1_base, v2_base, v3_top, v4_top]
@@ -995,6 +992,39 @@ static func _add_quad_to_arrays(
 	indices.append(start_idx + 0)
 	indices.append(start_idx + 2)
 	indices.append(start_idx + 3)
+
+# Crea un CollisionShape3D (convex) a partir de dos planos paralelos
+# plane1_vertices: Array de 4 Vector3 representando el primer plano [v1_base, v2_base, v3_top, v4_top]
+# plane2_vertices: Array de 4 Vector3 representando el segundo plano [v1_base, v2_base, v3_top, v4_top]
+# Retorna: CollisionShape3D con ConvexPolygonShape3D
+static func create_collision_shape_from_planes(
+	plane1_vertices: Array,
+	plane2_vertices: Array
+) -> CollisionShape3D:
+	
+	if plane1_vertices.size() != 4 or plane2_vertices.size() != 4:
+		push_error("create_collision_shape_from_planes requiere 4 vértices por plano")
+		return null
+	
+	var points = PackedVector3Array()
+	
+	# Agregar los 4 vértices del primer plano
+	for v in plane1_vertices:
+		points.append(v)
+	
+	# Agregar los 4 vértices del segundo plano
+	for v in plane2_vertices:
+		points.append(v)
+	
+	# Crear la forma convexa
+	var convex_shape = ConvexPolygonShape3D.new()
+	convex_shape.points = points
+	
+	# Crear el CollisionShape3D
+	var collision_shape = CollisionShape3D.new()
+	collision_shape.shape = convex_shape
+	
+	return collision_shape
 
 static func create_debug_ring_volume_wireframe(color: Color, outer_radius: float, inner_radius: float, height: float, segments: int = 16) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
