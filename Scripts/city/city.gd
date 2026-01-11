@@ -10,8 +10,6 @@ extends Node3D
 @export var generation_seed: int = 123456
 
 @export_group("Barrios")
-@export var show_neighborhoods: bool = false
-
 @export_subgroup("Transición de Alturas")
 @export_range(0.1, 5.0) var neighborhood_height_falloff: float = 1.0
 
@@ -117,11 +115,6 @@ extends Node3D
 @export var floor_plane_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 @export_range(0.0, 1.0) var floor_plane_transparency: float = 0.3
 
-@export_group("Lane Lines - Puntos Temporales")
-@export var show_temporal_lane_points: bool = false
-@export var temporal_point_radius: float = 0.5
-@export var temporal_point_height_offset: float = 2.0
-
 @export_group("Lane Planes - Planos Finales")
 @export var show_lane_planes: bool = false
 @export_range(0.0, 1.0) var lane_plane_transparency: float = 0.5
@@ -131,40 +124,20 @@ extends Node3D
 @export_range(0.0, 1.0) var lane_volume_transparency: float = 0.3
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 
-@export_group("Area Selection - Selección Circular")
-@export var show_circular_area: bool = false
-@export var circular_area_center: Vector3 = Vector3.ZERO
-@export var circular_area_radius: float = 50.0
-@export var circular_area_color: Color = Color.YELLOW
-@export var highlight_selected_blocks: bool = false
-@export var selected_blocks_color: Color = Color(1.0, 1.0, 0.0, 0.3)
-
-@export_group("Cylindrical Selection - Selección Cilíndrica")
-@export var show_cylindrical_area: bool = false
-@export var cylindrical_area_center: Vector3 = Vector3(0, 50, 0)
-@export var cylindrical_area_radius: float = 30.0
-@export var cylindrical_area_height: float = 100.0
-@export var cylindrical_area_color: Color = Color.CYAN
-@export var highlight_selected_volumes: bool = false
-@export var selected_volumes_color: Color = Color(0.0, 1.0, 1.0, 0.4)
-
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
 var generator: GraphCityGenerator = null
-var neighborhood_colors: Dictionary = {}
 var lane_volume_areas: Dictionary = {}  # Key: "face_idx_edge_idx", Value: LaneVolumeArea3D
 
 # ============================================
 # INICIALIZACIÓN
 # ============================================
 func _ready() -> void:
-    # Agregar a grupo para acceso desde otras entidades
     add_to_group("city_generator")
     
     if auto_generate:
         generate_and_visualize()
-        debug_verify_lane_volumes()
 
 # ============================================
 # GENERACIÓN Y VISUALIZACIÓN
@@ -220,14 +193,6 @@ func generate_graph() -> void:
         residential_block_heart_probability,
         financial_block_heart_probability
     )
-    
-    _generate_neighborhood_colors()
-
-func _generate_neighborhood_colors() -> void:
-    neighborhood_colors.clear()
-    neighborhood_colors[0] = Color(0.3, 0.35, 0.4, 0.7)
-    neighborhood_colors[1] = Color(0.3, 0.5, 0.3, 0.7)
-    neighborhood_colors[2] = Color(0.6, 0.5, 0.2, 0.7)
 
 func clear_visualization() -> void:
     for child in get_children():
@@ -238,7 +203,6 @@ func visualize_graph() -> void:
         push_error("No hay grafo generado para visualizar")
         return
     
-    # Generar lane volume areas (siempre, independiente de flags de visualización)
     _generate_lane_volume_areas()
     
     if show_streets:
@@ -259,20 +223,11 @@ func visualize_graph() -> void:
     if show_pedestrian_planes:
         _visualize_pedestrian_planes()
     
-    if show_temporal_lane_points:
-        _visualize_temporal_lane_points()
-    
     if show_lane_planes:
         _visualize_lane_planes()
     
     if show_lane_volumes:
         _visualize_lane_volumes()
-    
-    if show_circular_area:
-        _visualize_circular_area_selection()
-    
-    if show_cylindrical_area:
-        _visualize_cylindrical_area_selection()
     
     if show_nodes:
         _visualize_nodes()
@@ -291,7 +246,6 @@ func _generate_lane_volume_areas() -> void:
         if block == null:
             continue
         
-        # Cada BlockGenerator tiene 4 edges (0, 1, 2, 3)
         for edge_idx in range(4):
             var volume_data = block.get_edge_lane_volume(edge_idx)
             
@@ -299,31 +253,23 @@ func _generate_lane_volume_areas() -> void:
                 continue
             
             var street_type = volume_data.get("street_type", 0)
-            
-            # Calcular ancho en celdas
             var width_cells = BlockGenerator.STREET_HALF_WIDTH_CELLS.get(street_type, 3)
             
-            # Calcular altura en celdas
             var height_cells = 0
             if generator.block_cell_height > 0 and generator.cells_per_floor > 0:
                 var floor_height = generator.cells_per_floor * generator.block_cell_height
                 var num_floors = ceil(volume_data["height"] / floor_height)
                 height_cells = int(num_floors * generator.cells_per_floor)
             
-            # Enriquecer volume_data
             var enriched_data = volume_data.duplicate()
             enriched_data["face_idx"] = face_idx
             enriched_data["edge_idx"] = edge_idx
             enriched_data["width_cells"] = width_cells
             enriched_data["height_cells"] = height_cells
             
-            # Crear LaneVolume (que ahora es Area3D)
             var lane_volume = LaneVolume.new(enriched_data)
-            
-            # Agregar como hijo del visualizer
             add_child(lane_volume)
             
-            # Almacenar en diccionario
             var key = "%d_%d" % [face_idx, edge_idx]
             lane_volume_areas[key] = lane_volume
             
@@ -372,11 +318,7 @@ func _visualize_nodes() -> void:
         var point = generator.plain_graph.points[node_idx]
         var node_type = generator.plain_graph.node_types.get(node_idx, 0)
         
-        var color: Color
-        if node_type == 1:
-            color = boundary_node_color
-        else:
-            color = normal_node_color
+        var color = boundary_node_color if node_type == 1 else normal_node_color
         
         var sphere = DebugUtil.create_debug_sphere(color, node_radius)
         sphere.position = point
@@ -651,11 +593,7 @@ func _visualize_distorted_grids() -> void:
                 var is_boundary = (grid_x == 0 or grid_x == distorted.columns or 
                                    grid_z == 0 or grid_z == distorted.rows)
                 
-                var vertex_color: Color
-                if is_boundary:
-                    vertex_color = distorted_grid_boundary_vertex_color
-                else:
-                    vertex_color = distorted_grid_normal_vertex_color
+                var vertex_color = distorted_grid_boundary_vertex_color if is_boundary else distorted_grid_normal_vertex_color
                 
                 var sphere = DebugUtil.create_debug_sphere(vertex_color, distorted_grid_vertex_radius)
                 sphere.position = pos_3d
@@ -788,55 +726,6 @@ func _calculate_max_building_height() -> float:
     return max_height
 
 # ============================================
-# VISUALIZACIÓN DE PUNTOS TEMPORALES DE LANE LINES
-# ============================================
-func _visualize_temporal_lane_points() -> void:
-    var all_block_faces = generator.get_all_block_faces()
-    var total_points = 0
-    
-    for face_idx in all_block_faces:
-        var block: BlockGenerator = generator.get_block_grid(face_idx)
-        
-        if block == null:
-            continue
-        
-        var temporal_points = block.get_temporal_lane_points()
-        
-        for key in temporal_points:
-            var point_data = temporal_points[key]
-            var point_a: Vector2 = point_data["point_a"]
-            var point_b: Vector2 = point_data["point_b"]
-            
-            # Extraer edge_idx y node_idx de la key
-            var parts = key.split("_")
-            var edge_idx = int(parts[0])
-            var node_idx = int(parts[1])
-            
-            # Determinar color basado en si es start o end node del edge
-            var color: Color
-            if node_idx == 0:
-                color = Color.RED  # Start node
-            else:
-                color = Color.GREEN  # End node
-            
-            # Visualizar point_a (opaco)
-            var pos_a_3d = Vector3(point_a.x, temporal_point_height_offset, point_a.y)
-            var sphere_a = DebugUtil.create_debug_sphere(color, temporal_point_radius)
-            sphere_a.position = pos_a_3d
-            add_child(sphere_a)
-            total_points += 1
-            
-            # Visualizar point_b con el mismo color pero más transparente
-            var pos_b_3d = Vector3(point_b.x, temporal_point_height_offset, point_b.y)
-            var color_b = Color(color.r, color.g, color.b, 0.5)
-            var sphere_b = DebugUtil.create_debug_sphere(color_b, temporal_point_radius * 0.8)
-            sphere_b.position = pos_b_3d
-            add_child(sphere_b)
-            total_points += 1
-    
-    print("[Visualizer] Puntos temporales de lane lines: %d puntos en %d bloques" % [total_points, all_block_faces.size()])
-
-# ============================================
 # VISUALIZACIÓN DE LANE PLANES FINALES
 # ============================================
 func _visualize_lane_planes() -> void:
@@ -860,9 +749,6 @@ func _visualize_lane_planes() -> void:
             var is_start_lane: bool = plane_data["is_start_lane"]
             var height: float = plane_data["height"]
             
-            # Color basado en direccionalidad almacenada:
-            # Start lane (nodo inicial del edge en sentido horario) → ROJO
-            # End lane (nodo final del edge en sentido horario) → VERDE
             var base_color: Color
             if is_start_lane:
                 base_color = Color.RED
@@ -871,15 +757,11 @@ func _visualize_lane_planes() -> void:
                 base_color = Color.GREEN
                 end_planes += 1
             
-            # Crear los 4 vértices del plano
-            # Base (y = 0)
             var v1 = Vector3(start.x, 0.0, start.y)
             var v2 = Vector3(end.x, 0.0, end.y)
-            # Top (y = height)
             var v3 = Vector3(end.x, height, end.y)
             var v4 = Vector3(start.x, height, start.y)
             
-            # Crear plano semitransparente
             var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, base_color, lane_plane_transparency)
             add_child(plane)
             total_planes += 1
@@ -899,7 +781,6 @@ func _visualize_lane_volumes() -> void:
         if block == null:
             continue
         
-        # Cada BlockGenerator tiene 4 edges (0, 1, 2, 3)
         for edge_idx in range(4):
             var volume_data = block.get_edge_lane_volume(edge_idx)
             
@@ -913,7 +794,6 @@ func _visualize_lane_volumes() -> void:
                 push_warning("Volume de edge %d del bloque %d no tiene vértices correctos" % [edge_idx, face_idx])
                 continue
             
-            # Crear skewed cube usando DebugUtil
             var skewed_cube = DebugUtil.create_skewed_cube_from_planes(
                 start_plane_verts,
                 end_plane_verts,
@@ -928,117 +808,12 @@ func _visualize_lane_volumes() -> void:
     print("[Visualizer] Lane volumes: %d volúmenes visualizados en %d bloques" % [total_volumes, all_block_faces.size()])
 
 # ============================================
-# VISUALIZACIÓN DE SELECCIÓN CIRCULAR
-# ============================================
-func _visualize_circular_area_selection() -> void:
-    # Obtener los bloques en el área circular
-    var selected_blocks = generator.get_blocks_in_circular_area(circular_area_center, circular_area_radius)
-    
-    # Visualizar el círculo en el suelo (y = 0)
-    _draw_circle_outline(circular_area_center, circular_area_radius, circular_area_color, 32)
-    
-    # Highlight de los bloques seleccionados
-    if highlight_selected_blocks:
-        for face_idx in selected_blocks:
-            var face = generator.plain_graph.faces[face_idx]
-            
-            # Crear un quad semi-transparente sobre el bloque
-            var vertices: Array[Vector3] = []
-            for node_idx in face:
-                var pos = generator.plain_graph.points[node_idx]
-                vertices.append(Vector3(pos.x, 0.5, pos.z))
-            
-            if vertices.size() == 4:
-                var highlight = DebugUtil.create_debug_plane(
-                    vertices[0], vertices[1], vertices[2], vertices[3],
-                    selected_blocks_color, 0.5
-                )
-                add_child(highlight)
-    
-    print("[Visualizer] Área circular: %d bloques seleccionados (centro: %s, radio: %.2f)" % [selected_blocks.size(), circular_area_center, circular_area_radius])
-
-# Actualizar la visualización de área cilíndrica
-func _visualize_cylindrical_area_selection() -> void:
-    # Obtener los lane volumes en el área cilíndrica
-    var selected_volumes = generator.get_lane_volumes_in_cylindrical_area(
-        cylindrical_area_center,
-        cylindrical_area_radius,
-        cylindrical_area_height
-    )
-    
-    # Visualizar el cilindro
-    var cylinder = DebugUtil.create_debug_cylinder(
-        cylindrical_area_color,
-        cylindrical_area_radius,
-        cylindrical_area_height,
-        32
-    )
-    cylinder.position = cylindrical_area_center - Vector3(0, cylindrical_area_height / 2.0, 0)
-    add_child(cylinder)
-    
-    # Highlight de los volumes seleccionados
-    if highlight_selected_volumes:
-        for lane_vol in selected_volumes:
-            # Crear skewed cube con color de highlight
-            var volume_mesh = DebugUtil.create_skewed_cube_from_planes(
-                lane_vol.start_plane_vertices,
-                lane_vol.end_plane_vertices,
-                selected_volumes_color,
-                0.5
-            )
-            
-            if volume_mesh != null:
-                add_child(volume_mesh)
-    
-    print("[Visualizer] Área cilíndrica: %d lane volumes seleccionados (centro: %s, radio: %.2f, altura: %.2f)" % [selected_volumes.size(), cylindrical_area_center, cylindrical_area_radius, cylindrical_area_height])
-
-# Dibuja el contorno de un círculo en 3D
-func _draw_circle_outline(center: Vector3, radius: float, color: Color, segments: int = 32) -> void:
-    var points: PackedVector3Array = []
-    var angle_step = TAU / segments
-    
-    for i in range(segments + 1):
-        var angle = i * angle_step
-        var x = center.x + cos(angle) * radius
-        var z = center.z + sin(angle) * radius
-        points.append(Vector3(x, 0.1, z))
-    
-    # Crear líneas conectando los puntos
-    for i in range(segments):
-        var line = DebugUtil.create_debug_line_to_from(
-            points[i],
-            points[i + 1],
-            color,
-            0.2
-        )
-        add_child(line)
-
-# ============================================
 # HELPERS PÚBLICOS PARA OTRAS ENTIDADES
 # ============================================
 
-# Acceso directo al GraphCityGenerator
 func get_generator() -> GraphCityGenerator:
     return generator
 
-# Helper para obtener lane volumes en área cilíndrica
-# Permite a otras entidades acceder sin tener que ir a .generator
-func get_lane_volumes_in_cylindrical_area(center: Vector3, radius: float, height: float) -> Array[LaneVolume]:
-    if generator == null:
-        push_error("CityVisualizer: generator no inicializado")
-        return []
-    
-    return generator.get_lane_volumes_in_cylindrical_area(center, radius, height)
-
-# Helper para obtener bloques en área circular
-func get_blocks_in_circular_area(center, radius: float) -> Array[int]:
-    if generator == null:
-        push_error("CityVisualizer: generator no inicializado")
-        return []
-    
-    return generator.get_blocks_in_circular_area(center, radius)
-
-# Helper para obtener un BlockGenerator específico
 func get_block_grid(face_idx: int) -> BlockGenerator:
     if generator == null:
         push_error("CityVisualizer: generator no inicializado")
@@ -1046,7 +821,6 @@ func get_block_grid(face_idx: int) -> BlockGenerator:
     
     return generator.get_block_grid(face_idx)
 
-# Helper para obtener continuaciones de un lane volume
 func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVolume]:
     if generator == null:
         push_error("CityVisualizer: generator no inicializado")
@@ -1054,39 +828,10 @@ func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVo
     
     return generator.get_lane_volume_continuations(face_idx, edge_idx)
 
-# ============================================
-# ACCESO A LANE VOLUME AREAS
-# ============================================
-
-# Obtiene un LaneVolumeArea3D específico
 func get_lane_volume_area(face_idx: int, edge_idx: int) -> LaneVolume:
     var key = "%d_%d" % [face_idx, edge_idx]
     return lane_volume_areas.get(key, null)
 
-# Obtiene todos los LaneVolumeArea3D
-func get_all_lane_volume_areas() -> Array[LaneVolume]:
-    var areas: Array[LaneVolume] = []
-    for key in lane_volume_areas:
-        areas.append(lane_volume_areas[key])
-    return areas
-
-# Obtiene LaneVolumeArea3D en área cilíndrica
-func get_lane_volume_areas_in_cylinder(center: Vector3, radius: float, height: float) -> Array[LaneVolume]:
-    if generator == null:
-        push_error("CityVisualizer: generator no inicializado")
-        return []
-    
-    var lane_volumes = generator.get_lane_volumes_in_cylindrical_area(center, radius, height)
-    
-    var areas: Array[LaneVolume] = []
-    for lane_vol in lane_volumes:
-        var area = get_lane_volume_area(lane_vol.face_idx, lane_vol.edge_idx)
-        if area:
-            areas.append(area)
-    
-    return areas
-
-# Obtiene LaneVolumeArea3D continuaciones de un lane dado
 func get_lane_volume_area_continuations(face_idx: int, edge_idx: int) -> Array[LaneVolume]:
     if generator == null:
         push_error("CityVisualizer: generator no inicializado")
@@ -1101,68 +846,3 @@ func get_lane_volume_area_continuations(face_idx: int, edge_idx: int) -> Array[L
             areas.append(area)
     
     return areas
-
-# Agregar al final de CityVisualizer.gd
-
-# ============================================
-# DEBUG - VERIFICACIÓN DE LANE VOLUMES
-# ============================================
-func debug_verify_lane_volumes() -> void:
-    print("\n=== VERIFICACIÓN LANE VOLUMES ===")
-    
-    # Método 1: Contar por diccionario
-    print("Lane volumes en diccionario: %d" % lane_volume_areas.size())
-    
-    # Método 2: Contar en el árbol de escena
-    var volumes_in_tree = get_tree().get_nodes_in_group("lane_volumes")
-    print("Lane volumes en árbol (grupo): %d" % volumes_in_tree.size())
-    
-    # Método 3: Contar hijos directos que sean LaneVolume
-    var direct_children = 0
-    for child in get_children():
-        if child is LaneVolume:
-            direct_children += 1
-    print("Lane volumes como hijos directos: %d" % direct_children)
-    
-    # Método 4: Verificar collision shapes
-    var with_collision = 0
-    for key in lane_volume_areas:
-        var lane_vol: LaneVolume = lane_volume_areas[key]
-        if lane_vol.collision_shape != null:
-            with_collision += 1
-    print("Lane volumes con collision: %d" % with_collision)
-    
-    # Método 5: Listar algunos ejemplos con geometría
-    print("\nPrimeros 5 lane volumes:")
-    var count = 0
-    for key in lane_volume_areas:
-        if count >= 5:
-            break
-        var lane_vol: LaneVolume = lane_volume_areas[key]
-        
-        # Calcular centro del start plane
-        var start_center = Vector3.ZERO
-        for v in lane_vol.start_plane_vertices:
-            start_center += v
-        start_center /= lane_vol.start_plane_vertices.size()
-        
-        # Calcular centro del end plane
-        var end_center = Vector3.ZERO
-        for v in lane_vol.end_plane_vertices:
-            end_center += v
-        end_center /= lane_vol.end_plane_vertices.size()
-        
-        print("  - %s: face=%d, edge=%d, street_type=%d" % [
-            key, 
-            lane_vol.face_idx, 
-            lane_vol.edge_idx,
-            lane_vol.street_type
-        ])
-        print("    Start plane center: %s" % start_center)
-        print("    End plane center: %s" % end_center)
-        print("    Length: %.2f, Height: %.2f" % [lane_vol.get_path_length(), lane_vol.volume_height])
-        print("    Grid: %dx%d cells" % [lane_vol.width_cells, lane_vol.height_cells])
-        
-        count += 1
-    
-    print("=================================\n")
