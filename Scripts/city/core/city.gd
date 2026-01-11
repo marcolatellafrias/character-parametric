@@ -10,23 +10,9 @@ extends Node3D
 @export var generation_seed: int = 123456
 
 @export_group("Barrios")
-@export_subgroup("Transición de Alturas")
+@export var num_neighborhoods: int = 3
+@export var neighborhood_seed: int = -1  # -1 usa generation_seed
 @export_range(0.1, 5.0) var neighborhood_height_falloff: float = 1.0
-
-@export_subgroup("Industrial")
-@export var industrial_min_floors: int = 8
-@export var industrial_max_floors: int = 14
-@export_range(0.0, 1.0) var industrial_block_heart_probability: float = 0.2
-
-@export_subgroup("Residential") 
-@export var residential_min_floors: int = 1
-@export var residential_max_floors: int = 3
-@export_range(0.0, 1.0) var residential_block_heart_probability: float = 0.4
-
-@export_subgroup("Financial")
-@export var financial_min_floors: int = 7
-@export var financial_max_floors: int = 9
-@export_range(0.0, 1.0) var financial_block_heart_probability: float = 0.1
 
 @export_group("Suavizado")
 @export var smoothing_steps: int = 50
@@ -182,16 +168,9 @@ func generate_graph() -> void:
         building_grid_columns,
         block_cell_height,
         building_cell_height,
-        industrial_min_floors,
-        industrial_max_floors,
-        residential_min_floors,
-        residential_max_floors,
-        financial_min_floors,
-        financial_max_floors,
         neighborhood_height_falloff,
-        industrial_block_heart_probability,
-        residential_block_heart_probability,
-        financial_block_heart_probability
+        num_neighborhoods,
+        neighborhood_seed
     )
 
 func clear_visualization() -> void:
@@ -246,6 +225,8 @@ func _generate_lane_volume_areas() -> void:
         if block == null:
             continue
         
+        var face = generator.plain_graph.faces[face_idx]
+        
         for edge_idx in range(4):
             var volume_data = block.get_edge_lane_volume(edge_idx)
             
@@ -261,11 +242,19 @@ func _generate_lane_volume_areas() -> void:
                 var num_floors = ceil(volume_data["height"] / floor_height)
                 height_cells = int(num_floors * generator.cells_per_floor)
             
+            # Obtener los nodos del edge
+            var node1 = face[edge_idx]
+            var node2 = face[(edge_idx + 1) % face.size()]
+            
+            # Determinar barrio del edge (mayor jerarquía)
+            var edge_neighborhood = generator.get_neighborhood_for_edge(node1, node2)
+            
             var enriched_data = volume_data.duplicate()
             enriched_data["face_idx"] = face_idx
             enriched_data["edge_idx"] = edge_idx
             enriched_data["width_cells"] = width_cells
             enriched_data["height_cells"] = height_cells
+            enriched_data["neighborhood"] = edge_neighborhood
             
             var lane_volume = LaneVolume.new(enriched_data)
             add_child(lane_volume)

@@ -11,8 +11,8 @@
 [ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="PackedScene" uid="uid://depimbd5eofjb" path="res://Scenes/car.tscn" id="12_h3puh"]
-[ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/player/area_instantiator.gd" id="12_k27g2"]
-[ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/city.gd" id="12_v3boh"]
+[ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
+[ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/core/city.gd" id="12_v3boh"]
 [ext_resource type="PackedScene" uid="uid://qbf2ejaplhko" path="res://Scenes/barquetesimple3.blend" id="13_h3puh"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_hfvyn"]
@@ -53,6 +53,7 @@ fog_light_color = Color(0.7659111, 0.46699548, 0.23651671, 1)
 fog_density = 1.0
 fog_sky_affect = 0.0
 fog_depth_begin = 50.0
+volumetric_fog_enabled = true
 volumetric_fog_density = 0.0125
 volumetric_fog_albedo = Color(0.9072337, 0.6909475, 0.34785485, 1)
 volumetric_fog_emission = Color(0.80489886, 0.5607987, 0.35002738, 1)
@@ -190,31 +191,7 @@ omni_attenuation = 2.0
 
 [node name="AreaInstantiator" type="Node3D" parent="CharacterBody3D" node_paths=PackedStringArray("world")]
 script = ExtResource("12_k27g2")
-outer_radius = null
-inner_radius = null
-height = null
-segments = null
-debug_volume_ring_color = null
-show_debug_volume_ring = null
 world = NodePath("../../world")
-show_lane_volumes = null
-lane_volume_color = null
-lane_volume_transparency = null
-show_continuations = null
-continuation_color = null
-continuation_transparency = null
-show_grid_points = null
-grid_point_color = null
-grid_point_size = null
-granularity = null
-enable_car_spawning = null
-spawn_interval = null
-car_weight = null
-truck_weight = null
-motorcycle_weight = null
-update_interval = null
-position_threshold = null
-rotation_threshold = null
 metadata/_custom_type_script = "uid://btuoiwrmahgt4"
 
 [node name="RigidBody3D" parent="." instance=ExtResource("12_h3puh")]

@@ -27,6 +27,9 @@ var height_cells: int
 var street_type: int
 var volume_height: float
 
+# Barrio al que pertenece este lane volume (mayor jerarquía de las 2 caras adyacentes)
+var neighborhood: Neighborhood
+
 # Datos originales del volumen (preservados por compatibilidad)
 var raw_data: Dictionary
 
@@ -43,6 +46,7 @@ func _init(volume_data: Dictionary) -> void:
 	height_cells = volume_data.get("height_cells", 10)
 	street_type = volume_data.get("street_type", 0)
 	volume_height = volume_data.get("height", 0.0)
+	neighborhood = volume_data.get("neighborhood", null)
 	
 	_setup_area()
 	_generate_collision()
@@ -64,6 +68,11 @@ func _setup_area() -> void:
 	set_meta("edge_idx", edge_idx)
 	set_meta("street_type", street_type)
 	set_meta("lane_id", get_id())
+	
+	if neighborhood:
+		set_meta("neighborhood_type", neighborhood.type)
+		set_meta("neighborhood_name", neighborhood.get_type_name())
+		set_meta("traffic_density", neighborhood.traffic_density)
 
 func _generate_collision() -> void:
 	collision_shape = DebugUtil.create_collision_shape_from_planes(
@@ -73,6 +82,28 @@ func _generate_collision() -> void:
 	
 	if collision_shape:
 		add_child(collision_shape)
+
+# ============================================================================
+# MÉTODOS DE BARRIO
+# ============================================================================
+
+func get_neighborhood() -> Neighborhood:
+	return neighborhood
+
+func get_traffic_density() -> float:
+	if neighborhood:
+		return neighborhood.traffic_density
+	return 0.5  # Default medio
+
+func get_neighborhood_type() -> int:
+	if neighborhood:
+		return neighborhood.type
+	return -1
+
+func get_neighborhood_name() -> String:
+	if neighborhood:
+		return neighborhood.get_type_name()
+	return "Unknown"
 
 # ============================================================================
 # MÉTODOS DE GEOMETRÍA Y PATH

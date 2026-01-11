@@ -5,22 +5,22 @@ class_name AreaInstantiator
 # AREA INSTANTIATOR - VERSIÓN CON DETECCIÓN POR CONTACTO
 # ============================================================================
 
-@export var outer_radius: float = 50.0
+@export var outer_radius: float = 200.0
 @export var ring_thickness: float = 10.0
 @export var height: float = 6.5
 @export var segments: int = 16
 @export var debug_cylinder_color: Color = Color(0.0, 1.0, 0.0, 0.15)
 @export var debug_ring_color: Color = Color(1.0, 0.5, 0.0, 0.15)
 @export var show_debug_cylinder: bool = false
-@export var show_debug_ring: bool = true
+@export var show_debug_ring: bool = false
 
 @export var world: Node3D
 
 @export_group("Lane Volume Visualization")
-@export var show_ring_volumes: bool = true
+@export var show_ring_volumes: bool = false
 @export var ring_volume_color: Color = Color(1.0, 0.5, 0.0) 
 @export var ring_volume_transparency: float = 0.2
-@export var show_continuations: bool = true
+@export var show_continuations: bool = false
 @export var continuation_color: Color = Color(0.0, 1.0, 1.0)
 @export var continuation_transparency: float = 0.3
 @export var show_grid_points: bool = false
@@ -30,7 +30,7 @@ class_name AreaInstantiator
 
 @export_group("Car Spawning")
 @export var enable_car_spawning: bool = true
-@export var spawn_interval: float = 0.02
+@export var spawn_interval: float = 0.1
 @export_subgroup("Spawn Weights")
 @export_range(0.0, 1.0) var car_weight: float = 0.7
 @export_range(0.0, 1.0) var truck_weight: float = 0.02
