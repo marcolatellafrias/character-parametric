@@ -36,6 +36,54 @@ const TYPE_CONFIGS = {
 	}
 }
 
+# Pesos de tipos de autos por tipo de barrio
+const TYPE_CAR_WEIGHTS = {
+	Type.SHANTY_TOWN: {
+		CarArchetypes.Type.POOR_CAR: 0.45,
+		CarArchetypes.Type.MOTORCYCLE: 0.25,
+		CarArchetypes.Type.TAXI: 0.15,
+		CarArchetypes.Type.UTILITY_TRUCK: 0.08,
+		CarArchetypes.Type.GARBAGE_TRUCK: 0.05,
+		CarArchetypes.Type.RICH_CAR: 0.02,
+		CarArchetypes.Type.VENDING_TRUCK: 0.0,
+		CarArchetypes.Type.ADVERTISEMENT_TRUCK: 0.0,
+		CarArchetypes.Type.POLICE_CAR: 0.0
+	},
+	Type.RICH_RESIDENTIAL: {
+		CarArchetypes.Type.RICH_CAR: 0.4,
+		CarArchetypes.Type.TAXI: 0.2,
+		CarArchetypes.Type.POOR_CAR: 0.15,
+		CarArchetypes.Type.MOTORCYCLE: 0.1,
+		CarArchetypes.Type.POLICE_CAR: 0.1,
+		CarArchetypes.Type.UTILITY_TRUCK: 0.05,
+		CarArchetypes.Type.GARBAGE_TRUCK: 0.0,
+		CarArchetypes.Type.VENDING_TRUCK: 0.0,
+		CarArchetypes.Type.ADVERTISEMENT_TRUCK: 0.0
+	},
+	Type.INDUSTRIAL: {
+		CarArchetypes.Type.UTILITY_TRUCK: 0.3,
+		CarArchetypes.Type.GARBAGE_TRUCK: 0.15,
+		CarArchetypes.Type.POOR_CAR: 0.2,
+		CarArchetypes.Type.ADVERTISEMENT_TRUCK: 0.15,
+		CarArchetypes.Type.VENDING_TRUCK: 0.1,
+		CarArchetypes.Type.MOTORCYCLE: 0.1,
+		CarArchetypes.Type.RICH_CAR: 0.0,
+		CarArchetypes.Type.POLICE_CAR: 0.0,
+		CarArchetypes.Type.TAXI: 0.0
+	},
+	Type.DOWNTOWN: {
+		CarArchetypes.Type.TAXI: 0.3,
+		CarArchetypes.Type.RICH_CAR: 0.2,
+		CarArchetypes.Type.POOR_CAR: 0.15,
+		CarArchetypes.Type.POLICE_CAR: 0.15,
+		CarArchetypes.Type.MOTORCYCLE: 0.1,
+		CarArchetypes.Type.UTILITY_TRUCK: 0.1,
+		CarArchetypes.Type.GARBAGE_TRUCK: 0.0,
+		CarArchetypes.Type.VENDING_TRUCK: 0.0,
+		CarArchetypes.Type.ADVERTISEMENT_TRUCK: 0.0
+	}
+}
+
 var type: Type
 var seed: int
 var index: int
@@ -46,7 +94,6 @@ var max_floors: int
 var block_heart_probability: float
 
 # Datos de tránsito (0.0 - 1.0)
-# Mayor tránsito = mayor jerarquía
 var traffic_density: float
 
 # Datos de expansión
@@ -58,7 +105,6 @@ func _init(p_type: Type, p_seed: int, p_index: int) -> void:
 	seed = p_seed
 	index = p_index
 	
-	# Aplicar configuración por defecto
 	var config = TYPE_CONFIGS[type]
 	min_floors = config["min_floors"]
 	max_floors = config["max_floors"]
@@ -78,10 +124,11 @@ func get_type_name() -> String:
 		_:
 			return "Unknown"
 
-# La jerarquía se basa directamente en el tránsito
-# Mayor tránsito = mayor jerarquía
 func get_hierarchy() -> float:
 	return traffic_density
+
+func get_car_weights() -> Dictionary:
+	return TYPE_CAR_WEIGHTS.get(type, {})
 
 func set_floor_config(p_min: int, p_max: int, p_block_heart_prob: float) -> void:
 	min_floors = p_min
@@ -101,20 +148,17 @@ func has_face(face_idx: int) -> bool:
 func get_face_count() -> int:
 	return assigned_faces.size()
 
-# Compara jerarquías con otro barrio
-# Retorna: 1 si self > other, -1 si self < other, 0 si igual
 static func compare_hierarchy(a: Neighborhood, b: Neighborhood) -> int:
 	var a_hierarchy = a.get_hierarchy()
 	var b_hierarchy = b.get_hierarchy()
 	
 	if a_hierarchy > b_hierarchy:
-		return 1  # a es mayor
+		return 1
 	elif a_hierarchy < b_hierarchy:
-		return -1  # b es mayor
+		return -1
 	else:
-		return 0  # igual jerarquía
+		return 0
 
-# Retorna el barrio de mayor jerarquía entre dos
 static func get_higher_hierarchy(a: Neighborhood, b: Neighborhood) -> Neighborhood:
 	if a == null:
 		return b

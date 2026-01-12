@@ -5,104 +5,215 @@ static var speed_debug_factor: float = 1.0
 static var size_debug_factor: float = 10.0
 
 enum Type {
-	CAR,
-	TRUCK,
-	MOTORCYCLE
+	VENDING_TRUCK,
+	RICH_CAR,
+	POOR_CAR,
+	MOTORCYCLE,
+	UTILITY_TRUCK,
+	ADVERTISEMENT_TRUCK,
+	GARBAGE_TRUCK,
+	POLICE_CAR,
+	TAXI
+}
+
+# Tabla de afinidad: qué tan probable es que un tipo de auto elija un tipo de barrio
+const NEIGHBORHOOD_AFFINITY = {
+	Type.RICH_CAR: {
+		Neighborhood.Type.RICH_RESIDENTIAL: 1.0,
+		Neighborhood.Type.DOWNTOWN: 0.7,
+		Neighborhood.Type.INDUSTRIAL: 0.2,
+		Neighborhood.Type.SHANTY_TOWN: 0.1
+	},
+	Type.POOR_CAR: {
+		Neighborhood.Type.SHANTY_TOWN: 1.0,
+		Neighborhood.Type.INDUSTRIAL: 0.6,
+		Neighborhood.Type.DOWNTOWN: 0.4,
+		Neighborhood.Type.RICH_RESIDENTIAL: 0.2
+	},
+	Type.TAXI: {
+		Neighborhood.Type.DOWNTOWN: 1.0,
+		Neighborhood.Type.RICH_RESIDENTIAL: 0.8,
+		Neighborhood.Type.SHANTY_TOWN: 0.6,
+		Neighborhood.Type.INDUSTRIAL: 0.5
+	},
+	Type.UTILITY_TRUCK: {
+		Neighborhood.Type.INDUSTRIAL: 1.0,
+		Neighborhood.Type.DOWNTOWN: 0.5,
+		Neighborhood.Type.SHANTY_TOWN: 0.4,
+		Neighborhood.Type.RICH_RESIDENTIAL: 0.3
+	},
+	Type.MOTORCYCLE: {
+		Neighborhood.Type.SHANTY_TOWN: 0.8,
+		Neighborhood.Type.DOWNTOWN: 0.7,
+		Neighborhood.Type.INDUSTRIAL: 0.6,
+		Neighborhood.Type.RICH_RESIDENTIAL: 0.5
+	},
+	Type.GARBAGE_TRUCK: {
+		Neighborhood.Type.INDUSTRIAL: 0.9,
+		Neighborhood.Type.SHANTY_TOWN: 0.7,
+		Neighborhood.Type.DOWNTOWN: 0.5,
+		Neighborhood.Type.RICH_RESIDENTIAL: 0.4
+	},
+	Type.VENDING_TRUCK: {
+		Neighborhood.Type.INDUSTRIAL: 0.8,
+		Neighborhood.Type.DOWNTOWN: 0.7,
+		Neighborhood.Type.SHANTY_TOWN: 0.6,
+		Neighborhood.Type.RICH_RESIDENTIAL: 0.5
+	},
+	Type.ADVERTISEMENT_TRUCK: {
+		Neighborhood.Type.DOWNTOWN: 1.0,
+		Neighborhood.Type.RICH_RESIDENTIAL: 0.7,
+		Neighborhood.Type.INDUSTRIAL: 0.6,
+		Neighborhood.Type.SHANTY_TOWN: 0.3
+	},
+	Type.POLICE_CAR: {
+		Neighborhood.Type.DOWNTOWN: 0.9,
+		Neighborhood.Type.RICH_RESIDENTIAL: 0.8,
+		Neighborhood.Type.SHANTY_TOWN: 0.7,
+		Neighborhood.Type.INDUSTRIAL: 0.6
+	}
 }
 
 class Archetype:
 	var name: String
-	var min_width: float
-	var max_width: float
-	var min_height: float
-	var max_height: float
-	var min_depth: float
-	var max_depth: float
+	var width: float
+	var height: float
+	var depth: float
 	var min_speed: float
 	var max_speed: float
-	var color_palette: Array[Color]
-	var weight: float  # Peso para spawning
+	var color: Color
+	var weight: float
 	
 	func _init(
 		p_name: String,
-		p_min_width: float, p_max_width: float,
-		p_min_height: float, p_max_height: float,
-		p_min_depth: float, p_max_depth: float,
-		p_min_speed: float, p_max_speed: float,
-		p_color_palette: Array[Color],
+		p_width: float,
+		p_height: float,
+		p_depth: float,
+		p_min_speed: float,
+		p_max_speed: float,
+		p_color: Color,
 		p_weight: float = 1.0
 	):
 		name = p_name
-		min_width = p_min_width
-		max_width = p_max_width
-		min_height = p_min_height
-		max_height = p_max_height
-		min_depth = p_min_depth
-		max_depth = p_max_depth
+		width = p_width
+		height = p_height
+		depth = p_depth
 		min_speed = p_min_speed
 		max_speed = p_max_speed
-		color_palette = p_color_palette
+		color = p_color
 		weight = p_weight
 	
 	func get_random_dimensions() -> Dictionary:
 		return {
-			"width": randf_range(min_width, max_width),
-			"height": randf_range(min_height, max_height),
-			"depth": randf_range(min_depth, max_depth),
+			"width": width,
+			"height": height,
+			"depth": depth,
 			"speed": randf_range(min_speed, max_speed)
 		}
 	
 	func get_random_color() -> Color:
-		if color_palette.is_empty():
-			return Color(randf(), randf(), randf(), 1.0)
-		return color_palette[randi() % color_palette.size()]
+		return color
 
 static var archetypes: Dictionary = {}
 
 static func _static_init() -> void:
-	# Definir arquetipos con pesos
-	archetypes[Type.CAR] = Archetype.new(
-		"Car",
-		0.15 * size_debug_factor, 0.2 * size_debug_factor,    # width
-		0.08 * size_debug_factor, 0.12 * size_debug_factor,   # height
-		0.3 * size_debug_factor, 0.45 * size_debug_factor,    # depth
-		16.0 * speed_debug_factor, 20.0 * speed_debug_factor,    # speed
-		[
-			Color(0.8, 0.1, 0.1),  # Rojo
-			Color(0.1, 0.1, 0.8),  # Azul
-			Color(0.1, 0.1, 0.1),  # Negro
-			Color(0.9, 0.9, 0.9),  # Blanco
-			Color(0.6, 0.6, 0.6),  # Gris
-		],
-		0.7  # 70% probabilidad
+	archetypes[Type.VENDING_TRUCK] = Archetype.new(
+		"Vending Truck",
+		0.35 * size_debug_factor,
+		0.4 * size_debug_factor,
+		1.0 * size_debug_factor,
+		4.0 * speed_debug_factor,
+		6.0 * speed_debug_factor,
+		Color(0.9, 0.5, 0.1),
+		0.05
 	)
 	
-	archetypes[Type.TRUCK] = Archetype.new(
-		"Truck",
-		0.35 * size_debug_factor, 0.35 * size_debug_factor,     # width
-		0.35 * size_debug_factor, 0.5 * size_debug_factor,   # height
-		0.9 * size_debug_factor, 1.4 * size_debug_factor,     # depth
-		4.0 * speed_debug_factor, 5.0 * speed_debug_factor,    # speed
-		[
-			Color(0.3, 0.3, 0.3),  # Gris oscuro
-			Color(0.5, 0.2, 0.1),  # Café
-			Color(0.1, 0.3, 0.6),  # Azul oscuro
-		],
-		0.1  # 10% probabilidad
+	archetypes[Type.RICH_CAR] = Archetype.new(
+		"Rich Car",
+		0.18 * size_debug_factor,
+		0.09 * size_debug_factor,
+		0.42 * size_debug_factor,
+		18.0 * speed_debug_factor,
+		22.0 * speed_debug_factor,
+		Color(0.1, 0.1, 0.1),
+		0.15
+	)
+	
+	archetypes[Type.POOR_CAR] = Archetype.new(
+		"Poor Car",
+		0.16 * size_debug_factor,
+		0.1 * size_debug_factor,
+		0.35 * size_debug_factor,
+		14.0 * speed_debug_factor,
+		18.0 * speed_debug_factor,
+		Color(0.6, 0.5, 0.4),
+		0.3
 	)
 	
 	archetypes[Type.MOTORCYCLE] = Archetype.new(
 		"Motorcycle",
-		0.04 * size_debug_factor, 0.06 * size_debug_factor,   # width
-		0.03 * size_debug_factor, 0.04 * size_debug_factor,    # height
-		0.15 * size_debug_factor, 0.25 * size_debug_factor,   # depth
-		20.0 * speed_debug_factor, 26.0 * speed_debug_factor,   # speed
-		[
-			Color(0.9, 0.1, 0.1),  # Rojo brillante
-			Color(0.1, 0.9, 0.1),  # Verde brillante
-			Color(0.1, 0.1, 0.1),  # Negro
-		],
-		0.2  # 20% probabilidad
+		0.05 * size_debug_factor,
+		0.035 * size_debug_factor,
+		0.2 * size_debug_factor,
+		22.0 * speed_debug_factor,
+		28.0 * speed_debug_factor,
+		Color(0.9, 0.1, 0.1),
+		0.2
+	)
+	
+	archetypes[Type.UTILITY_TRUCK] = Archetype.new(
+		"Utility Truck",
+		0.35 * size_debug_factor,
+		0.45 * size_debug_factor,
+		1.2 * size_debug_factor,
+		5.0 * speed_debug_factor,
+		7.0 * speed_debug_factor,
+		Color(0.9, 0.8, 0.1),
+		0.08
+	)
+	
+	archetypes[Type.ADVERTISEMENT_TRUCK] = Archetype.new(
+		"Advertisement Truck",
+		0.35 * size_debug_factor,
+		0.5 * size_debug_factor,
+		1.5 * size_debug_factor,
+		3.5 * speed_debug_factor,
+		5.0 * speed_debug_factor,
+		Color(0.9, 0.1, 0.9),
+		0.03
+	)
+	
+	archetypes[Type.GARBAGE_TRUCK] = Archetype.new(
+		"Garbage Truck",
+		0.35 * size_debug_factor,
+		0.45 * size_debug_factor,
+		1.3 * size_debug_factor,
+		4.0 * speed_debug_factor,
+		6.0 * speed_debug_factor,
+		Color(0.2, 0.6, 0.2),
+		0.04
+	)
+	
+	archetypes[Type.POLICE_CAR] = Archetype.new(
+		"Police Car",
+		0.18 * size_debug_factor,
+		0.1 * size_debug_factor,
+		0.4 * size_debug_factor,
+		16.0 * speed_debug_factor,
+		24.0 * speed_debug_factor,
+		Color(0.1, 0.3, 0.9),
+		0.1
+	)
+	
+	archetypes[Type.TAXI] = Archetype.new(
+		"Taxi",
+		0.17 * size_debug_factor,
+		0.1 * size_debug_factor,
+		0.38 * size_debug_factor,
+		15.0 * speed_debug_factor,
+		20.0 * speed_debug_factor,
+		Color(0.95, 0.9, 0.1),
+		0.05
 	)
 
 static func get_archetype(type: Type) -> Archetype:
@@ -112,18 +223,15 @@ static func get_random_archetype() -> Archetype:
 	return get_weighted_random_archetype({})
 
 static func get_weighted_random_archetype(custom_weights: Dictionary = {}) -> Archetype:
-	# Calcular el peso total
 	var total_weight = 0.0
 	var weighted_types = []
 	
 	for type in archetypes.keys():
 		var archetype = archetypes[type]
-		# Usar peso personalizado si existe, sino usar el peso del arquetipo
 		var weight = custom_weights.get(type, archetype.weight)
 		total_weight += weight
 		weighted_types.append({"type": type, "weight": weight})
 	
-	# Seleccionar aleatoriamente basado en pesos
 	var random_value = randf() * total_weight
 	var cumulative_weight = 0.0
 	
@@ -132,5 +240,8 @@ static func get_weighted_random_archetype(custom_weights: Dictionary = {}) -> Ar
 		if random_value <= cumulative_weight:
 			return archetypes[item["type"]]
 	
-	# Fallback (no debería llegar aquí)
 	return archetypes[archetypes.keys()[0]]
+
+static func get_neighborhood_affinity(car_type: Type, neighborhood_type: int) -> float:
+	var affinity_table = NEIGHBORHOOD_AFFINITY.get(car_type, {})
+	return affinity_table.get(neighborhood_type, 0.5)

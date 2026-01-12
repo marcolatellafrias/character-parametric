@@ -731,6 +731,7 @@ func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVo
 					enriched_data["width_cells"] = width_cells
 					enriched_data["height_cells"] = height_cells
 					enriched_data["neighborhood"] = edge_neighborhood
+					enriched_data["cells_per_floor"] = cells_per_floor
 					
 					continuations.append(LaneVolume.new(enriched_data))
 	

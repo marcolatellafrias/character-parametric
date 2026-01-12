@@ -180,8 +180,10 @@ current = true
 [node name="city" type="Node3D" parent="."]
 script = ExtResource("12_v3boh")
 
-[node name="CharacterBody3D" type="CharacterBody3D" parent="."]
+[node name="CharacterBody3D" type="CharacterBody3D" parent="." node_paths=PackedStringArray("camera", "camera_pivot")]
 script = ExtResource("8_oilx1")
+camera = NodePath("camerapivot/Camera3D")
+camera_pivot = NodePath("camerapivot")
 
 [node name="OmniLight3D" type="OmniLight3D" parent="CharacterBody3D"]
 visible = false
@@ -189,10 +191,16 @@ light_energy = 50.0
 omni_range = 50.0
 omni_attenuation = 2.0
 
-[node name="AreaInstantiator" type="Node3D" parent="CharacterBody3D" node_paths=PackedStringArray("world")]
+[node name="AreaInstantiator" type="Node3D" parent="CharacterBody3D" node_paths=PackedStringArray("cameras", "world")]
 script = ExtResource("12_k27g2")
+cameras = [NodePath("../camerapivot/Camera3D")]
 world = NodePath("../../world")
 metadata/_custom_type_script = "uid://btuoiwrmahgt4"
+
+[node name="camerapivot" type="Node3D" parent="CharacterBody3D"]
+
+[node name="Camera3D" type="Camera3D" parent="CharacterBody3D/camerapivot"]
+current = true
 
 [node name="RigidBody3D" parent="." instance=ExtResource("12_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.9507675, 0.9780211, 10.36355)

@@ -1,5 +1,6 @@
-AreaInstantiator
 Node3D
+Camera3D
+AreaInstantiator
 Area3D
 MeshInstance3D
 CollisionShape3D
@@ -7,7 +8,6 @@ RigidBody3D
 OmniLight3D
 WorldEnvironment
 CharacterBody3D
-Camera3D
 GPUParticles3D
 CPUParticles3D
 RayCast3D
