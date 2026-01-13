@@ -2,6 +2,8 @@
 extends Node3D
 class_name FlyingCar
 
+signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: int)
+
 @export var width: float = 2.0
 @export var height: float = 1.0
 @export var depth: float = 4.0
@@ -62,7 +64,6 @@ func _process(delta: float) -> void:
 		global_position = path_follow.global_position
 		global_rotation = path_follow.global_rotation
 		
-		# Debug: cambiar color según visibilidad
 		if area_instantiator:
 			var is_visible = area_instantiator.is_position_visible(global_position)
 			if is_visible:
@@ -219,7 +220,6 @@ func _prepare_next_path() -> void:
 	
 	var continuations = city.get_lane_volume_continuations(face_idx, edge_idx)
 	
-	# Filtrar continuaciones usando cálculo directo en lugar de Area3D
 	var continuations_inside = []
 	if area_instantiator:
 		for cont in continuations:
@@ -228,9 +228,7 @@ func _prepare_next_path() -> void:
 	else:
 		continuations_inside = continuations
 	
-	# Verificar si debe despawnear con cálculos directos
 	if area_instantiator and continuations_inside.is_empty():
-		# Calcular si el auto está dentro de ALGUNA área cilíndrica
 		var car_inside_any_cylinder = false
 		for camera in area_instantiator.cameras:
 			if not camera or not is_instance_valid(camera):
@@ -245,7 +243,6 @@ func _prepare_next_path() -> void:
 				car_inside_any_cylinder = true
 				break
 		
-		# Calcular si el auto es visible en ALGÚN frustum
 		var car_visible = false
 		if take_frustum_into_account_when_despawning:
 			for camera in area_instantiator.cameras:
@@ -367,6 +364,11 @@ func _transition_to_next_path() -> void:
 	var current_direction = _get_current_path_direction()
 	var next_direction = (next_end - next_start).normalized()
 	
+	# Emitir señal de cambio de volumen
+	var old_volume_id = ""
+	if current_volume.has("face_idx") and current_volume.has("edge_idx"):
+		old_volume_id = str(current_volume["face_idx"]) + "_" + str(current_volume["edge_idx"])
+	
 	path_3d = Path3D.new()
 	var curve = Curve3D.new()
 	
@@ -397,6 +399,8 @@ func _transition_to_next_path() -> void:
 	
 	path_follow.progress = 0.0
 	
+	var new_volume_id = str(new_volume.face_idx) + "_" + str(new_volume.edge_idx)
+	
 	current_volume = {
 		"face_idx": new_volume.face_idx,
 		"edge_idx": new_volume.edge_idx
@@ -405,6 +409,9 @@ func _transition_to_next_path() -> void:
 	current_cell_y = path_data["used_cell_y"]
 	current_width_cells = new_volume.width_cells
 	current_height_cells = new_volume.height_cells
+	
+	if area_instantiator:
+		volume_changed.emit(old_volume_id, new_volume_id, car_archetype)
 	
 	if show_path_debug and world_node:
 		var points = [

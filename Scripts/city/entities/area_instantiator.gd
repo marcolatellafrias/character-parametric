@@ -27,6 +27,7 @@ class_name AreaInstantiator
 @export_group("Car Spawning")
 @export var enable_car_spawning: bool = true
 @export var spawn_interval: float = 0.1
+@export var spawn_safety_margin: float = 3.0
 
 var city = null
 var debug_cylinder_meshes: Array[MeshInstance3D] = []
@@ -38,6 +39,7 @@ var cylinder_lane_volumes: Array[LaneVolume] = []
 var volume_area_refs: Dictionary = {}
 
 var spawn_timer: float = 0.0
+var volume_car_counts: Dictionary = {}
 
 func _ready() -> void:
 	city = get_tree().get_first_node_in_group("city_generator")
@@ -283,40 +285,100 @@ func _try_spawn_car() -> void:
 	if spawn_candidates.is_empty():
 		return
 	
-	var selected_vol = _select_volume_by_traffic_density(spawn_candidates)
-	
-	var car_seed = randi()
-	
-	var neighborhood = selected_vol.get_neighborhood()
-	var custom_weights = neighborhood.get_car_weights() if neighborhood else {}
-	
-	var temp_car = FlyingCar.new()
-	temp_car.initialize_from_seed(car_seed, custom_weights)
-	
-	var v_max = selected_vol.get_max_spawn_v()
-	
-	var max_attempts = 10
-	for attempt in range(max_attempts):
-		var random_u = randf()
-		var random_v = randf() * v_max
+	# Intentar con diferentes volúmenes hasta spawnear o agotar candidatos
+	while not spawn_candidates.is_empty():
+		var selected_vol = _select_volume_by_traffic_density(spawn_candidates)
+		var volume_id = str(selected_vol.face_idx) + "_" + str(selected_vol.edge_idx)
 		
-		var spawn_pos = selected_vol.get_point_at_grid(random_u, random_v, true)
-		var end_pos = selected_vol.get_point_at_grid(random_u, random_v, false)
+		var car_seed = randi()
 		
-		var front_face = temp_car.get_front_face_at_segment(spawn_pos, end_pos)
+		var neighborhood = selected_vol.get_neighborhood()
+		var custom_weights = neighborhood.get_car_weights() if neighborhood else {}
 		
-		var validation = selected_vol.validate_face_projection(
-			front_face,
-			random_u,
-			random_v
-		)
+		var temp_car = FlyingCar.new()
+		temp_car.initialize_from_seed(car_seed, custom_weights)
 		
-		if validation["valid"]:
+		# Verificar si se puede spawnear este tipo de auto en este volumen
+		if not _can_spawn_car_type_in_volume(volume_id, temp_car.car_archetype):
+			temp_car.free()
+			# Remover este volumen de candidatos y probar con otro
+			spawn_candidates.erase(selected_vol)
+			continue
+		
+		var v_max = selected_vol.get_max_spawn_v()
+		
+		var max_attempts = 10
+		var spawned = false
+		
+		for attempt in range(max_attempts):
+			var random_u = randf()
+			var random_v = randf() * v_max
+			
+			var spawn_pos = selected_vol.get_point_at_grid(random_u, random_v, true)
+			var end_pos = selected_vol.get_point_at_grid(random_u, random_v, false)
+			
+			var front_face = temp_car.get_front_face_at_segment(spawn_pos, end_pos)
+			
+			var validation = selected_vol.validate_face_projection(
+				front_face,
+				random_u,
+				random_v
+			)
+			
+			if not validation["valid"]:
+				continue
+			
+			var direction = (end_pos - spawn_pos).normalized()
+			if _check_spawn_collision(spawn_pos, direction, temp_car.width, temp_car.height, temp_car.depth):
+				continue
+			
+			# Spawn exitoso
 			temp_car.free()
 			_spawn_car_at_volume(selected_vol, random_u, random_v, car_seed, custom_weights)
+			spawned = true
+			break
+		
+		if spawned:
 			return
+		
+		# No se pudo spawnear por validación/colisión, probar con otro volumen
+		temp_car.free()
+		spawn_candidates.erase(selected_vol)
+
+func _check_spawn_collision(spawn_pos: Vector3, direction: Vector3, 
+							car_width: float, car_height: float, car_depth: float) -> bool:
+	if not world:
+		return false
 	
-	temp_car.free()
+	var half_width = car_width * 0.5
+	var half_height = car_height * 0.5
+	var half_depth = car_depth * 0.5
+	var total_depth = half_depth + spawn_safety_margin
+	
+	for child in world.get_children():
+		if not child is FlyingCar:
+			continue
+		
+		var other_car = child as FlyingCar
+		var to_other = other_car.global_position - spawn_pos
+		var distance = to_other.length()
+		
+		var max_check_distance = (car_depth + other_car.depth) * 0.5 + spawn_safety_margin * 2
+		if distance > max_check_distance:
+			continue
+		
+		var projection = to_other.dot(direction)
+		
+		if abs(projection) < total_depth + (other_car.depth * 0.5):
+			var lateral_offset = to_other - (direction * projection)
+			var lateral_distance = lateral_offset.length()
+			
+			if lateral_distance < (half_width + other_car.width * 0.5):
+				var height_diff = abs(spawn_pos.y - other_car.global_position.y)
+				if height_diff < (half_height + other_car.height * 0.5):
+					return true
+	
+	return false
 
 func _is_lane_volume_visible(lane_vol: LaneVolume) -> bool:
 	var vertices = []
@@ -387,36 +449,7 @@ func is_volume_inside_by_indices(face_idx: int, edge_idx: int) -> bool:
 			return true
 	return false
 
-func _spawn_car_at_volume(vol: LaneVolume, grid_u: float, grid_v: float, 
-						  car_seed: int, custom_weights: Dictionary) -> void:
-	
-	var path_segment = vol.get_path_segment_at_grid(grid_u, grid_v)
-	
-	var car = FlyingCar.new()
-	car.world_node = world
-	car.city = city
-	car.area_instantiator = self
-	car.spawn_time = Time.get_ticks_msec() / 1000.0
-	
-	car.initialize_from_seed(car_seed, custom_weights)
-	
-	world.add_child(car)
-	
-	car.set_path(
-		path_segment["start"],
-		path_segment["end"],
-		0.0,
-		grid_u,
-		grid_v,
-		vol.get_raw_data(),
-		vol.width_cells,
-		vol.height_cells
-	)
-
-# AreaInstantiator.gd - Agregar este método
-
 func is_lane_volume_inside_by_calculation(lane_vol: LaneVolume) -> bool:
-	# Obtener el centro del volumen
 	var center = Vector3.ZERO
 	for vertex in lane_vol.start_plane_vertices:
 		center += vertex
@@ -424,7 +457,6 @@ func is_lane_volume_inside_by_calculation(lane_vol: LaneVolume) -> bool:
 		center += vertex
 	center /= 8.0
 	
-	# Verificar si está dentro de algún cilindro
 	for camera in cameras:
 		if not camera or not is_instance_valid(camera):
 			continue
@@ -438,3 +470,71 @@ func is_lane_volume_inside_by_calculation(lane_vol: LaneVolume) -> bool:
 			return true
 	
 	return false
+
+func _spawn_car_at_volume(vol: LaneVolume, grid_u: float, grid_v: float, 
+						  car_seed: int, custom_weights: Dictionary) -> void:
+	
+	var path_segment = vol.get_path_segment_at_grid(grid_u, grid_v)
+	
+	var car = FlyingCar.new()
+	car.world_node = world
+	car.city = city
+	car.area_instantiator = self
+	car.spawn_time = Time.get_ticks_msec() / 1000.0
+	
+	car.initialize_from_seed(car_seed, custom_weights)
+	
+	var volume_id = str(vol.face_idx) + "_" + str(vol.edge_idx)
+	if not _can_spawn_car_type_in_volume(volume_id, car.car_archetype):
+		car.free()
+		return
+	
+	world.add_child(car)
+	
+	_add_car_to_volume(volume_id, car.car_archetype)
+	
+	car.volume_changed.connect(_on_car_volume_changed)
+	car.tree_exited.connect(func(): _remove_car_from_volume(volume_id, car.car_archetype))
+	
+	car.set_path(
+		path_segment["start"],
+		path_segment["end"],
+		0.0,
+		grid_u,
+		grid_v,
+		vol.get_raw_data(),
+		vol.width_cells,
+		vol.height_cells
+	)
+
+func _can_spawn_car_type_in_volume(volume_id: String, car_type: int) -> bool:
+	var archetype = CarArchetypes.get_archetype(car_type)
+	if archetype.max_per_volume == -1:
+		return true
+	
+	if not volume_car_counts.has(volume_id):
+		return true
+	
+	var type_count = volume_car_counts[volume_id].get(car_type, 0)
+	return type_count < archetype.max_per_volume
+
+func _add_car_to_volume(volume_id: String, car_type: int) -> void:
+	if not volume_car_counts.has(volume_id):
+		volume_car_counts[volume_id] = {}
+	
+	var current = volume_car_counts[volume_id].get(car_type, 0)
+	volume_car_counts[volume_id][car_type] = current + 1
+
+func _remove_car_from_volume(volume_id: String, car_type: int) -> void:
+	if not volume_car_counts.has(volume_id):
+		return
+	
+	var current = volume_car_counts[volume_id].get(car_type, 0)
+	if current > 0:
+		volume_car_counts[volume_id][car_type] = current - 1
+
+func _on_car_volume_changed(old_volume_id: String, new_volume_id: String, car_type: int) -> void:
+	if not old_volume_id.is_empty():
+		_remove_car_from_volume(old_volume_id, car_type)
+	if not new_volume_id.is_empty():
+		_add_car_to_volume(new_volume_id, car_type)

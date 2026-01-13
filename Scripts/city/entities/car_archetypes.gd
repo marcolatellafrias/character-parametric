@@ -83,6 +83,7 @@ class Archetype:
 	var max_speed: float
 	var color: Color
 	var weight: float
+	var max_per_volume: int  # Nuevo
 	
 	func _init(
 		p_name: String,
@@ -92,7 +93,8 @@ class Archetype:
 		p_min_speed: float,
 		p_max_speed: float,
 		p_color: Color,
-		p_weight: float = 1.0
+		p_weight: float = 1.0,
+		p_max_per_volume: int = -1  # -1 = ilimitado
 	):
 		name = p_name
 		width = p_width
@@ -102,6 +104,7 @@ class Archetype:
 		max_speed = p_max_speed
 		color = p_color
 		weight = p_weight
+		max_per_volume = p_max_per_volume
 	
 	func get_random_dimensions() -> Dictionary:
 		return {
@@ -125,7 +128,8 @@ static func _static_init() -> void:
 		4.0 * speed_debug_factor,
 		6.0 * speed_debug_factor,
 		Color(0.9, 0.5, 0.1),
-		0.05
+		0.05,
+		1  # Máximo 2 por volumen
 	)
 	
 	archetypes[Type.RICH_CAR] = Archetype.new(
@@ -136,7 +140,8 @@ static func _static_init() -> void:
 		18.0 * speed_debug_factor,
 		22.0 * speed_debug_factor,
 		Color(0.1, 0.1, 0.1),
-		0.15
+		0.15,
+		20
 	)
 	
 	archetypes[Type.POOR_CAR] = Archetype.new(
@@ -147,7 +152,8 @@ static func _static_init() -> void:
 		14.0 * speed_debug_factor,
 		18.0 * speed_debug_factor,
 		Color(0.6, 0.5, 0.4),
-		0.3
+		0.3,
+		20
 	)
 	
 	archetypes[Type.MOTORCYCLE] = Archetype.new(
@@ -158,29 +164,32 @@ static func _static_init() -> void:
 		22.0 * speed_debug_factor,
 		28.0 * speed_debug_factor,
 		Color(0.9, 0.1, 0.1),
-		0.2
+		0.2,
+		20
 	)
 	
 	archetypes[Type.UTILITY_TRUCK] = Archetype.new(
 		"Utility Truck",
-		0.35 * size_debug_factor,
-		0.45 * size_debug_factor,
-		1.2 * size_debug_factor,
+		0.15 * size_debug_factor,
+		0.2 * size_debug_factor,
+		0.6 * size_debug_factor,
 		5.0 * speed_debug_factor,
 		7.0 * speed_debug_factor,
 		Color(0.9, 0.8, 0.1),
-		0.08
+		0.08,
+		2
 	)
 	
 	archetypes[Type.ADVERTISEMENT_TRUCK] = Archetype.new(
 		"Advertisement Truck",
 		0.35 * size_debug_factor,
-		0.5 * size_debug_factor,
+		0.6 * size_debug_factor,
 		1.5 * size_debug_factor,
 		3.5 * speed_debug_factor,
 		5.0 * speed_debug_factor,
 		Color(0.9, 0.1, 0.9),
-		0.03
+		0.03,
+		1
 	)
 	
 	archetypes[Type.GARBAGE_TRUCK] = Archetype.new(
@@ -191,7 +200,8 @@ static func _static_init() -> void:
 		4.0 * speed_debug_factor,
 		6.0 * speed_debug_factor,
 		Color(0.2, 0.6, 0.2),
-		0.04
+		0.04,
+		1
 	)
 	
 	archetypes[Type.POLICE_CAR] = Archetype.new(
@@ -202,7 +212,8 @@ static func _static_init() -> void:
 		16.0 * speed_debug_factor,
 		24.0 * speed_debug_factor,
 		Color(0.1, 0.3, 0.9),
-		0.1
+		0.1,
+		3
 	)
 	
 	archetypes[Type.TAXI] = Archetype.new(
@@ -213,7 +224,8 @@ static func _static_init() -> void:
 		15.0 * speed_debug_factor,
 		20.0 * speed_debug_factor,
 		Color(0.95, 0.9, 0.1),
-		0.05
+		0.05,
+		4
 	)
 
 static func get_archetype(type: Type) -> Archetype:
