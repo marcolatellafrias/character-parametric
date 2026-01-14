@@ -68,10 +68,8 @@ var original_color: Color
 var material: StandardMaterial3D
 
 var current_speed: float = 0.0
-var target_speed: float = 0.0
 var collision_shape: BoxShape3D
-var deceleration_rate: float = 0.0
-var acceleration_rate: float = 0.0
+
 
 func _ready() -> void:
 	_create_visual()
@@ -83,19 +81,20 @@ func _ready() -> void:
 	rng = RandomNumberGenerator.new()
 	rng.seed = seed
 	
-	target_speed = speed
 	current_speed = speed
-	_update_acceleration_rates()
 
 func _process(delta: float) -> void:
 	if has_path and path_follow:
 		if enable_collision_avoidance:
-			_check_forward_collisions()
-			_update_speed(delta)
+			var should_move = _check_forward_collisions()
+			
+			# Solo avanzar si está permitido
+			if should_move:
+				path_follow.progress += delta * current_speed
 		else:
-			current_speed = target_speed
+			current_speed = speed 
+			path_follow.progress += delta * current_speed
 		
-		path_follow.progress += delta * current_speed
 		global_position = path_follow.global_position
 		global_rotation = path_follow.global_rotation
 		
@@ -136,14 +135,7 @@ func initialize_from_seed(p_seed: int, archetype_weights: Dictionary = {}) -> vo
 	car_color = archetype.color
 	original_color = archetype.color
 	
-	target_speed = speed
 	current_speed = speed
-	_update_acceleration_rates()
-
-func _update_acceleration_rates() -> void:
-	var check_distance = speed * ghost_distance_multiplier
-	deceleration_rate = speed / reaction_time
-	acceleration_rate = deceleration_rate * 0.75
 
 func _select_archetype_from_seed(rng: RandomNumberGenerator, custom_weights: Dictionary) -> CarArchetypes.Type:
 	var total_weight = 0.0
@@ -656,14 +648,14 @@ func _get_future_path_positions() -> Array[Dictionary]:
 	
 	return positions
 
-func _check_forward_collisions() -> void:
+func _check_forward_collisions() -> bool:
 	var ghost_positions = _get_future_path_positions()
 	
 	if ghost_positions.is_empty():
-		target_speed = speed
+		current_speed = speed
 		if show_ghost_debug:
 			_update_ghost_debug_meshes([])
-		return
+		return true  # Puede moverse
 	
 	var space_state = get_world_3d().direct_space_state
 	var closest_obstacle_distance = INF
@@ -677,10 +669,10 @@ func _check_forward_collisions() -> void:
 		var query = PhysicsShapeQueryParameters3D.new()
 		query.shape = collision_shape
 		query.transform = Transform3D(Basis(), ghost_pos)
-		query.collision_mask = car_collision_layer  # Debería ser 2
+		query.collision_mask = 2
 		query.exclude = [detection_area]
 		
-		var results = space_state.intersect_shape(query, 32)  # Aumentar a 32 para ver todos
+		var results = space_state.intersect_shape(query, 32)
 		
 		var has_collision = not results.is_empty()
 		
@@ -704,21 +696,21 @@ func _check_forward_collisions() -> void:
 	if show_ghost_debug:
 		_update_ghost_debug_meshes(debug_data)
 	
-	if closest_obstacle_distance < collision_buffer_zone:
-		var distance_ratio = (closest_obstacle_distance - min_safe_distance) / (collision_buffer_zone - min_safe_distance)
-		distance_ratio = clampf(distance_ratio, 0.0, 1.0)
-		
-		target_speed = speed * distance_ratio * 0.5
-		target_speed = maxf(target_speed, speed * 0.1)
-		print("[FlyingCar] Frenando por obstáculo a distancia: %.2f, target_speed: %.2f" % [closest_obstacle_distance, target_speed])
+	# FRENADO Y CONTROL DE MOVIMIENTO
+	if closest_obstacle_distance < min_safe_distance:
+		# Obstáculo muy cerca - NO MOVERSE
+		current_speed = 0.0
+		print("[FlyingCar] DETENIDO COMPLETAMENTE - obstáculo a %.2f (min: %.2f)" % [closest_obstacle_distance, min_safe_distance])
+		return false  # NO puede moverse
+	elif closest_obstacle_distance < collision_buffer_zone:
+		# Obstáculo en zona de buffer - reducir velocidad
+		current_speed = speed * 0.5
+		print("[FlyingCar] FRENADO PARCIAL - obstáculo a distancia: %.2f" % closest_obstacle_distance)
+		return true  # Puede moverse lento
 	else:
-		target_speed = speed
-
-func _update_speed(delta: float) -> void:
-	if current_speed < target_speed:
-		current_speed = min(current_speed + acceleration_rate * delta, target_speed)
-	elif current_speed > target_speed:
-		current_speed = max(current_speed - deceleration_rate * delta, target_speed)
+		# Sin obstáculos - velocidad normal
+		current_speed = speed
+		return true  # Puede moverse normal
 
 func _create_ghost_mesh() -> MeshInstance3D:
 	var mesh_instance = MeshInstance3D.new()

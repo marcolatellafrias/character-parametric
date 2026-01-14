@@ -111,9 +111,9 @@ extends Node3D
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 
 @export_group("Traffic Lights")
-@export var enable_traffic_lights: bool = false
+@export var enable_traffic_lights: bool = true
 @export var traffic_light_cycle_duration: float = 15.0  # segundos por ciclo
-@export var show_traffic_light_debug: bool = false
+@export var show_traffic_light_debug: bool = true
 
 var traffic_light_timer: float = 0.0
 
@@ -126,724 +126,724 @@ var generator: GraphCityGenerator = null
 # INICIALIZACIÓN
 # ============================================
 func _ready() -> void:
-	add_to_group("city_generator")
-	
-	if auto_generate:
-		generate_and_visualize()
+    add_to_group("city_generator")
+    
+    if auto_generate:
+        generate_and_visualize()
 
 
 func _process(delta: float) -> void:
-	if not enable_traffic_lights or generator == null:
-		return
-	
-	traffic_light_timer += delta
-	
-	# Calcular qué índice está activo
-	var cycle = int(traffic_light_timer / traffic_light_cycle_duration)
-	var active_index = cycle % 2
-	
-	# Actualizar todos los LaneVolumes
-	for key in generator.lane_volume_areas:
-		var vol = generator.lane_volume_areas[key]
-		if vol.traffic_light_index != -1:
-			vol.set_traffic_light_active(vol.traffic_light_index == active_index)
-	
-	if show_traffic_light_debug:
-		_update_traffic_light_visualization()
+    if not enable_traffic_lights or generator == null:
+        return
+    
+    traffic_light_timer += delta
+    
+    # Calcular qué índice está activo
+    var cycle = int(traffic_light_timer / traffic_light_cycle_duration)
+    var active_index = cycle % 2
+    
+    # Actualizar todos los LaneVolumes
+    for key in generator.lane_volume_areas:
+        var vol = generator.lane_volume_areas[key]
+        if vol.traffic_light_index != -1:
+            vol.set_traffic_light_active(vol.traffic_light_index == active_index)
+    
+    if show_traffic_light_debug:
+        _update_traffic_light_visualization()
 
 func _update_traffic_light_visualization() -> void:
-	# Limpiar visualización previa de semáforos
-	for child in get_children():
-		if child.has_meta("traffic_light_debug"):
-			child.queue_free()
-	
-	# Visualizar end_planes activos en azul
-	for key in generator.lane_volume_areas:
-		var vol = generator.lane_volume_areas[key]
-		
-		if vol.traffic_light_index == -1 or not vol.is_traffic_light_active:
-			continue
-		
-		var end_verts = vol.end_plane_vertices
-		if end_verts.size() != 4:
-			continue
-		
-		var plane = DebugUtil.create_debug_plane(
-			end_verts[0],
-			end_verts[1],
-			end_verts[2],
-			end_verts[3],
-			Color.BLUE,
-			0.7
-		)
-		plane.set_meta("traffic_light_debug", true)
-		add_child(plane)
+    # Limpiar visualización previa de semáforos
+    for child in get_children():
+        if child.has_meta("traffic_light_debug"):
+            child.queue_free()
+    
+    # Visualizar end_planes activos en azul
+    for key in generator.lane_volume_areas:
+        var vol = generator.lane_volume_areas[key]
+        
+        if vol.traffic_light_index == -1 or not vol.is_traffic_light_active:
+            continue
+        
+        var end_verts = vol.end_plane_vertices
+        if end_verts.size() != 4:
+            continue
+        
+        var plane = DebugUtil.create_debug_plane(
+            end_verts[0],
+            end_verts[1],
+            end_verts[2],
+            end_verts[3],
+            Color.BLUE,
+            0.7
+        )
+        plane.set_meta("traffic_light_debug", true)
+        add_child(plane)
 
 
 # ============================================
 # GENERACIÓN Y VISUALIZACIÓN
 # ============================================
 func generate_and_visualize() -> void:
-	clear_visualization()
-	generate_graph()
-	visualize_graph()
+    clear_visualization()
+    generate_graph()
+    visualize_graph()
 
 func generate_graph() -> void:
-	generator = GraphCityGenerator.new()
-	
-	var block_cell_height = min_distance / block_grid_rows
-	var building_cell_height = min_distance / building_grid_rows
-	
-	generator.generate_city_graph(
-		smoothing_steps,
-		region_size,
-		min_distance,
-		rejection_samples,
-		generation_seed,
-		num_large_streets,
-		num_small_streets,
-		block_grid_rows,
-		block_grid_columns,
-		block_grid_floors,
-		block_cells_per_floor,
-		distorted_grid_rows,
-		distorted_grid_columns,
-		wave_amplitude_x,
-		wave_amplitude_z,
-		wave_frequency_x,
-		wave_frequency_z,
-		wave_phase_x,
-		wave_phase_z,
-		edge_falloff_sharpness,
-		small_alleyways_count,
-		big_alleyways_count,
-		min_steps_before_turn,
-		grid_seed,
-		building_grid_rows,
-		building_grid_columns,
-		block_cell_height,
-		building_cell_height,
-		neighborhood_height_falloff,
-		num_neighborhoods,
-		neighborhood_seed
-	)
+    generator = GraphCityGenerator.new()
+    
+    var block_cell_height = min_distance / block_grid_rows
+    var building_cell_height = min_distance / building_grid_rows
+    
+    generator.generate_city_graph(
+        smoothing_steps,
+        region_size,
+        min_distance,
+        rejection_samples,
+        generation_seed,
+        num_large_streets,
+        num_small_streets,
+        block_grid_rows,
+        block_grid_columns,
+        block_grid_floors,
+        block_cells_per_floor,
+        distorted_grid_rows,
+        distorted_grid_columns,
+        wave_amplitude_x,
+        wave_amplitude_z,
+        wave_frequency_x,
+        wave_frequency_z,
+        wave_phase_x,
+        wave_phase_z,
+        edge_falloff_sharpness,
+        small_alleyways_count,
+        big_alleyways_count,
+        min_steps_before_turn,
+        grid_seed,
+        building_grid_rows,
+        building_grid_columns,
+        block_cell_height,
+        building_cell_height,
+        neighborhood_height_falloff,
+        num_neighborhoods,
+        neighborhood_seed
+    )
 
 func clear_visualization() -> void:
-	for child in get_children():
-		child.queue_free()
-	
-	if generator:
-		generator.lane_volume_areas.clear()
+    for child in get_children():
+        child.queue_free()
+    
+    if generator:
+        generator.lane_volume_areas.clear()
 
 func visualize_graph() -> void:
-	if generator == null or generator.plain_graph == null:
-		push_error("No hay grafo generado para visualizar")
-		return
-	
-	_add_lane_volume_areas_to_scene()
-	
-	if show_streets:
-		_visualize_streets()
-	
-	if show_floor_planes:
-		_visualize_floor_planes()
-	
-	if show_buildings:
-		_visualize_buildings()
-	
-	if show_building_colliders:
-		_visualize_building_colliders()
-	
-	if show_distorted_grid:
-		_visualize_distorted_grids()
-	
-	if show_pedestrian_planes:
-		_visualize_pedestrian_planes()
-	
-	if show_lane_planes:
-		_visualize_lane_planes()
-	
-	if show_lane_volumes:
-		_visualize_lane_volumes()
-	
-	if show_nodes:
-		_visualize_nodes()
+    if generator == null or generator.plain_graph == null:
+        push_error("No hay grafo generado para visualizar")
+        return
+    
+    _add_lane_volume_areas_to_scene()
+    
+    if show_streets:
+        _visualize_streets()
+    
+    if show_floor_planes:
+        _visualize_floor_planes()
+    
+    if show_buildings:
+        _visualize_buildings()
+    
+    if show_building_colliders:
+        _visualize_building_colliders()
+    
+    if show_distorted_grid:
+        _visualize_distorted_grids()
+    
+    if show_pedestrian_planes:
+        _visualize_pedestrian_planes()
+    
+    if show_lane_planes:
+        _visualize_lane_planes()
+    
+    if show_lane_volumes:
+        _visualize_lane_volumes()
+    
+    if show_nodes:
+        _visualize_nodes()
 
 func _add_lane_volume_areas_to_scene() -> void:
-	if generator == null:
-		return
-	
-	var total_added = 0
-	
-	for key in generator.lane_volume_areas:
-		var lane_volume = generator.lane_volume_areas[key]
-		add_child(lane_volume)
-		total_added += 1
-	
-	print("[Visualizer] Lane Volume Areas agregados a la escena: %d" % total_added)
+    if generator == null:
+        return
+    
+    var total_added = 0
+    
+    for key in generator.lane_volume_areas:
+        var lane_volume = generator.lane_volume_areas[key]
+        add_child(lane_volume)
+        total_added += 1
+    
+    print("[Visualizer] Lane Volume Areas agregados a la escena: %d" % total_added)
 
 # ============================================
 # VISUALIZACIÓN DE CALLES
 # ============================================
 func _visualize_streets() -> void:
-	for edge in generator.plain_graph.edges:
-		var p1 = generator.plain_graph.points[edge[0]]
-		var p2 = generator.plain_graph.points[edge[1]]
-		
-		var street_type = generator.get_street_type(edge[0], edge[1])
-		
-		var color: Color
-		var width: float
-		
-		match street_type:
-			-1:
-				color = boundary_street_color
-				width = boundary_street_width
-			0:
-				color = small_street_color
-				width = small_street_width
-			1:
-				color = medium_street_color
-				width = medium_street_width
-			2:
-				color = large_street_color
-				width = large_street_width
-			_:
-				color = medium_street_color
-				width = medium_street_width
-		
-		var line = DebugUtil.create_debug_line_to_from(p1, p2, color, width)
-		add_child(line)
+    for edge in generator.plain_graph.edges:
+        var p1 = generator.plain_graph.points[edge[0]]
+        var p2 = generator.plain_graph.points[edge[1]]
+        
+        var street_type = generator.get_street_type(edge[0], edge[1])
+        
+        var color: Color
+        var width: float
+        
+        match street_type:
+            -1:
+                color = boundary_street_color
+                width = boundary_street_width
+            0:
+                color = small_street_color
+                width = small_street_width
+            1:
+                color = medium_street_color
+                width = medium_street_width
+            2:
+                color = large_street_color
+                width = large_street_width
+            _:
+                color = medium_street_color
+                width = medium_street_width
+        
+        var line = DebugUtil.create_debug_line_to_from(p1, p2, color, width)
+        add_child(line)
 
 # ============================================
 # VISUALIZACIÓN DE NODOS
 # ============================================
 func _visualize_nodes() -> void:
-	for node_idx in range(generator.plain_graph.points.size()):
-		var point = generator.plain_graph.points[node_idx]
-		var node_type = generator.plain_graph.node_types.get(node_idx, 0)
-		
-		var color = boundary_node_color if node_type == 1 else normal_node_color
-		
-		var sphere = DebugUtil.create_debug_sphere(color, node_radius)
-		sphere.position = point
-		add_child(sphere)
+    for node_idx in range(generator.plain_graph.points.size()):
+        var point = generator.plain_graph.points[node_idx]
+        var node_type = generator.plain_graph.node_types.get(node_idx, 0)
+        
+        var color = boundary_node_color if node_type == 1 else normal_node_color
+        
+        var sphere = DebugUtil.create_debug_sphere(color, node_radius)
+        sphere.position = point
+        add_child(sphere)
 
 # ============================================
 # VISUALIZACIÓN DE PLANOS DE PISOS
 # ============================================
 func _visualize_floor_planes() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	var total_planes = 0
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		var floors = block.get_floors()
-		var cells_per_floor = block.get_cells_per_floor()
-		var cell_height = block.get_cell_height()
-		
-		var face_nodes = generator.plain_graph.faces[face_idx]
-		var face_vertices_3d: Array[Vector3] = []
-		
-		for node_idx in face_nodes:
-			face_vertices_3d.append(generator.plain_graph.points[node_idx])
-		
-		if face_vertices_3d.size() != 4:
-			continue
-		
-		for floor in range(floors):
-			var y = floor * cells_per_floor * cell_height
-			
-			var v1 = Vector3(face_vertices_3d[0].x, y, face_vertices_3d[0].z)
-			var v2 = Vector3(face_vertices_3d[1].x, y, face_vertices_3d[1].z)
-			var v3 = Vector3(face_vertices_3d[2].x, y, face_vertices_3d[2].z)
-			var v4 = Vector3(face_vertices_3d[3].x, y, face_vertices_3d[3].z)
-			
-			var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, floor_plane_color, floor_plane_transparency)
-			add_child(plane)
-			total_planes += 1
-	
-	print("[Visualizer] Planos de pisos: %d en %d bloques" % [total_planes, all_block_faces.size()])
+    var all_block_faces = generator.get_all_block_faces()
+    var total_planes = 0
+    
+    for face_idx in all_block_faces:
+        var block: BlockGenerator = generator.get_block_grid(face_idx)
+        
+        if block == null:
+            continue
+        
+        var floors = block.get_floors()
+        var cells_per_floor = block.get_cells_per_floor()
+        var cell_height = block.get_cell_height()
+        
+        var face_nodes = generator.plain_graph.faces[face_idx]
+        var face_vertices_3d: Array[Vector3] = []
+        
+        for node_idx in face_nodes:
+            face_vertices_3d.append(generator.plain_graph.points[node_idx])
+        
+        if face_vertices_3d.size() != 4:
+            continue
+        
+        for floor in range(floors):
+            var y = floor * cells_per_floor * cell_height
+            
+            var v1 = Vector3(face_vertices_3d[0].x, y, face_vertices_3d[0].z)
+            var v2 = Vector3(face_vertices_3d[1].x, y, face_vertices_3d[1].z)
+            var v3 = Vector3(face_vertices_3d[2].x, y, face_vertices_3d[2].z)
+            var v4 = Vector3(face_vertices_3d[3].x, y, face_vertices_3d[3].z)
+            
+            var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, floor_plane_color, floor_plane_transparency)
+            add_child(plane)
+            total_planes += 1
+    
+    print("[Visualizer] Planos de pisos: %d en %d bloques" % [total_planes, all_block_faces.size()])
 
 # ============================================
 # VISUALIZACIÓN DE BUILDINGS (CON CLUSTERS)
 # ============================================
 func _visualize_buildings() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	var total_clusters = 0
-	var total_cells = 0
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		var distorted = block.get_distorted_grid()
-		if distorted == null:
-			continue
-		
-		var cells_per_floor = block.get_cells_per_floor()
-		var cell_height = block.get_cell_height()
-		var building_height = cells_per_floor * cell_height
-		var is_clockwise = block.is_clockwise
-		
-		var clusters = block.get_all_clusters()
-		total_clusters += clusters.size()
-		
-		for cluster in clusters:
-			var cluster_floors = cluster.get_floor_count()
-			
-			for floor in range(cluster_floors):
-				var floor_base_y = floor * cells_per_floor * cell_height
-				
-				for cell in cluster.cells:
-					var x = cell.x
-					var z = cell.y
-					
-					var building: Building = block.get_building(x, z, floor)
-					
-					if building == null:
-						continue
-					
-					var core_vertices = building.get_core_vertices(0)
-					
-					if core_vertices.size() != 4:
-						continue
-					
-					var core_info = building.get_core_info()
-					if core_info["width"] <= 0 or core_info["depth"] <= 0:
-						continue
-					
-					for i in range(core_vertices.size()):
-						core_vertices[i].y += floor_base_y
-					
-					if is_clockwise:
-						var temp = core_vertices[1]
-						core_vertices[1] = core_vertices[3]
-						core_vertices[3] = temp
-					
-					var cube = DebugUtil.create_skewed_cube(
-						core_vertices,
-						building_height,
-						cluster.color																		
-					)
-					add_child(cube)
-					total_cells += 1
-	
-	print("[Visualizer] Buildings: %d clusters (%d cells total) en %d bloques" % [total_clusters, total_cells, all_block_faces.size()])
+    var all_block_faces = generator.get_all_block_faces()
+    var total_clusters = 0
+    var total_cells = 0
+    
+    for face_idx in all_block_faces:
+        var block: BlockGenerator = generator.get_block_grid(face_idx)
+        
+        if block == null:
+            continue
+        
+        var distorted = block.get_distorted_grid()
+        if distorted == null:
+            continue
+        
+        var cells_per_floor = block.get_cells_per_floor()
+        var cell_height = block.get_cell_height()
+        var building_height = cells_per_floor * cell_height
+        var is_clockwise = block.is_clockwise
+        
+        var clusters = block.get_all_clusters()
+        total_clusters += clusters.size()
+        
+        for cluster in clusters:
+            var cluster_floors = cluster.get_floor_count()
+            
+            for floor in range(cluster_floors):
+                var floor_base_y = floor * cells_per_floor * cell_height
+                
+                for cell in cluster.cells:
+                    var x = cell.x
+                    var z = cell.y
+                    
+                    var building: Building = block.get_building(x, z, floor)
+                    
+                    if building == null:
+                        continue
+                    
+                    var core_vertices = building.get_core_vertices(0)
+                    
+                    if core_vertices.size() != 4:
+                        continue
+                    
+                    var core_info = building.get_core_info()
+                    if core_info["width"] <= 0 or core_info["depth"] <= 0:
+                        continue
+                    
+                    for i in range(core_vertices.size()):
+                        core_vertices[i].y += floor_base_y
+                    
+                    if is_clockwise:
+                        var temp = core_vertices[1]
+                        core_vertices[1] = core_vertices[3]
+                        core_vertices[3] = temp
+                    
+                    var cube = DebugUtil.create_skewed_cube(
+                        core_vertices,
+                        building_height,
+                        cluster.color																		
+                    )
+                    add_child(cube)
+                    total_cells += 1
+    
+    print("[Visualizer] Buildings: %d clusters (%d cells total) en %d bloques" % [total_clusters, total_cells, all_block_faces.size()])
 
 # ============================================
 # VISUALIZACIÓN DE COLLIDERS DE BUILDINGS
 # ============================================
 func _visualize_building_colliders() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	var total_colliders = 0
-	var total_blocks = 0
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		var distorted = block.get_distorted_grid()
-		if distorted == null:
-			continue
-		
-		var cells_per_floor = block.get_cells_per_floor()
-		var cell_height = block.get_cell_height()
-		var building_height = cells_per_floor * cell_height
-		var is_clockwise = block.is_clockwise
-		
-		var clusters = block.get_all_clusters()
-		
-		for cluster in clusters:
-			var static_body = StaticBody3D.new()
-			var has_colliders = false
-			
-			var cluster_floors = cluster.get_floor_count()
-			
-			for floor in range(cluster_floors):
-				var floor_base_y = floor * cells_per_floor * cell_height
-				
-				for cell in cluster.cells:
-					var x = cell.x
-					var z = cell.y
-					
-					var building: Building = block.get_building(x, z, floor)
-					
-					if building == null:
-						continue
-					
-					var core_vertices = building.get_core_vertices(0)
-					
-					if core_vertices.size() != 4:
-						continue
-					
-					var core_info = building.get_core_info()
-					if core_info["width"] <= 0 or core_info["depth"] <= 0:
-						continue
-					
-					for i in range(core_vertices.size()):
-						core_vertices[i].y += floor_base_y
-					
-					if is_clockwise:
-						var temp = core_vertices[1]
-						core_vertices[1] = core_vertices[3]
-						core_vertices[3] = temp
-					
-					var collision_shape = _create_collision_shape_from_vertices(
-						core_vertices,
-						building_height
-					)
-					
-					if collision_shape != null:
-						static_body.add_child(collision_shape)
-						has_colliders = true
-			
-			if has_colliders:
-				add_child(static_body)
-				total_colliders += 1
-		
-		if clusters.size() > 0:
-			total_blocks += 1
-	
-	print("[Visualizer] Colliders: %d clusters en %d manzanas" % [total_colliders, total_blocks])
+    var all_block_faces = generator.get_all_block_faces()
+    var total_colliders = 0
+    var total_blocks = 0
+    
+    for face_idx in all_block_faces:
+        var block: BlockGenerator = generator.get_block_grid(face_idx)
+        
+        if block == null:
+            continue
+        
+        var distorted = block.get_distorted_grid()
+        if distorted == null:
+            continue
+        
+        var cells_per_floor = block.get_cells_per_floor()
+        var cell_height = block.get_cell_height()
+        var building_height = cells_per_floor * cell_height
+        var is_clockwise = block.is_clockwise
+        
+        var clusters = block.get_all_clusters()
+        
+        for cluster in clusters:
+            var static_body = StaticBody3D.new()
+            var has_colliders = false
+            
+            var cluster_floors = cluster.get_floor_count()
+            
+            for floor in range(cluster_floors):
+                var floor_base_y = floor * cells_per_floor * cell_height
+                
+                for cell in cluster.cells:
+                    var x = cell.x
+                    var z = cell.y
+                    
+                    var building: Building = block.get_building(x, z, floor)
+                    
+                    if building == null:
+                        continue
+                    
+                    var core_vertices = building.get_core_vertices(0)
+                    
+                    if core_vertices.size() != 4:
+                        continue
+                    
+                    var core_info = building.get_core_info()
+                    if core_info["width"] <= 0 or core_info["depth"] <= 0:
+                        continue
+                    
+                    for i in range(core_vertices.size()):
+                        core_vertices[i].y += floor_base_y
+                    
+                    if is_clockwise:
+                        var temp = core_vertices[1]
+                        core_vertices[1] = core_vertices[3]
+                        core_vertices[3] = temp
+                    
+                    var collision_shape = _create_collision_shape_from_vertices(
+                        core_vertices,
+                        building_height
+                    )
+                    
+                    if collision_shape != null:
+                        static_body.add_child(collision_shape)
+                        has_colliders = true
+            
+            if has_colliders:
+                add_child(static_body)
+                total_colliders += 1
+        
+        if clusters.size() > 0:
+            total_blocks += 1
+    
+    print("[Visualizer] Colliders: %d clusters en %d manzanas" % [total_colliders, total_blocks])
 
 func _create_collision_shape_from_vertices(base_vertices: Array, height: float) -> CollisionShape3D:
-	if base_vertices.size() != 4:
-		return null
-	
-	var bottom_verts = base_vertices
-	var top_verts = []
-	
-	for i in range(4):
-		top_verts.append(bottom_verts[i] + Vector3(0, height, 0))
-	
-	var points = PackedVector3Array()
-	
-	for v in bottom_verts:
-		points.append(v)
-	
-	for v in top_verts:
-		points.append(v)
-	
-	var convex_shape = ConvexPolygonShape3D.new()
-	convex_shape.points = points
-	
-	var collision_shape = CollisionShape3D.new()
-	collision_shape.shape = convex_shape
-	
-	return collision_shape
+    if base_vertices.size() != 4:
+        return null
+    
+    var bottom_verts = base_vertices
+    var top_verts = []
+    
+    for i in range(4):
+        top_verts.append(bottom_verts[i] + Vector3(0, height, 0))
+    
+    var points = PackedVector3Array()
+    
+    for v in bottom_verts:
+        points.append(v)
+    
+    for v in top_verts:
+        points.append(v)
+    
+    var convex_shape = ConvexPolygonShape3D.new()
+    convex_shape.points = points
+    
+    var collision_shape = CollisionShape3D.new()
+    collision_shape.shape = convex_shape
+    
+    return collision_shape
 
 # ============================================
 # VISUALIZACIÓN DE GRILLAS DISTORSIONADAS
 # ============================================
 func _visualize_distorted_grids() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	var total_vertices = 0
-	var total_edges = 0
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		var distorted = block.get_distorted_grid()
-		var path_gen = block.get_path_generator()
-		
-		if distorted == null or path_gen == null:
-			continue
-		
-		var vertex_cache: Dictionary = {}
-		
-		var get_vertex = func(grid_x: int, grid_z: int) -> Vector2:
-			var key = "%d_%d" % [grid_x, grid_z]
-			if key in vertex_cache:
-				return vertex_cache[key]
-			
-			var u = float(grid_x) / max(1, distorted.columns)
-			var v = float(grid_z) / max(1, distorted.rows)
-			var base_pos = GridHelper.bilinear_interpolation(distorted.vertices, u, v)
-			
-			var bottom_u_dir = (distorted.vertices[1] - distorted.vertices[0]).normalized()
-			var top_u_dir = (distorted.vertices[2] - distorted.vertices[3]).normalized()
-			var local_u_dir = bottom_u_dir.lerp(top_u_dir, v)
-			
-			var left_v_dir = (distorted.vertices[3] - distorted.vertices[0]).normalized()
-			var right_v_dir = (distorted.vertices[2] - distorted.vertices[1]).normalized()
-			var local_v_dir = left_v_dir.lerp(right_v_dir, u)
-			
-			var u_falloff = pow(min(u, 1.0 - u) * 2.0, distorted.edge_falloff_sharpness)
-			var v_falloff = pow(min(v, 1.0 - v) * 2.0, distorted.edge_falloff_sharpness)
-			
-			var wave_offset_u = sin(v * distorted.wave_frequency_z * TAU + distorted.wave_phase_z) * distorted.wave_amplitude_x * u_falloff
-			var wave_offset_v = sin(u * distorted.wave_frequency_x * TAU + distorted.wave_phase_x) * distorted.wave_amplitude_z * v_falloff
-			
-			var result = base_pos + local_u_dir * wave_offset_u + local_v_dir * wave_offset_v
-			vertex_cache[key] = result
-			return result
-		
-		for grid_z in range(distorted.rows + 1):
-			for grid_x in range(distorted.columns + 1):
-				var pos_2d = get_vertex.call(grid_x, grid_z)
-				var pos_3d = Vector3(pos_2d.x, distorted_grid_height_offset, pos_2d.y)
-				
-				var is_boundary = (grid_x == 0 or grid_x == distorted.columns or 
-								   grid_z == 0 or grid_z == distorted.rows)
-				
-				var vertex_color = distorted_grid_boundary_vertex_color if is_boundary else distorted_grid_normal_vertex_color
-				
-				var sphere = DebugUtil.create_debug_sphere(vertex_color, distorted_grid_vertex_radius)
-				sphere.position = pos_3d
-				add_child(sphere)
-				total_vertices += 1
-		
-		for grid_z in range(distorted.rows + 1):
-			for grid_x in range(distorted.columns):
-				var pos1_2d = get_vertex.call(grid_x, grid_z)
-				var pos2_2d = get_vertex.call(grid_x + 1, grid_z)
-				
-				var pos1_3d = Vector3(pos1_2d.x, distorted_grid_height_offset, pos1_2d.y)
-				var pos2_3d = Vector3(pos2_2d.x, distorted_grid_height_offset, pos2_2d.y)
-				
-				var edge_color: Color
-				
-				var is_boundary_edge = (grid_z == 0 or grid_z == distorted.rows)
-				
-				if is_boundary_edge:
-					edge_color = distorted_grid_boundary_edge_color
-				else:
-					var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x + 1, grid_z, distorted_grid_floor_to_show)
-					
-					match path_type:
-						DistortedGrid.CellType.BIG:
-							edge_color = distorted_grid_big_edge_color
-						DistortedGrid.CellType.SMALL:
-							edge_color = distorted_grid_small_edge_color
-						DistortedGrid.CellType.SMALL_ORIGIN:
-							edge_color = distorted_grid_small_origin_edge_color
-						DistortedGrid.CellType.BIG_ORIGIN:
-							edge_color = distorted_grid_big_origin_edge_color
-						_:
-							edge_color = distorted_grid_normal_edge_color
-				
-				var line = DebugUtil.create_debug_line_to_from(
-					pos1_3d,
-					pos2_3d,
-					edge_color,
-					distorted_grid_edge_width
-				)
-				add_child(line)
-				total_edges += 1
-		
-		for grid_z in range(distorted.rows):
-			for grid_x in range(distorted.columns + 1):
-				var pos1_2d = get_vertex.call(grid_x, grid_z)
-				var pos2_2d = get_vertex.call(grid_x, grid_z + 1)
-				
-				var pos1_3d = Vector3(pos1_2d.x, distorted_grid_height_offset, pos1_2d.y)
-				var pos2_3d = Vector3(pos2_2d.x, distorted_grid_height_offset, pos2_2d.y)
-				
-				var edge_color: Color
-				
-				var is_boundary_edge = (grid_x == 0 or grid_x == distorted.columns)
-				
-				if is_boundary_edge:
-					edge_color = distorted_grid_boundary_edge_color
-				else:
-					var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x, grid_z + 1, distorted_grid_floor_to_show)
-					
-					match path_type:
-						DistortedGrid.CellType.BIG:
-							edge_color = distorted_grid_big_edge_color
-						DistortedGrid.CellType.SMALL:
-							edge_color = distorted_grid_small_edge_color
-						DistortedGrid.CellType.SMALL_ORIGIN:
-							edge_color = distorted_grid_small_origin_edge_color
-						DistortedGrid.CellType.BIG_ORIGIN:
-							edge_color = distorted_grid_big_origin_edge_color
-						_:
-							edge_color = distorted_grid_normal_edge_color
-				
-				var line = DebugUtil.create_debug_line_to_from(
-					pos1_3d,
-					pos2_3d,
-					edge_color,
-					distorted_grid_edge_width
-				)
-				add_child(line)
-				total_edges += 1
-	
-	print("[Visualizer] Grillas distorsionadas: %d vértices, %d edges en %d bloques" % [total_vertices, total_edges, all_block_faces.size()])
+    var all_block_faces = generator.get_all_block_faces()
+    var total_vertices = 0
+    var total_edges = 0
+    
+    for face_idx in all_block_faces:
+        var block: BlockGenerator = generator.get_block_grid(face_idx)
+        
+        if block == null:
+            continue
+        
+        var distorted = block.get_distorted_grid()
+        var path_gen = block.get_path_generator()
+        
+        if distorted == null or path_gen == null:
+            continue
+        
+        var vertex_cache: Dictionary = {}
+        
+        var get_vertex = func(grid_x: int, grid_z: int) -> Vector2:
+            var key = "%d_%d" % [grid_x, grid_z]
+            if key in vertex_cache:
+                return vertex_cache[key]
+            
+            var u = float(grid_x) / max(1, distorted.columns)
+            var v = float(grid_z) / max(1, distorted.rows)
+            var base_pos = GridHelper.bilinear_interpolation(distorted.vertices, u, v)
+            
+            var bottom_u_dir = (distorted.vertices[1] - distorted.vertices[0]).normalized()
+            var top_u_dir = (distorted.vertices[2] - distorted.vertices[3]).normalized()
+            var local_u_dir = bottom_u_dir.lerp(top_u_dir, v)
+            
+            var left_v_dir = (distorted.vertices[3] - distorted.vertices[0]).normalized()
+            var right_v_dir = (distorted.vertices[2] - distorted.vertices[1]).normalized()
+            var local_v_dir = left_v_dir.lerp(right_v_dir, u)
+            
+            var u_falloff = pow(min(u, 1.0 - u) * 2.0, distorted.edge_falloff_sharpness)
+            var v_falloff = pow(min(v, 1.0 - v) * 2.0, distorted.edge_falloff_sharpness)
+            
+            var wave_offset_u = sin(v * distorted.wave_frequency_z * TAU + distorted.wave_phase_z) * distorted.wave_amplitude_x * u_falloff
+            var wave_offset_v = sin(u * distorted.wave_frequency_x * TAU + distorted.wave_phase_x) * distorted.wave_amplitude_z * v_falloff
+            
+            var result = base_pos + local_u_dir * wave_offset_u + local_v_dir * wave_offset_v
+            vertex_cache[key] = result
+            return result
+        
+        for grid_z in range(distorted.rows + 1):
+            for grid_x in range(distorted.columns + 1):
+                var pos_2d = get_vertex.call(grid_x, grid_z)
+                var pos_3d = Vector3(pos_2d.x, distorted_grid_height_offset, pos_2d.y)
+                
+                var is_boundary = (grid_x == 0 or grid_x == distorted.columns or 
+                                   grid_z == 0 or grid_z == distorted.rows)
+                
+                var vertex_color = distorted_grid_boundary_vertex_color if is_boundary else distorted_grid_normal_vertex_color
+                
+                var sphere = DebugUtil.create_debug_sphere(vertex_color, distorted_grid_vertex_radius)
+                sphere.position = pos_3d
+                add_child(sphere)
+                total_vertices += 1
+        
+        for grid_z in range(distorted.rows + 1):
+            for grid_x in range(distorted.columns):
+                var pos1_2d = get_vertex.call(grid_x, grid_z)
+                var pos2_2d = get_vertex.call(grid_x + 1, grid_z)
+                
+                var pos1_3d = Vector3(pos1_2d.x, distorted_grid_height_offset, pos1_2d.y)
+                var pos2_3d = Vector3(pos2_2d.x, distorted_grid_height_offset, pos2_2d.y)
+                
+                var edge_color: Color
+                
+                var is_boundary_edge = (grid_z == 0 or grid_z == distorted.rows)
+                
+                if is_boundary_edge:
+                    edge_color = distorted_grid_boundary_edge_color
+                else:
+                    var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x + 1, grid_z, distorted_grid_floor_to_show)
+                    
+                    match path_type:
+                        DistortedGrid.CellType.BIG:
+                            edge_color = distorted_grid_big_edge_color
+                        DistortedGrid.CellType.SMALL:
+                            edge_color = distorted_grid_small_edge_color
+                        DistortedGrid.CellType.SMALL_ORIGIN:
+                            edge_color = distorted_grid_small_origin_edge_color
+                        DistortedGrid.CellType.BIG_ORIGIN:
+                            edge_color = distorted_grid_big_origin_edge_color
+                        _:
+                            edge_color = distorted_grid_normal_edge_color
+                
+                var line = DebugUtil.create_debug_line_to_from(
+                    pos1_3d,
+                    pos2_3d,
+                    edge_color,
+                    distorted_grid_edge_width
+                )
+                add_child(line)
+                total_edges += 1
+        
+        for grid_z in range(distorted.rows):
+            for grid_x in range(distorted.columns + 1):
+                var pos1_2d = get_vertex.call(grid_x, grid_z)
+                var pos2_2d = get_vertex.call(grid_x, grid_z + 1)
+                
+                var pos1_3d = Vector3(pos1_2d.x, distorted_grid_height_offset, pos1_2d.y)
+                var pos2_3d = Vector3(pos2_2d.x, distorted_grid_height_offset, pos2_2d.y)
+                
+                var edge_color: Color
+                
+                var is_boundary_edge = (grid_x == 0 or grid_x == distorted.columns)
+                
+                if is_boundary_edge:
+                    edge_color = distorted_grid_boundary_edge_color
+                else:
+                    var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x, grid_z + 1, distorted_grid_floor_to_show)
+                    
+                    match path_type:
+                        DistortedGrid.CellType.BIG:
+                            edge_color = distorted_grid_big_edge_color
+                        DistortedGrid.CellType.SMALL:
+                            edge_color = distorted_grid_small_edge_color
+                        DistortedGrid.CellType.SMALL_ORIGIN:
+                            edge_color = distorted_grid_small_origin_edge_color
+                        DistortedGrid.CellType.BIG_ORIGIN:
+                            edge_color = distorted_grid_big_origin_edge_color
+                        _:
+                            edge_color = distorted_grid_normal_edge_color
+                
+                var line = DebugUtil.create_debug_line_to_from(
+                    pos1_3d,
+                    pos2_3d,
+                    edge_color,
+                    distorted_grid_edge_width
+                )
+                add_child(line)
+                total_edges += 1
+    
+    print("[Visualizer] Grillas distorsionadas: %d vértices, %d edges en %d bloques" % [total_vertices, total_edges, all_block_faces.size()])
 
 # ============================================
 # VISUALIZACIÓN DE PLANOS PEATONALES
 # ============================================
 func _visualize_pedestrian_planes() -> void:
-	var all_pedestrian_planes = generator.get_all_pedestrian_planes()
-	var total_planes = 0
-	
-	var max_building_height = _calculate_max_building_height()
-	
-	for edge_key in all_pedestrian_planes:
-		var planes = all_pedestrian_planes[edge_key]
-		
-		for plane_data in planes:
-			if plane_data.size() != 2:
-				continue
-			
-			var point1_2d: Vector2 = plane_data[0]
-			var point2_2d: Vector2 = plane_data[1]
-			
-			var v1 = Vector3(point1_2d.x, 0.0, point1_2d.y)
-			var v2 = Vector3(point2_2d.x, 0.0, point2_2d.y)
-			var v3 = Vector3(point2_2d.x, max_building_height, point2_2d.y)
-			var v4 = Vector3(point1_2d.x, max_building_height, point1_2d.y)
-			
-			var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, pedestrian_plane_color, pedestrian_plane_transparency)
-			add_child(plane)
-			total_planes += 1
-	
-	print("[Visualizer] Planos peatonales generados: %d" % total_planes)
+    var all_pedestrian_planes = generator.get_all_pedestrian_planes()
+    var total_planes = 0
+    
+    var max_building_height = _calculate_max_building_height()
+    
+    for edge_key in all_pedestrian_planes:
+        var planes = all_pedestrian_planes[edge_key]
+        
+        for plane_data in planes:
+            if plane_data.size() != 2:
+                continue
+            
+            var point1_2d: Vector2 = plane_data[0]
+            var point2_2d: Vector2 = plane_data[1]
+            
+            var v1 = Vector3(point1_2d.x, 0.0, point1_2d.y)
+            var v2 = Vector3(point2_2d.x, 0.0, point2_2d.y)
+            var v3 = Vector3(point2_2d.x, max_building_height, point2_2d.y)
+            var v4 = Vector3(point1_2d.x, max_building_height, point1_2d.y)
+            
+            var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, pedestrian_plane_color, pedestrian_plane_transparency)
+            add_child(plane)
+            total_planes += 1
+    
+    print("[Visualizer] Planos peatonales generados: %d" % total_planes)
 
 func _calculate_max_building_height() -> float:
-	var max_height = 0.0
-	var all_block_faces = generator.get_all_block_faces()
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		var block_height = block.get_floors() * block.get_cells_per_floor() * block.get_cell_height()
-		
-		if block_height > max_height:
-			max_height = block_height
-	
-	return max_height
+    var max_height = 0.0
+    var all_block_faces = generator.get_all_block_faces()
+    
+    for face_idx in all_block_faces:
+        var block: BlockGenerator = generator.get_block_grid(face_idx)
+        
+        if block == null:
+            continue
+        
+        var block_height = block.get_floors() * block.get_cells_per_floor() * block.get_cell_height()
+        
+        if block_height > max_height:
+            max_height = block_height
+    
+    return max_height
 
 # ============================================
 # VISUALIZACIÓN DE LANE PLANES FINALES
 # ============================================
 func _visualize_lane_planes() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	var total_planes = 0
-	var start_planes = 0
-	var end_planes = 0
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		var lane_planes_dict = block.get_lane_planes()
-		
-		for key in lane_planes_dict:
-			var plane_data = lane_planes_dict[key]
-			var start: Vector2 = plane_data["start"]
-			var end: Vector2 = plane_data["end"]
-			var is_start_lane: bool = plane_data["is_start_lane"]
-			var height: float = plane_data["height"]
-			
-			var base_color: Color
-			if is_start_lane:
-				base_color = Color.RED
-				start_planes += 1
-			else:
-				base_color = Color.GREEN
-				end_planes += 1
-			
-			var v1 = Vector3(start.x, 0.0, start.y)
-			var v2 = Vector3(end.x, 0.0, end.y)
-			var v3 = Vector3(end.x, height, end.y)
-			var v4 = Vector3(start.x, height, start.y)
-			
-			var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, base_color, lane_plane_transparency)
-			add_child(plane)
-			total_planes += 1
-	
-	print("[Visualizer] Lane planes finales: %d planos (%d rojos/start, %d verdes/end) en %d bloques" % [total_planes, start_planes, end_planes, all_block_faces.size()])
+    var all_block_faces = generator.get_all_block_faces()
+    var total_planes = 0
+    var start_planes = 0
+    var end_planes = 0
+    
+    for face_idx in all_block_faces:
+        var block: BlockGenerator = generator.get_block_grid(face_idx)
+        
+        if block == null:
+            continue
+        
+        var lane_planes_dict = block.get_lane_planes()
+        
+        for key in lane_planes_dict:
+            var plane_data = lane_planes_dict[key]
+            var start: Vector2 = plane_data["start"]
+            var end: Vector2 = plane_data["end"]
+            var is_start_lane: bool = plane_data["is_start_lane"]
+            var height: float = plane_data["height"]
+            
+            var base_color: Color
+            if is_start_lane:
+                base_color = Color.RED
+                start_planes += 1
+            else:
+                base_color = Color.GREEN
+                end_planes += 1
+            
+            var v1 = Vector3(start.x, 0.0, start.y)
+            var v2 = Vector3(end.x, 0.0, end.y)
+            var v3 = Vector3(end.x, height, end.y)
+            var v4 = Vector3(start.x, height, start.y)
+            
+            var plane = DebugUtil.create_debug_plane(v1, v2, v3, v4, base_color, lane_plane_transparency)
+            add_child(plane)
+            total_planes += 1
+    
+    print("[Visualizer] Lane planes finales: %d planos (%d rojos/start, %d verdes/end) en %d bloques" % [total_planes, start_planes, end_planes, all_block_faces.size()])
 
 # ============================================
 # VISUALIZACIÓN DE LANE VOLUMES (VOLÚMENES DE EDGES)
 # ============================================
 func _visualize_lane_volumes() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	var total_volumes = 0
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		for edge_idx in range(4):
-			var volume_data = block.get_edge_lane_volume(edge_idx)
-			
-			if volume_data.is_empty():
-				continue
-			
-			var start_plane_verts = volume_data["start_plane_vertices"]
-			var end_plane_verts = volume_data["end_plane_vertices"]
-			
-			if start_plane_verts.size() != 4 or end_plane_verts.size() != 4:
-				push_warning("Volume de edge %d del bloque %d no tiene vértices correctos" % [edge_idx, face_idx])
-				continue
-			
-			var skewed_cube = DebugUtil.create_skewed_cube_from_planes(
-				start_plane_verts,
-				end_plane_verts,
-				lane_volume_color,
-				lane_volume_transparency
-			)
-			
-			if skewed_cube != null:
-				add_child(skewed_cube)
-				total_volumes += 1
-	
-	print("[Visualizer] Lane volumes: %d volúmenes visualizados en %d bloques" % [total_volumes, all_block_faces.size()])
+    var all_block_faces = generator.get_all_block_faces()
+    var total_volumes = 0
+    
+    for face_idx in all_block_faces:
+        var block: BlockGenerator = generator.get_block_grid(face_idx)
+        
+        if block == null:
+            continue
+        
+        for edge_idx in range(4):
+            var volume_data = block.get_edge_lane_volume(edge_idx)
+            
+            if volume_data.is_empty():
+                continue
+            
+            var start_plane_verts = volume_data["start_plane_vertices"]
+            var end_plane_verts = volume_data["end_plane_vertices"]
+            
+            if start_plane_verts.size() != 4 or end_plane_verts.size() != 4:
+                push_warning("Volume de edge %d del bloque %d no tiene vértices correctos" % [edge_idx, face_idx])
+                continue
+            
+            var skewed_cube = DebugUtil.create_skewed_cube_from_planes(
+                start_plane_verts,
+                end_plane_verts,
+                lane_volume_color,
+                lane_volume_transparency
+            )
+            
+            if skewed_cube != null:
+                add_child(skewed_cube)
+                total_volumes += 1
+    
+    print("[Visualizer] Lane volumes: %d volúmenes visualizados en %d bloques" % [total_volumes, all_block_faces.size()])
 
 # ============================================
 # HELPERS PÚBLICOS PARA OTRAS ENTIDADES
 # ============================================
 
 func get_generator() -> GraphCityGenerator:
-	return generator
+    return generator
 
 func get_block_grid(face_idx: int) -> BlockGenerator:
-	if generator == null:
-		push_error("CityVisualizer: generator no inicializado")
-		return null
-	
-	return generator.get_block_grid(face_idx)
+    if generator == null:
+        push_error("CityVisualizer: generator no inicializado")
+        return null
+    
+    return generator.get_block_grid(face_idx)
 
 func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVolume]:
-	if generator == null:
-		push_error("CityVisualizer: generator no inicializado")
-		return []
-	
-	return generator.get_lane_volume_continuations(face_idx, edge_idx)
+    if generator == null:
+        push_error("CityVisualizer: generator no inicializado")
+        return []
+    
+    return generator.get_lane_volume_continuations(face_idx, edge_idx)
 
 func get_lane_volume_area(face_idx: int, edge_idx: int) -> LaneVolume:
-	if generator == null:
-		push_error("CityVisualizer: generator no inicializado")
-		return null
-	
-	return generator.get_lane_volume_area(face_idx, edge_idx)
+    if generator == null:
+        push_error("CityVisualizer: generator no inicializado")
+        return null
+    
+    return generator.get_lane_volume_area(face_idx, edge_idx)
 
 func get_lane_volume_area_continuations(face_idx: int, edge_idx: int) -> Array[LaneVolume]:
-	if generator == null:
-		push_error("CityVisualizer: generator no inicializado")
-		return []
-	
-	var continuations = generator.get_lane_volume_continuations(face_idx, edge_idx)
-	return continuations
+    if generator == null:
+        push_error("CityVisualizer: generator no inicializado")
+        return []
+    
+    var continuations = generator.get_lane_volume_continuations(face_idx, edge_idx)
+    return continuations
