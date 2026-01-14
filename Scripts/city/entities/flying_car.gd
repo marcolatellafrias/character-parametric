@@ -13,15 +13,13 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var seed: int = 0
 @export var car_archetype: CarArchetypes.Type = CarArchetypes.Type.POOR_CAR
 
-@export var show_path_debug: bool = false
+@export var show_path_debug: bool = true
 @export var path_debug_color: Color = Color(1.0, 1.0, 0.0, 1.0)
 @export var path_debug_width: float = 0.05
-@export var path_debug_segments: int = 20
+@export var path_debug_segments: int = 30
 
 @export var continuation_exact_color: Color = Color(0.0, 1.0, 0.0, 1.0)
 @export var continuation_approx_color: Color = Color(0.0, 1.0, 1.0, 1.0)
-
-@export var transition_distance: float = 2.0
 
 @export_group("Despawn Debug")
 @export var take_frustum_into_account_when_despawning: bool = true
@@ -46,7 +44,9 @@ var current_height_cells: int = 10
 var rng: RandomNumberGenerator
 
 var is_transitioning: bool = false
-var next_path_info: Dictionary = {}
+var transition_point: float = 0.0
+var first_segment_volume: Dictionary = {}
+var second_segment_volume: Dictionary = {}
 
 var original_color: Color
 var material: StandardMaterial3D
@@ -70,13 +70,6 @@ func _process(delta: float) -> void:
 				material.albedo_color = Color.WHITE
 			else:
 				material.albedo_color = original_color
-		
-		if not is_transitioning and path_3d and path_3d.curve:
-			var curve_length = path_3d.curve.get_baked_length()
-			var distance_to_end = curve_length - path_follow.progress
-			
-			if distance_to_end <= transition_distance:
-				_prepare_next_path()
 
 func _exit_tree() -> void:
 	if path_debug_mesh and is_instance_valid(path_debug_mesh):
@@ -156,19 +149,62 @@ func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0,
 			  grid_u: float = 0.0, grid_v: float = 0.0, 
 			  volume: Dictionary = {}, width_cells: int = 3, height_cells: int = 10) -> void:
 	
+	first_segment_volume = volume
 	current_volume = volume
 	current_cell_x = int(round(grid_u * width_cells))
 	current_cell_y = int(round(grid_v * height_cells))
 	current_width_cells = width_cells
 	current_height_cells = height_cells
 	
+	# Calcular continuación inmediatamente
+	var next_segment = _calculate_next_segment(end, volume)
+	
+	if next_segment.is_empty():
+		# Sin continuación, solo crear path simple
+		_create_simple_path(start, end, initial_progress)
+		second_segment_volume = {}
+	else:
+		# Crear path con dos segmentos + bezier
+		_create_double_segment_path(start, end, next_segment, initial_progress)
+		second_segment_volume = next_segment["volume_data"]
+	
+	has_path = true
+	is_transitioning = false
+	
+	var timer = Timer.new()
+	timer.wait_time = 0.1
+	timer.timeout.connect(_check_segment_transition)
+	add_child(timer)
+	timer.start()
+
+func _create_double_segment_path(start: Vector3, end: Vector3, next_segment: Dictionary, initial_progress: float = 0.0) -> void:
 	path_3d = Path3D.new()
 	var curve = Curve3D.new()
 	
+	var first_direction = (end - start).normalized()
+	var next_start = next_segment["path"]["start"]
+	var next_end = next_segment["path"]["end"]
+	var next_direction = (next_end - next_start).normalized()
+	
+	var connection_distance = (next_start - end).length()
+	var handle_length = connection_distance * 0.4
+	
+	var out_handle = first_direction * handle_length
+	var in_handle = -next_direction * handle_length
+	
+	# Primer segmento recto: start -> end
 	curve.add_point(start, Vector3.ZERO, Vector3.ZERO)
-	curve.add_point(end, Vector3.ZERO, Vector3.ZERO)
+	# Punto de conexión con curva: end con out_handle para curvar hacia next_start
+	curve.add_point(end, Vector3.ZERO, out_handle)
+	# Inicio del segundo segmento con in_handle para completar la curva
+	curve.add_point(next_start, in_handle, Vector3.ZERO)
+	# Final del segundo segmento recto
+	curve.add_point(next_end, Vector3.ZERO, Vector3.ZERO)
 	
 	path_3d.curve = curve
+	
+	# El punto de transición es cuando llega al inicio del segundo segmento (después del bezier)
+	transition_point = curve.get_closest_offset(next_start)
 	
 	if world_node:
 		world_node.add_child(path_3d)
@@ -186,49 +222,162 @@ func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0,
 	global_position = path_follow.global_position
 	global_rotation = path_follow.global_rotation
 	
-	has_path = true
-	is_transitioning = false
-	
+	# Crear visualización siempre
 	if show_path_debug and world_node:
-		var points = [
-			{"pos": start, "in": Vector3.ZERO, "out": Vector3.ZERO},
-			{"pos": end, "in": Vector3.ZERO, "out": Vector3.ZERO}
-		]
-		
-		path_debug_mesh = DebugUtil.create_debug_path3d(
-			points,
-			path_debug_segments,
-			path_debug_color,
-			path_debug_width
-		)
-		world_node.add_child(path_debug_mesh)
-	
-	var timer = Timer.new()
-	timer.wait_time = 0.1
-	timer.timeout.connect(_check_path_complete)
-	add_child(timer)
-	timer.start()
+		_create_path_debug()
 
-func _prepare_next_path() -> void:
-	is_transitioning = true
+func _create_simple_path(start: Vector3, end: Vector3, initial_progress: float = 0.0) -> void:
+	path_3d = Path3D.new()
+	var curve = Curve3D.new()
+	curve.add_point(start, Vector3.ZERO, Vector3.ZERO)
+	curve.add_point(end, Vector3.ZERO, Vector3.ZERO)
+	path_3d.curve = curve
 	
-	if not city or not current_volume.has("face_idx") or not current_volume.has("edge_idx"):
+	transition_point = -1.0
+	
+	if world_node:
+		world_node.add_child(path_3d)
+	else:
+		get_parent().add_child(path_3d)
+	
+	path_follow = PathFollow3D.new()
+	path_follow.loop = false
+	path_follow.rotation_mode = PathFollow3D.ROTATION_ORIENTED
+	path_3d.add_child(path_follow)
+	
+	var curve_length = curve.get_baked_length()
+	path_follow.progress = initial_progress * curve_length
+	
+	global_position = path_follow.global_position
+	global_rotation = path_follow.global_rotation
+	
+	# Crear visualización siempre
+	if show_path_debug and world_node:
+		_create_path_debug()
+
+func _create_path_debug() -> void:
+	var points = []
+	for i in range(path_3d.curve.point_count):
+		points.append({
+			"pos": path_3d.curve.get_point_position(i),
+			"in": path_3d.curve.get_point_in(i),
+			"out": path_3d.curve.get_point_out(i)
+		})
+	
+	path_debug_mesh = DebugUtil.create_debug_path3d(
+		points,
+		path_debug_segments,
+		path_debug_color,
+		path_debug_width
+	)
+	world_node.add_child(path_debug_mesh)
+
+func _check_segment_transition() -> void:
+	if not path_follow or not path_3d:
 		return
 	
-	var face_idx = current_volume["face_idx"]
-	var edge_idx = current_volume["edge_idx"]
+	var current_progress = path_follow.progress
+	var curve_length = path_3d.curve.get_baked_length()
+	
+	# Si llegó al final del path completo
+	if current_progress >= curve_length:
+		queue_free()
+		return
+	
+	# Si cruzó el punto de transición y hay segundo segmento
+	if transition_point > 0 and current_progress >= transition_point and not is_transitioning:
+		is_transitioning = true
+		_advance_to_next_segment()
+
+func _advance_to_next_segment() -> void:
+	# El segundo segmento ahora es el primero
+	var old_volume_id = _get_volume_id(first_segment_volume)
+	var new_volume_id = _get_volume_id(second_segment_volume)
+	
+	first_segment_volume = second_segment_volume
+	current_volume = first_segment_volume
+	current_cell_x = second_segment_volume.get("used_cell_x", current_cell_x)
+	current_cell_y = second_segment_volume.get("used_cell_y", current_cell_y)
+	current_width_cells = second_segment_volume.get("width_cells", current_width_cells)
+	current_height_cells = second_segment_volume.get("height_cells", current_height_cells)
+	
+	if area_instantiator:
+		volume_changed.emit(old_volume_id, new_volume_id, car_archetype)
+	
+	# Calcular el nuevo segundo segmento
+	var current_end = path_3d.curve.get_point_position(3)  # El punto final actual
+	var next_segment = _calculate_next_segment(current_end, first_segment_volume)
+	
+	if next_segment.is_empty():
+		# Regenerar path sin continuación
+		var current_start = path_3d.curve.get_point_position(2)  # Inicio del segmento actual
+		_regenerate_path_from_segment(current_start, current_end)
+		second_segment_volume = {}
+		is_transitioning = false
+		return
+	
+	# Regenerar path con nuevo segundo segmento
+	var current_start = path_3d.curve.get_point_position(2)
+	_regenerate_double_segment_path(current_start, current_end, next_segment)
+	second_segment_volume = next_segment["volume_data"]
+	
+	is_transitioning = false
+
+func _regenerate_double_segment_path(start: Vector3, end: Vector3, next_segment: Dictionary) -> void:
+	# Guardar estado actual
+	var current_position = global_position
+	var current_rotation = global_rotation
+	
+	if path_debug_mesh and is_instance_valid(path_debug_mesh):
+		path_debug_mesh.queue_free()
+	
+	for mesh in continuation_debug_meshes:
+		if mesh and is_instance_valid(mesh):
+			mesh.queue_free()
+	continuation_debug_meshes.clear()
+	
+	var old_path = path_3d
+	
+	# Crear nuevo path
+	_create_double_segment_path(start, end, next_segment, 0.0)
+	
+	# Encontrar el progress más cercano a la posición actual
+	var closest_offset = path_3d.curve.get_closest_offset(current_position)
+	path_follow.progress = closest_offset
+	
+	# Forzar actualización de transformación
+	global_position = path_follow.global_position
+	global_rotation = path_follow.global_rotation
+	
+	if old_path and is_instance_valid(old_path):
+		old_path.queue_free()
+
+func _regenerate_path_from_segment(start: Vector3, end: Vector3) -> void:
+	if path_debug_mesh and is_instance_valid(path_debug_mesh):
+		path_debug_mesh.queue_free()
+	
+	for mesh in continuation_debug_meshes:
+		if mesh and is_instance_valid(mesh):
+			mesh.queue_free()
+	continuation_debug_meshes.clear()
+	
+	var old_path = path_3d
+	_create_simple_path(start, end, 0.0)
+	
+	if old_path and is_instance_valid(old_path):
+		old_path.queue_free()
+
+func _calculate_next_segment(current_end: Vector3, volume: Dictionary) -> Dictionary:
+	if not city or not volume.has("face_idx") or not volume.has("edge_idx"):
+		return {}
+	
+	var face_idx = volume["face_idx"]
+	var edge_idx = volume["edge_idx"]
 	
 	var continuations = city.get_lane_volume_continuations(face_idx, edge_idx)
 	
-	var continuations_inside = []
-	if area_instantiator:
-		for cont in continuations:
-			if area_instantiator.is_lane_volume_inside_by_calculation(cont):
-				continuations_inside.append(cont)
-	else:
-		continuations_inside = continuations
-	
-	if area_instantiator and continuations_inside.is_empty():
+	# Verificar si debe despawnear
+	if area_instantiator and continuations.is_empty():
 		var car_inside_any_cylinder = false
 		for camera in area_instantiator.cameras:
 			if not camera or not is_instance_valid(camera):
@@ -253,20 +402,16 @@ func _prepare_next_path() -> void:
 					car_visible = true
 					break
 		
-		print("DEBUG DESPAWN: car_inside_cylinder=", car_inside_any_cylinder, " car_visible=", car_visible, " has_continuations=", continuations_inside.size(), " frustum_check=", take_frustum_into_account_when_despawning)
-		
 		if not car_inside_any_cylinder and not car_visible:
-			print("AUTO DESPAWNEANDO: fuera de cilindros, fuera de frustums, sin continuaciones")
-			return
+			return {}
 	
-	if continuations_inside.is_empty():
-		return
+	if continuations.is_empty():
+		return {}
 	
-	var current_direction = _get_current_path_direction()
-	
+	var current_direction = (current_end - path_3d.curve.get_point_position(0)).normalized() if path_3d else Vector3.FORWARD
 	var valid_continuations = []
 	
-	for cont_vol in continuations_inside:
+	for cont_vol in continuations:
 		var result = _get_validated_continuation_path(cont_vol, current_cell_x, current_cell_y)
 		
 		if result != null and result.has("start") and result.has("end"):
@@ -280,19 +425,29 @@ func _prepare_next_path() -> void:
 			})
 	
 	if valid_continuations.is_empty():
-		return
+		return {}
 	
 	var selected = _select_continuation_by_angle(valid_continuations)
 	
 	if selected:
-		next_path_info = selected
+		return {
+			"path": selected["path"],
+			"volume_data": {
+				"face_idx": selected["volume"].face_idx,
+				"edge_idx": selected["volume"].edge_idx,
+				"used_cell_x": selected["path"]["used_cell_x"],
+				"used_cell_y": selected["path"]["used_cell_y"],
+				"width_cells": selected["volume"].width_cells,
+				"height_cells": selected["volume"].height_cells
+			}
+		}
+	
+	return {}
 
-func _get_current_path_direction() -> Vector3:
-	if path_3d and path_3d.curve and path_3d.curve.point_count >= 2:
-		var start = path_3d.curve.get_point_position(0)
-		var end = path_3d.curve.get_point_position(path_3d.curve.point_count - 1)
-		return (end - start).normalized()
-	return Vector3.FORWARD
+func _get_volume_id(volume: Dictionary) -> String:
+	if volume.has("face_idx") and volume.has("edge_idx"):
+		return str(volume["face_idx"]) + "_" + str(volume["edge_idx"])
+	return ""
 
 func _select_continuation_by_angle(continuations: Array) -> Dictionary:
 	var total_weight = 0.0
@@ -330,106 +485,6 @@ func _get_neighborhood_affinity(lane_vol: LaneVolume) -> float:
 		return 0.5
 	
 	return CarArchetypes.get_neighborhood_affinity(car_archetype, neighborhood.type)
-
-func _check_path_complete() -> void:
-	if path_follow and path_3d:
-		var curve_length = path_3d.curve.get_baked_length()
-		if path_follow.progress >= curve_length:
-			if next_path_info.is_empty():
-				queue_free()
-			else:
-				_transition_to_next_path()
-
-func _transition_to_next_path() -> void:
-	if next_path_info.is_empty():
-		return
-	
-	if path_debug_mesh and is_instance_valid(path_debug_mesh):
-		path_debug_mesh.queue_free()
-	
-	for mesh in continuation_debug_meshes:
-		if mesh and is_instance_valid(mesh):
-			mesh.queue_free()
-	continuation_debug_meshes.clear()
-	
-	var old_path = path_3d
-	
-	var path_data = next_path_info["path"]
-	var new_volume = next_path_info["volume"]
-	
-	var current_end = old_path.curve.get_point_position(old_path.curve.point_count - 1)
-	var next_start = path_data["start"]
-	var next_end = path_data["end"]
-	
-	var current_direction = _get_current_path_direction()
-	var next_direction = (next_end - next_start).normalized()
-	
-	# Emitir señal de cambio de volumen
-	var old_volume_id = ""
-	if current_volume.has("face_idx") and current_volume.has("edge_idx"):
-		old_volume_id = str(current_volume["face_idx"]) + "_" + str(current_volume["edge_idx"])
-	
-	path_3d = Path3D.new()
-	var curve = Curve3D.new()
-	
-	var connection_distance = (next_start - current_end).length()
-	var handle_length = connection_distance * 0.4
-	
-	var out_handle = current_direction * handle_length
-	var in_handle = -next_direction * handle_length
-	
-	curve.add_point(current_end, Vector3.ZERO, out_handle)
-	curve.add_point(next_start, in_handle, Vector3.ZERO)
-	curve.add_point(next_end, Vector3.ZERO, Vector3.ZERO)
-	
-	path_3d.curve = curve
-	
-	if world_node:
-		world_node.add_child(path_3d)
-	else:
-		get_parent().add_child(path_3d)
-	
-	if old_path and is_instance_valid(old_path):
-		old_path.queue_free()
-	
-	path_follow = PathFollow3D.new()
-	path_follow.loop = false
-	path_follow.rotation_mode = PathFollow3D.ROTATION_ORIENTED
-	path_3d.add_child(path_follow)
-	
-	path_follow.progress = 0.0
-	
-	var new_volume_id = str(new_volume.face_idx) + "_" + str(new_volume.edge_idx)
-	
-	current_volume = {
-		"face_idx": new_volume.face_idx,
-		"edge_idx": new_volume.edge_idx
-	}
-	current_cell_x = path_data["used_cell_x"]
-	current_cell_y = path_data["used_cell_y"]
-	current_width_cells = new_volume.width_cells
-	current_height_cells = new_volume.height_cells
-	
-	if area_instantiator:
-		volume_changed.emit(old_volume_id, new_volume_id, car_archetype)
-	
-	if show_path_debug and world_node:
-		var points = [
-			{"pos": current_end, "in": Vector3.ZERO, "out": out_handle},
-			{"pos": next_start, "in": in_handle, "out": Vector3.ZERO},
-			{"pos": next_end, "in": Vector3.ZERO, "out": Vector3.ZERO}
-		]
-		
-		path_debug_mesh = DebugUtil.create_debug_path3d(
-			points,
-			path_debug_segments,
-			path_debug_color,
-			path_debug_width
-		)
-		world_node.add_child(path_debug_mesh)
-	
-	next_path_info = {}
-	is_transitioning = false
 
 func _get_validated_continuation_path(lane_vol: LaneVolume, target_cell_x: int, target_cell_y: int) -> Variant:
 	var cont_width_cells = lane_vol.width_cells
