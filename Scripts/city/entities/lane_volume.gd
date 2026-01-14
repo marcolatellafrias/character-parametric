@@ -26,6 +26,8 @@ var collision_shape: CollisionShape3D
 
 var cells_per_floor: int
 
+var traffic_light_index: int = -1
+
 func _init(volume_data: Dictionary) -> void:
 	raw_data = volume_data
 	face_idx = volume_data.get("face_idx", -1)
