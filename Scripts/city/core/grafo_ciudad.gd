@@ -1,3 +1,4 @@
+# GraphCityGenerator.gd
 class_name GraphCityGenerator
 extends RefCounted
 
@@ -7,7 +8,7 @@ var street_types: Dictionary = {}
 var block_grids: Dictionary = {}
 var region_size: Vector2 = Vector2.ZERO
 var pedestrian_planes: Dictionary = {}
-var lane_volume_areas: Dictionary = {}  # Movido desde CityVisualizer
+var lane_volume_areas: Dictionary = {}
 
 var neighborhood_height_falloff: float = 1.0
 
@@ -131,7 +132,6 @@ func generate_city_graph(
 	_calculate_temporal_lane_points()
 	_calculate_lane_planes()
 	_generate_lane_volume_areas()
-	_assign_traffic_light_indices()
 
 # ============================================
 # GESTIÓN DE TIPOS DE CALLES
@@ -348,7 +348,6 @@ func _generate_block_grids(
 		if grid_seed == -1:
 			block_seed = hash(face_idx)
 		
-		# Obtener barrio y calcular transición de alturas
 		var neighborhood = neighborhood_manager.get_neighborhood_for_face(face_idx)
 		var distance_from_seed = neighborhood_manager.get_distance_for_face(face_idx)
 		var falloff_factor = pow(distance_from_seed, neighborhood_height_falloff)
@@ -358,11 +357,9 @@ func _generate_block_grids(
 		var block_heart_prob = 0.0
 		
 		if neighborhood != null:
-			# Usar valores del barrio
 			var target_min = neighborhood.min_floors
 			var target_max = neighborhood.max_floors
 			
-			# Calcular promedio global de todos los barrios
 			var all_neighborhoods = neighborhood_manager.get_neighborhoods()
 			var global_min = 0
 			var global_max = 0
@@ -375,7 +372,6 @@ func _generate_block_grids(
 				global_min = int(float(global_min) / float(all_neighborhoods.size()))
 				global_max = int(float(global_max) / float(all_neighborhoods.size()))
 			
-			# Interpolar según distancia
 			min_floors = int(lerp(float(target_min), float(global_min), falloff_factor))
 			max_floors = int(lerp(float(target_max), float(global_max), falloff_factor))
 			
@@ -653,7 +649,6 @@ func _enrich_lane_volume_data(volume_data: Dictionary, face_idx: int, edge_idx: 
 	enriched["width_cells"] = BlockGenerator.STREET_HALF_WIDTH_CELLS.get(street_type, 3)
 	enriched["cells_per_floor"] = cells_per_floor
 	
-	# Calcular height_cells
 	if block_cell_height > 0 and cells_per_floor > 0:
 		var floor_height = cells_per_floor * block_cell_height
 		var num_floors = ceil(volume_data["height"] / floor_height)
@@ -661,7 +656,6 @@ func _enrich_lane_volume_data(volume_data: Dictionary, face_idx: int, edge_idx: 
 	else:
 		enriched["height_cells"] = 0
 	
-	# Barrio del edge
 	var node1 = face[edge_idx]
 	var node2 = face[(edge_idx + 1) % face.size()]
 	enriched["neighborhood"] = get_neighborhood_for_edge(node1, node2)
@@ -824,75 +818,3 @@ func get_neighborhood_for_edge(node1_idx: int, node2_idx: int) -> Neighborhood:
 	var neighborhood2 = neighborhood_manager.get_neighborhood_for_face(adjacent_faces[1])
 	
 	return Neighborhood.get_higher_hierarchy(neighborhood1, neighborhood2)
-	
-# GraphCityGenerator.gd - Agregar después de _generate_lane_volume_areas()
-
-func _assign_traffic_light_indices() -> void:
-	if plain_graph == null:
-		print("[GraphCityGenerator] ERROR: plain_graph es null")
-		return
-	
-	print("[GraphCityGenerator] Iniciando asignación de semáforos...")
-	var nodes_processed = 0
-	var total_volumes_with_lights = 0
-	
-	for node_idx in range(plain_graph.points.size()):
-		var volumes_at_node = _get_lane_volumes_ending_at_node(node_idx)
-		
-		if volumes_at_node.size() < 2:
-			continue
-		
-		var groups = _group_volumes_by_angle(volumes_at_node, node_idx)
-		
-		for vol in groups[0]:
-			vol.traffic_light_index = 0
-			vol.setup_traffic_light_body()  # ← LLAMAR AQUÍ
-			total_volumes_with_lights += 1
-		
-		for vol in groups[1]:
-			vol.traffic_light_index = 1
-			vol.setup_traffic_light_body()  # ← LLAMAR AQUÍ
-			total_volumes_with_lights += 1
-		
-		nodes_processed += 1
-	
-	print("[GraphCityGenerator] Semáforos asignados: %d nodos, %d volúmenes" % [nodes_processed, total_volumes_with_lights])
-
-func _get_lane_volumes_ending_at_node(node_idx: int) -> Array[LaneVolume]:
-	var volumes: Array[LaneVolume] = []
-	
-	for key in lane_volume_areas:
-		var vol = lane_volume_areas[key]
-		if vol.get_end_node_index(plain_graph) == node_idx:
-			volumes.append(vol)
-	
-	return volumes
-
-func _group_volumes_by_angle(volumes: Array[LaneVolume], node_idx: int) -> Array:
-	if volumes.size() < 2:
-		return [volumes, []]
-	
-	# Calcular ángulos de cada volumen respecto al nodo
-	var node_pos = plain_graph.points[node_idx]
-	var angles = []
-	
-	for vol in volumes:
-		var center_start = vol.get_point_at_grid(0.5, 0.5, true)
-		var direction = (node_pos - center_start).normalized()
-		var angle = atan2(direction.z, direction.x)
-		angles.append({"volume": vol, "angle": angle})
-	
-	# Ordenar por ángulo
-	angles.sort_custom(func(a, b): return a["angle"] < b["angle"])
-	
-	# Dividir en dos grupos alternados (opuestos se agrupan juntos)
-	var group_0: Array[LaneVolume] = []
-	var group_1: Array[LaneVolume] = []
-	
-	for i in range(angles.size()):
-		if i % 2 == 0:
-			group_0.append(angles[i]["volume"])
-		else:
-			group_1.append(angles[i]["volume"])
-	
-	return [group_0, group_1]

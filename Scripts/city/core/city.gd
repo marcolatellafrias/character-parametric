@@ -1,3 +1,4 @@
+# CityVisualizer.gd
 extends Node3D
 
 # ============================================
@@ -11,7 +12,7 @@ extends Node3D
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 5
-@export var neighborhood_seed: int = -1  # -1 usa generation_seed
+@export var neighborhood_seed: int = -1
 @export_range(0.1, 5.0) var neighborhood_height_falloff: float = 1.0
 
 @export_group("Suavizado")
@@ -110,13 +111,6 @@ extends Node3D
 @export_range(0.0, 1.0) var lane_volume_transparency: float = 0.3
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 
-@export_group("Traffic Lights")
-@export var enable_traffic_lights: bool = true
-@export var traffic_light_cycle_duration: float = 15.0  # segundos por ciclo
-@export var show_traffic_light_debug: bool = true
-
-var traffic_light_timer: float = 0.0
-
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
@@ -130,55 +124,6 @@ func _ready() -> void:
     
     if auto_generate:
         generate_and_visualize()
-
-
-func _process(delta: float) -> void:
-    if not enable_traffic_lights or generator == null:
-        return
-    
-    traffic_light_timer += delta
-    
-    # Calcular qué índice está activo
-    var cycle = int(traffic_light_timer / traffic_light_cycle_duration)
-    var active_index = cycle % 2
-    
-    # Actualizar todos los LaneVolumes
-    for key in generator.lane_volume_areas:
-        var vol = generator.lane_volume_areas[key]
-        if vol.traffic_light_index != -1:
-            vol.set_traffic_light_active(vol.traffic_light_index == active_index)
-    
-    if show_traffic_light_debug:
-        _update_traffic_light_visualization()
-
-func _update_traffic_light_visualization() -> void:
-    # Limpiar visualización previa de semáforos
-    for child in get_children():
-        if child.has_meta("traffic_light_debug"):
-            child.queue_free()
-    
-    # Visualizar end_planes activos en azul
-    for key in generator.lane_volume_areas:
-        var vol = generator.lane_volume_areas[key]
-        
-        if vol.traffic_light_index == -1 or not vol.is_traffic_light_active:
-            continue
-        
-        var end_verts = vol.end_plane_vertices
-        if end_verts.size() != 4:
-            continue
-        
-        var plane = DebugUtil.create_debug_plane(
-            end_verts[0],
-            end_verts[1],
-            end_verts[2],
-            end_verts[3],
-            Color.BLUE,
-            0.7
-        )
-        plane.set_meta("traffic_light_debug", true)
-        add_child(plane)
-
 
 # ============================================
 # GENERACIÓN Y VISUALIZACIÓN
@@ -430,7 +375,7 @@ func _visualize_buildings() -> void:
                     var cube = DebugUtil.create_skewed_cube(
                         core_vertices,
                         building_height,
-                        cluster.color																		
+                        cluster.color
                     )
                     add_child(cube)
                     total_cells += 1

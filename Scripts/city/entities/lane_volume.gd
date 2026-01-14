@@ -1,14 +1,12 @@
+# LaneVolume.gd
 extends Area3D
 class_name LaneVolume
 
-# ============================================================================
-# TRAFFIC DENSITY POR TIPO DE CALLE
-# ============================================================================
 const STREET_TYPE_TRAFFIC_DENSITY = {
-	-1: 0.0,  # Boundary - sin tráfico (borde del mapa)
-	0: 0.4,   # Small street - tráfico bajo
-	1: 0.7,   # Medium street - tráfico medio
-	2: 1.0    # Large street - tráfico alto
+	-1: 0.0,
+	0: 0.4,
+	1: 0.7,
+	2: 1.0
 }
 
 var face_idx: int
@@ -28,10 +26,6 @@ var collision_shape: CollisionShape3D
 
 var cells_per_floor: int
 
-var traffic_light_index: int = -1  # -1 = sin semáforo, 0 o 1 = índice de grupo
-var is_traffic_light_active: bool = true  # Estado actual del semáforo
-var traffic_light_body: StaticBody3D = null
-
 func _init(volume_data: Dictionary) -> void:
 	raw_data = volume_data
 	face_idx = volume_data.get("face_idx", -1)
@@ -44,7 +38,6 @@ func _init(volume_data: Dictionary) -> void:
 	volume_height = volume_data.get("height", 0.0)
 	neighborhood = volume_data.get("neighborhood", null)
 	cells_per_floor = volume_data.get("cells_per_floor", 5)
-	traffic_light_index = volume_data.get("traffic_light_index", -1)
 	
 	_setup_area()
 	_generate_collision()
@@ -79,36 +72,6 @@ func _generate_collision() -> void:
 	if collision_shape:
 		add_child(collision_shape)
 
-func setup_traffic_light_body() -> void:
-	if traffic_light_index == -1:
-		print("[LaneVolume %s] Sin semáforo (index -1)" % get_id())
-		return
-	
-	if traffic_light_body != null:
-		print("[LaneVolume %s] Traffic light body ya existe" % get_id())
-		return
-	
-	traffic_light_body = StaticBody3D.new()
-	traffic_light_body.name = "TrafficLight_" + get_id()
-	traffic_light_body.collision_mask = 0
-	
-	var collision = DebugUtil.create_collision_shape_from_plane(end_plane_vertices)
-	if collision:
-		traffic_light_body.add_child(collision)
-		print("[LaneVolume %s] Traffic light body creado (index %d)" % [get_id(), traffic_light_index])
-	else:
-		print("[LaneVolume %s] ERROR: No se pudo crear collision shape" % get_id())
-		return
-	
-	add_child(traffic_light_body)
-	
-	if is_traffic_light_active:
-		traffic_light_body.collision_layer = 0
-		print("[LaneVolume %s] Semáforo VERDE (layer 0)" % get_id())
-	else:
-		traffic_light_body.collision_layer = 2
-		print("[LaneVolume %s] Semáforo ROJO (layer 2)" % get_id())
-
 # ============================================================================
 # MÉTODOS DE BARRIO
 # ============================================================================
@@ -117,17 +80,12 @@ func get_neighborhood() -> Neighborhood:
 	return neighborhood
 
 func get_traffic_density() -> float:
-	# Factor 1: Densidad base del tipo de calle
 	var street_density = STREET_TYPE_TRAFFIC_DENSITY.get(street_type, 0.5)
 	
-	# Factor 2: Densidad del barrio
-	var neighborhood_density = 0.5  # Default neutral
+	var neighborhood_density = 0.5
 	if neighborhood:
 		neighborhood_density = neighborhood.traffic_density
 	
-	# Combinar ambos factores (multiplicación para que se influencien mutuamente)
-	# Una small street en downtown tendrá menos tráfico que una large street en downtown
-	# Una large street en shanty town tendrá menos tráfico que una large street en downtown
 	return street_density * neighborhood_density
 
 func get_neighborhood_type() -> int:
@@ -139,38 +97,6 @@ func get_neighborhood_name() -> String:
 	if neighborhood:
 		return neighborhood.get_type_name()
 	return "Unknown"
-
-# ============================================================================
-# MÉTODOS DE SEMÁFOROS
-# ============================================================================
-
-func get_end_node_index(plain_graph) -> int:
-	if plain_graph == null or face_idx < 0 or face_idx >= plain_graph.faces.size():
-		return -1
-	
-	var face = plain_graph.faces[face_idx]
-	# El end_node es el segundo nodo del edge en sentido clockwise
-	return face[(edge_idx + 1) % face.size()]
-
-func set_traffic_light_active(active: bool) -> void:
-	is_traffic_light_active = active
-	
-	if traffic_light_body:
-		if active:
-			# Verde - sin colisión (layer 0 = ninguna layer)
-			traffic_light_body.collision_layer = 0
-			print("[LaneVolume %s] Semáforo cambiado a VERDE (layer 0)" % get_id())
-		else:
-			# Rojo - con colisión (layer 2 = detectado por ghosts)
-			traffic_light_body.collision_layer = 2
-			print("[LaneVolume %s] Semáforo cambiado a ROJO (layer 2)" % get_id())
-
-func is_allowed_to_spawn() -> bool:
-	# Si no tiene semáforo (índice -1), siempre puede spawnear
-	if traffic_light_index == -1:
-		return true
-	
-	return is_traffic_light_active
 
 # ============================================================================
 # MÉTODOS DE GEOMETRÍA Y PATH
@@ -300,7 +226,6 @@ func validate_face_projection(face_vertices: Array, grid_u: float, grid_v: float
 	
 	return {"valid": true, "collision_plane": ""}
 
-# Calcula el v_max basándose en el número máximo de pisos del barrio
 func get_max_spawn_v() -> float:
 	if not neighborhood:
 		return 1.0
@@ -308,5 +233,4 @@ func get_max_spawn_v() -> float:
 	var max_floors = neighborhood.max_floors
 	var max_height_cells = max_floors * cells_per_floor
 	
-	# Limitar al rango [0.0, 1.0]
 	return min(1.0, float(max_height_cells) / float(height_cells))

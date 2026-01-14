@@ -2,8 +2,8 @@
 extends Node3D
 class_name AreaInstantiator
 
-@export var outer_radius: float = 250.0
-@export var height: float = 150.5
+@export var outer_radius: float = 100.0
+@export var height: float = 50.5
 @export var segments: int = 16
 @export var debug_cylinder_color: Color = Color(0.0, 1.0, 0.0, 0.15)
 @export var show_debug_cylinder: bool = true

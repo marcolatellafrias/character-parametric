@@ -31,7 +31,7 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var car_collision_layer: int = 2
 
 @export_group("Ghost Debug")
-@export var show_ghost_debug: bool = false
+@export var show_ghost_debug: bool = true
 @export var ghost_debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
 @export var ghost_collision_color: Color = Color(1.0, 0.0, 0.0, 0.5)
 
