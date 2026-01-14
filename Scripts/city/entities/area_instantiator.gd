@@ -105,7 +105,7 @@ func _create_cylinder_areas() -> void:
         var cylinder_area = Area3D.new()
         cylinder_area.name = "CylinderArea_" + str(i)
         cylinder_area.collision_layer = 0
-        cylinder_area.collision_mask = 2
+        cylinder_area.collision_mask = 4
         cylinder_area.monitoring = true
         cylinder_area.monitorable = false
         

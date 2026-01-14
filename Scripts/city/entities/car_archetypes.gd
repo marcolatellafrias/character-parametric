@@ -1,7 +1,7 @@
 extends Object
 class_name CarArchetypes
 
-static var speed_debug_factor: float = 1.0
+static var speed_debug_factor: float =2.0
 static var size_debug_factor: float = 10.0
 
 enum Type {

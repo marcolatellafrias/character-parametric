@@ -53,7 +53,7 @@ func _setup_area() -> void:
 	monitoring = true
 	monitorable = true
 	
-	collision_layer = 2
+	collision_layer = 4
 	collision_mask = 0
 	
 	add_to_group("lane_volumes")

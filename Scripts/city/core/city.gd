@@ -4,7 +4,7 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(700/2, 700/2)
+@export var region_size: Vector2 = Vector2(700, 700)
 @export var min_distance: float = 150.5
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
@@ -102,7 +102,7 @@ extends Node3D
 @export_range(0.0, 1.0) var floor_plane_transparency: float = 0.3
 
 @export_group("Lane Planes - Planos Finales")
-@export var show_lane_planes: bool = true
+@export var show_lane_planes: bool = false
 @export_range(0.0, 1.0) var lane_plane_transparency: float = 0.85
 
 @export_group("Lane Volumes - Volúmenes de Edges")
@@ -111,9 +111,9 @@ extends Node3D
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 
 @export_group("Traffic Lights")
-@export var enable_traffic_lights: bool = true
+@export var enable_traffic_lights: bool = false
 @export var traffic_light_cycle_duration: float = 15.0  # segundos por ciclo
-@export var show_traffic_light_debug: bool = true
+@export var show_traffic_light_debug: bool = false
 
 var traffic_light_timer: float = 0.0
 

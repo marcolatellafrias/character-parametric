@@ -203,7 +203,8 @@ metadata/_custom_type_script = "uid://btuoiwrmahgt4"
 current = true
 
 [node name="RigidBody3D" parent="." instance=ExtResource("12_h3puh")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.9507675, 0.9780211, 10.36355)
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -13.9507675, 0.9780211, 10.36355)
+lock_rotation = true
 
 [node name="barquetesimple3" parent="." instance=ExtResource("13_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21.46107, 0.7125503, -1.5130081)

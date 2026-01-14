@@ -179,14 +179,12 @@ func _create_visual() -> void:
 
 func _create_detection_area() -> void:
 	detection_area = Area3D.new()
-	detection_area.collision_layer = car_collision_layer
+	detection_area.collision_layer = 2
 	detection_area.collision_mask = 0
 	detection_area.monitorable = true
 	
 	var collision_shape_node = CollisionShape3D.new()
-	var sphere_shape = SphereShape3D.new()
-	sphere_shape.radius = 0.5
-	collision_shape_node.shape = sphere_shape
+	collision_shape_node.shape = collision_shape  # Usa el BoxShape del tamaño del auto
 	
 	detection_area.add_child(collision_shape_node)
 	add_child(detection_area)
