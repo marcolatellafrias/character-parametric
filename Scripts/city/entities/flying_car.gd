@@ -13,13 +13,27 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var seed: int = 0
 @export var car_archetype: CarArchetypes.Type = CarArchetypes.Type.POOR_CAR
 
-@export var show_path_debug: bool = true
+@export_group("Path Debug")
+@export var show_path_debug: bool = false
 @export var path_debug_color: Color = Color(1.0, 1.0, 0.0, 1.0)
 @export var path_debug_width: float = 0.05
 @export var path_debug_segments: int = 30
-
 @export var continuation_exact_color: Color = Color(0.0, 1.0, 0.0, 1.0)
 @export var continuation_approx_color: Color = Color(0.0, 1.0, 1.0, 1.0)
+
+@export_group("Collision Avoidance")
+@export var enable_collision_avoidance: bool = true
+@export var ghost_distance_multiplier: float = 2.0
+@export var ghost_spacing: float = 3.0
+@export var collision_buffer_zone: float = 15.0
+@export var min_safe_distance: float = 5.0
+@export var reaction_time: float = 1.5
+@export var car_collision_layer: int = 2
+
+@export_group("Ghost Debug")
+@export var show_ghost_debug: bool = false
+@export var ghost_debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
+@export var ghost_collision_color: Color = Color(1.0, 0.0, 0.0, 0.5)
 
 @export_group("Despawn Debug")
 @export var take_frustum_into_account_when_despawning: bool = true
@@ -27,6 +41,8 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 var mesh_instance: MeshInstance3D
 var path_debug_mesh: MeshInstance3D
 var continuation_debug_meshes: Array[MeshInstance3D] = []
+var ghost_debug_meshes: Array[MeshInstance3D] = []
+var ghost_debug_materials: Array[StandardMaterial3D] = []
 var detection_area: Area3D
 var path_3d: Path3D
 var path_follow: PathFollow3D
@@ -51,16 +67,35 @@ var second_segment_volume: Dictionary = {}
 var original_color: Color
 var material: StandardMaterial3D
 
+var current_speed: float = 0.0
+var target_speed: float = 0.0
+var collision_shape: BoxShape3D
+var deceleration_rate: float = 0.0
+var acceleration_rate: float = 0.0
+
 func _ready() -> void:
 	_create_visual()
 	_create_detection_area()
 	
+	collision_shape = BoxShape3D.new()
+	collision_shape.size = Vector3(width, height, depth)
+	
 	rng = RandomNumberGenerator.new()
 	rng.seed = seed
+	
+	target_speed = speed
+	current_speed = speed
+	_update_acceleration_rates()
 
 func _process(delta: float) -> void:
 	if has_path and path_follow:
-		path_follow.progress += delta * speed
+		if enable_collision_avoidance:
+			_check_forward_collisions()
+			_update_speed(delta)
+		else:
+			current_speed = target_speed
+		
+		path_follow.progress += delta * current_speed
 		global_position = path_follow.global_position
 		global_rotation = path_follow.global_rotation
 		
@@ -80,6 +115,8 @@ func _exit_tree() -> void:
 			mesh.queue_free()
 	continuation_debug_meshes.clear()
 	
+	_clear_ghost_debug_meshes()
+	
 	if path_3d and is_instance_valid(path_3d):
 		path_3d.queue_free()
 
@@ -98,6 +135,15 @@ func initialize_from_seed(p_seed: int, archetype_weights: Dictionary = {}) -> vo
 	speed = rng.randf_range(archetype.min_speed, archetype.max_speed)
 	car_color = archetype.color
 	original_color = archetype.color
+	
+	target_speed = speed
+	current_speed = speed
+	_update_acceleration_rates()
+
+func _update_acceleration_rates() -> void:
+	var check_distance = speed * ghost_distance_multiplier
+	deceleration_rate = speed / reaction_time
+	acceleration_rate = deceleration_rate * 0.75
 
 func _select_archetype_from_seed(rng: RandomNumberGenerator, custom_weights: Dictionary) -> CarArchetypes.Type:
 	var total_weight = 0.0
@@ -133,16 +179,16 @@ func _create_visual() -> void:
 
 func _create_detection_area() -> void:
 	detection_area = Area3D.new()
-	detection_area.collision_layer = 1
+	detection_area.collision_layer = car_collision_layer
 	detection_area.collision_mask = 0
 	detection_area.monitorable = true
 	
-	var collision_shape = CollisionShape3D.new()
+	var collision_shape_node = CollisionShape3D.new()
 	var sphere_shape = SphereShape3D.new()
 	sphere_shape.radius = 0.5
-	collision_shape.shape = sphere_shape
+	collision_shape_node.shape = sphere_shape
 	
-	detection_area.add_child(collision_shape)
+	detection_area.add_child(collision_shape_node)
 	add_child(detection_area)
 
 func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0, 
@@ -156,15 +202,12 @@ func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0,
 	current_width_cells = width_cells
 	current_height_cells = height_cells
 	
-	# Calcular continuación inmediatamente
 	var next_segment = _calculate_next_segment(end, volume)
 	
 	if next_segment.is_empty():
-		# Sin continuación, solo crear path simple
 		_create_simple_path(start, end, initial_progress)
 		second_segment_volume = {}
 	else:
-		# Crear path con dos segmentos + bezier
 		_create_double_segment_path(start, end, next_segment, initial_progress)
 		second_segment_volume = next_segment["volume_data"]
 	
@@ -192,18 +235,13 @@ func _create_double_segment_path(start: Vector3, end: Vector3, next_segment: Dic
 	var out_handle = first_direction * handle_length
 	var in_handle = -next_direction * handle_length
 	
-	# Primer segmento recto: start -> end
 	curve.add_point(start, Vector3.ZERO, Vector3.ZERO)
-	# Punto de conexión con curva: end con out_handle para curvar hacia next_start
 	curve.add_point(end, Vector3.ZERO, out_handle)
-	# Inicio del segundo segmento con in_handle para completar la curva
 	curve.add_point(next_start, in_handle, Vector3.ZERO)
-	# Final del segundo segmento recto
 	curve.add_point(next_end, Vector3.ZERO, Vector3.ZERO)
 	
 	path_3d.curve = curve
 	
-	# El punto de transición es cuando llega al inicio del segundo segmento (después del bezier)
 	transition_point = curve.get_closest_offset(next_start)
 	
 	if world_node:
@@ -222,7 +260,6 @@ func _create_double_segment_path(start: Vector3, end: Vector3, next_segment: Dic
 	global_position = path_follow.global_position
 	global_rotation = path_follow.global_rotation
 	
-	# Crear visualización siempre
 	if show_path_debug and world_node:
 		_create_path_debug()
 
@@ -251,7 +288,6 @@ func _create_simple_path(start: Vector3, end: Vector3, initial_progress: float =
 	global_position = path_follow.global_position
 	global_rotation = path_follow.global_rotation
 	
-	# Crear visualización siempre
 	if show_path_debug and world_node:
 		_create_path_debug()
 
@@ -279,18 +315,15 @@ func _check_segment_transition() -> void:
 	var current_progress = path_follow.progress
 	var curve_length = path_3d.curve.get_baked_length()
 	
-	# Si llegó al final del path completo
 	if current_progress >= curve_length:
 		queue_free()
 		return
 	
-	# Si cruzó el punto de transición y hay segundo segmento
 	if transition_point > 0 and current_progress >= transition_point and not is_transitioning:
 		is_transitioning = true
 		_advance_to_next_segment()
 
 func _advance_to_next_segment() -> void:
-	# El segundo segmento ahora es el primero
 	var old_volume_id = _get_volume_id(first_segment_volume)
 	var new_volume_id = _get_volume_id(second_segment_volume)
 	
@@ -304,19 +337,16 @@ func _advance_to_next_segment() -> void:
 	if area_instantiator:
 		volume_changed.emit(old_volume_id, new_volume_id, car_archetype)
 	
-	# Calcular el nuevo segundo segmento
-	var current_end = path_3d.curve.get_point_position(3)  # El punto final actual
+	var current_end = path_3d.curve.get_point_position(3)
 	var next_segment = _calculate_next_segment(current_end, first_segment_volume)
 	
 	if next_segment.is_empty():
-		# Regenerar path sin continuación
-		var current_start = path_3d.curve.get_point_position(2)  # Inicio del segmento actual
+		var current_start = path_3d.curve.get_point_position(2)
 		_regenerate_path_from_segment(current_start, current_end)
 		second_segment_volume = {}
 		is_transitioning = false
 		return
 	
-	# Regenerar path con nuevo segundo segmento
 	var current_start = path_3d.curve.get_point_position(2)
 	_regenerate_double_segment_path(current_start, current_end, next_segment)
 	second_segment_volume = next_segment["volume_data"]
@@ -324,7 +354,6 @@ func _advance_to_next_segment() -> void:
 	is_transitioning = false
 
 func _regenerate_double_segment_path(start: Vector3, end: Vector3, next_segment: Dictionary) -> void:
-	# Guardar estado actual
 	var current_position = global_position
 	var current_rotation = global_rotation
 	
@@ -338,14 +367,11 @@ func _regenerate_double_segment_path(start: Vector3, end: Vector3, next_segment:
 	
 	var old_path = path_3d
 	
-	# Crear nuevo path
 	_create_double_segment_path(start, end, next_segment, 0.0)
 	
-	# Encontrar el progress más cercano a la posición actual
 	var closest_offset = path_3d.curve.get_closest_offset(current_position)
 	path_follow.progress = closest_offset
 	
-	# Forzar actualización de transformación
 	global_position = path_follow.global_position
 	global_rotation = path_follow.global_rotation
 	
@@ -376,7 +402,6 @@ func _calculate_next_segment(current_end: Vector3, volume: Dictionary) -> Dictio
 	
 	var continuations = city.get_lane_volume_continuations(face_idx, edge_idx)
 	
-	# Verificar si debe despawnear
 	if area_instantiator and continuations.is_empty():
 		var car_inside_any_cylinder = false
 		for camera in area_instantiator.cameras:
@@ -603,3 +628,146 @@ func get_front_face_at_segment(start: Vector3, end: Vector3) -> Array:
 		right * half_width + true_up * half_height,
 		-right * half_width + true_up * half_height
 	]
+
+# === COLLISION AVOIDANCE ===
+
+func _get_future_path_positions() -> Array[Dictionary]:
+	if not path_follow or not path_3d:
+		return []
+	
+	var positions: Array[Dictionary] = []
+	var current_progress = path_follow.progress
+	var curve_length = path_3d.curve.get_baked_length()
+	
+	var check_distance = current_speed * ghost_distance_multiplier
+	var num_ghosts = int(check_distance / ghost_spacing)
+	num_ghosts = clampi(num_ghosts, 3, 15)
+	
+	for i in range(1, num_ghosts + 1):
+		var future_progress = current_progress + (ghost_spacing * i)
+		
+		if future_progress >= curve_length:
+			break
+		
+		var position = path_3d.curve.sample_baked(future_progress)
+		positions.append({
+			"position": position,
+			"distance": ghost_spacing * i,
+			"progress": future_progress
+		})
+	
+	return positions
+
+func _check_forward_collisions() -> void:
+	var ghost_positions = _get_future_path_positions()
+	
+	if ghost_positions.is_empty():
+		target_speed = speed
+		if show_ghost_debug:
+			_update_ghost_debug_meshes([])
+		return
+	
+	var space_state = get_world_3d().direct_space_state
+	var closest_obstacle_distance = INF
+	var collision_detected = false
+	
+	var debug_data = []
+	
+	for ghost_data in ghost_positions:
+		var ghost_pos = ghost_data["position"]
+		
+		var query = PhysicsShapeQueryParameters3D.new()
+		query.shape = collision_shape
+		query.transform = Transform3D(Basis(), ghost_pos)
+		query.collision_mask = car_collision_layer  # Debería ser 2
+		query.exclude = [detection_area]
+		
+		var results = space_state.intersect_shape(query, 32)  # Aumentar a 32 para ver todos
+		
+		var has_collision = not results.is_empty()
+		
+		if has_collision:
+			print("[FlyingCar] Ghost colisión detectada en pos %s, objetos: %d" % [ghost_pos, results.size()])
+			for result in results:
+				var collider = result.get("collider")
+				if collider:
+					print("  - Colisionó con: %s (layer: %d)" % [collider.name, collider.collision_layer])
+			
+			var distance = global_position.distance_to(ghost_pos)
+			closest_obstacle_distance = min(closest_obstacle_distance, distance)
+			collision_detected = true
+		
+		if show_ghost_debug:
+			debug_data.append({
+				"progress": ghost_data["progress"],
+				"has_collision": has_collision
+			})
+	
+	if show_ghost_debug:
+		_update_ghost_debug_meshes(debug_data)
+	
+	if closest_obstacle_distance < collision_buffer_zone:
+		var distance_ratio = (closest_obstacle_distance - min_safe_distance) / (collision_buffer_zone - min_safe_distance)
+		distance_ratio = clampf(distance_ratio, 0.0, 1.0)
+		
+		target_speed = speed * distance_ratio * 0.5
+		target_speed = maxf(target_speed, speed * 0.1)
+		print("[FlyingCar] Frenando por obstáculo a distancia: %.2f, target_speed: %.2f" % [closest_obstacle_distance, target_speed])
+	else:
+		target_speed = speed
+
+func _update_speed(delta: float) -> void:
+	if current_speed < target_speed:
+		current_speed = min(current_speed + acceleration_rate * delta, target_speed)
+	elif current_speed > target_speed:
+		current_speed = max(current_speed - deceleration_rate * delta, target_speed)
+
+func _create_ghost_mesh() -> MeshInstance3D:
+	var mesh_instance = MeshInstance3D.new()
+	var box = BoxMesh.new()
+	box.size = Vector3(width, height, depth)
+	mesh_instance.mesh = box
+	
+	var mat = StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = ghost_debug_color
+	mesh_instance.material_override = mat
+	
+	ghost_debug_materials.append(mat)
+	
+	return mesh_instance
+
+func _update_ghost_debug_meshes(debug_data: Array) -> void:
+	if not world_node or not path_3d:
+		_clear_ghost_debug_meshes()
+		return
+	
+	# Ajustar cantidad de meshes solo si es necesario
+	while ghost_debug_meshes.size() < debug_data.size():
+		var mesh = _create_ghost_mesh()
+		world_node.add_child(mesh)
+		ghost_debug_meshes.append(mesh)
+	
+	while ghost_debug_meshes.size() > debug_data.size():
+		var mesh = ghost_debug_meshes.pop_back()
+		var mat = ghost_debug_materials.pop_back()
+		if mesh and is_instance_valid(mesh):
+			mesh.queue_free()
+	
+	# Solo actualizar transformación y color de meshes existentes
+	for i in range(debug_data.size()):
+		var mesh = ghost_debug_meshes[i]
+		var mat = ghost_debug_materials[i]
+		var data = debug_data[i]
+		
+		var ghost_transform = path_3d.curve.sample_baked_with_rotation(data["progress"])
+		mesh.global_transform = ghost_transform
+		
+		mat.albedo_color = ghost_collision_color if data["has_collision"] else ghost_debug_color
+
+func _clear_ghost_debug_meshes() -> void:
+	for mesh in ghost_debug_meshes:
+		if mesh and is_instance_valid(mesh):
+			mesh.queue_free()
+	ghost_debug_meshes.clear()
+	ghost_debug_materials.clear()

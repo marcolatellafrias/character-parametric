@@ -993,6 +993,42 @@ static func _add_quad_to_arrays(
 	indices.append(start_idx + 2)
 	indices.append(start_idx + 3)
 
+# DebugUtil.gd - Agregar este método estático
+
+static func create_collision_shape_from_plane(plane_vertices: Array) -> CollisionShape3D:
+	if plane_vertices.size() != 4:
+		push_error("create_collision_shape_from_plane requiere exactamente 4 vértices")
+		return null
+	
+	# Calcular la normal del plano
+	var v1 = plane_vertices[1] - plane_vertices[0]
+	var v2 = plane_vertices[3] - plane_vertices[0]
+	var normal = v1.cross(v2).normalized()
+	
+	# Crear un grosor pequeño para que tenga colisión en ambas direcciones
+	var thickness = 0.5
+	var half_thickness = thickness * 0.5
+	
+	var points = PackedVector3Array()
+	
+	# Cara frontal (offset positivo)
+	for vertex in plane_vertices:
+		points.append(vertex + normal * half_thickness)
+	
+	# Cara trasera (offset negativo)
+	for vertex in plane_vertices:
+		points.append(vertex - normal * half_thickness)
+	
+	# Crear el ConvexPolygonShape3D con 8 puntos (plano con grosor)
+	var convex_shape = ConvexPolygonShape3D.new()
+	convex_shape.points = points
+	
+	# Crear el CollisionShape3D
+	var collision_shape = CollisionShape3D.new()
+	collision_shape.shape = convex_shape
+	
+	return collision_shape
+
 # Crea un CollisionShape3D (convex) a partir de dos planos paralelos
 # plane1_vertices: Array de 4 Vector3 representando el primer plano [v1_base, v2_base, v3_top, v4_top]
 # plane2_vertices: Array de 4 Vector3 representando el segundo plano [v1_base, v2_base, v3_top, v4_top]

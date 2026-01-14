@@ -102,19 +102,25 @@ extends Node3D
 @export_range(0.0, 1.0) var floor_plane_transparency: float = 0.3
 
 @export_group("Lane Planes - Planos Finales")
-@export var show_lane_planes: bool = false
-@export_range(0.0, 1.0) var lane_plane_transparency: float = 0.5
+@export var show_lane_planes: bool = true
+@export_range(0.0, 1.0) var lane_plane_transparency: float = 0.85
 
 @export_group("Lane Volumes - Volúmenes de Edges")
 @export var show_lane_volumes: bool = false
 @export_range(0.0, 1.0) var lane_volume_transparency: float = 0.3
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 
+@export_group("Traffic Lights")
+@export var enable_traffic_lights: bool = true
+@export var traffic_light_cycle_duration: float = 15.0  # segundos por ciclo
+@export var show_traffic_light_debug: bool = true
+
+var traffic_light_timer: float = 0.0
+
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
 var generator: GraphCityGenerator = null
-var lane_volume_areas: Dictionary = {}  # Key: "face_idx_edge_idx", Value: LaneVolumeArea3D
 
 # ============================================
 # INICIALIZACIÓN
@@ -124,6 +130,55 @@ func _ready() -> void:
 	
 	if auto_generate:
 		generate_and_visualize()
+
+
+func _process(delta: float) -> void:
+	if not enable_traffic_lights or generator == null:
+		return
+	
+	traffic_light_timer += delta
+	
+	# Calcular qué índice está activo
+	var cycle = int(traffic_light_timer / traffic_light_cycle_duration)
+	var active_index = cycle % 2
+	
+	# Actualizar todos los LaneVolumes
+	for key in generator.lane_volume_areas:
+		var vol = generator.lane_volume_areas[key]
+		if vol.traffic_light_index != -1:
+			vol.set_traffic_light_active(vol.traffic_light_index == active_index)
+	
+	if show_traffic_light_debug:
+		_update_traffic_light_visualization()
+
+func _update_traffic_light_visualization() -> void:
+	# Limpiar visualización previa de semáforos
+	for child in get_children():
+		if child.has_meta("traffic_light_debug"):
+			child.queue_free()
+	
+	# Visualizar end_planes activos en azul
+	for key in generator.lane_volume_areas:
+		var vol = generator.lane_volume_areas[key]
+		
+		if vol.traffic_light_index == -1 or not vol.is_traffic_light_active:
+			continue
+		
+		var end_verts = vol.end_plane_vertices
+		if end_verts.size() != 4:
+			continue
+		
+		var plane = DebugUtil.create_debug_plane(
+			end_verts[0],
+			end_verts[1],
+			end_verts[2],
+			end_verts[3],
+			Color.BLUE,
+			0.7
+		)
+		plane.set_meta("traffic_light_debug", true)
+		add_child(plane)
+
 
 # ============================================
 # GENERACIÓN Y VISUALIZACIÓN
@@ -176,13 +231,16 @@ func generate_graph() -> void:
 func clear_visualization() -> void:
 	for child in get_children():
 		child.queue_free()
+	
+	if generator:
+		generator.lane_volume_areas.clear()
 
 func visualize_graph() -> void:
 	if generator == null or generator.plain_graph == null:
 		push_error("No hay grafo generado para visualizar")
 		return
 	
-	_generate_lane_volume_areas()
+	_add_lane_volume_areas_to_scene()
 	
 	if show_streets:
 		_visualize_streets()
@@ -211,61 +269,18 @@ func visualize_graph() -> void:
 	if show_nodes:
 		_visualize_nodes()
 
-# ============================================
-# GENERACIÓN DE LANE VOLUME AREAS
-# ============================================
-func _generate_lane_volume_areas() -> void:
-	lane_volume_areas.clear()
-	var all_block_faces = generator.get_all_block_faces()
-	var total_areas = 0
+func _add_lane_volume_areas_to_scene() -> void:
+	if generator == null:
+		return
 	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		var face = generator.plain_graph.faces[face_idx]
-		
-		for edge_idx in range(4):
-			var volume_data = block.get_edge_lane_volume(edge_idx)
-			
-			if volume_data.is_empty():
-				continue
-			
-			var street_type = volume_data.get("street_type", 0)
-			var width_cells = BlockGenerator.STREET_HALF_WIDTH_CELLS.get(street_type, 3)
-			
-			var height_cells = 0
-			if generator.block_cell_height > 0 and generator.cells_per_floor > 0:
-				var floor_height = generator.cells_per_floor * generator.block_cell_height
-				var num_floors = ceil(volume_data["height"] / floor_height)
-				height_cells = int(num_floors * generator.cells_per_floor)
-			
-			# Obtener los nodos del edge
-			var node1 = face[edge_idx]
-			var node2 = face[(edge_idx + 1) % face.size()]
-			
-			# Determinar barrio del edge (mayor jerarquía)
-			var edge_neighborhood = generator.get_neighborhood_for_edge(node1, node2)
-			
-			var enriched_data = volume_data.duplicate()
-			enriched_data["face_idx"] = face_idx
-			enriched_data["edge_idx"] = edge_idx
-			enriched_data["width_cells"] = width_cells
-			enriched_data["height_cells"] = height_cells
-			enriched_data["neighborhood"] = edge_neighborhood
-			enriched_data["cells_per_floor"] = generator.cells_per_floor
-			
-			var lane_volume = LaneVolume.new(enriched_data)
-			add_child(lane_volume)
-			
-			var key = "%d_%d" % [face_idx, edge_idx]
-			lane_volume_areas[key] = lane_volume
-			
-			total_areas += 1
+	var total_added = 0
 	
-	print("[CityVisualizer] Lane Volume Areas generados: %d" % total_areas)
+	for key in generator.lane_volume_areas:
+		var lane_volume = generator.lane_volume_areas[key]
+		add_child(lane_volume)
+		total_added += 1
+	
+	print("[Visualizer] Lane Volume Areas agregados a la escena: %d" % total_added)
 
 # ============================================
 # VISUALIZACIÓN DE CALLES
@@ -819,8 +834,11 @@ func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVo
 	return generator.get_lane_volume_continuations(face_idx, edge_idx)
 
 func get_lane_volume_area(face_idx: int, edge_idx: int) -> LaneVolume:
-	var key = "%d_%d" % [face_idx, edge_idx]
-	return lane_volume_areas.get(key, null)
+	if generator == null:
+		push_error("CityVisualizer: generator no inicializado")
+		return null
+	
+	return generator.get_lane_volume_area(face_idx, edge_idx)
 
 func get_lane_volume_area_continuations(face_idx: int, edge_idx: int) -> Array[LaneVolume]:
 	if generator == null:
@@ -828,11 +846,4 @@ func get_lane_volume_area_continuations(face_idx: int, edge_idx: int) -> Array[L
 		return []
 	
 	var continuations = generator.get_lane_volume_continuations(face_idx, edge_idx)
-	
-	var areas: Array[LaneVolume] = []
-	for lane_vol in continuations:
-		var area = get_lane_volume_area(lane_vol.face_idx, lane_vol.edge_idx)
-		if area:
-			areas.append(area)
-	
-	return areas
+	return continuations
