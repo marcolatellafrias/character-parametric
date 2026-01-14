@@ -26,7 +26,7 @@ var collision_shape: CollisionShape3D
 
 var cells_per_floor: int
 
-var traffic_light_index: int = -1
+var traffic_plane: TrafficPlane = null
 
 func _init(volume_data: Dictionary) -> void:
 	raw_data = volume_data
@@ -43,6 +43,7 @@ func _init(volume_data: Dictionary) -> void:
 	
 	_setup_area()
 	_generate_collision()
+	_create_traffic_plane()
 
 func _setup_area() -> void:
 	monitoring = true
@@ -73,6 +74,34 @@ func _generate_collision() -> void:
 	
 	if collision_shape:
 		add_child(collision_shape)
+
+func _create_traffic_plane() -> void:
+	traffic_plane = TrafficPlane.new(self)
+	add_child(traffic_plane)
+	traffic_plane.setup_collision()
+
+# ============================================================================
+# MÉTODOS DE TRÁFICO
+# ============================================================================
+
+func get_traffic_plane() -> TrafficPlane:
+	return traffic_plane
+
+func set_traffic_index(index: int) -> void:
+	if traffic_plane:
+		traffic_plane.set_traffic_index(index)
+
+func get_traffic_index() -> int:
+	if traffic_plane:
+		return traffic_plane.traffic_index
+	return -1
+
+func get_end_node_index(plain_graph) -> int:
+	if plain_graph == null or face_idx < 0 or face_idx >= plain_graph.faces.size():
+		return -1
+	
+	var face = plain_graph.faces[face_idx]
+	return face[(edge_idx + 1) % face.size()]
 
 # ============================================================================
 # MÉTODOS DE BARRIO

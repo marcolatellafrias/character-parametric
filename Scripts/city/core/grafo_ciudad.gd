@@ -620,29 +620,6 @@ func _line_intersection_2d(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2) -
 # GENERACIÓN DE LANE VOLUME AREAS
 # ============================================
 
-func _generate_lane_volume_areas() -> void:
-    lane_volume_areas.clear()
-    var total_areas = 0
-    
-    for face_idx in block_grids:
-        var block: BlockGenerator = block_grids[face_idx]
-        var face = plain_graph.faces[face_idx]
-        
-        for edge_idx in range(4):
-            var volume_data = block.get_edge_lane_volume(edge_idx)
-            
-            if volume_data.is_empty():
-                continue
-            
-            var enriched_data = _enrich_lane_volume_data(volume_data, face_idx, edge_idx, face)
-            var lane_volume = LaneVolume.new(enriched_data)
-            
-            var key = "%d_%d" % [face_idx, edge_idx]
-            lane_volume_areas[key] = lane_volume
-            total_areas += 1
-    
-    print("[GraphCityGenerator] Lane Volume Areas generados: %d" % total_areas)
-
 func _enrich_lane_volume_data(volume_data: Dictionary, face_idx: int, edge_idx: int, face: Array) -> Dictionary:
     var enriched = volume_data.duplicate()
     var street_type = volume_data.get("street_type", 0)
@@ -662,6 +639,8 @@ func _enrich_lane_volume_data(volume_data: Dictionary, face_idx: int, edge_idx: 
     var node1 = face[edge_idx]
     var node2 = face[(edge_idx + 1) % face.size()]
     enriched["neighborhood"] = get_neighborhood_for_edge(node1, node2)
+    
+    # NO incluir traffic_light_index aquí, se asigna después
     
     return enriched
 
@@ -683,11 +662,11 @@ func _assign_traffic_light_indices() -> void:
     
     for key in lane_volume_areas:
         var lane_volume: LaneVolume = lane_volume_areas[key]
-        if lane_volume.traffic_light_index >= 0:
+        if lane_volume.get_traffic_index() >= 0:  # CAMBIO AQUÍ
             total_assigned += 1
     
     print("[GraphCityGenerator] Índices de semáforos asignados: %d lane volumes" % total_assigned)
-
+    
 func _assign_indices_for_node(node_idx: int) -> void:
     var volumes_at_node: Array[LaneVolume] = []
     
@@ -706,29 +685,27 @@ func _assign_indices_for_node(node_idx: int) -> void:
     
     while available.size() > 0:
         if available.size() == 1:
-            available[0].traffic_light_index = current_index
+            available[0].set_traffic_index(current_index)  # CAMBIO AQUÍ
             break
         
         var pair_indices = _find_best_opposite_pair(available, node_idx)
         
-        # Si quedan exactamente 2, siempre emparejarlos (sin importar el ángulo)
         if available.size() == 2 and pair_indices.is_empty():
-            available[0].traffic_light_index = current_index
-            available[1].traffic_light_index = current_index
+            available[0].set_traffic_index(current_index)  # CAMBIO AQUÍ
+            available[1].set_traffic_index(current_index)  # CAMBIO AQUÍ
             break
         
         if pair_indices.is_empty():
-            # Quedan 3 o más volúmenes sin pares opuestos razonables
             for vol in available:
-                vol.traffic_light_index = current_index
+                vol.set_traffic_index(current_index)  # CAMBIO AQUÍ
                 current_index = (current_index + 1) % 2
             break
         
         var vol1 = available[pair_indices[0]]
         var vol2 = available[pair_indices[1]]
         
-        vol1.traffic_light_index = current_index
-        vol2.traffic_light_index = current_index
+        vol1.set_traffic_index(current_index)  # CAMBIO AQUÍ
+        vol2.set_traffic_index(current_index)  # CAMBIO AQUÍ
         
         available.remove_at(max(pair_indices[0], pair_indices[1]))
         available.remove_at(min(pair_indices[0], pair_indices[1]))
@@ -932,3 +909,96 @@ func get_neighborhood_for_edge(node1_idx: int, node2_idx: int) -> Neighborhood:
     var neighborhood2 = neighborhood_manager.get_neighborhood_for_face(adjacent_faces[1])
     
     return Neighborhood.get_higher_hierarchy(neighborhood1, neighborhood2)
+    
+func _assign_traffic_indices() -> void:
+    if plain_graph == null:
+        print("[GraphCityGenerator] ERROR: plain_graph es null")
+        return
+    
+    print("[GraphCityGenerator] Iniciando asignación de índices de tráfico...")
+    var nodes_processed = 0
+    var total_volumes_with_traffic = 0
+    
+    for node_idx in range(plain_graph.points.size()):
+        var volumes_at_node = _get_lane_volumes_ending_at_node(node_idx)
+        
+        if volumes_at_node.size() < 2:
+            continue
+        
+        var groups = _group_volumes_by_angle(volumes_at_node, node_idx)
+        
+        # Asignar índice 0 al primer grupo
+        for vol in groups[0]:
+            vol.set_traffic_index(0)
+            total_volumes_with_traffic += 1
+        
+        # Asignar índice 1 al segundo grupo
+        for vol in groups[1]:
+            vol.set_traffic_index(1)
+            total_volumes_with_traffic += 1
+        
+        nodes_processed += 1
+    
+    print("[GraphCityGenerator] Índices de tráfico asignados: %d nodos, %d volúmenes" % [nodes_processed, total_volumes_with_traffic])
+
+func _get_lane_volumes_ending_at_node(node_idx: int) -> Array[LaneVolume]:
+    var volumes: Array[LaneVolume] = []
+    
+    for key in lane_volume_areas:
+        var vol = lane_volume_areas[key]
+        if vol.get_end_node_index(plain_graph) == node_idx:
+            volumes.append(vol)
+    
+    return volumes
+
+func _group_volumes_by_angle(volumes: Array[LaneVolume], node_idx: int) -> Array:
+    if volumes.size() < 2:
+        return [volumes, []]
+    
+    var node_pos = plain_graph.points[node_idx]
+    var angles = []
+    
+    for vol in volumes:
+        var center_start = vol.get_point_at_grid(0.5, 0.5, true)
+        var direction = (node_pos - center_start).normalized()
+        var angle = atan2(direction.z, direction.x)
+        angles.append({"volume": vol, "angle": angle})
+    
+    angles.sort_custom(func(a, b): return a["angle"] < b["angle"])
+    
+    var group_0: Array[LaneVolume] = []
+    var group_1: Array[LaneVolume] = []
+    
+    for i in range(angles.size()):
+        if i % 2 == 0:
+            group_0.append(angles[i]["volume"])
+        else:
+            group_1.append(angles[i]["volume"])
+    
+    return [group_0, group_1]
+
+func _generate_lane_volume_areas() -> void:
+    lane_volume_areas.clear()
+    var total_areas = 0
+    
+    for face_idx in block_grids:
+        var block: BlockGenerator = block_grids[face_idx]
+        var face = plain_graph.faces[face_idx]
+        
+        for edge_idx in range(4):
+            var volume_data = block.get_edge_lane_volume(edge_idx)
+            
+            if volume_data.is_empty():
+                continue
+            
+            var enriched_data = _enrich_lane_volume_data(volume_data, face_idx, edge_idx, face)
+            var lane_volume = LaneVolume.new(enriched_data)
+            
+            var key = "%d_%d" % [face_idx, edge_idx]
+            lane_volume_areas[key] = lane_volume
+            total_areas += 1
+    
+    # Asignar índices de tráfico
+    _assign_traffic_indices()
+    
+    print("[GraphCityGenerator] Lane Volume Areas generados: %d" % total_areas)

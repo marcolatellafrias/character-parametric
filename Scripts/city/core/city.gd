@@ -8,7 +8,7 @@ extends Node3D
 @export var region_size: Vector2 = Vector2(700, 700)
 @export var min_distance: float = 150.5
 @export var rejection_samples: int = 90
-@export var generation_seed: int = 1234567
+@export var generation_seed: int = 123456
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 5
@@ -107,16 +107,26 @@ extends Node3D
 @export_range(0.0, 1.0) var lane_plane_transparency: float = 0.85
 
 @export_group("Lane Volumes - Volúmenes de Edges")
-@export var show_lane_volumes: bool = true
+@export var show_lane_volumes: bool = false
 @export_range(0.0, 1.0) var lane_volume_transparency: float = 0.3
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
-@export var traffic_light_0_color: Color = Color.GREEN
-@export var traffic_light_1_color: Color = Color.RED
+
+@export_group("Traffic Planes")
+@export var show_traffic_planes: bool = true
+@export_range(0.0, 1.0) var traffic_plane_transparency: float = 0.7
+@export var traffic_plane_green_color: Color = Color.GREEN
+@export var traffic_plane_red_color: Color = Color.RED
+
+@export_group("Traffic Lights")
+@export var enable_traffic_lights: bool = true
+@export var traffic_light_cycle_duration: float = 5.0
 
 # ============================================
 # DATOS DEL GRAFO
 # ============================================
 var generator: GraphCityGenerator = null
+var traffic_light_timer: float = 0.0
+var active_traffic_index: int = 0
 
 # ============================================
 # INICIALIZACIÓN
@@ -127,6 +137,52 @@ func _ready() -> void:
     if auto_generate:
         generate_and_visualize()
 
+func _process(delta: float) -> void:
+    if not enable_traffic_lights or generator == null:
+        return
+    
+    traffic_light_timer += delta
+    
+    # Cada ciclo completo, cambiar el índice activo
+    if traffic_light_timer >= traffic_light_cycle_duration:
+        traffic_light_timer = 0.0
+        active_traffic_index = 1 - active_traffic_index
+        _update_all_traffic_planes()
+        print("[CityVisualizer] Cambio de semáforo - Índice activo: %d" % active_traffic_index)
+    
+    # Actualizar visualización SIEMPRE en cada frame si está activa
+    if show_traffic_planes:
+        _update_traffic_planes_visualization()
+
+func _update_all_traffic_planes() -> void:
+    for key in generator.lane_volume_areas:
+        var vol = generator.lane_volume_areas[key]
+        var traffic_plane = vol.get_traffic_plane()
+        
+        if traffic_plane:
+            traffic_plane.update_layer_for_active_index(active_traffic_index)
+
+func _update_traffic_planes_visualization() -> void:
+    for child in get_children():
+        if child.has_meta("traffic_plane_visual"):
+            var traffic_index = child.get_meta("traffic_index", -1)
+            
+            if traffic_index == -1:
+                continue
+            
+            var mesh_instance = child as MeshInstance3D
+            if mesh_instance and mesh_instance.material_override:
+                var material = mesh_instance.material_override as StandardMaterial3D
+                
+                if material:
+                    var color: Color
+                    if traffic_index == active_traffic_index:
+                        color = traffic_plane_green_color
+                    else:
+                        color = traffic_plane_red_color
+                    
+                    color.a = traffic_plane_transparency
+                    material.albedo_color = color
 # ============================================
 # GENERACIÓN Y VISUALIZACIÓN
 # ============================================
@@ -212,6 +268,9 @@ func visualize_graph() -> void:
     
     if show_lane_volumes:
         _visualize_lane_volumes()
+    
+    if show_traffic_planes:
+        _visualize_traffic_planes()
     
     if show_nodes:
         _visualize_nodes()
@@ -726,9 +785,6 @@ func _visualize_lane_planes() -> void:
 func _visualize_lane_volumes() -> void:
     var all_block_faces = generator.get_all_block_faces()
     var total_volumes = 0
-    var green_count = 0
-    var red_count = 0
-    var unassigned_count = 0
     
     for face_idx in all_block_faces:
         var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -737,32 +793,22 @@ func _visualize_lane_volumes() -> void:
             continue
         
         for edge_idx in range(4):
-            var lane_volume = generator.get_lane_volume_area(face_idx, edge_idx)
+            var volume_data = block.get_edge_lane_volume(edge_idx)
             
-            if lane_volume == null:
+            if volume_data.is_empty():
                 continue
             
-            var start_plane_verts = lane_volume.start_plane_vertices
-            var end_plane_verts = lane_volume.end_plane_vertices
+            var start_plane_verts = volume_data["start_plane_vertices"]
+            var end_plane_verts = volume_data["end_plane_vertices"]
             
             if start_plane_verts.size() != 4 or end_plane_verts.size() != 4:
                 push_warning("Volume de edge %d del bloque %d no tiene vértices correctos" % [edge_idx, face_idx])
                 continue
             
-            var color = lane_volume_color
-            if lane_volume.traffic_light_index == 0:
-                color = traffic_light_0_color
-                green_count += 1
-            elif lane_volume.traffic_light_index == 1:
-                color = traffic_light_1_color
-                red_count += 1
-            else:
-                unassigned_count += 1
-            
             var skewed_cube = DebugUtil.create_skewed_cube_from_planes(
                 start_plane_verts,
                 end_plane_verts,
-                color,
+                lane_volume_color,
                 lane_volume_transparency
             )
             
@@ -770,7 +816,101 @@ func _visualize_lane_volumes() -> void:
                 add_child(skewed_cube)
                 total_volumes += 1
     
-    print("[Visualizer] Lane volumes: %d volúmenes (%d verdes, %d rojos, %d sin asignar) en %d bloques" % [total_volumes, green_count, red_count, unassigned_count, all_block_faces.size()])
+    print("[Visualizer] Lane volumes: %d volúmenes visualizados en %d bloques" % [total_volumes, all_block_faces.size()])
+
+# ============================================
+# VISUALIZACIÓN DE TRAFFIC PLANES
+# ============================================
+
+func _visualize_traffic_planes() -> void:
+    var total_planes = 0
+    var index_0_count = 0
+    var index_1_count = 0
+    var unassigned_count = 0
+    
+    for key in generator.lane_volume_areas:
+        var vol = generator.lane_volume_areas[key]
+        var traffic_plane = vol.get_traffic_plane()
+        
+        if not traffic_plane:
+            continue
+        
+        var traffic_index = vol.get_traffic_index()
+        
+        if traffic_index == -1:
+            unassigned_count += 1
+            continue
+        
+        var end_verts = traffic_plane.get_end_vertices()
+        if end_verts.size() != 4:
+            continue
+        
+        if traffic_index == 0:
+            index_0_count += 1
+        else:
+            index_1_count += 1
+        
+        # Crear mesh instance
+        var mesh_instance: MeshInstance3D = MeshInstance3D.new()
+        
+        # Crear ArrayMesh
+        var arrays: Array = []
+        arrays.resize(Mesh.ARRAY_MAX)
+        
+        var vertices: PackedVector3Array = PackedVector3Array([
+            end_verts[0], end_verts[1], end_verts[2], end_verts[3]
+        ])
+        
+        var indices: PackedInt32Array = PackedInt32Array([
+            0, 1, 2,
+            0, 2, 3
+        ])
+        
+        var edge1: Vector3 = end_verts[1] - end_verts[0]
+        var edge2: Vector3 = end_verts[2] - end_verts[0]
+        var normal: Vector3 = edge1.cross(edge2).normalized()
+        
+        var normals: PackedVector3Array = PackedVector3Array([
+            normal, normal, normal, normal
+        ])
+        
+        arrays[Mesh.ARRAY_VERTEX] = vertices
+        arrays[Mesh.ARRAY_NORMAL] = normals
+        arrays[Mesh.ARRAY_INDEX] = indices
+        
+        var array_mesh: ArrayMesh = ArrayMesh.new()
+        array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+        
+        mesh_instance.mesh = array_mesh
+        
+        # Crear material
+        var material: StandardMaterial3D = StandardMaterial3D.new()
+        material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+        material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+        material.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+        material.cull_mode = BaseMaterial3D.CULL_DISABLED
+        
+        # Color según índice actual
+        var color: Color
+        if traffic_index == active_traffic_index:
+            color = traffic_plane_green_color
+        else:
+            color = traffic_plane_red_color
+        
+        color.a = traffic_plane_transparency
+        material.albedo_color = color
+        
+        mesh_instance.material_override = material
+        
+        # Metadata para identificar y actualizar
+        mesh_instance.set_meta("traffic_plane_visual", true)
+        mesh_instance.set_meta("traffic_index", traffic_index)
+        
+        add_child(mesh_instance)
+        total_planes += 1
+    
+    print("[Visualizer] Traffic planes: %d planos (índice 0: %d, índice 1: %d, sin asignar: %d)" % [total_planes, index_0_count, index_1_count, unassigned_count])
+
 
 # ============================================
 # HELPERS PÚBLICOS PARA OTRAS ENTIDADES
