@@ -666,11 +666,11 @@ func _check_forward_collisions() -> bool:
 	var debug_data = []
 	
 	for ghost_data in ghost_positions:
-		var ghost_pos = ghost_data["position"]
+		var ghost_transform = path_3d.curve.sample_baked_with_rotation(ghost_data["progress"])
 		
 		var query = PhysicsShapeQueryParameters3D.new()
 		query.shape = collision_shape
-		query.transform = Transform3D(Basis(), ghost_pos)
+		query.transform = ghost_transform
 		query.collision_mask = 2
 		query.collide_with_areas = true
 		query.exclude = [detection_area]
@@ -680,7 +680,7 @@ func _check_forward_collisions() -> bool:
 		var has_collision = not results.is_empty()
 		
 		if has_collision:
-			var distance = global_position.distance_to(ghost_pos)
+			var distance = global_position.distance_to(ghost_transform.origin)
 			closest_obstacle_distance = min(closest_obstacle_distance, distance)
 			collision_detected = true
 		

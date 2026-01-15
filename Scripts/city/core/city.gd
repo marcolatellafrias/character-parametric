@@ -5,7 +5,7 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(700/2, 700/2)
+@export var region_size: Vector2 = Vector2(700, 700)
 @export var min_distance: float = 150.5
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
