@@ -31,7 +31,7 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var car_collision_layer: int = 2
 
 @export_group("Ghost Debug")
-@export var show_ghost_debug: bool = true
+@export var show_ghost_debug: bool = false
 @export var ghost_debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
 @export var ghost_collision_color: Color = Color(1.0, 0.0, 0.0, 0.5)
 
@@ -664,6 +664,7 @@ func _check_forward_collisions() -> bool:
 	var collision_detected = false
 	
 	var debug_data = []
+	var relevant_ids = _get_relevant_volume_ids()
 	
 	for ghost_data in ghost_positions:
 		var ghost_transform = path_3d.curve.sample_baked_with_rotation(ghost_data["progress"])
@@ -677,7 +678,20 @@ func _check_forward_collisions() -> bool:
 		
 		var results = space_state.intersect_shape(query, 32)
 		
-		var has_collision = not results.is_empty()
+		var has_collision = false
+		
+		for result in results:
+			var collider = result.get("collider")
+			
+			if collider is FlyingCar or (collider is Area3D and collider.has_meta("is_car")):
+				has_collision = true
+				break
+			
+			if collider is TrafficPlane:
+				var lane_id = collider.get_meta("lane_id", "")
+				if lane_id in relevant_ids:
+					has_collision = true
+					break
 		
 		if has_collision:
 			var distance = global_position.distance_to(ghost_transform.origin)
@@ -752,3 +766,14 @@ func _clear_ghost_debug_meshes() -> void:
 			mesh.queue_free()
 	ghost_debug_meshes.clear()
 	ghost_debug_materials.clear()
+
+func _get_relevant_volume_ids() -> Array[String]:
+	var ids: Array[String] = []
+	
+	if not first_segment_volume.is_empty():
+		ids.append(_get_volume_id(first_segment_volume))
+	
+	if not second_segment_volume.is_empty():
+		ids.append(_get_volume_id(second_segment_volume))
+	
+	return ids
