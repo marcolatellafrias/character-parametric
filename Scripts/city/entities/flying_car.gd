@@ -648,6 +648,8 @@ func _get_future_path_positions() -> Array[Dictionary]:
 	
 	return positions
 
+# FlyingCar.gd
+
 func _check_forward_collisions() -> bool:
 	var ghost_positions = _get_future_path_positions()
 	
@@ -655,7 +657,7 @@ func _check_forward_collisions() -> bool:
 		current_speed = speed
 		if show_ghost_debug:
 			_update_ghost_debug_meshes([])
-		return true  # Puede moverse
+		return true
 	
 	var space_state = get_world_3d().direct_space_state
 	var closest_obstacle_distance = INF
@@ -670,6 +672,7 @@ func _check_forward_collisions() -> bool:
 		query.shape = collision_shape
 		query.transform = Transform3D(Basis(), ghost_pos)
 		query.collision_mask = 2
+		query.collide_with_areas = true
 		query.exclude = [detection_area]
 		
 		var results = space_state.intersect_shape(query, 32)
@@ -677,12 +680,6 @@ func _check_forward_collisions() -> bool:
 		var has_collision = not results.is_empty()
 		
 		if has_collision:
-			print("[FlyingCar] Ghost colisión detectada en pos %s, objetos: %d" % [ghost_pos, results.size()])
-			for result in results:
-				var collider = result.get("collider")
-				if collider:
-					print("  - Colisionó con: %s (layer: %d)" % [collider.name, collider.collision_layer])
-			
 			var distance = global_position.distance_to(ghost_pos)
 			closest_obstacle_distance = min(closest_obstacle_distance, distance)
 			collision_detected = true
@@ -696,21 +693,15 @@ func _check_forward_collisions() -> bool:
 	if show_ghost_debug:
 		_update_ghost_debug_meshes(debug_data)
 	
-	# FRENADO Y CONTROL DE MOVIMIENTO
 	if closest_obstacle_distance < min_safe_distance:
-		# Obstáculo muy cerca - NO MOVERSE
 		current_speed = 0.0
-		print("[FlyingCar] DETENIDO COMPLETAMENTE - obstáculo a %.2f (min: %.2f)" % [closest_obstacle_distance, min_safe_distance])
-		return false  # NO puede moverse
+		return false
 	elif closest_obstacle_distance < collision_buffer_zone:
-		# Obstáculo en zona de buffer - reducir velocidad
 		current_speed = speed * 0.5
-		print("[FlyingCar] FRENADO PARCIAL - obstáculo a distancia: %.2f" % closest_obstacle_distance)
-		return true  # Puede moverse lento
+		return true
 	else:
-		# Sin obstáculos - velocidad normal
 		current_speed = speed
-		return true  # Puede moverse normal
+		return true
 
 func _create_ghost_mesh() -> MeshInstance3D:
 	var mesh_instance = MeshInstance3D.new()

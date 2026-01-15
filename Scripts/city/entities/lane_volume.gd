@@ -43,7 +43,12 @@ func _init(volume_data: Dictionary) -> void:
 	
 	_setup_area()
 	_generate_collision()
-	_create_traffic_plane()
+	
+	# NUEVO: Obtener traffic_index del dictionary
+	var traffic_idx = volume_data.get("traffic_index", -1)
+	
+	# Crear traffic plane con el índice ya disponible
+	_create_traffic_plane(traffic_idx)
 
 func _setup_area() -> void:
 	monitoring = true
@@ -75,8 +80,8 @@ func _generate_collision() -> void:
 	if collision_shape:
 		add_child(collision_shape)
 
-func _create_traffic_plane() -> void:
-	traffic_plane = TrafficPlane.new(self)
+func _create_traffic_plane(traffic_idx: int) -> void:
+	traffic_plane = TrafficPlane.new(self, traffic_idx)
 	add_child(traffic_plane)
 	traffic_plane.setup_collision()
 
@@ -86,10 +91,6 @@ func _create_traffic_plane() -> void:
 
 func get_traffic_plane() -> TrafficPlane:
 	return traffic_plane
-
-func set_traffic_index(index: int) -> void:
-	if traffic_plane:
-		traffic_plane.set_traffic_index(index)
 
 func get_traffic_index() -> int:
 	if traffic_plane:
