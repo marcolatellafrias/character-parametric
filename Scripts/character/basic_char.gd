@@ -34,9 +34,14 @@ var _grab_distance: float = 0.0
 @export var invert_y: bool = false
 @export var show_mesh: bool = false
 
+# Creative mode
+@export var creative_mode := false
+@export var creative_fly_speed := 8.0
+@export var creative_fly_speed_fast := 20.0
+
 # Camera export
 @export var camera: Camera3D
-@export var camera_pivot: Node3D  # Nodo para pitch (rotación X)
+@export var camera_pivot: Node3D
 
 var _yaw: float = 0.0
 var _pitch: float = 0.0
@@ -51,6 +56,16 @@ func _ready() -> void:
 @export var push_impulse_scale := 2.0
 
 func _physics_process(delta: float) -> void:
+	if creative_mode:
+		_physics_creative(delta)
+	else:
+		_physics_normal(delta)
+	
+	move_and_slide()
+	_update_grab(delta)
+	_check_sphere_look()
+
+func _physics_normal(delta: float) -> void:
 	var g: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 	if not is_on_floor():
 		velocity.y -= g * delta
@@ -75,9 +90,19 @@ func _physics_process(delta: float) -> void:
 		velocity.y = jump_velocity
 		_push_ground_down()
 
-	move_and_slide()
-	_update_grab(delta)
-	_check_sphere_look()
+func _physics_creative(delta: float) -> void:
+	var input_vec := Vector3(
+		Input.get_action_strength("move_right") - Input.get_action_strength("move_left"),
+		Input.get_action_strength("jump") - Input.get_action_strength("crouch"),
+		Input.get_action_strength("move_back") - Input.get_action_strength("move_forward")
+	)
+	
+	if input_vec.length() > 1.0:
+		input_vec = input_vec.normalized()
+	
+	var wish_dir := transform.basis * input_vec
+	var speed := creative_fly_speed_fast if Input.is_action_pressed("sprint") else creative_fly_speed
+	velocity = wish_dir * speed
 
 func _push_ground_down() -> void:
 	var space := get_world_3d().direct_space_state
@@ -113,6 +138,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.set_mouse_mode(
 			Input.MOUSE_MODE_VISIBLE if mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
 		)
+
+	if event is InputEventKey and event.pressed and event.keycode == Key.KEY_C:
+		creative_mode = !creative_mode
 
 	if event is InputEventMouseButton and event.button_index == MouseButton.MOUSE_BUTTON_LEFT and event.pressed:
 		if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
@@ -189,7 +217,8 @@ func _ensure_input_map() -> void:
 		"move_left":    [Key.KEY_A, Key.KEY_LEFT],
 		"move_right":   [Key.KEY_D, Key.KEY_RIGHT],
 		"jump":         [Key.KEY_SPACE],
-		"sprint":       [Key.KEY_SHIFT]
+		"sprint":       [Key.KEY_SHIFT],
+		"crouch":       [Key.KEY_CTRL]
 	}
 	for action in map.keys():
 		if not InputMap.has_action(action):

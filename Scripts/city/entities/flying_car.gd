@@ -72,11 +72,12 @@ var collision_shape: BoxShape3D
 
 
 func _ready() -> void:
-	_create_visual()
-	_create_detection_area()
-	
+	# Crear el collision_shape PRIMERO
 	collision_shape = BoxShape3D.new()
 	collision_shape.size = Vector3(width, height, depth)
+	
+	_create_visual()
+	_create_detection_area()  # Ahora collision_shape ya existe
 	
 	rng = RandomNumberGenerator.new()
 	rng.seed = seed
@@ -134,6 +135,10 @@ func initialize_from_seed(p_seed: int, archetype_weights: Dictionary = {}) -> vo
 	speed = rng.randf_range(archetype.min_speed, archetype.max_speed)
 	car_color = archetype.color
 	original_color = archetype.color
+	
+	# Actualizar el collision_shape con las nuevas dimensiones
+	if collision_shape:
+		collision_shape.size = Vector3(width, height, depth)
 	
 	current_speed = speed
 
@@ -683,13 +688,15 @@ func _check_forward_collisions() -> bool:
 		for result in results:
 			var collider = result.get("collider")
 			
-			if collider is FlyingCar or (collider is Area3D and collider.has_meta("is_car")):
-				has_collision = true
-				break
-			
-			if collider is TrafficPlane:
-				var lane_id = collider.get_meta("lane_id", "")
-				if lane_id in relevant_ids:
+			if collider is Area3D:
+				# Si es TrafficPlane, validar que sea de volumen relevante
+				if collider is TrafficPlane:
+					var lane_id = collider.get_meta("lane_id", "")
+					if lane_id in relevant_ids:
+						has_collision = true
+						break
+				else:
+					# Es otro auto (cualquier Area3D en layer 2 que no sea TrafficPlane)
 					has_collision = true
 					break
 		
