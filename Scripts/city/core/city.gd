@@ -11,15 +11,15 @@ extends Node3D
 @export var generation_seed: int = 1234567
 
 @export_group("Barrios")
-@export var num_neighborhoods: int = 5
+@export var num_neighborhoods: int = 10
 @export var neighborhood_seed: int = -1
-@export_range(0.1, 5.0) var neighborhood_height_falloff: float = 1.0
+@export_range(0.1, 5.0) var neighborhood_height_falloff: float = 0.3
 
 @export_group("Suavizado")
 @export var smoothing_steps: int = 50
 
 @export_group("Visualización General")
-@export var show_streets: bool = true
+@export var show_streets: bool = false
 @export var show_nodes: bool = false
 @export var node_radius: float = 0.08
 @export var normal_node_color: Color = Color.CHARTREUSE
@@ -74,7 +74,7 @@ extends Node3D
 @export var building_grid_columns: int = 20
 
 @export_subgroup("Visualización de Grilla Distorsionada")
-@export var show_distorted_grid: bool = true
+@export var show_distorted_grid: bool = false
 @export var distorted_grid_floor_to_show: int = 0
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
@@ -112,14 +112,14 @@ extends Node3D
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 
 @export_group("Traffic Planes")
-@export var show_traffic_planes: bool = false
-@export_range(0.0, 1.0) var traffic_plane_transparency: float = 0.7
+@export var show_traffic_planes: bool = true
+@export_range(0.0, 1.0) var traffic_plane_transparency: float = 0.9
 @export var traffic_plane_green_color: Color = Color.GREEN
 @export var traffic_plane_red_color: Color = Color.RED
 
 @export_group("Traffic Lights")
 @export var enable_traffic_lights: bool = true
-@export var traffic_light_cycle_duration: float = 5.0
+@export var traffic_light_cycle_duration: float = 2.5
 
 # ============================================
 # DATOS DEL GRAFO

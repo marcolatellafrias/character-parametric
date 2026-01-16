@@ -101,7 +101,7 @@ func _process(delta: float) -> void:
 		
 		if area_instantiator:
 			var is_visible = area_instantiator.is_position_visible(global_position)
-			if is_visible:
+			if false:#is_visible:
 				material.albedo_color = Color.WHITE
 			else:
 				material.albedo_color = original_color

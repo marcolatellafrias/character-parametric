@@ -577,22 +577,19 @@ func get_street_offset(street_type: int) -> int:
 func get_max_building_height() -> float:
     var max_height = 0.0
     
-    # Iterar por todos los buildings realmente creados
-    for key in buildings:
-        var building: Building = buildings[key]
-        var building_floor = building.get_floor()
+    # Iterar por los clusters
+    for cluster in building_clusters:
+        var cluster_floors = cluster.get_floor_count()
         
-        # Calcular la altura base de este floor
-        var floor_base_height = building_floor * grid_geometry.cells_per_floor * grid_geometry.cell_height
+        # IMPORTANTE: La altura real está limitada por los buildings que realmente existen
+        # Los buildings solo se crean hasta grid_geometry.floors
+        var actual_floors = min(cluster_floors, grid_geometry.floors)
         
-        # La altura de un building individual
-        var building_height = grid_geometry.cells_per_floor * grid_geometry.cell_height
+        # Altura total = número real de floors * altura de un floor
+        var cluster_height = actual_floors * grid_geometry.cells_per_floor * grid_geometry.cell_height
         
-        # Altura total de este building
-        var total_height = floor_base_height + building_height
-        
-        if total_height > max_height:
-            max_height = total_height
+        if cluster_height > max_height:
+            max_height = cluster_height
     
     return max_height
 

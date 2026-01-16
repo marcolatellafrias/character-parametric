@@ -774,12 +774,18 @@ func _enrich_lane_volume_data(volume_data: Dictionary, face_idx: int, edge_idx: 
     var node2 = face[(edge_idx + 1) % face.size()]
     enriched["neighborhood"] = get_neighborhood_for_edge(node1, node2)
     
-    # NUEVO: Incluir traffic_index desde el diccionario pre-calculado
+    # Incluir traffic_index desde el diccionario pre-calculado
     var key = "%d_%d" % [face_idx, edge_idx]
     enriched["traffic_index"] = traffic_indices.get(key, -1)
     
+    # NUEVO: Incluir la altura específica de esta manzana
+    var block: BlockGenerator = block_grids.get(face_idx, null)
+    if block:
+        enriched["block_height"] = block.get_max_building_height()
+    else:
+        enriched["block_height"] = volume_data.get("height", 0.0)
+    
     return enriched
-
 func get_lane_volume_area(face_idx: int, edge_idx: int) -> LaneVolume:
     var key = "%d_%d" % [face_idx, edge_idx]
     return lane_volume_areas.get(key, null)

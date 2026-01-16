@@ -1,7 +1,7 @@
 extends Object
 class_name CarArchetypes
 
-static var speed_debug_factor: float = 1.0
+static var speed_debug_factor: float = 0.4
 static var size_debug_factor: float = 10.0
 
 enum Type {
@@ -138,7 +138,7 @@ static func _static_init() -> void:
 		0.09 * size_debug_factor,
 		0.42 * size_debug_factor,
 		18.0 * speed_debug_factor,
-		22.0 * speed_debug_factor,
+		50.0 * speed_debug_factor,
 		Color(0.1, 0.1, 0.1),
 		0.15,
 		20
@@ -162,7 +162,7 @@ static func _static_init() -> void:
 		0.035 * size_debug_factor,
 		0.2 * size_debug_factor,
 		22.0 * speed_debug_factor,
-		28.0 * speed_debug_factor,
+		40.0 * speed_debug_factor,
 		Color(0.9, 0.1, 0.1),
 		0.2,
 		20
