@@ -5,10 +5,10 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(700/2, 700/2)
+@export var region_size: Vector2 = Vector2(700, 700)
 @export var min_distance: float = 150.5
 @export var rejection_samples: int = 90
-@export var generation_seed: int = 1234567
+@export var generation_seed: int = 123456
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 10
@@ -112,7 +112,7 @@ extends Node3D
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 
 @export_group("Traffic Planes")
-@export var show_traffic_planes: bool = true
+@export var show_traffic_planes: bool = false
 @export_range(0.0, 1.0) var traffic_plane_transparency: float = 0.9
 @export var traffic_plane_green_color: Color = Color.GREEN
 @export var traffic_plane_red_color: Color = Color.RED

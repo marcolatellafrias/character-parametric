@@ -177,14 +177,28 @@ func _create_visual() -> void:
 func _create_detection_area() -> void:
 	detection_area = Area3D.new()
 	detection_area.collision_layer = 2
-	detection_area.collision_mask = 0
+	detection_area.collision_mask = 2  # Cambiar de 0 a 2 para detectar TrafficPlanes
 	detection_area.monitorable = true
+	detection_area.monitoring = true  # Habilitar monitoreo
 	
 	var collision_shape_node = CollisionShape3D.new()
-	collision_shape_node.shape = collision_shape  # Usa el BoxShape del tamaño del auto
+	collision_shape_node.shape = collision_shape
 	
 	detection_area.add_child(collision_shape_node)
 	add_child(detection_area)
+
+func _get_intersecting_traffic_planes() -> Array[Area3D]:
+	var planes: Array[Area3D] = []
+	
+	if not detection_area:
+		return planes
+	
+	var overlapping = detection_area.get_overlapping_areas()
+	for area in overlapping:
+		if area is TrafficPlane:
+			planes.append(area)
+	
+	return planes
 
 func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0, 
 			  grid_u: float = 0.0, grid_v: float = 0.0, 
@@ -670,6 +684,7 @@ func _check_forward_collisions() -> bool:
 	
 	var debug_data = []
 	var relevant_ids = _get_relevant_volume_ids()
+	var intersecting_planes = _get_intersecting_traffic_planes()  # NUEVO
 	
 	for ghost_data in ghost_positions:
 		var ghost_transform = path_3d.curve.sample_baked_with_rotation(ghost_data["progress"])
@@ -689,14 +704,16 @@ func _check_forward_collisions() -> bool:
 			var collider = result.get("collider")
 			
 			if collider is Area3D:
-				# Si es TrafficPlane, validar que sea de volumen relevante
+				# NUEVO: Ignorar TrafficPlanes que ya estamos tocando
+				if collider is TrafficPlane and collider in intersecting_planes:
+					continue
+				
 				if collider is TrafficPlane:
 					var lane_id = collider.get_meta("lane_id", "")
 					if lane_id in relevant_ids:
 						has_collision = true
 						break
 				else:
-					# Es otro auto (cualquier Area3D en layer 2 que no sea TrafficPlane)
 					has_collision = true
 					break
 		
