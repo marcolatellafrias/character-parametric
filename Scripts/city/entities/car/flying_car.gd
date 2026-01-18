@@ -13,7 +13,7 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var car_archetype: CarArchetypes.Type = CarArchetypes.Type.POOR_CAR
 
 @export_group("Path Debug")
-@export var show_path_debug: bool = false
+@export var show_path_debug: bool = true
 @export var path_debug_color: Color = Color(1.0, 1.0, 0.0, 1.0)
 @export var path_debug_width: float = 0.05
 @export var path_debug_segments: int = 30
@@ -30,7 +30,7 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var broadcast_spacing: float = 3.0
 
 @export_group("Ghost Debug")
-@export var show_ghost_debug: bool = false
+@export var show_ghost_debug: bool = true
 @export var ghost_debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
 @export var ghost_collision_color: Color = Color(1.0, 0.0, 0.0, 0.5)
 @export var show_broadcast_debug: bool = true
@@ -38,6 +38,10 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 
 @export_group("Despawn Debug")
 @export var take_frustum_into_account_when_despawning: bool = true
+
+@export_group("Debug Info")
+@export var show_debug_label: bool = true
+@export var debug_label_offset: Vector3 = Vector3(0, 2, 0)
 
 var mesh_instance: MeshInstance3D
 var detection_area: Area3D
@@ -60,13 +64,21 @@ var city = null
 var area_instantiator = null
 var rng: RandomNumberGenerator
 
+var car_id: String = ""
+var debug_label: Label3D
+
 func _ready() -> void:
+	car_id = _generate_car_id()
+	
 	collision_shape = BoxShape3D.new()
 	collision_shape.size = Vector3(width, height, depth)
 	
 	_create_visual()
 	_create_detection_area()
 	_create_broadcast_area()
+	
+	if show_debug_label:
+		_create_debug_label()
 	
 	path_controller = PathController.new()
 	path_controller.initialize(self, world_node)
@@ -107,13 +119,54 @@ func _process(delta: float) -> void:
 	global_position = transform.origin
 	global_rotation = transform.basis.get_euler()
 	
-	#if area_instantiator:
-		#var is_visible = area_instantiator.is_position_visible(global_position)
-		#material.albedo_color = Color.WHITE if is_visible else original_color
+	if show_debug_label and debug_label:
+		_update_debug_label()
 
 func _exit_tree() -> void:
+	if debug_label and is_instance_valid(debug_label):
+		debug_label.queue_free()
 	path_controller.cleanup()
 	collision_avoidance.cleanup()
+
+func _generate_car_id() -> String:
+	return "Car_" + str(Time.get_ticks_msec()) + "_" + str(randi() % 10000)
+
+func _create_debug_label() -> void:
+	debug_label = Label3D.new()
+	debug_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	debug_label.no_depth_test = true
+	debug_label.position = debug_label_offset
+	debug_label.pixel_size = 0.005
+	debug_label.font_size = 32
+	debug_label.outline_size = 4
+	debug_label.modulate = Color.WHITE
+	add_child(debug_label)
+
+func _update_debug_label() -> void:
+	if not debug_label:
+		return
+	
+	var blocking_info = collision_avoidance.get_blocking_info()
+	
+	var archetype_name = CarArchetypes.Type.keys()[car_archetype]
+	
+	var text = "ID: " + car_id.substr(car_id.length() - 6)
+	text += "\nTipo: " + archetype_name
+	
+	if blocking_info["is_blocked"]:
+		text += "\nDETENIDO"
+		if blocking_info["blocking_car_id"] != "":
+			var short_id = blocking_info["blocking_car_id"].substr(blocking_info["blocking_car_id"].length() - 6)
+			if blocking_info["is_broadcast"]:
+				text += "\nBroadcast: " + short_id
+			else:
+				text += "\nAuto: " + short_id
+		else:
+			text += "\nObstáculo"
+	else:
+		text += "\nMOVIENDO"
+	
+	debug_label.text = text
 
 func initialize_from_seed(p_seed: int, archetype_weights: Dictionary = {}) -> void:
 	seed = p_seed

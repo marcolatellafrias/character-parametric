@@ -83,7 +83,8 @@ class Archetype:
 	var max_speed: float
 	var color: Color
 	var weight: float
-	var max_per_volume: int  # Nuevo
+	var max_per_volume: int
+	var max_global: int  # Nuevo: límite global de este tipo en todas las áreas
 	
 	func _init(
 		p_name: String,
@@ -94,7 +95,8 @@ class Archetype:
 		p_max_speed: float,
 		p_color: Color,
 		p_weight: float = 1.0,
-		p_max_per_volume: int = -1  # -1 = ilimitado
+		p_max_per_volume: int = -1,
+		p_max_global: int = -1  # -1 = ilimitado
 	):
 		name = p_name
 		width = p_width
@@ -105,6 +107,7 @@ class Archetype:
 		color = p_color
 		weight = p_weight
 		max_per_volume = p_max_per_volume
+		max_global = p_max_global
 	
 	func get_random_dimensions() -> Dictionary:
 		return {
@@ -129,7 +132,8 @@ static func _static_init() -> void:
 		6.0 * speed_debug_factor,
 		Color(0.9, 0.5, 0.1),
 		0.05,
-		1  # Máximo 2 por volumen
+		1,  # max_per_volume
+		3  # max_global
 	)
 	
 	archetypes[Type.RICH_CAR] = Archetype.new(
@@ -141,7 +145,8 @@ static func _static_init() -> void:
 		50.0 * speed_debug_factor,
 		Color(0.1, 0.1, 0.1),
 		0.15,
-		20
+		30,  # max_per_volume
+		100  # max_global
 	)
 	
 	archetypes[Type.POOR_CAR] = Archetype.new(
@@ -153,7 +158,8 @@ static func _static_init() -> void:
 		18.0 * speed_debug_factor,
 		Color(0.6, 0.5, 0.4),
 		0.3,
-		20
+		30,  # max_per_volume
+		150  # max_global
 	)
 	
 	archetypes[Type.MOTORCYCLE] = Archetype.new(
@@ -165,7 +171,8 @@ static func _static_init() -> void:
 		40.0 * speed_debug_factor,
 		Color(0.9, 0.1, 0.1),
 		0.2,
-		20
+		10,  # max_per_volume
+		30   # max_global
 	)
 	
 	archetypes[Type.UTILITY_TRUCK] = Archetype.new(
@@ -177,7 +184,8 @@ static func _static_init() -> void:
 		7.0 * speed_debug_factor,
 		Color(0.9, 0.8, 0.1),
 		0.08,
-		2
+		1,   # max_per_volume
+		2   # max_global
 	)
 	
 	archetypes[Type.ADVERTISEMENT_TRUCK] = Archetype.new(
@@ -189,7 +197,8 @@ static func _static_init() -> void:
 		5.0 * speed_debug_factor,
 		Color(0.9, 0.1, 0.9),
 		0.03,
-		1
+		1,  # max_per_volume
+		3   # max_global
 	)
 	
 	archetypes[Type.GARBAGE_TRUCK] = Archetype.new(
@@ -201,7 +210,8 @@ static func _static_init() -> void:
 		6.0 * speed_debug_factor,
 		Color(0.2, 0.6, 0.2),
 		0.04,
-		1
+		1,  # max_per_volume
+		4   # max_global
 	)
 	
 	archetypes[Type.POLICE_CAR] = Archetype.new(
@@ -213,7 +223,8 @@ static func _static_init() -> void:
 		24.0 * speed_debug_factor,
 		Color(0.1, 0.3, 0.9),
 		0.1,
-		3
+		10,   # max_per_volume
+		15   # max_global
 	)
 	
 	archetypes[Type.TAXI] = Archetype.new(
@@ -225,7 +236,8 @@ static func _static_init() -> void:
 		20.0 * speed_debug_factor,
 		Color(0.95, 0.9, 0.1),
 		0.05,
-		4
+		15,   # max_per_volume
+		20   # max_global
 	)
 
 static func get_archetype(type: Type) -> Archetype:

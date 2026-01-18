@@ -34,6 +34,10 @@ var broadcast_area: Area3D
 
 var broadcast_shapes: Array[CollisionShape3D] = []
 
+# Estado de bloqueo
+var blocking_car_id: String = ""
+var is_blocked_by_broadcast: bool = false
+
 func initialize(owner_car: FlyingCar, path_ctrl: PathController, 
 				world: Node3D, shape: BoxShape3D, det_area: Area3D, broad_area: Area3D) -> void:
 	car_owner = owner_car
@@ -48,6 +52,9 @@ func initialize(owner_car: FlyingCar, path_ctrl: PathController,
 func check_and_adjust_speed() -> bool:
 	_update_broadcast_ghosts()
 	
+	blocking_car_id = ""
+	is_blocked_by_broadcast = false
+	
 	if not enabled:
 		current_speed = base_speed
 		return true
@@ -60,7 +67,10 @@ func check_and_adjust_speed() -> bool:
 			_update_detection_debug_meshes([])
 		return true
 	
-	var closest_obstacle = _scan_for_obstacles(ghost_positions)
+	var obstacle_info = _scan_for_obstacles(ghost_positions)
+	var closest_obstacle = obstacle_info["distance"]
+	blocking_car_id = obstacle_info["blocking_car_id"]
+	is_blocked_by_broadcast = obstacle_info["is_broadcast"]
 	
 	if closest_obstacle < min_safe_distance:
 		current_speed = 0.0
@@ -70,10 +80,19 @@ func check_and_adjust_speed() -> bool:
 		return true
 	else:
 		current_speed = base_speed
+		blocking_car_id = ""
+		is_blocked_by_broadcast = false
 		return true
 
 func get_current_speed() -> float:
 	return current_speed
+
+func get_blocking_info() -> Dictionary:
+	return {
+		"is_blocked": current_speed == 0.0,
+		"blocking_car_id": blocking_car_id,
+		"is_broadcast": is_blocked_by_broadcast
+	}
 
 # ============ DETECTION GHOSTS ============
 
@@ -99,9 +118,11 @@ func _get_detection_positions() -> Array[Dictionary]:
 	
 	return positions
 
-func _scan_for_obstacles(ghost_positions: Array[Dictionary]) -> float:
+func _scan_for_obstacles(ghost_positions: Array[Dictionary]) -> Dictionary:
 	var space_state = car_owner.get_world_3d().direct_space_state
 	var closest_distance = INF
+	var closest_car_id = ""
+	var closest_is_broadcast = false
 	var debug_data = []
 	
 	var relevant_ids = car_owner.get_relevant_volume_ids()
@@ -118,16 +139,19 @@ func _scan_for_obstacles(ghost_positions: Array[Dictionary]) -> float:
 		query.exclude = [detection_area, broadcast_area]
 		
 		var results = space_state.intersect_shape(query, 32)
-		var has_collision = _evaluate_collisions(results, relevant_ids, intersecting_planes)
+		var collision_info = _evaluate_collisions(results, relevant_ids, intersecting_planes)
 		
-		if has_collision:
+		if collision_info["has_collision"]:
 			var distance = car_owner.global_position.distance_to(ghost_transform.origin)
-			closest_distance = min(closest_distance, distance)
+			if distance < closest_distance:
+				closest_distance = distance
+				closest_car_id = collision_info["car_id"]
+				closest_is_broadcast = collision_info["is_broadcast"]
 		
 		if show_ghost_debug:
 			debug_data.append({
 				"progress": ghost_data["progress"],
-				"has_collision": has_collision
+				"has_collision": collision_info["has_collision"]
 			})
 	
 	if show_ghost_debug:
@@ -135,10 +159,14 @@ func _scan_for_obstacles(ghost_positions: Array[Dictionary]) -> float:
 	elif not detection_debug_meshes.is_empty():
 		_clear_detection_debug_meshes()
 	
-	return closest_distance
+	return {
+		"distance": closest_distance,
+		"blocking_car_id": closest_car_id,
+		"is_broadcast": closest_is_broadcast
+	}
 
 func _evaluate_collisions(results: Array, relevant_ids: Array[String], 
-						  intersecting_planes: Array[Area3D]) -> bool:
+						  intersecting_planes: Array[Area3D]) -> Dictionary:
 	for result in results:
 		var collider = result.get("collider")
 		
@@ -149,11 +177,38 @@ func _evaluate_collisions(results: Array, relevant_ids: Array[String],
 			if collider is TrafficPlane:
 				var lane_id = collider.get_meta("lane_id", "")
 				if lane_id in relevant_ids:
-					return true
+					return {
+						"has_collision": true,
+						"car_id": "",
+						"is_broadcast": false
+					}
 			else:
-				return true
+				# Colisión con área de detección o broadcast de otro auto
+				var other_car = _find_car_from_area(collider)
+				if other_car:
+					var is_broadcast = (collider == other_car.broadcast_area)
+					return {
+						"has_collision": true,
+						"car_id": other_car.car_id,
+						"is_broadcast": is_broadcast
+					}
+				return {
+					"has_collision": true,
+					"car_id": "",
+					"is_broadcast": false
+				}
 	
-	return false
+	return {
+		"has_collision": false,
+		"car_id": "",
+		"is_broadcast": false
+	}
+
+func _find_car_from_area(area: Area3D) -> FlyingCar:
+	var parent = area.get_parent()
+	if parent is FlyingCar:
+		return parent
+	return null
 
 # ============ BROADCAST GHOSTS ============
 

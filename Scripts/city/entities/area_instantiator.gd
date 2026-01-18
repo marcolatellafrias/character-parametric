@@ -28,6 +28,7 @@ class_name AreaInstantiator
 @export var enable_car_spawning: bool = true
 @export var spawn_interval: float = 0.1
 @export var spawn_safety_margin: float = 3.0
+@export var max_cars_per_cylinder: int = 100
 
 var city = null
 var debug_cylinder_meshes: Array[MeshInstance3D] = []
@@ -40,12 +41,18 @@ var volume_area_refs: Dictionary = {}
 
 var spawn_timer: float = 0.0
 var volume_car_counts: Dictionary = {}
+var cylinder_car_counts: Array[int] = []
+var global_type_counts: Dictionary = {}
 
 func _ready() -> void:
 	city = get_tree().get_first_node_in_group("city_generator")
 	
 	_create_cylinder_areas()
 	_setup_visualization_containers()
+	
+	cylinder_car_counts.resize(cameras.size())
+	for i in range(cylinder_car_counts.size()):
+		cylinder_car_counts[i] = 0
 	
 	if show_debug_cylinder:
 		_create_debug_cylinders()
@@ -276,18 +283,27 @@ func _create_grid_points_for_volume(vol: LaneVolume, color: Color) -> void:
 			sphere_end.global_position = point_end
 
 func _try_spawn_car() -> void:
-	var spawn_candidates: Array[LaneVolume] = []
+	var spawn_candidates: Array[Dictionary] = []
 	
 	for cyl_vol in cylinder_lane_volumes:
 		if _has_continuation_in_cylinder(cyl_vol) and not _is_lane_volume_visible(cyl_vol):
-			spawn_candidates.append(cyl_vol)
+			var vol_id = cyl_vol.get_id()
+			if volume_area_refs.has(vol_id):
+				for cylinder_idx in volume_area_refs[vol_id]:
+					if cylinder_car_counts[cylinder_idx] < max_cars_per_cylinder:
+						spawn_candidates.append({
+							"volume": cyl_vol,
+							"cylinder_index": cylinder_idx
+						})
+						break
 	
 	if spawn_candidates.is_empty():
 		return
 	
-	# Intentar con diferentes volúmenes hasta spawnear o agotar candidatos
 	while not spawn_candidates.is_empty():
-		var selected_vol = _select_volume_by_traffic_density(spawn_candidates)
+		var selected = spawn_candidates[randi() % spawn_candidates.size()]
+		var selected_vol = selected["volume"]
+		var cylinder_idx = selected["cylinder_index"]
 		var volume_id = str(selected_vol.face_idx) + "_" + str(selected_vol.edge_idx)
 		
 		var car_seed = randi()
@@ -298,11 +314,9 @@ func _try_spawn_car() -> void:
 		var temp_car = FlyingCar.new()
 		temp_car.initialize_from_seed(car_seed, custom_weights)
 		
-		# Verificar si se puede spawnear este tipo de auto en este volumen
-		if not _can_spawn_car_type_in_volume(volume_id, temp_car.car_archetype):
+		if not _can_spawn_car_type(volume_id, cylinder_idx, temp_car.car_archetype):
 			temp_car.free()
-			# Remover este volumen de candidatos y probar con otro
-			spawn_candidates.erase(selected_vol)
+			spawn_candidates.erase(selected)
 			continue
 		
 		var v_max = selected_vol.get_max_spawn_v()
@@ -332,18 +346,16 @@ func _try_spawn_car() -> void:
 			if _check_spawn_collision(spawn_pos, direction, temp_car.width, temp_car.height, temp_car.depth):
 				continue
 			
-			# Spawn exitoso
 			temp_car.free()
-			_spawn_car_at_volume(selected_vol, random_u, random_v, car_seed, custom_weights)
+			_spawn_car_at_volume(selected_vol, random_u, random_v, car_seed, custom_weights, cylinder_idx)
 			spawned = true
 			break
 		
 		if spawned:
 			return
 		
-		# No se pudo spawnear por validación/colisión, probar con otro volumen
 		temp_car.free()
-		spawn_candidates.erase(selected_vol)
+		spawn_candidates.erase(selected)
 
 func _check_spawn_collision(spawn_pos: Vector3, direction: Vector3, 
 							car_width: float, car_height: float, car_depth: float) -> bool:
@@ -472,7 +484,7 @@ func is_lane_volume_inside_by_calculation(lane_vol: LaneVolume) -> bool:
 	return false
 
 func _spawn_car_at_volume(vol: LaneVolume, grid_u: float, grid_v: float, 
-						  car_seed: int, custom_weights: Dictionary) -> void:
+						  car_seed: int, custom_weights: Dictionary, cylinder_idx: int) -> void:
 	
 	var path_segment = vol.get_path_segment_at_grid(grid_u, grid_v)
 	
@@ -485,16 +497,19 @@ func _spawn_car_at_volume(vol: LaneVolume, grid_u: float, grid_v: float,
 	car.initialize_from_seed(car_seed, custom_weights)
 	
 	var volume_id = str(vol.face_idx) + "_" + str(vol.edge_idx)
-	if not _can_spawn_car_type_in_volume(volume_id, car.car_archetype):
-		car.free()
-		return
 	
 	world.add_child(car)
 	
 	_add_car_to_volume(volume_id, car.car_archetype)
+	_add_car_to_cylinder(cylinder_idx)
+	_add_car_to_global_type(car.car_archetype)
 	
 	car.volume_changed.connect(_on_car_volume_changed)
-	car.tree_exited.connect(func(): _remove_car_from_volume(volume_id, car.car_archetype))
+	car.tree_exited.connect(func(): 
+		_remove_car_from_volume(volume_id, car.car_archetype)
+		_remove_car_from_cylinder(cylinder_idx)
+		_remove_car_from_global_type(car.car_archetype)
+	)
 	
 	car.set_path(
 		path_segment["start"],
@@ -507,16 +522,24 @@ func _spawn_car_at_volume(vol: LaneVolume, grid_u: float, grid_v: float,
 		vol.height_cells
 	)
 
-func _can_spawn_car_type_in_volume(volume_id: String, car_type: int) -> bool:
+func _can_spawn_car_type(volume_id: String, cylinder_idx: int, car_type: int) -> bool:
 	var archetype = CarArchetypes.get_archetype(car_type)
-	if archetype.max_per_volume == -1:
-		return true
 	
-	if not volume_car_counts.has(volume_id):
-		return true
+	if archetype.max_per_volume != -1:
+		if volume_car_counts.has(volume_id):
+			var type_count = volume_car_counts[volume_id].get(car_type, 0)
+			if type_count >= archetype.max_per_volume:
+				return false
 	
-	var type_count = volume_car_counts[volume_id].get(car_type, 0)
-	return type_count < archetype.max_per_volume
+	if archetype.max_global != -1:
+		var global_count = global_type_counts.get(car_type, 0)
+		if global_count >= archetype.max_global:
+			return false
+	
+	if cylinder_car_counts[cylinder_idx] >= max_cars_per_cylinder:
+		return false
+	
+	return true
 
 func _add_car_to_volume(volume_id: String, car_type: int) -> void:
 	if not volume_car_counts.has(volume_id):
@@ -532,6 +555,21 @@ func _remove_car_from_volume(volume_id: String, car_type: int) -> void:
 	var current = volume_car_counts[volume_id].get(car_type, 0)
 	if current > 0:
 		volume_car_counts[volume_id][car_type] = current - 1
+
+func _add_car_to_cylinder(cylinder_idx: int) -> void:
+	cylinder_car_counts[cylinder_idx] += 1
+
+func _remove_car_from_cylinder(cylinder_idx: int) -> void:
+	cylinder_car_counts[cylinder_idx] -= 1
+
+func _add_car_to_global_type(car_type: int) -> void:
+	var current = global_type_counts.get(car_type, 0)
+	global_type_counts[car_type] = current + 1
+
+func _remove_car_from_global_type(car_type: int) -> void:
+	var current = global_type_counts.get(car_type, 0)
+	if current > 0:
+		global_type_counts[car_type] = current - 1
 
 func _on_car_volume_changed(old_volume_id: String, new_volume_id: String, car_type: int) -> void:
 	if not old_volume_id.is_empty():
