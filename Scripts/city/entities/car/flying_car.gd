@@ -1,4 +1,3 @@
-# FlyingCar.gd (refactorizado)
 extends Node3D
 class_name FlyingCar
 
@@ -26,16 +25,23 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var collision_buffer_zone: float = 15.0
 @export var min_safe_distance: float = 5.0
 
+@export_group("Broadcast")
+@export var broadcast_distance_multiplier: float = 2.0
+@export var broadcast_spacing: float = 3.0
+
 @export_group("Ghost Debug")
 @export var show_ghost_debug: bool = false
 @export var ghost_debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
 @export var ghost_collision_color: Color = Color(1.0, 0.0, 0.0, 0.5)
+@export var show_broadcast_debug: bool = true
+@export var broadcast_debug_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 
 @export_group("Despawn Debug")
 @export var take_frustum_into_account_when_despawning: bool = true
 
 var mesh_instance: MeshInstance3D
 var detection_area: Area3D
+var broadcast_area: Area3D
 var collision_shape: BoxShape3D
 var material: StandardMaterial3D
 var original_color: Color
@@ -60,6 +66,7 @@ func _ready() -> void:
 	
 	_create_visual()
 	_create_detection_area()
+	_create_broadcast_area()
 	
 	path_controller = PathController.new()
 	path_controller.initialize(self, world_node)
@@ -72,15 +79,19 @@ func _ready() -> void:
 	add_child(path_controller)
 	
 	collision_avoidance = CollisionAvoidance.new()
-	collision_avoidance.initialize(self, path_controller, world_node, collision_shape, detection_area)
+	collision_avoidance.initialize(self, path_controller, world_node, collision_shape, detection_area, broadcast_area)
 	collision_avoidance.enabled = enable_collision_avoidance
 	collision_avoidance.ghost_distance_multiplier = ghost_distance_multiplier
 	collision_avoidance.ghost_spacing = ghost_spacing
+	collision_avoidance.broadcast_distance_multiplier = broadcast_distance_multiplier
+	collision_avoidance.broadcast_spacing = broadcast_spacing
 	collision_avoidance.collision_buffer_zone = collision_buffer_zone
 	collision_avoidance.min_safe_distance = min_safe_distance
 	collision_avoidance.show_ghost_debug = show_ghost_debug
 	collision_avoidance.ghost_debug_color = ghost_debug_color
 	collision_avoidance.ghost_collision_color = ghost_collision_color
+	collision_avoidance.show_broadcast_debug = show_broadcast_debug
+	collision_avoidance.broadcast_debug_color = broadcast_debug_color
 	add_child(collision_avoidance)
 	
 	rng = RandomNumberGenerator.new()
@@ -185,6 +196,15 @@ func _create_detection_area() -> void:
 	detection_area.add_child(collision_shape_node)
 	add_child(detection_area)
 
+func _create_broadcast_area() -> void:
+	broadcast_area = Area3D.new()
+	broadcast_area.collision_layer = 2
+	broadcast_area.collision_mask = 0
+	broadcast_area.monitorable = true
+	broadcast_area.monitoring = false
+	
+	add_child(broadcast_area)
+
 func get_intersecting_traffic_planes() -> Array[Area3D]:
 	var planes: Array[Area3D] = []
 	
@@ -242,7 +262,6 @@ func _calculate_next_segment(current_end: Vector3, volume: Dictionary) -> Dictio
 	if continuations.is_empty():
 		return {}
 	
-	# FIX: Verificar que path_3d exista antes de usarlo
 	var current_direction = Vector3.FORWARD
 	if path_controller.path_3d and path_controller.path_3d.curve:
 		current_direction = (current_end - path_controller.path_3d.curve.get_point_position(0)).normalized()
