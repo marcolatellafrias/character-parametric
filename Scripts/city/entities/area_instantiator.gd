@@ -28,7 +28,7 @@ class_name AreaInstantiator
 @export var enable_car_spawning: bool = true
 @export var spawn_interval: float = 0.1
 @export var spawn_safety_margin: float = 3.0
-@export var max_cars_per_cylinder: int = 100
+@export var max_cars_per_cylinder: int = 200
 
 var city = null
 var debug_cylinder_meshes: Array[MeshInstance3D] = []

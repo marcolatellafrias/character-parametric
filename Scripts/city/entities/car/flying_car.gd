@@ -24,6 +24,8 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var ghost_spacing: float = 3.0
 @export var collision_buffer_zone: float = 15.0
 @export var min_safe_distance: float = 5.0
+@export var timeout_enabled: bool = true  # Nueva
+@export var timeout_duration: float = 3.0  # Nueva
 
 @export_group("Broadcast")
 @export var broadcast_distance_multiplier: float = 2.0
@@ -104,16 +106,27 @@ func _ready() -> void:
 	collision_avoidance.ghost_collision_color = ghost_collision_color
 	collision_avoidance.show_broadcast_debug = show_broadcast_debug
 	collision_avoidance.broadcast_debug_color = broadcast_debug_color
+	collision_avoidance.timeout_enabled = timeout_enabled
+	collision_avoidance.timeout_duration = timeout_duration
 	add_child(collision_avoidance)
 	
 	rng = RandomNumberGenerator.new()
 	rng.seed = seed
 
 func _process(delta: float) -> void:
+	var effective_delta = delta
+	
+	if DebugController.is_paused:
+		effective_delta = DebugController.manual_delta
+		DebugController.manual_delta = 0.0
+		
+		if effective_delta == 0.0:
+			return
+	
 	var should_move = collision_avoidance.check_and_adjust_speed()
 	
 	if should_move:
-		path_controller.advance(delta, collision_avoidance.get_current_speed())
+		path_controller.advance(effective_delta, collision_avoidance.get_current_speed())
 	
 	var transform = path_controller.get_current_transform()
 	global_position = transform.origin

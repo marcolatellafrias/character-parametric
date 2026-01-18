@@ -13,6 +13,13 @@ var broadcast_spacing: float = 3.0
 var current_speed: float = 10.0
 var base_speed: float = 10.0
 
+# Timeout system
+var timeout_enabled: bool = true
+var timeout_duration: float = 3.0
+var blocked_time: float = 0.0
+var last_blocking_car: String = ""
+var ignored_cars: Dictionary = {}  # {car_id: true}
+
 # Debug
 var show_ghost_debug: bool = false
 var show_broadcast_debug: bool = false
@@ -52,17 +59,24 @@ func initialize(owner_car: FlyingCar, path_ctrl: PathController,
 func check_and_adjust_speed() -> bool:
 	_update_broadcast_ghosts()
 	
+	var previous_blocking_car = blocking_car_id
+	var previous_is_broadcast = is_blocked_by_broadcast
+	
 	blocking_car_id = ""
 	is_blocked_by_broadcast = false
 	
 	if not enabled:
 		current_speed = base_speed
+		blocked_time = 0.0
+		last_blocking_car = ""
 		return true
 	
 	var ghost_positions = _get_detection_positions()
 	
 	if ghost_positions.is_empty():
 		current_speed = base_speed
+		blocked_time = 0.0
+		last_blocking_car = ""
 		if show_ghost_debug:
 			_update_detection_debug_meshes([])
 		return true
@@ -71,6 +85,26 @@ func check_and_adjust_speed() -> bool:
 	var closest_obstacle = obstacle_info["distance"]
 	blocking_car_id = obstacle_info["blocking_car_id"]
 	is_blocked_by_broadcast = obstacle_info["is_broadcast"]
+	
+	# Actualizar tiempo de bloqueo
+	if timeout_enabled and blocking_car_id != "" and not is_blocked_by_broadcast:
+		if blocking_car_id == last_blocking_car:
+			blocked_time += get_process_delta_time()
+			
+			# Si supera el timeout, ignorar el auto
+			if blocked_time >= timeout_duration:
+				ignored_cars[blocking_car_id] = true
+				blocked_time = 0.0
+		else:
+			# Nuevo auto bloqueante
+			blocked_time = 0.0
+			last_blocking_car = blocking_car_id
+	else:
+		blocked_time = 0.0
+		last_blocking_car = ""
+	
+	# Limpiar autos ignorados que ya no están cerca
+	_cleanup_ignored_cars(ghost_positions)
 	
 	if closest_obstacle < min_safe_distance:
 		current_speed = 0.0
@@ -186,6 +220,10 @@ func _evaluate_collisions(results: Array, relevant_ids: Array[String],
 				# Colisión con área de detección o broadcast de otro auto
 				var other_car = _find_car_from_area(collider)
 				if other_car:
+					# Ignorar si está en la lista de ignorados
+					if ignored_cars.has(other_car.car_id):
+						continue
+					
 					var is_broadcast = (collider == other_car.broadcast_area)
 					return {
 						"has_collision": true,
@@ -209,6 +247,46 @@ func _find_car_from_area(area: Area3D) -> FlyingCar:
 	if parent is FlyingCar:
 		return parent
 	return null
+
+func _cleanup_ignored_cars(ghost_positions: Array[Dictionary]) -> void:
+	if ignored_cars.is_empty():
+		return
+	
+	var space_state = car_owner.get_world_3d().direct_space_state
+	var cars_to_remove = []
+	
+	for car_id in ignored_cars.keys():
+		var still_detected = false
+		
+		# Verificar si algún ghost todavía detecta este auto
+		for ghost_data in ghost_positions:
+			var ghost_transform = path_controller.sample_baked_with_rotation(ghost_data["progress"])
+			
+			var query = PhysicsShapeQueryParameters3D.new()
+			query.shape = collision_shape
+			query.transform = ghost_transform
+			query.collision_mask = 2
+			query.collide_with_areas = true
+			query.exclude = [detection_area, broadcast_area]
+			
+			var results = space_state.intersect_shape(query, 32)
+			
+			for result in results:
+				var collider = result.get("collider")
+				if collider is Area3D and not (collider is TrafficPlane):
+					var other_car = _find_car_from_area(collider)
+					if other_car and other_car.car_id == car_id:
+						still_detected = true
+						break
+			
+			if still_detected:
+				break
+		
+		if not still_detected:
+			cars_to_remove.append(car_id)
+	
+	for car_id in cars_to_remove:
+		ignored_cars.erase(car_id)
 
 # ============ BROADCAST GHOSTS ============
 
@@ -354,3 +432,6 @@ func cleanup() -> void:
 	_clear_broadcast_shapes()
 	_clear_detection_debug_meshes()
 	_clear_broadcast_debug_meshes()
+	ignored_cars.clear()
+	blocked_time = 0.0
+	last_blocking_car = ""
