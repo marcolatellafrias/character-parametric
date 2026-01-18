@@ -1,3 +1,4 @@
+# CollisionAvoidance.gd - COMPLETO
 extends Node
 class_name CollisionAvoidance
 
@@ -13,12 +14,23 @@ var broadcast_spacing: float = 3.0
 var current_speed: float = 10.0
 var base_speed: float = 10.0
 
+# Smooth speed transitions
+var max_deceleration: float = 15.0
+var max_acceleration: float = 8.0
+var reaction_distance: float = 30.0
+
 # Timeout system
 var timeout_enabled: bool = true
 var timeout_duration: float = 3.0
 var blocked_time: float = 0.0
 var last_blocking_car: String = ""
-var ignored_cars: Dictionary = {}  # {car_id: true}
+var ignored_cars: Dictionary = {}
+
+# Movement tracking for timeout
+var blocked_start_progress: float = 0.0
+var blocked_start_blocking_car_position: Vector3 = Vector3.ZERO
+var blocking_car_reference: WeakRef = null
+var movement_threshold: float = 2.0
 
 # Debug
 var show_ghost_debug: bool = false
@@ -69,14 +81,17 @@ func check_and_adjust_speed() -> bool:
 		current_speed = base_speed
 		blocked_time = 0.0
 		last_blocking_car = ""
+		blocking_car_reference = null
 		return true
 	
 	var ghost_positions = _get_detection_positions()
 	
 	if ghost_positions.is_empty():
-		current_speed = base_speed
+		var target_speed = base_speed
+		current_speed = _smooth_speed_transition(current_speed, target_speed, get_process_delta_time())
 		blocked_time = 0.0
 		last_blocking_car = ""
+		blocking_car_reference = null
 		if show_ghost_debug:
 			_update_detection_debug_meshes([])
 		return true
@@ -85,38 +100,110 @@ func check_and_adjust_speed() -> bool:
 	var closest_obstacle = obstacle_info["distance"]
 	blocking_car_id = obstacle_info["blocking_car_id"]
 	is_blocked_by_broadcast = obstacle_info["is_broadcast"]
+	var blocking_car_node = obstacle_info.get("blocking_car_node", null)
 	
-	# Actualizar tiempo de bloqueo
+	# Actualizar tiempo de bloqueo y verificar movimiento
 	if timeout_enabled and blocking_car_id != "" and not is_blocked_by_broadcast:
 		if blocking_car_id == last_blocking_car:
 			blocked_time += get_process_delta_time()
 			
-			# Si supera el timeout, ignorar el auto
 			if blocked_time >= timeout_duration:
-				ignored_cars[blocking_car_id] = true
-				blocked_time = 0.0
+				# Verificar si ambos autos están estancados
+				var current_progress = path_controller.get_progress()
+				var self_moved = abs(current_progress - blocked_start_progress) >= movement_threshold
+				
+				var other_moved = false
+				if blocking_car_reference and blocking_car_reference.get_ref():
+					var blocking_car = blocking_car_reference.get_ref()
+					var current_blocking_position = blocking_car.global_position
+					other_moved = current_blocking_position.distance_to(blocked_start_blocking_car_position) >= movement_threshold
+				
+				# Verificar si la cadena está esperando un semáforo
+				var waiting_for_light = false
+				if blocking_car_node:
+					waiting_for_light = _is_blocked_by_traffic_light_chain(blocking_car_node)
+				
+				# Solo ignorar si NINGUNO se movió Y NO está esperando semáforo
+				if not self_moved and not other_moved and not waiting_for_light:
+					ignored_cars[blocking_car_id] = true
+					blocked_time = 0.0
+					blocking_car_reference = null
+				else:
+					# Al menos uno se movió o están esperando luz, resetear tracking
+					blocked_time = 0.0
+					blocked_start_progress = current_progress
+					if blocking_car_node:
+						blocked_start_blocking_car_position = blocking_car_node.global_position
 		else:
-			# Nuevo auto bloqueante
+			# Nuevo auto bloqueante, iniciar tracking
 			blocked_time = 0.0
 			last_blocking_car = blocking_car_id
+			blocked_start_progress = path_controller.get_progress()
+			
+			if blocking_car_node:
+				blocked_start_blocking_car_position = blocking_car_node.global_position
+				blocking_car_reference = weakref(blocking_car_node)
+			else:
+				blocking_car_reference = null
 	else:
 		blocked_time = 0.0
 		last_blocking_car = ""
+		blocking_car_reference = null
 	
-	# Limpiar autos ignorados que ya no están cerca
 	_cleanup_ignored_cars(ghost_positions)
 	
-	if closest_obstacle < min_safe_distance:
-		current_speed = 0.0
-		return false
-	elif closest_obstacle < collision_buffer_zone:
-		current_speed = base_speed * 0.5
-		return true
-	else:
-		current_speed = base_speed
+	# Calcular velocidad objetivo basada en distancia
+	var target_speed = _calculate_target_speed(closest_obstacle)
+	
+	# Aplicar transición suave con límites de aceleración
+	current_speed = _smooth_speed_transition(current_speed, target_speed, get_process_delta_time())
+	
+	# Limpiar blocking_car_id si ya no está bloqueado
+	if current_speed >= base_speed * 0.95:
 		blocking_car_id = ""
 		is_blocked_by_broadcast = false
+	
+	return current_speed > 0.0
+
+func _is_blocked_by_traffic_light_chain(car_node: FlyingCar, depth: int = 0, max_depth: int = 20) -> bool:
+	if depth >= max_depth:
+		return false
+	
+	# Verificar si este auto está esperando directamente un semáforo
+	if car_node.is_blocked_by_traffic_plane:
 		return true
+	
+	# Verificar si está bloqueado por otro auto y seguir la cadena
+	if car_node.collision_avoidance.blocking_car_reference:
+		var ref = car_node.collision_avoidance.blocking_car_reference.get_ref()
+		if ref and ref is FlyingCar:
+			return _is_blocked_by_traffic_light_chain(ref, depth + 1, max_depth)
+	
+	return false
+
+func _calculate_target_speed(distance: float) -> float:
+	if distance == INF:
+		return base_speed
+	
+	if distance < min_safe_distance:
+		return 0.0
+	
+	if distance < reaction_distance:
+		var t = (distance - min_safe_distance) / (reaction_distance - min_safe_distance)
+		t = clamp(t, 0.0, 1.0)
+		t = 1.0 - (1.0 - t) * (1.0 - t)
+		return base_speed * t
+	
+	return base_speed
+
+func _smooth_speed_transition(current: float, target: float, delta: float) -> float:
+	var speed_diff = target - current
+	
+	var max_change = max_acceleration * delta if speed_diff > 0 else max_deceleration * delta
+	
+	var actual_change = clamp(speed_diff, -max_change, max_change)
+	
+	return current + actual_change
 
 func get_current_speed() -> float:
 	return current_speed
@@ -157,6 +244,8 @@ func _scan_for_obstacles(ghost_positions: Array[Dictionary]) -> Dictionary:
 	var closest_distance = INF
 	var closest_car_id = ""
 	var closest_is_broadcast = false
+	var closest_car_node = null
+	var found_traffic_plane = false
 	var debug_data = []
 	
 	var relevant_ids = car_owner.get_relevant_volume_ids()
@@ -176,17 +265,24 @@ func _scan_for_obstacles(ghost_positions: Array[Dictionary]) -> Dictionary:
 		var collision_info = _evaluate_collisions(results, relevant_ids, intersecting_planes)
 		
 		if collision_info["has_collision"]:
+			if collision_info["blocked_by_plane"]:
+				found_traffic_plane = true
+			
 			var distance = car_owner.global_position.distance_to(ghost_transform.origin)
 			if distance < closest_distance:
 				closest_distance = distance
 				closest_car_id = collision_info["car_id"]
 				closest_is_broadcast = collision_info["is_broadcast"]
+				closest_car_node = collision_info["car_node"]
 		
 		if show_ghost_debug:
 			debug_data.append({
 				"progress": ghost_data["progress"],
 				"has_collision": collision_info["has_collision"]
 			})
+	
+	# Actualizar flag en el auto
+	car_owner.is_blocked_by_traffic_plane = found_traffic_plane
 	
 	if show_ghost_debug:
 		_update_detection_debug_meshes(debug_data)
@@ -196,11 +292,14 @@ func _scan_for_obstacles(ghost_positions: Array[Dictionary]) -> Dictionary:
 	return {
 		"distance": closest_distance,
 		"blocking_car_id": closest_car_id,
-		"is_broadcast": closest_is_broadcast
+		"is_broadcast": closest_is_broadcast,
+		"blocking_car_node": closest_car_node
 	}
 
 func _evaluate_collisions(results: Array, relevant_ids: Array[String], 
 						  intersecting_planes: Array[Area3D]) -> Dictionary:
+	var blocked_by_plane = false
+	
 	for result in results:
 		var collider = result.get("collider")
 		
@@ -211,16 +310,20 @@ func _evaluate_collisions(results: Array, relevant_ids: Array[String],
 			if collider is TrafficPlane:
 				var lane_id = collider.get_meta("lane_id", "")
 				if lane_id in relevant_ids:
+					# Verificar si es un semáforo en rojo
+					if collider.collision_layer == 2:
+						blocked_by_plane = true
+					
 					return {
 						"has_collision": true,
 						"car_id": "",
-						"is_broadcast": false
+						"is_broadcast": false,
+						"car_node": null,
+						"blocked_by_plane": blocked_by_plane
 					}
 			else:
-				# Colisión con área de detección o broadcast de otro auto
 				var other_car = _find_car_from_area(collider)
 				if other_car:
-					# Ignorar si está en la lista de ignorados
 					if ignored_cars.has(other_car.car_id):
 						continue
 					
@@ -228,18 +331,24 @@ func _evaluate_collisions(results: Array, relevant_ids: Array[String],
 					return {
 						"has_collision": true,
 						"car_id": other_car.car_id,
-						"is_broadcast": is_broadcast
+						"is_broadcast": is_broadcast,
+						"car_node": other_car,
+						"blocked_by_plane": false
 					}
 				return {
 					"has_collision": true,
 					"car_id": "",
-					"is_broadcast": false
+					"is_broadcast": false,
+					"car_node": null,
+					"blocked_by_plane": false
 				}
 	
 	return {
 		"has_collision": false,
 		"car_id": "",
-		"is_broadcast": false
+		"is_broadcast": false,
+		"car_node": null,
+		"blocked_by_plane": false
 	}
 
 func _find_car_from_area(area: Area3D) -> FlyingCar:
@@ -258,7 +367,6 @@ func _cleanup_ignored_cars(ghost_positions: Array[Dictionary]) -> void:
 	for car_id in ignored_cars.keys():
 		var still_detected = false
 		
-		# Verificar si algún ghost todavía detecta este auto
 		for ghost_data in ghost_positions:
 			var ghost_transform = path_controller.sample_baked_with_rotation(ghost_data["progress"])
 			
@@ -435,3 +543,4 @@ func cleanup() -> void:
 	ignored_cars.clear()
 	blocked_time = 0.0
 	last_blocking_car = ""
+	blocking_car_reference = null

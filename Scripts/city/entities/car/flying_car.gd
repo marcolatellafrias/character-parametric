@@ -13,7 +13,7 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var car_archetype: CarArchetypes.Type = CarArchetypes.Type.POOR_CAR
 
 @export_group("Path Debug")
-@export var show_path_debug: bool = true
+@export var show_path_debug: bool = false
 @export var path_debug_color: Color = Color(1.0, 1.0, 0.0, 1.0)
 @export var path_debug_width: float = 0.05
 @export var path_debug_segments: int = 30
@@ -24,26 +24,32 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var ghost_spacing: float = 3.0
 @export var collision_buffer_zone: float = 15.0
 @export var min_safe_distance: float = 5.0
-@export var timeout_enabled: bool = true  # Nueva
-@export var timeout_duration: float = 3.0  # Nueva
+@export var timeout_enabled: bool = true
+@export var timeout_duration: float = 3.0
+@export var movement_threshold: float = 2.0  # NUEVA
+@export var max_deceleration: float = 15.0
+@export var max_acceleration: float = 8.0
+@export var reaction_distance: float = 30.0
 
 @export_group("Broadcast")
 @export var broadcast_distance_multiplier: float = 2.0
 @export var broadcast_spacing: float = 3.0
 
 @export_group("Ghost Debug")
-@export var show_ghost_debug: bool = true
+@export var show_ghost_debug: bool = false
 @export var ghost_debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
 @export var ghost_collision_color: Color = Color(1.0, 0.0, 0.0, 0.5)
-@export var show_broadcast_debug: bool = true
+@export var show_broadcast_debug: bool = false
 @export var broadcast_debug_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 
 @export_group("Despawn Debug")
 @export var take_frustum_into_account_when_despawning: bool = true
 
 @export_group("Debug Info")
-@export var show_debug_label: bool = true
+@export var show_debug_label: bool = false
 @export var debug_label_offset: Vector3 = Vector3(0, 2, 0)
+
+var is_blocked_by_traffic_plane: bool = false
 
 var mesh_instance: MeshInstance3D
 var detection_area: Area3D
@@ -108,10 +114,19 @@ func _ready() -> void:
 	collision_avoidance.broadcast_debug_color = broadcast_debug_color
 	collision_avoidance.timeout_enabled = timeout_enabled
 	collision_avoidance.timeout_duration = timeout_duration
+	collision_avoidance.max_deceleration = max_deceleration
+	collision_avoidance.max_acceleration = max_acceleration
+	collision_avoidance.reaction_distance = reaction_distance
+	collision_avoidance.timeout_enabled = timeout_enabled
+	collision_avoidance.timeout_duration = timeout_duration
+	collision_avoidance.movement_threshold = movement_threshold  # NUEVA
+	collision_avoidance.max_deceleration = max_deceleration
 	add_child(collision_avoidance)
 	
 	rng = RandomNumberGenerator.new()
 	rng.seed = seed
+
+
 
 func _process(delta: float) -> void:
 	var effective_delta = delta

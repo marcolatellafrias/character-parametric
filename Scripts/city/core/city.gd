@@ -119,7 +119,7 @@ extends Node3D
 
 @export_group("Traffic Lights")
 @export var enable_traffic_lights: bool = true
-@export var traffic_light_cycle_duration: float = 2.5
+@export var traffic_light_cycle_duration: float = 5.0
 
 # ============================================
 # DATOS DEL GRAFO
