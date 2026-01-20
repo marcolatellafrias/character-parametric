@@ -5,8 +5,8 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(700, 700)
-@export var min_distance: float = 150.5
+@export var region_size: Vector2 = Vector2(800, 800)
+@export var min_distance: float = 200.5
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
 
@@ -28,7 +28,7 @@ extends Node3D
 
 @export_group("Tipos de Calles")
 @export var num_large_streets: int = 6
-@export var num_small_streets: int = 12
+@export var num_small_streets: int = 10
 
 @export_subgroup("Calles Pequeñas (Tipo 0)")
 @export var small_street_color: Color = Color.DEEP_PINK
@@ -50,7 +50,7 @@ extends Node3D
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
 @export var block_grid_floors: int = 8
-@export var block_cells_per_floor: int = 5
+@export var block_cells_per_floor: int = 12
 
 @export_group("Grilla Distorsionada")
 @export var distorted_grid_rows: int = 6
@@ -91,6 +91,8 @@ extends Node3D
 @export_group("Buildings")
 @export var show_buildings: bool = true
 @export var show_building_colliders: bool = true
+@export var alternate_floor_shading: bool = true  # NUEVO FLAG
+@export_range(0.1, 0.9) var floor_shade_factor: float = 0.85  # Factor para alternar tonos
 
 @export_group("Planos Peatonales")
 @export var show_pedestrian_planes: bool = false
@@ -112,8 +114,8 @@ extends Node3D
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 
 @export_group("Traffic Planes")
-@export var show_traffic_planes: bool = false
-@export_range(0.0, 1.0) var traffic_plane_transparency: float = 0.9
+@export var show_traffic_planes: bool = true
+@export_range(0.0, 1.0) var traffic_plane_transparency: float = 0.1
 @export var traffic_plane_green_color: Color = Color.GREEN
 @export var traffic_plane_red_color: Color = Color.RED
 
@@ -191,8 +193,9 @@ func generate_and_visualize() -> void:
 func generate_graph() -> void:
 	generator = GraphCityGenerator.new()
 	
-	var block_cell_height = min_distance / block_grid_rows
-	var building_cell_height = min_distance / building_grid_rows
+	# NOTA: block_cell_height ya no se usa para nada importante, 
+	# solo se pasa a GridGeometry por compatibilidad
+	var legacy_block_cell_height = min_distance / block_grid_rows
 	
 	generator.generate_city_graph(
 		smoothing_steps,
@@ -221,8 +224,8 @@ func generate_graph() -> void:
 		grid_seed,
 		building_grid_rows,
 		building_grid_columns,
-		block_cell_height,
-		building_cell_height,
+		legacy_block_cell_height,  # Solo para GridGeometry (legacy)
+		0.0,  # Este parámetro ya no se usa, se calcula internamente
 		neighborhood_height_falloff,
 		num_neighborhoods,
 		neighborhood_seed
@@ -347,7 +350,7 @@ func _visualize_floor_planes() -> void:
 		
 		var floors = block.get_floors()
 		var cells_per_floor = block.get_cells_per_floor()
-		var cell_height = block.get_cell_height()
+		var building_cell_height = block.get_building_cell_height()  # CAMBIO
 		
 		var face_nodes = generator.plain_graph.faces[face_idx]
 		var face_vertices_3d: Array[Vector3] = []
@@ -359,7 +362,7 @@ func _visualize_floor_planes() -> void:
 			continue
 		
 		for floor in range(floors):
-			var y = floor * cells_per_floor * cell_height
+			var y = floor * cells_per_floor * building_cell_height  # CAMBIO
 			
 			var v1 = Vector3(face_vertices_3d[0].x, y, face_vertices_3d[0].z)
 			var v2 = Vector3(face_vertices_3d[1].x, y, face_vertices_3d[1].z)
@@ -391,8 +394,8 @@ func _visualize_buildings() -> void:
 			continue
 		
 		var cells_per_floor = block.get_cells_per_floor()
-		var cell_height = block.get_cell_height()
-		var building_height = cells_per_floor * cell_height
+		var building_cell_height = block.get_building_cell_height()
+		var building_height = cells_per_floor * building_cell_height
 		var is_clockwise = block.is_clockwise
 		
 		var clusters = block.get_all_clusters()
@@ -400,9 +403,43 @@ func _visualize_buildings() -> void:
 		
 		for cluster in clusters:
 			var cluster_floors = cluster.get_floor_count()
+			var base_color = cluster.color
+			
+			# DEBUG: Solo para edificios de 1 piso y 1 celda
+			if cluster_floors == 1 and cluster.get_cell_count() == 1:
+				print("=== DEBUG EDIFICIO 1x1x1 ===")
+				print("cells_per_floor: %d" % cells_per_floor)
+				print("building_cell_height: %.3f" % building_cell_height)
+				print("building_height (1 piso): %.3f" % building_height)
+				
+				# Calcular dimensiones aproximadas de la base
+				var first_cell = cluster.cells[0]
+				var x = first_cell.x
+				var z = first_cell.y
+				var building: Building = block.get_building(x, z, 0)
+				if building:
+					var core_vertices = building.get_core_vertices(0)
+					if core_vertices.size() == 4:
+						var width = core_vertices[0].distance_to(core_vertices[1])
+						var depth = core_vertices[1].distance_to(core_vertices[2])
+						print("base_width: %.3f" % width)
+						print("base_depth: %.3f" % depth)
+						print("ratio height/width: %.3f" % (building_height / width))
+						print("ratio height/depth: %.3f" % (building_height / depth))
+				print("========================")
 			
 			for floor in range(cluster_floors):
-				var floor_base_y = floor * cells_per_floor * cell_height
+				var floor_base_y = floor * cells_per_floor * building_cell_height
+				
+				# Calcular color del piso
+				var floor_color: Color
+				if alternate_floor_shading:
+					if floor % 2 == 0:
+						floor_color = base_color
+					else:
+						floor_color = base_color.darkened(1.0 - floor_shade_factor)
+				else:
+					floor_color = base_color
 				
 				for cell in cluster.cells:
 					var x = cell.x
@@ -433,7 +470,7 @@ func _visualize_buildings() -> void:
 					var cube = DebugUtil.create_skewed_cube(
 						core_vertices,
 						building_height,
-						cluster.color
+						floor_color
 					)
 					add_child(cube)
 					total_cells += 1
@@ -459,8 +496,8 @@ func _visualize_building_colliders() -> void:
 			continue
 		
 		var cells_per_floor = block.get_cells_per_floor()
-		var cell_height = block.get_cell_height()
-		var building_height = cells_per_floor * cell_height
+		var building_cell_height = block.get_building_cell_height()  # CAMBIO
+		var building_height = cells_per_floor * building_cell_height  # CAMBIO
 		var is_clockwise = block.is_clockwise
 		
 		var clusters = block.get_all_clusters()
@@ -472,7 +509,7 @@ func _visualize_building_colliders() -> void:
 			var cluster_floors = cluster.get_floor_count()
 			
 			for floor in range(cluster_floors):
-				var floor_base_y = floor * cells_per_floor * cell_height
+				var floor_base_y = floor * cells_per_floor * building_cell_height  # CAMBIO
 				
 				for cell in cluster.cells:
 					var x = cell.x

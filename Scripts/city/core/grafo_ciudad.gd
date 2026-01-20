@@ -96,7 +96,6 @@ func generate_city_graph(
     self.building_grid_rows = p_building_grid_rows
     self.building_grid_columns = p_building_grid_columns
     self.block_cell_height = p_block_cell_height
-    self.building_cell_height = p_building_cell_height
     self.cells_per_floor = block_cells_per_floor
     
     # Generar grafo base
@@ -115,17 +114,24 @@ func generate_city_graph(
     _generate_small_streets(num_small_streets)
     _generate_large_streets(num_large_streets)
     
+    # NUEVO: Calcular distancia mínima del grafo final
+    var actual_min_distance = _calculate_min_edge_length()
+    var global_building_cell_height = actual_min_distance / (p_distorted_grid_rows * p_building_grid_rows)
+    
+    print("[GraphCityGenerator] Min edge length real: %.3f" % actual_min_distance)
+    print("[GraphCityGenerator] Building cell height global: %.3f" % global_building_cell_height)
+    
     # Barrios con nuevo sistema
     var neighborhood_seed = p_neighborhood_seed if p_neighborhood_seed != -1 else generation_seed
     neighborhood_manager = NeighborhoodManager.new(plain_graph, p_num_neighborhoods, neighborhood_seed)
     neighborhood_manager.generate_neighborhoods()
     
-    # Grillas de manzanas
+    # Grillas de manzanas con building_cell_height global
     _generate_block_grids(
         block_grid_floors,
         block_cells_per_floor,
         p_block_cell_height,
-        p_building_cell_height
+        global_building_cell_height
     )
     
     # Planos y lanes
@@ -133,11 +139,24 @@ func generate_city_graph(
     _calculate_temporal_lane_points()
     _calculate_lane_planes()
     
-    # NUEVO: Calcular índices de tráfico ANTES de crear lane volumes
+    # Calcular índices de tráfico ANTES de crear lane volumes
     traffic_indices = _calculate_traffic_indices()
     
     # Crear lane volumes con índices ya asignados
     _generate_lane_volume_areas()
+
+func _calculate_min_edge_length() -> float:
+    var min_length = INF
+    
+    for edge in plain_graph.edges:
+        var p1 = plain_graph.points[edge[0]]
+        var p2 = plain_graph.points[edge[1]]
+        var length = p1.distance_to(p2)
+        
+        if length < min_length:
+            min_length = length
+    
+    return min_length
 
 # ============================================
 # GESTIÓN DE TIPOS DE CALLES
@@ -330,7 +349,7 @@ func _generate_block_grids(
     floors: int,
     cells_per_floor: int,
     block_cell_height: float,
-    building_cell_height: float
+    building_cell_height: float  # <-- Ahora se recibe como parámetro
 ) -> void:
     block_grids.clear()
     
@@ -411,7 +430,7 @@ func _generate_block_grids(
             block_seed,
             building_grid_rows,
             building_grid_columns,
-            building_cell_height,
+            building_cell_height,  # <-- Pasar el valor global
             {},
             min_floors,
             max_floors,
@@ -763,8 +782,12 @@ func _enrich_lane_volume_data(volume_data: Dictionary, face_idx: int, edge_idx: 
     enriched["width_cells"] = BlockGenerator.STREET_HALF_WIDTH_CELLS.get(street_type, 3)
     enriched["cells_per_floor"] = cells_per_floor
     
-    if block_cell_height > 0 and cells_per_floor > 0:
-        var floor_height = cells_per_floor * block_cell_height
+    # CAMBIO: Obtener el block para acceder a building_cell_height
+    var block: BlockGenerator = block_grids.get(face_idx, null)
+    
+    if block and cells_per_floor > 0:
+        var building_cell_height = block.get_building_cell_height()  # CAMBIO: Usar building_cell_height
+        var floor_height = cells_per_floor * building_cell_height    # CAMBIO
         var num_floors = ceil(volume_data["height"] / floor_height)
         enriched["height_cells"] = int(num_floors * cells_per_floor)
     else:
@@ -774,18 +797,18 @@ func _enrich_lane_volume_data(volume_data: Dictionary, face_idx: int, edge_idx: 
     var node2 = face[(edge_idx + 1) % face.size()]
     enriched["neighborhood"] = get_neighborhood_for_edge(node1, node2)
     
-    # Incluir traffic_index desde el diccionario pre-calculado
     var key = "%d_%d" % [face_idx, edge_idx]
     enriched["traffic_index"] = traffic_indices.get(key, -1)
     
-    # NUEVO: Incluir la altura específica de esta manzana
-    var block: BlockGenerator = block_grids.get(face_idx, null)
+    # Incluir la altura específica de esta manzana
     if block:
         enriched["block_height"] = block.get_max_building_height()
     else:
         enriched["block_height"] = volume_data.get("height", 0.0)
     
     return enriched
+    
+    
 func get_lane_volume_area(face_idx: int, edge_idx: int) -> LaneVolume:
     var key = "%d_%d" % [face_idx, edge_idx]
     return lane_volume_areas.get(key, null)

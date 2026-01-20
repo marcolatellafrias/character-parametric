@@ -13,7 +13,7 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var car_archetype: CarArchetypes.Type = CarArchetypes.Type.POOR_CAR
 
 @export_group("Path Debug")
-@export var show_path_debug: bool = false
+@export var show_path_debug: bool = true
 @export var path_debug_color: Color = Color(1.0, 1.0, 0.0, 1.0)
 @export var path_debug_width: float = 0.05
 @export var path_debug_segments: int = 30
@@ -36,17 +36,17 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var broadcast_spacing: float = 3.0
 
 @export_group("Ghost Debug")
-@export var show_ghost_debug: bool = false
+@export var show_ghost_debug: bool = true
 @export var ghost_debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)
 @export var ghost_collision_color: Color = Color(1.0, 0.0, 0.0, 0.5)
-@export var show_broadcast_debug: bool = false
+@export var show_broadcast_debug: bool = true
 @export var broadcast_debug_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 
 @export_group("Despawn Debug")
 @export var take_frustum_into_account_when_despawning: bool = true
 
 @export_group("Debug Info")
-@export var show_debug_label: bool = false
+@export var show_debug_label: bool = true
 @export var debug_label_offset: Vector3 = Vector3(0, 2, 0)
 
 var is_blocked_by_traffic_plane: bool = false

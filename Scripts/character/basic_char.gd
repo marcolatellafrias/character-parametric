@@ -36,8 +36,8 @@ var _grab_distance: float = 0.0
 
 # Creative mode
 @export var creative_mode := false
-@export var creative_fly_speed := 8.0
-@export var creative_fly_speed_fast := 20.0
+@export var creative_fly_speed := 20.0
+@export var creative_fly_speed_fast := 60.0
 
 # Camera export
 @export var camera: Camera3D
