@@ -21,7 +21,7 @@ var reaction_distance: float = 30.0
 
 # Timeout system
 var timeout_enabled: bool = true
-var timeout_duration: float = 3.0
+var timeout_duration: float = 10.0
 var blocked_time: float = 0.0
 var last_blocking_car: String = ""
 var ignored_cars: Dictionary = {}
