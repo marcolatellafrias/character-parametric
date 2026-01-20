@@ -361,7 +361,7 @@ func _is_alleyway_type(edge_type: int) -> bool:
 		DistortedGrid.CellType.BIG,
 		DistortedGrid.CellType.SMALL_ORIGIN,
 		DistortedGrid.CellType.BIG_ORIGIN,
-		DistortedGrid.CellType.BOUNDARY
+		DistortedGrid.CellType.FACADE  # CAMBIO: era BOUNDARY
 	]
 
 func _subdivide_section_into_clusters(section: Array, rng: RandomNumberGenerator, start_cluster_id: int) -> int:

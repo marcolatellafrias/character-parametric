@@ -78,13 +78,13 @@ extends Node3D
 @export var distorted_grid_floor_to_show: int = 0
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
-@export var distorted_grid_boundary_vertex_color: Color = Color.RED
+@export var distorted_grid_facade_vertex_color: Color = Color.RED  # CAMBIO: era boundary_vertex_color
 @export var distorted_grid_normal_edge_color: Color = Color.WHITE
 @export var distorted_grid_small_edge_color: Color = Color.YELLOW
 @export var distorted_grid_big_edge_color: Color = Color.ORANGE
 @export var distorted_grid_small_origin_edge_color: Color = Color.GREEN
 @export var distorted_grid_big_origin_edge_color: Color = Color.MAGENTA
-@export var distorted_grid_boundary_edge_color: Color = Color.ORANGE_RED
+@export var distorted_grid_facade_edge_color: Color = Color.ORANGE_RED  # CAMBIO: era boundary_edge_color
 @export var distorted_grid_edge_width: float = 0.015
 @export var distorted_grid_height_offset: float = 0.1
 
@@ -635,10 +635,10 @@ func _visualize_distorted_grids() -> void:
 				var pos_2d = get_vertex.call(grid_x, grid_z)
 				var pos_3d = Vector3(pos_2d.x, distorted_grid_height_offset, pos_2d.y)
 				
-				var is_boundary = (grid_x == 0 or grid_x == distorted.columns or 
+				var is_facade = (grid_x == 0 or grid_x == distorted.columns or 
 								   grid_z == 0 or grid_z == distorted.rows)
 				
-				var vertex_color = distorted_grid_boundary_vertex_color if is_boundary else distorted_grid_normal_vertex_color
+				var vertex_color = distorted_grid_facade_vertex_color if is_facade else distorted_grid_normal_vertex_color
 				
 				var sphere = DebugUtil.create_debug_sphere(vertex_color, distorted_grid_vertex_radius)
 				sphere.position = pos_3d
@@ -655,10 +655,10 @@ func _visualize_distorted_grids() -> void:
 				
 				var edge_color: Color
 				
-				var is_boundary_edge = (grid_z == 0 or grid_z == distorted.rows)
+				var is_facade_edge = (grid_z == 0 or grid_z == distorted.rows)
 				
-				if is_boundary_edge:
-					edge_color = distorted_grid_boundary_edge_color
+				if is_facade_edge:
+					edge_color = distorted_grid_facade_edge_color
 				else:
 					var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x + 1, grid_z, distorted_grid_floor_to_show)
 					
@@ -693,10 +693,10 @@ func _visualize_distorted_grids() -> void:
 				
 				var edge_color: Color
 				
-				var is_boundary_edge = (grid_x == 0 or grid_x == distorted.columns)
+				var is_facade_edge = (grid_x == 0 or grid_x == distorted.columns)
 				
-				if is_boundary_edge:
-					edge_color = distorted_grid_boundary_edge_color
+				if is_facade_edge:
+					edge_color = distorted_grid_facade_edge_color
 				else:
 					var path_type = path_gen.get_path_edge_type_vertices(grid_x, grid_z, grid_x, grid_z + 1, distorted_grid_floor_to_show)
 					

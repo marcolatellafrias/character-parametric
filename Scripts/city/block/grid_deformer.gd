@@ -5,7 +5,7 @@ enum CellType {
 	NORMAL = 0,
 	SMALL = 1,
 	BIG = 2,
-	BOUNDARY = -1,
+	FACADE = -1,  # CAMBIO: era BOUNDARY
 	SMALL_ORIGIN = 10,
 	BIG_ORIGIN = 11
 }

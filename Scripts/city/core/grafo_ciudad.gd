@@ -170,6 +170,7 @@ func _initialize_street_types() -> void:
         street_types[edge_key] = 1
 
 func _mark_boundary_streets() -> void:
+    # Puedes renombrar a _mark_facade_streets si lo prefieres
     for edge in plain_graph.edges:
         var node1_idx = edge[0]
         var node2_idx = edge[1]
@@ -179,7 +180,7 @@ func _mark_boundary_streets() -> void:
         
         if node1_type == 1 and node2_type == 1:
             var edge_key = GraphGenerator._get_edge_key(node1_idx, node2_idx)
-            street_types[edge_key] = -1
+            street_types[edge_key] = -1  # Este es el valor de FACADE
 
 func _generate_large_streets(num_large_streets: int) -> void:
     for i in range(num_large_streets):
