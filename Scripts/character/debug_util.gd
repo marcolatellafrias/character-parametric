@@ -502,16 +502,37 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 		var to_prev = (base_vertices[(i - 1 + 4) % 4] - base_vertices[i]).normalized()
 		var to_next = (base_vertices[(i + 1) % 4] - base_vertices[i]).normalized()
 		
-		# Siempre agregar ambos vértices del chamfer (si no hay chamfer, c1 y c2 son 0)
-		# Primer vértice: hacia el vértice anterior
+		# Siempre agregar ambos vértices del chamfer
 		bottom_contour.append(base_vertices[i] + to_prev * c1)
 		top_contour.append(base_vertices[i] + Vector3(0, height, 0) + to_prev * c1)
 		
-		# Segundo vértice: hacia el vértice siguiente
 		bottom_contour.append(base_vertices[i] + to_next * c2)
 		top_contour.append(base_vertices[i] + Vector3(0, height, 0) + to_next * c2)
 	
-	# Caras laterales: conectar vértices consecutivos del contorno
+	# Calcular centros
+	var bottom_center = Vector3.ZERO
+	for v in bottom_contour:
+		bottom_center += v
+	bottom_center /= bottom_contour.size()
+	
+	var top_center = Vector3.ZERO
+	for v in top_contour:
+		top_center += v
+	top_center /= top_contour.size()
+	
+	# Cara inferior (normal hacia abajo)
+	var bottom_normal = Vector3(0, -1, 0)
+	for i in range(bottom_contour.size()):
+		var next_i = (i + 1) % bottom_contour.size()
+		add_triangle_with_normal.call(bottom_center, bottom_contour[next_i], bottom_contour[i], bottom_normal)
+	
+	# Cara superior (normal hacia arriba)
+	var top_normal = Vector3(0, 1, 0)
+	for i in range(top_contour.size()):
+		var next_i = (i + 1) % top_contour.size()
+		add_triangle_with_normal.call(top_center, top_contour[i], top_contour[next_i], top_normal)
+	
+	# Caras laterales
 	var center = Vector3.ZERO
 	for v in base_vertices:
 		center += v
@@ -525,7 +546,6 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 		var v3 = top_contour[i]
 		var v4 = top_contour[next_i]
 		
-		# Calcular normal usando el primer triángulo
 		var edge1 = v2 - v1
 		var edge2 = v3 - v1
 		var face_normal = edge1.cross(edge2).normalized()
@@ -536,7 +556,6 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 		if face_normal.dot(to_outside) < 0:
 			face_normal = -face_normal
 		
-		# Triangular el quad en orden clockwise relativo
 		add_triangle_with_normal.call(v1, v2, v3, face_normal)
 		add_triangle_with_normal.call(v2, v4, v3, face_normal)
 	
@@ -551,7 +570,7 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 	var material = StandardMaterial3D.new()
 	material.albedo_color = color
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.cull_mode = BaseMaterial3D.CULL_BACK
 	material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
 	
 	if use_transparency:
@@ -613,6 +632,80 @@ static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float
 			real_chamfers[i] = [c1_real, c2_real]
 	
 	return create_skewed_cube_advanced(base_vertices, height, color, real_chamfers, use_transparency)
+
+# Crea un StaticBody3D con collider que coincide con la forma de create_skewed_cube_advanced_grid.
+# Los parámetros son los mismos que create_skewed_cube_advanced_grid excepto color y use_transparency.
+static func create_skewed_cube_advanced_grid_collider(base_vertices: Array, height: float, chamfers: Dictionary, grid_divisions: int) -> StaticBody3D:
+	if base_vertices.size() != 4:
+		push_error("Se requieren exactamente 4 vértices para la base")
+		return null
+	
+	if grid_divisions <= 0:
+		push_error("grid_divisions debe ser mayor que 0")
+		return null
+	
+	# Convertir chamfers de celdas a unidades reales
+	var real_chamfers = {}
+	
+	for i in range(4):
+		if chamfers.has(i):
+			var chamfer_cells = chamfers[i]
+			var c1_cells = chamfer_cells[0] if chamfer_cells.size() > 0 else 0
+			var c2_cells = chamfer_cells[1] if chamfer_cells.size() > 1 else 0
+			
+			var prev_i = (i - 1 + 4) % 4
+			var edge_prev_length = base_vertices[i].distance_to(base_vertices[prev_i])
+			var cell_size_prev = edge_prev_length / float(grid_divisions)
+			
+			var next_i = (i + 1) % 4
+			var edge_next_length = base_vertices[i].distance_to(base_vertices[next_i])
+			var cell_size_next = edge_next_length / float(grid_divisions)
+			
+			var c1_real = c1_cells * cell_size_prev
+			var c2_real = c2_cells * cell_size_next
+			
+			real_chamfers[i] = [c1_real, c2_real]
+	
+	# Construir vértices del contorno
+	var bottom_contour = []
+	var top_contour = []
+	
+	for i in range(4):
+		var chamfer = real_chamfers.get(i, [0, 0])
+		var c1 = chamfer[0] if chamfer.size() > 0 else 0
+		var c2 = chamfer[1] if chamfer.size() > 1 else 0
+		
+		var to_prev = (base_vertices[(i - 1 + 4) % 4] - base_vertices[i]).normalized()
+		var to_next = (base_vertices[(i + 1) % 4] - base_vertices[i]).normalized()
+		
+		bottom_contour.append(base_vertices[i] + to_prev * c1)
+		top_contour.append(base_vertices[i] + Vector3(0, height, 0) + to_prev * c1)
+		
+		bottom_contour.append(base_vertices[i] + to_next * c2)
+		top_contour.append(base_vertices[i] + Vector3(0, height, 0) + to_next * c2)
+	
+	# Crear array de puntos para ConvexPolygonShape3D
+	var points = PackedVector3Array()
+	
+	# Agregar todos los vértices del contorno
+	for v in bottom_contour:
+		points.append(v)
+	for v in top_contour:
+		points.append(v)
+	
+	# Crear el shape convexo
+	var shape = ConvexPolygonShape3D.new()
+	shape.points = points
+	
+	# Crear collision shape
+	var collision_shape = CollisionShape3D.new()
+	collision_shape.shape = shape
+	
+	# Crear static body
+	var static_body = StaticBody3D.new()
+	static_body.add_child(collision_shape)
+	
+	return static_body
 
 static func create_debug_arrow_to_from(from: Vector3, to: Vector3, color: Color, width: float) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
