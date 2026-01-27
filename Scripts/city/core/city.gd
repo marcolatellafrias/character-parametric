@@ -53,8 +53,8 @@ extends Node3D
 @export var block_cells_per_floor: int = 12
 
 @export_group("Grilla Distorsionada")
-@export var distorted_grid_rows: int = 6
-@export var distorted_grid_columns: int = 6
+@export var distorted_grid_rows: int = 3 #6
+@export var distorted_grid_columns: int = 3 #6
 @export_range(0.0, 1.0) var wave_amplitude_x: float = 0.07
 @export_range(0.0, 1.0) var wave_amplitude_z: float = 0.07
 @export var wave_frequency_x: float = 1.0
@@ -70,8 +70,8 @@ extends Node3D
 @export var grid_seed: int = -1
 
 @export_group("Grilla de Buildings")
-@export var building_grid_rows: int = 20
-@export var building_grid_columns: int = 20
+@export var building_grid_rows: int = 6 #20
+@export var building_grid_columns: int = 6 #20
 
 @export_subgroup("Visualización de Grilla Distorsionada")
 @export var show_distorted_grid: bool = false
