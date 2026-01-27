@@ -453,6 +453,167 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 	
 	return mesh_instance
 
+# Crea un cubo skewed con chamfers en sus edges verticales, especificados en unidades reales.
+# 
+# chamfers: Diccionario donde la clave es el índice del vértice (0-3) y el valor es [c1, c2]
+#           expresado en UNIDADES REALES (distancia en el espacio 3D).
+#           c1: distancia chamfereada hacia el edge que conecta con el vértice anterior (sentido anti-clockwise)
+#           c2: distancia chamfereada hacia el edge que conecta con el vértice siguiente (sentido clockwise)
+# 
+# Ejemplo: Si chamfers={0: [0.5, 1.0]}, el edge vertical en el vértice 0 será chamfereado
+#          0.5 unidades hacia el vértice 3, y 1.0 unidades hacia el vértice 1.
+# 
+# Las caras superior e inferior se adaptan automáticamente al contorno resultante (de cuadrado a octágono).
+# Si chamfers está vacío o todos los valores son [0, 0], se comporta igual que create_skewed_cube.
+static func create_skewed_cube_advanced(base_vertices: Array, height: float, color: Color, chamfers: Dictionary, use_transparency: bool = false) -> MeshInstance3D:
+	if base_vertices.size() != 4:
+		push_error("Se requieren exactamente 4 vértices para la base")
+		return null
+	
+	var mesh_instance = MeshInstance3D.new()
+	var st = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	
+	var vertices = PackedVector3Array()
+	var normals = PackedVector3Array()
+	var indices = PackedInt32Array()
+	
+	var add_triangle_with_normal = func(v1: Vector3, v2: Vector3, v3: Vector3, normal: Vector3):
+		var start_idx = vertices.size()
+		vertices.append(v1)
+		vertices.append(v2)
+		vertices.append(v3)
+		normals.append(normal)
+		normals.append(normal)
+		normals.append(normal)
+		indices.append(start_idx)
+		indices.append(start_idx + 1)
+		indices.append(start_idx + 2)
+	
+	# Construir vértices del contorno inferior y superior en orden clockwise
+	var bottom_contour = []
+	var top_contour = []
+	
+	for i in range(4):
+		var chamfer = chamfers.get(i, [0, 0])
+		var c1 = chamfer[0] if chamfer.size() > 0 else 0
+		var c2 = chamfer[1] if chamfer.size() > 1 else 0
+		
+		var to_prev = (base_vertices[(i - 1 + 4) % 4] - base_vertices[i]).normalized()
+		var to_next = (base_vertices[(i + 1) % 4] - base_vertices[i]).normalized()
+		
+		# Siempre agregar ambos vértices del chamfer (si no hay chamfer, c1 y c2 son 0)
+		# Primer vértice: hacia el vértice anterior
+		bottom_contour.append(base_vertices[i] + to_prev * c1)
+		top_contour.append(base_vertices[i] + Vector3(0, height, 0) + to_prev * c1)
+		
+		# Segundo vértice: hacia el vértice siguiente
+		bottom_contour.append(base_vertices[i] + to_next * c2)
+		top_contour.append(base_vertices[i] + Vector3(0, height, 0) + to_next * c2)
+	
+	# Caras laterales: conectar vértices consecutivos del contorno
+	var center = Vector3.ZERO
+	for v in base_vertices:
+		center += v
+	center /= 4.0
+	
+	for i in range(bottom_contour.size()):
+		var next_i = (i + 1) % bottom_contour.size()
+		
+		var v1 = bottom_contour[i]
+		var v2 = bottom_contour[next_i]
+		var v3 = top_contour[i]
+		var v4 = top_contour[next_i]
+		
+		# Calcular normal usando el primer triángulo
+		var edge1 = v2 - v1
+		var edge2 = v3 - v1
+		var face_normal = edge1.cross(edge2).normalized()
+		
+		var face_center = (v1 + v2 + v3 + v4) / 4.0
+		var to_outside = (face_center - center).normalized()
+		
+		if face_normal.dot(to_outside) < 0:
+			face_normal = -face_normal
+		
+		# Triangular el quad en orden clockwise relativo
+		add_triangle_with_normal.call(v1, v2, v3, face_normal)
+		add_triangle_with_normal.call(v2, v4, v3, face_normal)
+	
+	var arrays = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	
+	st.create_from_arrays(arrays)
+	
+	var material = StandardMaterial3D.new()
+	material.albedo_color = color
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
+	
+	if use_transparency:
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	
+	st.set_material(material)
+	
+	mesh_instance.mesh = st.commit()
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	
+	return mesh_instance
+
+# Crea un cubo skewed con chamfers en sus edges verticales, especificados en unidades de grid.
+# 
+# grid_divisions: Define un grid NxN conceptual sobre el quad base. Cada edge del quad
+#                 queda dividido en N segmentos de igual longitud.
+# 
+# chamfers: Diccionario donde la clave es el índice del vértice (0-3) y el valor es [c1, c2]
+#           expresado en NÚMERO DE CELDAS del grid, no en unidades reales.
+#           c1: celdas chamfereadas hacia el edge que conecta con el vértice anterior (sentido anti-clockwise)
+#           c2: celdas chamfereadas hacia el edge que conecta con el vértice siguiente (sentido clockwise)
+# 
+# Ejemplo: Si grid_divisions=4 y chamfers={0: [1, 2]}, el edge vertical en el vértice 0
+#          será chamfereado 1/4 de la longitud del edge hacia v3, y 2/4 hacia v1.
+# 
+# Si chamfers está vacío o todos los valores son [0, 0], se comporta igual que create_skewed_cube.
+static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float, color: Color, chamfers: Dictionary, grid_divisions: int, use_transparency: bool = false) -> MeshInstance3D:
+	if base_vertices.size() != 4:
+		push_error("Se requieren exactamente 4 vértices para la base")
+		return null
+	
+	if grid_divisions <= 0:
+		push_error("grid_divisions debe ser mayor que 0")
+		return null
+	
+	# Convertir chamfers de celdas a unidades reales
+	var real_chamfers = {}
+	
+	for i in range(4):
+		if chamfers.has(i):
+			var chamfer_cells = chamfers[i]
+			var c1_cells = chamfer_cells[0] if chamfer_cells.size() > 0 else 0
+			var c2_cells = chamfer_cells[1] if chamfer_cells.size() > 1 else 0
+			
+			# Edge hacia el vértice anterior (para c1)
+			var prev_i = (i - 1 + 4) % 4
+			var edge_prev_length = base_vertices[i].distance_to(base_vertices[prev_i])
+			var cell_size_prev = edge_prev_length / float(grid_divisions)
+			
+			# Edge hacia el vértice siguiente (para c2)
+			var next_i = (i + 1) % 4
+			var edge_next_length = base_vertices[i].distance_to(base_vertices[next_i])
+			var cell_size_next = edge_next_length / float(grid_divisions)
+			
+			# Convertir a unidades reales
+			var c1_real = c1_cells * cell_size_prev
+			var c2_real = c2_cells * cell_size_next
+			
+			real_chamfers[i] = [c1_real, c2_real]
+	
+	return create_skewed_cube_advanced(base_vertices, height, color, real_chamfers, use_transparency)
+
 static func create_debug_arrow_to_from(from: Vector3, to: Vector3, color: Color, width: float) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var array_mesh := ArrayMesh.new()

@@ -25,7 +25,7 @@ class_name AreaInstantiator
 @export_range(1, 10) var granularity: int = 1
 
 @export_group("Car Spawning")
-@export var enable_car_spawning: bool = true
+@export var enable_car_spawning: bool = false
 @export var spawn_interval: float = 0.1
 @export var spawn_safety_margin: float = 3.0
 @export var max_cars_per_cylinder: int = 200
