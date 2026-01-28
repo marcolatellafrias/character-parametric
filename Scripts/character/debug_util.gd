@@ -585,25 +585,27 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 
 # Crea un cubo skewed con chamfers en sus edges verticales, especificados en unidades de grid.
 # 
-# grid_divisions: Define un grid NxN conceptual sobre el quad base. Cada edge del quad
-#                 queda dividido en N segmentos de igual longitud.
+# rows: Número de divisiones para los edges pares (0 y 2) en orden clockwise.
+# columns: Número de divisiones para los edges impares (1 y 3) en orden clockwise.
 # 
 # chamfers: Diccionario donde la clave es el índice del vértice (0-3) y el valor es [c1, c2]
 #           expresado en NÚMERO DE CELDAS del grid, no en unidades reales.
-#           c1: celdas chamfereadas hacia el edge que conecta con el vértice anterior (sentido anti-clockwise)
-#           c2: celdas chamfereadas hacia el edge que conecta con el vértice siguiente (sentido clockwise)
+#           c1: celdas chamfereadas hacia el edge que conecta con el vértice anterior
+#           c2: celdas chamfereadas hacia el edge que conecta con el vértice siguiente
+#           Los edges pares (0, 2) usan 'rows' para calcular el tamaño de celda.
+#           Los edges impares (1, 3) usan 'columns' para calcular el tamaño de celda.
 # 
-# Ejemplo: Si grid_divisions=4 y chamfers={0: [1, 2]}, el edge vertical en el vértice 0
-#          será chamfereado 1/4 de la longitud del edge hacia v3, y 2/4 hacia v1.
+# Ejemplo: Si rows=4, columns=6, y chamfers={0: [1, 2]}, el edge vertical en v0
+#          será chamfereado 1/6 del edge 3 hacia v3, y 2/4 del edge 0 hacia v1.
 # 
 # Si chamfers está vacío o todos los valores son [0, 0], se comporta igual que create_skewed_cube.
-static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float, color: Color, chamfers: Dictionary, grid_divisions: int, use_transparency: bool = false) -> MeshInstance3D:
+static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float, color: Color, chamfers: Dictionary, rows: int, columns: int, use_transparency: bool = false) -> MeshInstance3D:
 	if base_vertices.size() != 4:
 		push_error("Se requieren exactamente 4 vértices para la base")
 		return null
 	
-	if grid_divisions <= 0:
-		push_error("grid_divisions debe ser mayor que 0")
+	if rows <= 0 or columns <= 0:
+		push_error("rows y columns deben ser mayores que 0")
 		return null
 	
 	# Convertir chamfers de celdas a unidades reales
@@ -615,17 +617,22 @@ static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float
 			var c1_cells = chamfer_cells[0] if chamfer_cells.size() > 0 else 0
 			var c2_cells = chamfer_cells[1] if chamfer_cells.size() > 1 else 0
 			
-			# Edge hacia el vértice anterior (para c1)
+			# Edge hacia el vértice anterior (c1)
 			var prev_i = (i - 1 + 4) % 4
 			var edge_prev_length = base_vertices[i].distance_to(base_vertices[prev_i])
-			var cell_size_prev = edge_prev_length / float(grid_divisions)
+			# Edge prev_i es el edge que llega a vértice i
+			# Edges pares (0, 2) usan rows, impares (1, 3) usan columns
+			var divisions_prev = columns if prev_i % 2 == 1 else rows
+			var cell_size_prev = edge_prev_length / float(divisions_prev)
 			
-			# Edge hacia el vértice siguiente (para c2)
+			# Edge hacia el vértice siguiente (c2)
 			var next_i = (i + 1) % 4
 			var edge_next_length = base_vertices[i].distance_to(base_vertices[next_i])
-			var cell_size_next = edge_next_length / float(grid_divisions)
+			# Edge i es el edge que sale del vértice i
+			# Edges pares (0, 2) usan rows, impares (1, 3) usan columns
+			var divisions_next = columns if i % 2 == 1 else rows
+			var cell_size_next = edge_next_length / float(divisions_next)
 			
-			# Convertir a unidades reales
 			var c1_real = c1_cells * cell_size_prev
 			var c2_real = c2_cells * cell_size_next
 			
@@ -634,14 +641,18 @@ static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float
 	return create_skewed_cube_advanced(base_vertices, height, color, real_chamfers, use_transparency)
 
 # Crea un StaticBody3D con collider que coincide con la forma de create_skewed_cube_advanced_grid.
-# Los parámetros son los mismos que create_skewed_cube_advanced_grid excepto color y use_transparency.
-static func create_skewed_cube_advanced_grid_collider(base_vertices: Array, height: float, chamfers: Dictionary, grid_divisions: int) -> StaticBody3D:
+# 
+# rows: Número de divisiones para los edges pares (0 y 2) en orden clockwise.
+# columns: Número de divisiones para los edges impares (1 y 3) en orden clockwise.
+# 
+# chamfers: Mismo formato que en create_skewed_cube_advanced_grid.
+static func create_skewed_cube_advanced_grid_collider(base_vertices: Array, height: float, chamfers: Dictionary, rows: int, columns: int) -> StaticBody3D:
 	if base_vertices.size() != 4:
 		push_error("Se requieren exactamente 4 vértices para la base")
 		return null
 	
-	if grid_divisions <= 0:
-		push_error("grid_divisions debe ser mayor que 0")
+	if rows <= 0 or columns <= 0:
+		push_error("rows y columns deben ser mayores que 0")
 		return null
 	
 	# Convertir chamfers de celdas a unidades reales
@@ -655,11 +666,13 @@ static func create_skewed_cube_advanced_grid_collider(base_vertices: Array, heig
 			
 			var prev_i = (i - 1 + 4) % 4
 			var edge_prev_length = base_vertices[i].distance_to(base_vertices[prev_i])
-			var cell_size_prev = edge_prev_length / float(grid_divisions)
+			var divisions_prev = columns if prev_i % 2 == 1 else rows
+			var cell_size_prev = edge_prev_length / float(divisions_prev)
 			
 			var next_i = (i + 1) % 4
 			var edge_next_length = base_vertices[i].distance_to(base_vertices[next_i])
-			var cell_size_next = edge_next_length / float(grid_divisions)
+			var divisions_next = columns if i % 2 == 1 else rows
+			var cell_size_next = edge_next_length / float(divisions_next)
 			
 			var c1_real = c1_cells * cell_size_prev
 			var c2_real = c2_cells * cell_size_next
@@ -687,7 +700,6 @@ static func create_skewed_cube_advanced_grid_collider(base_vertices: Array, heig
 	# Crear array de puntos para ConvexPolygonShape3D
 	var points = PackedVector3Array()
 	
-	# Agregar todos los vértices del contorno
 	for v in bottom_contour:
 		points.append(v)
 	for v in top_contour:
