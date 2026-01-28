@@ -7,7 +7,6 @@ enum StreetType {
 	LARGE = 2
 }
 
-# Ancho de media calle en celdas por tipo
 const STREET_HALF_WIDTH_CELLS: Dictionary = {
 	StreetType.BOUNDARY: 0,
 	StreetType.SMALL: 4,
@@ -15,7 +14,13 @@ const STREET_HALF_WIDTH_CELLS: Dictionary = {
 	StreetType.LARGE: 9
 }
 
-var grid_geometry: GridGeometry
+# Geometría del bloque (antes en GridGeometry)
+var block_rows: int
+var block_columns: int
+var block_vertices: Array[Vector2]
+var block_cell_height: float  # legacy, solo para compatibilidad
+var cells_per_floor: int
+
 var distorted_grid: DistortedGrid
 var path_generator: PathGenerator
 
@@ -28,7 +33,6 @@ var available_max_x: int
 var available_min_z: int
 var available_max_z: int
 
-var building_modules: Dictionary = {}
 var building_clusters: Array[BuildingCluster] = []
 var cell_to_cluster: Dictionary = {}
 
@@ -43,12 +47,7 @@ var building_alleyway_offsets: Dictionary
 
 var cluster_seed: int
 
-# Lane lines - puntos temporales para visualización
-# key: "edge_idx_node_idx" -> {point_a: Vector2, point_b: Vector2}
 var temporal_lane_points: Dictionary = {}
-
-# Lane planes finales
-# key: "edge_idx_node_idx" -> {start: Vector2, end: Vector2, is_start_lane: bool, height: float}
 var lane_planes: Dictionary = {}
 
 func _init(
@@ -57,7 +56,6 @@ func _init(
 	p_vertices: Array[Vector2],
 	p_street_types: Array[int],
 	p_cell_height: float,
-	p_floors: int,
 	p_cells_per_floor: int,
 	p_is_clockwise: bool,
 	p_street_offsets: Dictionary,
@@ -86,6 +84,13 @@ func _init(
 	is_clockwise = p_is_clockwise
 	street_offsets = p_street_offsets
 	
+	# Geometría del bloque
+	block_rows = p_rows
+	block_columns = p_columns
+	block_vertices = p_vertices
+	block_cell_height = p_cell_height
+	cells_per_floor = p_cells_per_floor
+	
 	building_rows = p_building_rows
 	building_columns = p_building_columns
 	building_cell_height = p_building_cell_height
@@ -105,15 +110,6 @@ func _init(
 		}
 	else:
 		building_alleyway_offsets = p_building_alleyway_offsets
-	
-	grid_geometry = GridGeometry.new(
-		p_rows,
-		p_columns,
-		p_vertices,
-		p_cell_height,
-		p_floors,
-		p_cells_per_floor
-	)
 	
 	_calculate_available_area()
 	
@@ -137,8 +133,6 @@ func _init(
 		p_grid_seed
 	)
 	
-	_create_buildings()
-	
 	cluster_seed = p_grid_seed if p_grid_seed != -1 else randi()
 	_create_building_clusters()
 	_assign_block_hearts()
@@ -152,9 +146,9 @@ func _calculate_available_area() -> void:
 	var east_offset = street_offsets.get(street_types[1], 0)
 	
 	available_min_x = west_offset
-	available_max_x = grid_geometry.columns - east_offset - 1
+	available_max_x = block_columns - east_offset - 1
 	available_min_z = north_offset
-	available_max_z = grid_geometry.rows - south_offset - 1
+	available_max_z = block_rows - south_offset - 1
 
 func _calculate_street_offsets() -> Dictionary:
 	var offsets: Dictionary = {}
@@ -205,55 +199,10 @@ func _create_path_generator(
 		min_steps_before_turn,
 		grid_seed,
 		0.5,
-		grid_geometry.floors
+		max_floors_per_cluster
 	)
 	
 	path_generator.generate()
-
-func _create_buildings() -> void:
-	building_modules.clear()
-	
-	for floor in range(grid_geometry.floors):
-		for z in range(distorted_grid.rows):
-			for x in range(distorted_grid.columns):
-				var cell_vertices = distorted_grid.get_cell_vertices(x, z)
-				
-				if cell_vertices.size() != 4:
-					continue
-				
-				var edge_types_array: Array[int] = []
-				
-				if z == 0:
-					edge_types_array.append(-1)
-				else:
-					edge_types_array.append(path_generator.get_path_edge_type_vertices(x, z, x + 1, z, floor))
-				
-				if x == distorted_grid.columns - 1:
-					edge_types_array.append(-1)
-				else:
-					edge_types_array.append(path_generator.get_path_edge_type_vertices(x + 1, z, x + 1, z + 1, floor))
-				
-				if z == distorted_grid.rows - 1:
-					edge_types_array.append(-1)
-				else:
-					edge_types_array.append(path_generator.get_path_edge_type_vertices(x + 1, z + 1, x, z + 1, floor))
-				
-				if x == 0:
-					edge_types_array.append(-1)
-				else:
-					edge_types_array.append(path_generator.get_path_edge_type_vertices(x, z + 1, x, z, floor))
-				
-				var building_module = BuildingModule.new(
-					cell_vertices,
-					edge_types_array,
-					building_rows,
-					building_columns,
-					building_cell_height,
-					building_alleyway_offsets,
-					floor
-				)
-				
-				building_modules["%d_%d_%d" % [x, z, floor]] = building_module
 
 func _create_building_clusters() -> void:
 	building_clusters.clear()
@@ -265,13 +214,24 @@ func _create_building_clusters() -> void:
 	
 	var sections = _identify_sections()
 	
-	print("[BlockGenerator] Secciones identificadas: %d (compartidas por todos los pisos)" % sections.size())
+	print("[BlockGenerator] Secciones identificadas: %d" % sections.size())
 	
 	for section in sections:
 		var section_clusters = _subdivide_section_into_clusters(section, rng, cluster_id)
 		cluster_id += section_clusters
 	
-	print("[BlockGenerator] Clusters totales generados: %d (compartidos por todos los pisos)" % building_clusters.size())
+	# Configurar todos los clusters con la info de grilla
+	for cluster in building_clusters:
+		cluster.set_grid_config(
+			distorted_grid,
+			path_generator,
+			building_rows,
+			building_columns,
+			building_cell_height,
+			building_alleyway_offsets
+		)
+	
+	print("[BlockGenerator] Clusters totales generados: %d" % building_clusters.size())
 
 func _identify_sections() -> Array[Array]:
 	var sections: Array[Array] = []
@@ -361,7 +321,7 @@ func _is_alleyway_type(edge_type: int) -> bool:
 		DistortedGrid.CellType.BIG,
 		DistortedGrid.CellType.SMALL_ORIGIN,
 		DistortedGrid.CellType.BIG_ORIGIN,
-		DistortedGrid.CellType.FACADE  # CAMBIO: era BOUNDARY
+		DistortedGrid.CellType.FACADE
 	]
 
 func _subdivide_section_into_clusters(section: Array, rng: RandomNumberGenerator, start_cluster_id: int) -> int:
@@ -462,31 +422,27 @@ func _assign_block_hearts() -> void:
 				hearts_count += 1
 	
 	if candidates_count > 0:
-		print("[BlockGenerator] Corazones de manzana: %d de %d candidatos (%.1f%%) - sin altura" % 
+		print("[BlockGenerator] Corazones de manzana: %d de %d candidatos (%.1f%%)" % 
 			[hearts_count, candidates_count, (float(hearts_count) / float(candidates_count)) * 100.0])
 
 func _get_core_block_vertices() -> Array[Vector2]:
 	var vertices: Array[Vector2] = []
 	
-	var full_vertices = grid_geometry.vertices
-	var columns = grid_geometry.columns
-	var rows = grid_geometry.rows
+	var u_min = float(available_min_x) / max(1, block_columns)
+	var u_max = float(available_max_x + 1) / max(1, block_columns)
+	var v_min = float(available_min_z) / max(1, block_rows)
+	var v_max = float(available_max_z + 1) / max(1, block_rows)
 	
-	var u_min = float(available_min_x) / max(1, columns)
-	var u_max = float(available_max_x + 1) / max(1, columns)
-	var v_min = float(available_min_z) / max(1, rows)
-	var v_max = float(available_max_z + 1) / max(1, rows)
-	
-	var bl = GridHelper.bilinear_interpolation(full_vertices, u_min, v_min)
+	var bl = GridHelper.bilinear_interpolation(block_vertices, u_min, v_min)
 	vertices.append(bl)
 	
-	var br = GridHelper.bilinear_interpolation(full_vertices, u_max, v_min)
+	var br = GridHelper.bilinear_interpolation(block_vertices, u_max, v_min)
 	vertices.append(br)
 	
-	var tr = GridHelper.bilinear_interpolation(full_vertices, u_max, v_max)
+	var tr = GridHelper.bilinear_interpolation(block_vertices, u_max, v_max)
 	vertices.append(tr)
 	
-	var tl = GridHelper.bilinear_interpolation(full_vertices, u_min, v_max)
+	var tl = GridHelper.bilinear_interpolation(block_vertices, u_min, v_max)
 	vertices.append(tl)
 	
 	return vertices
@@ -494,67 +450,63 @@ func _get_core_block_vertices() -> Array[Vector2]:
 func get_block_corners() -> Array[Vector3]:
 	var corners: Array[Vector3] = []
 	
-	var vertices = grid_geometry.vertices
-	var columns = grid_geometry.columns
-	var rows = grid_geometry.rows
-	
-	var u_min = float(available_min_x) / max(1, columns)
-	var u_max = float(available_max_x + 1) / max(1, columns)
-	var v_min = float(available_min_z) / max(1, rows)
-	var v_max = float(available_max_z + 1) / max(1, rows)
+	var u_min = float(available_min_x) / max(1, block_columns)
+	var u_max = float(available_max_x + 1) / max(1, block_columns)
+	var v_min = float(available_min_z) / max(1, block_rows)
+	var v_max = float(available_max_z + 1) / max(1, block_rows)
 	
 	var corner_bl_2d = (
-		vertices[0] * (1 - u_min) * (1 - v_min) +
-		vertices[1] * u_min * (1 - v_min) +
-		vertices[2] * u_min * v_min +
-		vertices[3] * (1 - u_min) * v_min
+		block_vertices[0] * (1 - u_min) * (1 - v_min) +
+		block_vertices[1] * u_min * (1 - v_min) +
+		block_vertices[2] * u_min * v_min +
+		block_vertices[3] * (1 - u_min) * v_min
 	)
 	corners.append(Vector3(corner_bl_2d.x, 0.0, corner_bl_2d.y))
 	
 	var corner_br_2d = (
-		vertices[0] * (1 - u_max) * (1 - v_min) +
-		vertices[1] * u_max * (1 - v_min) +
-		vertices[2] * u_max * v_min +
-		vertices[3] * (1 - u_max) * v_min
+		block_vertices[0] * (1 - u_max) * (1 - v_min) +
+		block_vertices[1] * u_max * (1 - v_min) +
+		block_vertices[2] * u_max * v_min +
+		block_vertices[3] * (1 - u_max) * v_min
 	)
 	corners.append(Vector3(corner_br_2d.x, 0.0, corner_br_2d.y))
 	
 	var corner_tr_2d = (
-		vertices[0] * (1 - u_max) * (1 - v_max) +
-		vertices[1] * u_max * (1 - v_max) +
-		vertices[2] * u_max * v_max +
-		vertices[3] * (1 - u_max) * v_max
+		block_vertices[0] * (1 - u_max) * (1 - v_max) +
+		block_vertices[1] * u_max * (1 - v_max) +
+		block_vertices[2] * u_max * v_max +
+		block_vertices[3] * (1 - u_max) * v_max
 	)
 	corners.append(Vector3(corner_tr_2d.x, 0.0, corner_tr_2d.y))
 	
 	var corner_tl_2d = (
-		vertices[0] * (1 - u_min) * (1 - v_max) +
-		vertices[1] * u_min * (1 - v_max) +
-		vertices[2] * u_min * v_max +
-		vertices[3] * (1 - u_min) * v_max
+		block_vertices[0] * (1 - u_min) * (1 - v_max) +
+		block_vertices[1] * u_min * (1 - v_max) +
+		block_vertices[2] * u_min * v_max +
+		block_vertices[3] * (1 - u_min) * v_max
 	)
 	corners.append(Vector3(corner_tl_2d.x, 0.0, corner_tl_2d.y))
 	
 	return corners
 
 func get_building_module(x: int, z: int, floor: int = 0) -> BuildingModule:
-	var key = "%d_%d_%d" % [x, z, floor]
-	return building_modules.get(key, null)
+	var cluster = get_cluster_for_cell(x, z)
+	if cluster == null:
+		return null
+	
+	return cluster.get_building_module(x, z, floor)
 
 func get_rows() -> int:
-	return grid_geometry.rows
+	return block_rows
 
 func get_columns() -> int:
-	return grid_geometry.columns
+	return block_columns
 
 func get_cell_height() -> float:
-	return grid_geometry.cell_height
-
-func get_floors() -> int:
-	return grid_geometry.floors
+	return block_cell_height
 
 func get_cells_per_floor() -> int:
-	return grid_geometry.cells_per_floor
+	return cells_per_floor
 
 func get_distorted_grid() -> DistortedGrid:
 	return distorted_grid
@@ -578,22 +530,12 @@ func get_max_building_height() -> float:
 	var max_height = 0.0
 	
 	for cluster in building_clusters:
-		var cluster_floors = cluster.get_floor_count()
-		var actual_floors = min(cluster_floors, grid_geometry.floors)
-		
-		# CAMBIO: Usar building_cell_height en vez de grid_geometry.cell_height
-		var cluster_height = actual_floors * grid_geometry.cells_per_floor * building_cell_height
+		var cluster_height = cluster.floor_count * cells_per_floor * building_cell_height
 		
 		if cluster_height > max_height:
 			max_height = cluster_height
 	
 	return max_height
-
-
-
-# ============================================
-# LANE LINES - ACCESO A PUNTOS TEMPORALES
-# ============================================
 
 func get_temporal_lane_points() -> Dictionary:
 	return temporal_lane_points
@@ -607,33 +549,17 @@ func get_lane_planes() -> Dictionary:
 func get_is_clockwise() -> bool:
 	return is_clockwise
 
-# ============================================
-# LANE PLANES - HELPERS
-# ============================================
-
-# Obtiene el volumen formado por las dos lane planes de un edge específico
-# Retorna un Dictionary con los 8 vértices que forman el "skewed cube"
-# edge_idx: índice del edge (0, 1, 2, o 3)
-# Retorna: {
-#   "vertices": Array[Vector3] (8 vértices),
-#   "start_plane_vertices": Array[Vector3] (4 vértices de la start lane plane),
-#   "end_plane_vertices": Array[Vector3] (4 vértices de la end lane plane)
-# }
-# Retorna Dictionary vacío si el edge es boundary o no tiene ambas lane planes
 func get_edge_lane_volume(edge_idx: int) -> Dictionary:
 	if edge_idx < 0 or edge_idx > 3:
 		push_error("Edge index debe estar entre 0 y 3, recibido: %d" % edge_idx)
 		return {}
 	
-	# Buscar las dos lane planes del edge (una start y una end)
 	var start_lane_key = "%d_0" % edge_idx
 	var end_lane_key = "%d_1" % edge_idx
 	
-	# Dependiendo de clockwiseness, determinar cuál es start y cuál es end
 	var start_plane_data = null
 	var end_plane_data = null
 	
-	# Verificar ambas posibilidades ya que la asignación de start/end depende del clockwiseness
 	if start_lane_key in lane_planes:
 		var plane_data = lane_planes[start_lane_key]
 		if plane_data["is_start_lane"]:
@@ -648,28 +574,22 @@ func get_edge_lane_volume(edge_idx: int) -> Dictionary:
 		else:
 			end_plane_data = plane_data
 	
-	# Si no se encontraron ambas lane planes, retornar vacío silenciosamente
-	# Esto es normal para edges boundary (límites de la ciudad)
 	if start_plane_data == null or end_plane_data == null:
 		return {}
 	
 	var height = start_plane_data["height"]
-	var street_type = start_plane_data.get("street_type", 0)  # Default a SMALL si no existe
+	var street_type = start_plane_data.get("street_type", 0)
 	
-	# Crear los 4 vértices de la start lane plane
 	var start_plane_v1 = Vector3(start_plane_data["start"].x, 0.0, start_plane_data["start"].y)
 	var start_plane_v2 = Vector3(start_plane_data["end"].x, 0.0, start_plane_data["end"].y)
 	var start_plane_v3 = Vector3(start_plane_data["end"].x, height, start_plane_data["end"].y)
 	var start_plane_v4 = Vector3(start_plane_data["start"].x, height, start_plane_data["start"].y)
 	
-	# Crear los 4 vértices de la end lane plane
 	var end_plane_v1 = Vector3(end_plane_data["start"].x, 0.0, end_plane_data["start"].y)
 	var end_plane_v2 = Vector3(end_plane_data["end"].x, 0.0, end_plane_data["end"].y)
 	var end_plane_v3 = Vector3(end_plane_data["end"].x, height, end_plane_data["end"].y)
 	var end_plane_v4 = Vector3(end_plane_data["start"].x, height, end_plane_data["start"].y)
 	
-	# Array con los 8 vértices del volumen
-	# Orden: 4 vértices de start plane + 4 vértices de end plane
 	var all_vertices: Array[Vector3] = [
 		start_plane_v1, start_plane_v2, start_plane_v3, start_plane_v4,
 		end_plane_v1, end_plane_v2, end_plane_v3, end_plane_v4

@@ -48,7 +48,6 @@ func generate_city_graph(
 	num_small_streets: int,
 	block_grid_rows: int,
 	block_grid_columns: int,
-	block_grid_floors: int,
 	block_cells_per_floor: int,
 	p_distorted_grid_rows: int = 10,
 	p_distorted_grid_columns: int = 10,
@@ -128,7 +127,6 @@ func generate_city_graph(
 	
 	# Grillas de manzanas con building_cell_height global
 	_generate_block_grids(
-		block_grid_floors,
 		block_cells_per_floor,
 		p_block_cell_height,
 		global_building_cell_height
@@ -347,7 +345,6 @@ func get_streets_of_type(street_type: int) -> Array:
 # ============================================
 
 func _generate_block_grids(
-	floors: int,
 	cells_per_floor: int,
 	block_cell_height: float,
 	building_cell_height: float  # <-- Ahora se recibe como parámetro
@@ -412,7 +409,6 @@ func _generate_block_grids(
 			face_vertices,
 			street_types_array,
 			block_cell_height,
-			floors,
 			cells_per_floor,
 			is_clockwise,
 			street_offsets,

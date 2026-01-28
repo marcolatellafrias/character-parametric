@@ -49,7 +49,6 @@ extends Node3D
 @export_group("Grillas de Manzanas")
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
-@export var block_grid_floors: int = 8
 @export var block_cells_per_floor: int = 12
 
 @export_group("Grilla Distorsionada")
@@ -207,7 +206,6 @@ func generate_graph() -> void:
 		num_small_streets,
 		block_grid_rows,
 		block_grid_columns,
-		block_grid_floors,
 		block_cells_per_floor,
 		distorted_grid_rows,
 		distorted_grid_columns,
@@ -348,9 +346,14 @@ func _visualize_floor_planes() -> void:
 		if block == null:
 			continue
 		
-		var floors = block.get_floors()
+		# Calcular el máximo de pisos entre todos los clusters de este bloque
+		var max_floors = 0
+		var clusters = block.get_all_clusters()
+		for cluster in clusters:
+			max_floors = max(max_floors, cluster.get_floor_count())
+		
 		var cells_per_floor = block.get_cells_per_floor()
-		var building_cell_height = block.get_building_cell_height()  # CAMBIO
+		var building_cell_height = block.get_building_cell_height()
 		
 		var face_nodes = generator.plain_graph.faces[face_idx]
 		var face_vertices_3d: Array[Vector3] = []
@@ -361,8 +364,8 @@ func _visualize_floor_planes() -> void:
 		if face_vertices_3d.size() != 4:
 			continue
 		
-		for floor in range(floors):
-			var y = floor * cells_per_floor * building_cell_height  # CAMBIO
+		for floor in range(max_floors):
+			var y = floor * cells_per_floor * building_cell_height
 			
 			var v1 = Vector3(face_vertices_3d[0].x, y, face_vertices_3d[0].z)
 			var v2 = Vector3(face_vertices_3d[1].x, y, face_vertices_3d[1].z)
@@ -754,21 +757,7 @@ func _visualize_pedestrian_planes() -> void:
 	print("[Visualizer] Planos peatonales generados: %d" % total_planes)
 
 func _calculate_max_building_height() -> float:
-	var max_height = 0.0
-	var all_block_faces = generator.get_all_block_faces()
-	
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		
-		if block == null:
-			continue
-		
-		var block_height = block.get_floors() * block.get_cells_per_floor() * block.get_cell_height()
-		
-		if block_height > max_height:
-			max_height = block_height
-	
-	return max_height
+	return generator.get_max_building_height_global()
 
 # ============================================
 # VISUALIZACIÓN DE LANE PLANES FINALES
