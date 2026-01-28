@@ -28,7 +28,7 @@ var available_max_x: int
 var available_min_z: int
 var available_max_z: int
 
-var buildings: Dictionary = {}
+var building_modules: Dictionary = {}
 var building_clusters: Array[BuildingCluster] = []
 var cell_to_cluster: Dictionary = {}
 
@@ -211,7 +211,7 @@ func _create_path_generator(
 	path_generator.generate()
 
 func _create_buildings() -> void:
-	buildings.clear()
+	building_modules.clear()
 	
 	for floor in range(grid_geometry.floors):
 		for z in range(distorted_grid.rows):
@@ -243,7 +243,7 @@ func _create_buildings() -> void:
 				else:
 					edge_types_array.append(path_generator.get_path_edge_type_vertices(x, z + 1, x, z, floor))
 				
-				var building = Building.new(
+				var building_module = BuildingModule.new(
 					cell_vertices,
 					edge_types_array,
 					building_rows,
@@ -253,7 +253,7 @@ func _create_buildings() -> void:
 					floor
 				)
 				
-				buildings["%d_%d_%d" % [x, z, floor]] = building
+				building_modules["%d_%d_%d" % [x, z, floor]] = building_module
 
 func _create_building_clusters() -> void:
 	building_clusters.clear()
@@ -537,9 +537,9 @@ func get_block_corners() -> Array[Vector3]:
 	
 	return corners
 
-func get_building(x: int, z: int, floor: int = 0) -> Building:
+func get_building_module(x: int, z: int, floor: int = 0) -> BuildingModule:
 	var key = "%d_%d_%d" % [x, z, floor]
-	return buildings.get(key, null)
+	return building_modules.get(key, null)
 
 func get_rows() -> int:
 	return grid_geometry.rows

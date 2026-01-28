@@ -1,4 +1,4 @@
-class_name Building extends RefCounted
+class_name BuildingModule extends RefCounted
 
 # Vértices del quad completo [BL, BR, TR, TL]
 var vertices: Array[Vector3]

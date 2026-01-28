@@ -5,7 +5,7 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(800, 800)
+@export var region_size: Vector2 = Vector2(800/2, 800/2)
 @export var min_distance: float = 200.5
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
@@ -74,7 +74,7 @@ extends Node3D
 @export var building_grid_columns: int = 20
 
 @export_subgroup("Visualización de Grilla Distorsionada")
-@export var show_distorted_grid: bool = false
+@export var show_distorted_grid: bool = true
 @export var distorted_grid_floor_to_show: int = 0
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
@@ -416,9 +416,9 @@ func _visualize_buildings() -> void:
 				var first_cell = cluster.cells[0]
 				var x = first_cell.x
 				var z = first_cell.y
-				var building: Building = block.get_building(x, z, 0)
-				if building:
-					var core_vertices = building.get_core_vertices(0)
+				var building_module: BuildingModule = block.get_building_module(x, z, 0)
+				if building_module:
+					var core_vertices = building_module.get_core_vertices(0)
 					if core_vertices.size() == 4:
 						var width = core_vertices[0].distance_to(core_vertices[1])
 						var depth = core_vertices[1].distance_to(core_vertices[2])
@@ -445,17 +445,17 @@ func _visualize_buildings() -> void:
 					var x = cell.x
 					var z = cell.y
 					
-					var building: Building = block.get_building(x, z, floor)
+					var building_module: BuildingModule = block.get_building_module(x, z, floor)
 					
-					if building == null:
+					if building_module == null:
 						continue
 					
-					var core_vertices = building.get_core_vertices(0)
+					var core_vertices = building_module.get_core_vertices(0)
 					
 					if core_vertices.size() != 4:
 						continue
 					
-					var core_info = building.get_core_info()
+					var core_info = building_module.get_core_info()
 					if core_info["width"] <= 0 or core_info["depth"] <= 0:
 						continue
 					
@@ -515,17 +515,17 @@ func _visualize_building_colliders() -> void:
 					var x = cell.x
 					var z = cell.y
 					
-					var building: Building = block.get_building(x, z, floor)
+					var building_module: BuildingModule = block.get_building_module(x, z, floor)
 					
-					if building == null:
+					if building_module == null:
 						continue
 					
-					var core_vertices = building.get_core_vertices(0)
+					var core_vertices = building_module.get_core_vertices(0)
 					
 					if core_vertices.size() != 4:
 						continue
 					
-					var core_info = building.get_core_info()
+					var core_info = building_module.get_core_info()
 					if core_info["width"] <= 0 or core_info["depth"] <= 0:
 						continue
 					

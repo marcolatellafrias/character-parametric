@@ -90,15 +90,15 @@ func get_volume_vertices(
 		return {}
 	
 	# Obtener el building de la celda distorted
-	var building: Building = block.get_building(distorted_x, distorted_z, 0)
+	var building_module: BuildingModule = block.get_building_module(distorted_x, distorted_z, 0)
 	
-	if building == null:
-		push_error("No existe building en distorted_grid (%d, %d)" % [distorted_x, distorted_z])
+	if building_module == null:
+		push_error("No existe building module en distorted_grid (%d, %d)" % [distorted_x, distorted_z])
 		return {}
 	
 	# Obtener vértices de la base (bottom)
 	var bottom_vertices = _get_quad_vertices(
-		building,
+		building_module,
 		building_x,
 		building_z,
 		width,
@@ -108,7 +108,7 @@ func get_volume_vertices(
 	
 	# Obtener vértices del techo (top)
 	var top_vertices = _get_quad_vertices(
-		building,
+		building_module,
 		building_x,
 		building_z,
 		width,
@@ -207,7 +207,7 @@ func get_wall_vertices(
 ## @param local_floor: Altura en celdas
 ## @return: Array[Vector3] con 4 vértices [BL, BR, TR, TL]
 func _get_quad_vertices(
-	building: Building,
+	building_module: BuildingModule,
 	start_x: int,
 	start_z: int,
 	width: int,
@@ -218,22 +218,22 @@ func _get_quad_vertices(
 	
 	# Obtener vértices de las 4 esquinas del volumen rectangular
 	# Bottom-Left: (start_x, start_z)
-	var bl_cell = building.get_cell_vertices(start_x, start_z, local_floor)
+	var bl_cell = building_module.get_cell_vertices(start_x, start_z, local_floor)
 	if bl_cell.size() == 4:
 		result.append(bl_cell[0])  # Vértice BL de la celda BL
 	
 	# Bottom-Right: (start_x + width, start_z)
-	var br_cell = building.get_cell_vertices(start_x + width - 1, start_z, local_floor)
+	var br_cell = building_module.get_cell_vertices(start_x + width - 1, start_z, local_floor)
 	if br_cell.size() == 4:
 		result.append(br_cell[1])  # Vértice BR de la celda BR
 	
 	# Top-Right: (start_x + width, start_z + depth)
-	var tr_cell = building.get_cell_vertices(start_x + width - 1, start_z + depth - 1, local_floor)
+	var tr_cell = building_module.get_cell_vertices(start_x + width - 1, start_z + depth - 1, local_floor)
 	if tr_cell.size() == 4:
 		result.append(tr_cell[2])  # Vértice TR de la celda TR
 	
 	# Top-Left: (start_x, start_z + depth)
-	var tl_cell = building.get_cell_vertices(start_x, start_z + depth - 1, local_floor)
+	var tl_cell = building_module.get_cell_vertices(start_x, start_z + depth - 1, local_floor)
 	if tl_cell.size() == 4:
 		result.append(tl_cell[3])  # Vértice TL de la celda TL
 	
@@ -306,17 +306,17 @@ func get_absolute_grid_size() -> Dictionary:
 func get_debug_info(abs_x: int, abs_z: int) -> Dictionary:
 	var coords = _absolute_to_local(abs_x, abs_z)
 	
-	var building: Building = block.get_building(
+	var building_module: BuildingModule = block.get_building_module(
 		coords.distorted_x, 
 		coords.distorted_z, 
 		0
 	)
 	
-	var is_valid = building != null
+	var is_valid = building_module != null
 	var is_in_core = false
 	
 	if is_valid:
-		is_in_core = building.is_cell_in_core(
+		is_in_core = building_module.is_cell_in_core(
 			coords.building_x, 
 			coords.building_z
 		)
