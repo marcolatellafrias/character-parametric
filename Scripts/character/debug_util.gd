@@ -455,6 +455,9 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 
 # Crea un cubo skewed con chamfers en sus edges verticales, especificados en unidades reales.
 # 
+# base_vertices: Array[Vector3] con 4 vértices del quad base en orden clockwise [BL, BR, TR, TL]
+#                (Bottom-Left, Bottom-Right, Top-Right, Top-Left)
+# 
 # chamfers: Diccionario donde la clave es el índice del vértice (0-3) y el valor es [c1, c2]
 #           expresado en UNIDADES REALES (distancia en el espacio 3D).
 #           c1: distancia chamfereada hacia el edge que conecta con el vértice anterior (sentido anti-clockwise)
@@ -585,17 +588,20 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 
 # Crea un cubo skewed con chamfers en sus edges verticales, especificados en unidades de grid.
 # 
-# rows: Número de divisiones para los edges pares (0 y 2) en orden clockwise.
-# columns: Número de divisiones para los edges impares (1 y 3) en orden clockwise.
+# base_vertices: Array[Vector3] con 4 vértices del quad base en orden clockwise [BL, BR, TR, TL]
+#                (Bottom-Left, Bottom-Right, Top-Right, Top-Left)
+# 
+# rows: Número de divisiones para los edges impares (1 y 3 - east/west) en orden clockwise.
+# columns: Número de divisiones para los edges pares (0 y 2 - north/south) en orden clockwise.
 # 
 # chamfers: Diccionario donde la clave es el índice del vértice (0-3) y el valor es [c1, c2]
 #           expresado en NÚMERO DE CELDAS del grid, no en unidades reales.
 #           c1: celdas chamfereadas hacia el edge que conecta con el vértice anterior
 #           c2: celdas chamfereadas hacia el edge que conecta con el vértice siguiente
-#           Los edges pares (0, 2) usan 'rows' para calcular el tamaño de celda.
-#           Los edges impares (1, 3) usan 'columns' para calcular el tamaño de celda.
+#           Los edges pares (0, 2) usan 'columns' para calcular el tamaño de celda.
+#           Los edges impares (1, 3) usan 'rows' para calcular el tamaño de celda.
 # 
-# Ejemplo: Si rows=4, columns=6, y chamfers={0: [1, 2]}, el edge vertical en v0
+# Ejemplo: Si rows=6, columns=4, y chamfers={0: [1, 2]}, el edge vertical en v0
 #          será chamfereado 1/6 del edge 3 hacia v3, y 2/4 del edge 0 hacia v1.
 # 
 # Si chamfers está vacío o todos los valores son [0, 0], se comporta igual que create_skewed_cube.
@@ -622,7 +628,7 @@ static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float
 			var edge_prev_length = base_vertices[i].distance_to(base_vertices[prev_i])
 			# Edge prev_i es el edge que llega a vértice i
 			# Edges pares (0, 2) usan rows, impares (1, 3) usan columns
-			var divisions_prev = columns if prev_i % 2 == 1 else rows
+			var divisions_prev = rows if prev_i % 2 == 1 else columns
 			var cell_size_prev = edge_prev_length / float(divisions_prev)
 			
 			# Edge hacia el vértice siguiente (c2)
@@ -630,7 +636,7 @@ static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float
 			var edge_next_length = base_vertices[i].distance_to(base_vertices[next_i])
 			# Edge i es el edge que sale del vértice i
 			# Edges pares (0, 2) usan rows, impares (1, 3) usan columns
-			var divisions_next = columns if i % 2 == 1 else rows
+			var divisions_next = rows if i % 2 == 1 else columns
 			var cell_size_next = edge_next_length / float(divisions_next)
 			
 			var c1_real = c1_cells * cell_size_prev
@@ -642,8 +648,11 @@ static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float
 
 # Crea un StaticBody3D con collider que coincide con la forma de create_skewed_cube_advanced_grid.
 # 
-# rows: Número de divisiones para los edges pares (0 y 2) en orden clockwise.
-# columns: Número de divisiones para los edges impares (1 y 3) en orden clockwise.
+# base_vertices: Array[Vector3] con 4 vértices del quad base en orden clockwise [BL, BR, TR, TL]
+#                (Bottom-Left, Bottom-Right, Top-Right, Top-Left)
+# 
+# rows: Número de divisiones para los edges impares (1 y 3 - east/west) en orden clockwise.
+# columns: Número de divisiones para los edges pares (0 y 2 - north/south) en orden clockwise.
 # 
 # chamfers: Mismo formato que en create_skewed_cube_advanced_grid.
 static func create_skewed_cube_advanced_grid_collider(base_vertices: Array, height: float, chamfers: Dictionary, rows: int, columns: int) -> StaticBody3D:
@@ -666,12 +675,12 @@ static func create_skewed_cube_advanced_grid_collider(base_vertices: Array, heig
 			
 			var prev_i = (i - 1 + 4) % 4
 			var edge_prev_length = base_vertices[i].distance_to(base_vertices[prev_i])
-			var divisions_prev = columns if prev_i % 2 == 1 else rows
+			var divisions_prev = rows if prev_i % 2 == 1 else columns
 			var cell_size_prev = edge_prev_length / float(divisions_prev)
 			
 			var next_i = (i + 1) % 4
 			var edge_next_length = base_vertices[i].distance_to(base_vertices[next_i])
-			var divisions_next = columns if i % 2 == 1 else rows
+			var divisions_next = rows if i % 2 == 1 else columns
 			var cell_size_next = edge_next_length / float(divisions_next)
 			
 			var c1_real = c1_cells * cell_size_prev
