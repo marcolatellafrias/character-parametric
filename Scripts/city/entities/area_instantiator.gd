@@ -25,10 +25,10 @@ class_name AreaInstantiator
 @export_range(1, 10) var granularity: int = 1
 
 @export_group("Car Spawning")
-@export var enable_car_spawning: bool = false
+@export var enable_car_spawning: bool = true
 @export var spawn_interval: float = 0.1
 @export var spawn_safety_margin: float = 3.0
-@export var max_cars_per_cylinder: int = 200
+@export var max_cars_per_cylinder: int = 50
 
 var city = null
 var debug_cylinder_meshes: Array[MeshInstance3D] = []
@@ -308,8 +308,8 @@ func _try_spawn_car() -> void:
 		
 		var car_seed = randi()
 		
-		var neighborhood = selected_vol.get_neighborhood()
-		var custom_weights = neighborhood.get_car_weights() if neighborhood else {}
+		var neighborhood_type = selected_vol.get_neighborhood_type()
+		var custom_weights = NeighborhoodTypes.get_car_weights(neighborhood_type)
 		
 		var temp_car = FlyingCar.new()
 		temp_car.initialize_from_seed(car_seed, custom_weights)

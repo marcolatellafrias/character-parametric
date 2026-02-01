@@ -1,4 +1,4 @@
-class_name Neighborhood
+class_name NeighborhoodTypes
 extends RefCounted
 
 enum Type {
@@ -8,8 +8,7 @@ enum Type {
 	DOWNTOWN = 3
 }
 
-# Configuración por defecto de cada tipo
-const TYPE_CONFIGS = {
+const CONFIGS = {
 	Type.SHANTY_TOWN: {
 		"min_floors": 1,
 		"max_floors": 2,
@@ -36,8 +35,7 @@ const TYPE_CONFIGS = {
 	}
 }
 
-# Pesos de tipos de autos por tipo de barrio
-const TYPE_CAR_WEIGHTS = {
+const CAR_WEIGHTS = {
 	Type.SHANTY_TOWN: {
 		CarArchetypes.Type.POOR_CAR: 0.45,
 		CarArchetypes.Type.MOTORCYCLE: 0.25,
@@ -84,34 +82,7 @@ const TYPE_CAR_WEIGHTS = {
 	}
 }
 
-var type: Type
-var seed: int
-var index: int
-
-# Datos de configuración de pisos
-var min_floors: int
-var max_floors: int
-var block_heart_probability: float
-
-# Datos de tránsito (0.0 - 1.0)
-var traffic_density: float
-
-# Datos de expansión
-var seed_face_idx: int = -1
-var assigned_faces: Array[int] = []
-
-func _init(p_type: Type, p_seed: int, p_index: int) -> void:
-	type = p_type
-	seed = p_seed
-	index = p_index
-	
-	var config = TYPE_CONFIGS[type]
-	min_floors = config["min_floors"]
-	max_floors = config["max_floors"]
-	block_heart_probability = config["block_heart_probability"]
-	traffic_density = config["traffic_density"]
-
-func get_type_name() -> String:
+static func get_type_name(type: Type) -> String:
 	match type:
 		Type.SHANTY_TOWN:
 			return "Shanty Town"
@@ -124,49 +95,13 @@ func get_type_name() -> String:
 		_:
 			return "Unknown"
 
-func get_hierarchy() -> float:
-	return traffic_density
+static func get_hierarchy(type: Type) -> float:
+	return CONFIGS[type]["traffic_density"]
 
-func get_car_weights() -> Dictionary:
-	return TYPE_CAR_WEIGHTS.get(type, {})
+static func get_car_weights(type: Type) -> Dictionary:
+	return CAR_WEIGHTS.get(type, {})
 
-func set_floor_config(p_min: int, p_max: int, p_block_heart_prob: float) -> void:
-	min_floors = p_min
-	max_floors = p_max
-	block_heart_probability = p_block_heart_prob
-
-func set_traffic_density(p_density: float) -> void:
-	traffic_density = clamp(p_density, 0.0, 1.0)
-
-func add_face(face_idx: int) -> void:
-	if face_idx not in assigned_faces:
-		assigned_faces.append(face_idx)
-
-func has_face(face_idx: int) -> bool:
-	return face_idx in assigned_faces
-
-func get_face_count() -> int:
-	return assigned_faces.size()
-
-static func compare_hierarchy(a: Neighborhood, b: Neighborhood) -> int:
-	var a_hierarchy = a.get_hierarchy()
-	var b_hierarchy = b.get_hierarchy()
-	
-	if a_hierarchy > b_hierarchy:
-		return 1
-	elif a_hierarchy < b_hierarchy:
-		return -1
-	else:
-		return 0
-
-static func get_higher_hierarchy(a: Neighborhood, b: Neighborhood) -> Neighborhood:
-	if a == null:
-		return b
-	if b == null:
-		return a
-	
-	var comparison = compare_hierarchy(a, b)
-	if comparison >= 0:
-		return a
-	else:
-		return b
+static func get_higher_hierarchy_type(type_a: Type, type_b: Type) -> Type:
+	var hierarchy_a = get_hierarchy(type_a)
+	var hierarchy_b = get_hierarchy(type_b)
+	return type_a if hierarchy_a >= hierarchy_b else type_b

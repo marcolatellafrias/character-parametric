@@ -226,7 +226,6 @@ func _create_building_clusters() -> void:
 			building_columns,
 			building_cell_height,
 			building_alleyway_offsets
-			# YA NO PASAR is_clockwise
 		)
 	
 	print("[BlockGenerator] Clusters totales generados: %d" % building_clusters.size())

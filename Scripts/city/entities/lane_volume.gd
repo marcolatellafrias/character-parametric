@@ -17,9 +17,9 @@ var width_cells: int
 var height_cells: int
 var street_type: int
 var volume_height: float
-var block_height: float  # NUEVO: Altura de la manzana específica
+var block_height: float
 
-var neighborhood: Neighborhood
+var neighborhood_type: int
 
 var raw_data: Dictionary
 
@@ -40,7 +40,7 @@ func _init(volume_data: Dictionary) -> void:
 	street_type = volume_data.get("street_type", 0)
 	volume_height = volume_data.get("height", 0.0)
 	block_height = volume_data.get("block_height", volume_height)
-	neighborhood = volume_data.get("neighborhood", null)
+	neighborhood_type = volume_data.get("neighborhood_type", NeighborhoodTypes.Type.DOWNTOWN)
 	cells_per_floor = volume_data.get("cells_per_floor", 5)
 	
 	_setup_area()
@@ -63,10 +63,10 @@ func _setup_area() -> void:
 	set_meta("street_type", street_type)
 	set_meta("lane_id", get_id())
 	
-	if neighborhood:
-		set_meta("neighborhood_type", neighborhood.type)
-		set_meta("neighborhood_name", neighborhood.get_type_name())
-		set_meta("neighborhood_base_density", neighborhood.traffic_density)
+	var config = NeighborhoodTypes.CONFIGS[neighborhood_type]
+	set_meta("neighborhood_type", neighborhood_type)
+	set_meta("neighborhood_name", NeighborhoodTypes.get_type_name(neighborhood_type))
+	set_meta("neighborhood_base_density", config["traffic_density"])
 	
 	set_meta("traffic_density", get_traffic_density())
 
@@ -107,27 +107,19 @@ func get_end_node_index(plain_graph) -> int:
 # MÉTODOS DE BARRIO
 # ============================================================================
 
-func get_neighborhood() -> Neighborhood:
-	return neighborhood
-
 func get_traffic_density() -> float:
 	var street_density = STREET_TYPE_TRAFFIC_DENSITY.get(street_type, 0.5)
 	
-	var neighborhood_density = 0.5
-	if neighborhood:
-		neighborhood_density = neighborhood.traffic_density
+	var config = NeighborhoodTypes.CONFIGS[neighborhood_type]
+	var neighborhood_density = config["traffic_density"]
 	
 	return street_density * neighborhood_density
 
 func get_neighborhood_type() -> int:
-	if neighborhood:
-		return neighborhood.type
-	return -1
+	return neighborhood_type
 
 func get_neighborhood_name() -> String:
-	if neighborhood:
-		return neighborhood.get_type_name()
-	return "Unknown"
+	return NeighborhoodTypes.get_type_name(neighborhood_type)
 
 # ============================================================================
 # MÉTODOS DE GEOMETRÍA Y PATH
@@ -258,10 +250,8 @@ func validate_face_projection(face_vertices: Array, grid_u: float, grid_v: float
 	return {"valid": true, "collision_plane": ""}
 
 func get_max_spawn_v() -> float:
-	if not neighborhood:
-		return 1.0
-	
-	var max_floors = neighborhood.max_floors
+	var config = NeighborhoodTypes.CONFIGS[neighborhood_type]
+	var max_floors = config["max_floors"]
 	var max_height_cells = max_floors * cells_per_floor
 	
 	return min(1.0, float(max_height_cells) / float(height_cells))

@@ -39,7 +39,6 @@ func _init(
 	p_grid_x: int = -1,
 	p_grid_z: int = -1,
 	p_path_generator: PathGenerator = null
-	# ELIMINAR: p_is_clockwise
 ) -> void:
 	vertices = p_vertices
 	edge_types = p_edge_types
@@ -48,7 +47,6 @@ func _init(
 	cell_height = p_cell_height
 	alleyway_offsets = p_alleyway_offsets
 	floor = p_floor
-	# ELIMINAR: is_clockwise = p_is_clockwise
 	
 	_calculate_core_area()
 	

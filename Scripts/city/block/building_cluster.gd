@@ -44,7 +44,6 @@ func set_grid_config(
 	p_building_columns: int,
 	p_building_cell_height: float,
 	p_building_alleyway_offsets: Dictionary
-	# ELIMINAR: p_is_clockwise
 ) -> void:
 	if not p_path_generator.is_generated:
 		push_error("PathGenerator debe ser generado antes de configurar BuildingCluster. Llama a path_generator.generate() primero.")

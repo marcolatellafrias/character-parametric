@@ -505,11 +505,8 @@ func _select_continuation_by_angle(continuations: Array) -> Dictionary:
 	return continuations[0] if not continuations.is_empty() else {}
 
 func _get_neighborhood_affinity(lane_vol: LaneVolume) -> float:
-	var neighborhood = lane_vol.get_neighborhood()
-	if not neighborhood:
-		return 0.5
-	
-	return CarArchetypes.get_neighborhood_affinity(car_archetype, neighborhood.type)
+	var neighborhood_type = lane_vol.get_neighborhood_type()
+	return CarArchetypes.get_neighborhood_affinity(car_archetype, neighborhood_type)
 
 func get_front_face_at_segment(start: Vector3, end: Vector3) -> Array:
 	var direction = (end - start).normalized()

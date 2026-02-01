@@ -19,58 +19,58 @@ enum Type {
 # Tabla de afinidad: qué tan probable es que un tipo de auto elija un tipo de barrio
 const NEIGHBORHOOD_AFFINITY = {
 	Type.RICH_CAR: {
-		Neighborhood.Type.RICH_RESIDENTIAL: 1.0,
-		Neighborhood.Type.DOWNTOWN: 0.7,
-		Neighborhood.Type.INDUSTRIAL: 0.2,
-		Neighborhood.Type.SHANTY_TOWN: 0.1
+		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 1.0,
+		NeighborhoodTypes.Type.DOWNTOWN: 0.7,
+		NeighborhoodTypes.Type.INDUSTRIAL: 0.2,
+		NeighborhoodTypes.Type.SHANTY_TOWN: 0.1
 	},
 	Type.POOR_CAR: {
-		Neighborhood.Type.SHANTY_TOWN: 1.0,
-		Neighborhood.Type.INDUSTRIAL: 0.6,
-		Neighborhood.Type.DOWNTOWN: 0.4,
-		Neighborhood.Type.RICH_RESIDENTIAL: 0.2
+		NeighborhoodTypes.Type.SHANTY_TOWN: 1.0,
+		NeighborhoodTypes.Type.INDUSTRIAL: 0.6,
+		NeighborhoodTypes.Type.DOWNTOWN: 0.4,
+		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.2
 	},
 	Type.TAXI: {
-		Neighborhood.Type.DOWNTOWN: 1.0,
-		Neighborhood.Type.RICH_RESIDENTIAL: 0.8,
-		Neighborhood.Type.SHANTY_TOWN: 0.6,
-		Neighborhood.Type.INDUSTRIAL: 0.5
+		NeighborhoodTypes.Type.DOWNTOWN: 1.0,
+		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.8,
+		NeighborhoodTypes.Type.SHANTY_TOWN: 0.6,
+		NeighborhoodTypes.Type.INDUSTRIAL: 0.5
 	},
 	Type.UTILITY_TRUCK: {
-		Neighborhood.Type.INDUSTRIAL: 1.0,
-		Neighborhood.Type.DOWNTOWN: 0.5,
-		Neighborhood.Type.SHANTY_TOWN: 0.4,
-		Neighborhood.Type.RICH_RESIDENTIAL: 0.3
+		NeighborhoodTypes.Type.INDUSTRIAL: 1.0,
+		NeighborhoodTypes.Type.DOWNTOWN: 0.5,
+		NeighborhoodTypes.Type.SHANTY_TOWN: 0.4,
+		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.3
 	},
 	Type.MOTORCYCLE: {
-		Neighborhood.Type.SHANTY_TOWN: 0.8,
-		Neighborhood.Type.DOWNTOWN: 0.7,
-		Neighborhood.Type.INDUSTRIAL: 0.6,
-		Neighborhood.Type.RICH_RESIDENTIAL: 0.5
+		NeighborhoodTypes.Type.SHANTY_TOWN: 0.8,
+		NeighborhoodTypes.Type.DOWNTOWN: 0.7,
+		NeighborhoodTypes.Type.INDUSTRIAL: 0.6,
+		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.5
 	},
 	Type.GARBAGE_TRUCK: {
-		Neighborhood.Type.INDUSTRIAL: 0.9,
-		Neighborhood.Type.SHANTY_TOWN: 0.7,
-		Neighborhood.Type.DOWNTOWN: 0.5,
-		Neighborhood.Type.RICH_RESIDENTIAL: 0.4
+		NeighborhoodTypes.Type.INDUSTRIAL: 0.9,
+		NeighborhoodTypes.Type.SHANTY_TOWN: 0.7,
+		NeighborhoodTypes.Type.DOWNTOWN: 0.5,
+		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.4
 	},
 	Type.VENDING_TRUCK: {
-		Neighborhood.Type.INDUSTRIAL: 0.8,
-		Neighborhood.Type.DOWNTOWN: 0.7,
-		Neighborhood.Type.SHANTY_TOWN: 0.6,
-		Neighborhood.Type.RICH_RESIDENTIAL: 0.5
+		NeighborhoodTypes.Type.INDUSTRIAL: 0.8,
+		NeighborhoodTypes.Type.DOWNTOWN: 0.7,
+		NeighborhoodTypes.Type.SHANTY_TOWN: 0.6,
+		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.5
 	},
 	Type.ADVERTISEMENT_TRUCK: {
-		Neighborhood.Type.DOWNTOWN: 1.0,
-		Neighborhood.Type.RICH_RESIDENTIAL: 0.7,
-		Neighborhood.Type.INDUSTRIAL: 0.6,
-		Neighborhood.Type.SHANTY_TOWN: 0.3
+		NeighborhoodTypes.Type.DOWNTOWN: 1.0,
+		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.7,
+		NeighborhoodTypes.Type.INDUSTRIAL: 0.6,
+		NeighborhoodTypes.Type.SHANTY_TOWN: 0.3
 	},
 	Type.POLICE_CAR: {
-		Neighborhood.Type.DOWNTOWN: 0.9,
-		Neighborhood.Type.RICH_RESIDENTIAL: 0.8,
-		Neighborhood.Type.SHANTY_TOWN: 0.7,
-		Neighborhood.Type.INDUSTRIAL: 0.6
+		NeighborhoodTypes.Type.DOWNTOWN: 0.9,
+		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.8,
+		NeighborhoodTypes.Type.SHANTY_TOWN: 0.7,
+		NeighborhoodTypes.Type.INDUSTRIAL: 0.6
 	}
 }
 
@@ -84,7 +84,7 @@ class Archetype:
 	var color: Color
 	var weight: float
 	var max_per_volume: int
-	var max_global: int  # Nuevo: límite global de este tipo en todas las áreas
+	var max_global: int
 	
 	func _init(
 		p_name: String,
@@ -96,7 +96,7 @@ class Archetype:
 		p_color: Color,
 		p_weight: float = 1.0,
 		p_max_per_volume: int = -1,
-		p_max_global: int = -1  # -1 = ilimitado
+		p_max_global: int = -1
 	):
 		name = p_name
 		width = p_width
@@ -132,8 +132,8 @@ static func _static_init() -> void:
 		6.0 * speed_debug_factor,
 		Color(0.9, 0.5, 0.1),
 		0.05,
-		1,  # max_per_volume
-		3  # max_global
+		1,
+		3
 	)
 	
 	archetypes[Type.RICH_CAR] = Archetype.new(
@@ -145,8 +145,8 @@ static func _static_init() -> void:
 		50.0 * speed_debug_factor,
 		Color(0.1, 0.1, 0.1),
 		0.15,
-		30,  # max_per_volume
-		100  # max_global
+		30,
+		100
 	)
 	
 	archetypes[Type.POOR_CAR] = Archetype.new(
@@ -158,8 +158,8 @@ static func _static_init() -> void:
 		18.0 * speed_debug_factor,
 		Color(0.6, 0.5, 0.4),
 		0.3,
-		30,  # max_per_volume
-		150  # max_global
+		30,
+		150
 	)
 	
 	archetypes[Type.MOTORCYCLE] = Archetype.new(
@@ -171,8 +171,8 @@ static func _static_init() -> void:
 		40.0 * speed_debug_factor,
 		Color(0.9, 0.1, 0.1),
 		0.2,
-		10,  # max_per_volume
-		30   # max_global
+		10,
+		30
 	)
 	
 	archetypes[Type.UTILITY_TRUCK] = Archetype.new(
@@ -184,8 +184,8 @@ static func _static_init() -> void:
 		7.0 * speed_debug_factor,
 		Color(0.9, 0.8, 0.1),
 		0.08,
-		1,   # max_per_volume
-		2   # max_global
+		1,
+		2
 	)
 	
 	archetypes[Type.ADVERTISEMENT_TRUCK] = Archetype.new(
@@ -197,8 +197,8 @@ static func _static_init() -> void:
 		5.0 * speed_debug_factor,
 		Color(0.9, 0.1, 0.9),
 		0.03,
-		1,  # max_per_volume
-		3   # max_global
+		1,
+		3
 	)
 	
 	archetypes[Type.GARBAGE_TRUCK] = Archetype.new(
@@ -210,8 +210,8 @@ static func _static_init() -> void:
 		6.0 * speed_debug_factor,
 		Color(0.2, 0.6, 0.2),
 		0.04,
-		1,  # max_per_volume
-		4   # max_global
+		1,
+		4
 	)
 	
 	archetypes[Type.POLICE_CAR] = Archetype.new(
@@ -223,8 +223,8 @@ static func _static_init() -> void:
 		24.0 * speed_debug_factor,
 		Color(0.1, 0.3, 0.9),
 		0.1,
-		10,   # max_per_volume
-		15   # max_global
+		10,
+		15
 	)
 	
 	archetypes[Type.TAXI] = Archetype.new(
@@ -236,8 +236,8 @@ static func _static_init() -> void:
 		20.0 * speed_debug_factor,
 		Color(0.95, 0.9, 0.1),
 		0.05,
-		15,   # max_per_volume
-		20   # max_global
+		15,
+		20
 	)
 
 static func get_archetype(type: Type) -> Archetype:
