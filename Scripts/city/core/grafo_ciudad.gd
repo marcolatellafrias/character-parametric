@@ -347,7 +347,7 @@ func get_streets_of_type(street_type: int) -> Array:
 func _generate_block_grids(
 	cells_per_floor: int,
 	block_cell_height: float,
-	building_cell_height: float  # <-- Ahora se recibe como parámetro
+	building_cell_height: float
 ) -> void:
 	block_grids.clear()
 	
@@ -364,8 +364,6 @@ func _generate_block_grids(
 			var node1 = face_nodes[i]
 			var node2 = face_nodes[(i + 1) % face_nodes.size()]
 			street_types_array.append(get_street_type(node1, node2))
-		
-		var is_clockwise = _is_face_clockwise(face_vertices)
 		
 		var block_seed = grid_seed
 		if grid_seed == -1:
@@ -410,7 +408,6 @@ func _generate_block_grids(
 			street_types_array,
 			block_cell_height,
 			cells_per_floor,
-			is_clockwise,
 			street_offsets,
 			distorted_grid_rows,
 			distorted_grid_columns,
@@ -427,7 +424,7 @@ func _generate_block_grids(
 			block_seed,
 			building_grid_rows,
 			building_grid_columns,
-			building_cell_height,  # <-- Pasar el valor global
+			building_cell_height,
 			{},
 			min_floors,
 			max_floors,
@@ -596,11 +593,7 @@ func _calculate_lane_planes() -> void:
 				var intersection = _line_intersection_2d(point_a, point_b, edge_start_2d, edge_end_2d)
 				
 				if intersection != Vector2.ZERO:
-					var is_start_lane: bool
-					if block.is_clockwise:
-						is_start_lane = (node_local_idx == 1)
-					else:
-						is_start_lane = (node_local_idx == 0)
+					var is_start_lane: bool = (node_local_idx == 1)
 					
 					block.lane_planes[key] = {
 						"start": point_a,
@@ -682,12 +675,7 @@ func _get_lane_volume_ids_ending_at_node(node_idx: int) -> Array:
 
 func _get_lane_end_node(face_idx: int, edge_idx: int, face: Array, block: BlockGenerator) -> int:
 	var node1_idx = face[edge_idx]
-	var node2_idx = face[(edge_idx + 1) % face.size()]
-	
-	if block.is_clockwise:
-		return node1_idx
-	else:
-		return node2_idx
+	return node1_idx
 
 func _calculate_flow_direction_for_lane(face_idx: int, edge_idx: int) -> Vector3:
 	var block: BlockGenerator = block_grids[face_idx]
@@ -896,11 +884,7 @@ func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVo
 	var original_node1 = face[edge_idx]
 	var original_node2 = face[(edge_idx + 1) % face.size()]
 	
-	var end_node_idx: int
-	if block.is_clockwise:
-		end_node_idx = original_node1
-	else:
-		end_node_idx = original_node2
+	var end_node_idx: int = original_node1
 	
 	for other_face_idx in block_grids:
 		var other_face = plain_graph.faces[other_face_idx]
@@ -920,11 +904,7 @@ func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVo
 			   (other_node1 == original_node2 and other_node2 == original_node1):
 				continue
 			
-			var start_node_idx: int
-			if other_block.is_clockwise:
-				start_node_idx = other_node2
-			else:
-				start_node_idx = other_node1
+			var start_node_idx: int = other_node2
 			
 			if start_node_idx == end_node_idx:
 				var key = "%d_%d" % [other_face_idx, other_edge_idx]

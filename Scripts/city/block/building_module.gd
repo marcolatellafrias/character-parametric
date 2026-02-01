@@ -27,10 +27,6 @@ var floor: int
 # donde c1 y c2 son el número de celdas chamfereadas
 var chamfers: Dictionary = {}
 
-# Flag para manejar orientación
-var is_clockwise: bool = false
-
-
 func _init(
 	p_vertices: Array[Vector3],
 	p_edge_types: Array[int],
@@ -42,8 +38,8 @@ func _init(
 	p_distorted_grid: DistortedGrid = null,
 	p_grid_x: int = -1,
 	p_grid_z: int = -1,
-	p_path_generator: PathGenerator = null,
-	p_is_clockwise: bool = false
+	p_path_generator: PathGenerator = null
+	# ELIMINAR: p_is_clockwise
 ) -> void:
 	vertices = p_vertices
 	edge_types = p_edge_types
@@ -52,11 +48,10 @@ func _init(
 	cell_height = p_cell_height
 	alleyway_offsets = p_alleyway_offsets
 	floor = p_floor
-	is_clockwise = p_is_clockwise
+	# ELIMINAR: is_clockwise = p_is_clockwise
 	
 	_calculate_core_area()
 	
-	# Calcular chamfers si se proporcionó la información necesaria
 	if p_distorted_grid and p_grid_x >= 0 and p_grid_z >= 0 and p_path_generator:
 		_calculate_chamfers(p_distorted_grid, p_grid_x, p_grid_z, p_path_generator)
 
@@ -79,30 +74,18 @@ func _calculate_chamfers(
 	grid_z: int,
 	path_generator: PathGenerator
 ) -> void:
-	# Para cada vértice del building module
+	# Ya no necesitamos mapeo de índices - todas las caras están normalizadas
 	for vertex_index in range(4):
-		# Si es clockwise, necesitamos mapear el índice al equivalente normalizado
-		var normalized_vertex_index = vertex_index
-		if is_clockwise:
-			# El swap es 1 ↔ 3, así que mapeamos al revés para obtener la topología correcta
-			if vertex_index == 1:
-				normalized_vertex_index = 3
-			elif vertex_index == 3:
-				normalized_vertex_index = 1
+		var info = distorted_grid.get_vertex_edges_info(grid_x, grid_z, vertex_index)
 		
-		var info = distorted_grid.get_vertex_edges_info(grid_x, grid_z, normalized_vertex_index)
-		
-		# Verificar que tenga exactamente 2 corner edges y 2 secondary edges
 		if info["corner_edges"].size() != 2 or info["secondary_edges"].size() != 2:
 			continue
 		
-		# Verificar que los corner edges NO tengan offset
 		var corner_edges_valid = true
 		for corner_edge in info["corner_edges"]:
 			var edge_type = _get_edge_type_from_vertices(
 				corner_edge["v1"], corner_edge["v2"], path_generator
 			)
-			# Si tiene offset (no es NORMAL ni FACADE), no es válido
 			if edge_type != DistortedGrid.CellType.NORMAL and edge_type != DistortedGrid.CellType.FACADE:
 				corner_edges_valid = false
 				break
@@ -110,7 +93,6 @@ func _calculate_chamfers(
 		if not corner_edges_valid:
 			continue
 		
-		# Obtener offsets de los secondary edges
 		var secondary_edge_data: Array = []
 		var all_secondary_valid = true
 		
@@ -118,12 +100,10 @@ func _calculate_chamfers(
 			var edge_type = _get_edge_type_from_vertices(
 				secondary_edge["v1"], secondary_edge["v2"], path_generator
 			)
-			# Los secondary edges DEBEN tener offset
 			if edge_type == DistortedGrid.CellType.NORMAL or edge_type == DistortedGrid.CellType.FACADE:
 				all_secondary_valid = false
 				break
 			
-			# Sin ajuste - el offset ya es correcto para las dimensiones del core
 			var offset = alleyway_offsets.get(edge_type, 0)
 			
 			secondary_edge_data.append({
@@ -134,40 +114,12 @@ func _calculate_chamfers(
 		if not all_secondary_valid or secondary_edge_data.size() != 2:
 			continue
 		
-		# Determinar c1 y c2 basándose en la orientación del vértice NORMALIZADO
 		var chamfer_values = _determine_chamfer_values(
-			normalized_vertex_index, info["vertex"], secondary_edge_data
+			vertex_index, info["vertex"], secondary_edge_data
 		)
 		
 		if chamfer_values.size() == 2:
-			# Guardar usando el índice del VÉRTICE DESPUÉS DEL SWAP (el que se usa en visualización)
 			chamfers[vertex_index] = chamfer_values
-	
-	# YA NO NECESITAMOS AJUSTAR - los chamfers ya están en la orientación correcta
-
-
-func _adjust_chamfers_for_clockwise() -> void:
-	# Cuando hacemos el swap de vértices (1 ↔ 3) para clockwise,
-	# los chamfers también deben ajustarse de dos formas:
-	# 1. Los índices de vértices deben intercambiarse
-	# 2. Los valores [c1, c2] deben invertirse a [c2, c1] porque la orientación cambia
-	var adjusted_chamfers: Dictionary = {}
-	
-	for vertex_idx in chamfers:
-		var new_idx = vertex_idx
-		
-		# El swap que se hace en visualización es: vertices[1] ↔ vertices[3]
-		if vertex_idx == 1:
-			new_idx = 3
-		elif vertex_idx == 3:
-			new_idx = 1
-		
-		# Invertir los valores [c1, c2] → [c2, c1] porque la orientación se invierte
-		var original_values = chamfers[vertex_idx]
-		adjusted_chamfers[new_idx] = [original_values[1], original_values[0]]
-	
-	chamfers = adjusted_chamfers
-
 
 func _get_edge_type_from_vertices(
 	v1: Vector2i,

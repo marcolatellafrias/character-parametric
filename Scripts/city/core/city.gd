@@ -399,7 +399,6 @@ func _visualize_buildings() -> void:
 		var cells_per_floor = block.get_cells_per_floor()
 		var building_cell_height = block.get_building_cell_height()
 		var building_height = cells_per_floor * building_cell_height
-		var is_clockwise = block.is_clockwise
 		
 		var clusters = block.get_all_clusters()
 		total_clusters += clusters.size()
@@ -440,7 +439,6 @@ func _visualize_buildings() -> void:
 					var core_info = building_module.get_core_info()
 					print("core_width: %d" % core_info["width"])
 					print("core_depth: %d" % core_info["depth"])
-					print("is_clockwise: %s" % is_clockwise)
 				print("========================")
 			
 			for floor in range(cluster_floors):
@@ -477,32 +475,21 @@ func _visualize_buildings() -> void:
 					for i in range(core_vertices.size()):
 						core_vertices[i].y += floor_base_y
 					
-					# Preparar dimensiones del core
+					# Usar dimensiones del core directamente (sin swap)
 					var core_rows = core_info["depth"]
 					var core_columns = core_info["width"]
-					
-					if is_clockwise:
-						# Hacer el swap de vértices
-						var temp = core_vertices[1]
-						core_vertices[1] = core_vertices[3]
-						core_vertices[3] = temp
-						
-						# También intercambiar las dimensiones porque los edges cambiaron
-						var temp_dim = core_rows
-						core_rows = core_columns
-						core_columns = temp_dim
 					
 					# Obtener chamfers
 					var chamfers = building_module.get_chamfers()
 					
-					# Usar método con chamfers y dimensiones ajustadas del CORE
+					# Crear cubo con chamfers
 					var cube = DebugUtil.create_skewed_cube_advanced_grid(
 						core_vertices,
 						building_height,
 						floor_color,
 						chamfers,
-						core_rows,      # Ajustado si es clockwise
-						core_columns,   # Ajustado si es clockwise
+						core_rows,
+						core_columns,
 						false
 					)
 					add_child(cube)
@@ -531,7 +518,6 @@ func _visualize_building_colliders() -> void:
 		var cells_per_floor = block.get_cells_per_floor()
 		var building_cell_height = block.get_building_cell_height()
 		var building_height = cells_per_floor * building_cell_height
-		var is_clockwise = block.is_clockwise
 		
 		var clusters = block.get_all_clusters()
 		
@@ -565,20 +551,9 @@ func _visualize_building_colliders() -> void:
 					for i in range(core_vertices.size()):
 						core_vertices[i].y += floor_base_y
 					
-					# Preparar dimensiones del core
+					# Usar dimensiones del core directamente (sin swap)
 					var core_rows = core_info["depth"]
 					var core_columns = core_info["width"]
-					
-					if is_clockwise:
-						# Hacer el swap de vértices
-						var temp = core_vertices[1]
-						core_vertices[1] = core_vertices[3]
-						core_vertices[3] = temp
-						
-						# También intercambiar las dimensiones porque los edges cambiaron
-						var temp_dim = core_rows
-						core_rows = core_columns
-						core_columns = temp_dim
 					
 					# Obtener chamfers
 					var chamfers = building_module.get_chamfers()
@@ -588,8 +563,8 @@ func _visualize_building_colliders() -> void:
 						core_vertices,
 						building_height,
 						chamfers,
-						core_rows,      # Ajustado si es clockwise
-						core_columns    # Ajustado si es clockwise
+						core_rows,
+						core_columns
 					)
 					
 					if collision_body != null:

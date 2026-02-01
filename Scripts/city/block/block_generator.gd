@@ -25,7 +25,6 @@ var distorted_grid: DistortedGrid
 var path_generator: PathGenerator
 
 var street_types: Array[int]
-var is_clockwise: bool
 var street_offsets: Dictionary = {}
 
 var available_min_x: int
@@ -57,7 +56,6 @@ func _init(
 	p_street_types: Array[int],
 	p_cell_height: float,
 	p_cells_per_floor: int,
-	p_is_clockwise: bool,
 	p_street_offsets: Dictionary,
 	p_distorted_rows: int = 10,
 	p_distorted_columns: int = 10,
@@ -81,7 +79,6 @@ func _init(
 	p_block_heart_probability: float = 0.0
 ) -> void:
 	street_types = p_street_types
-	is_clockwise = p_is_clockwise
 	street_offsets = p_street_offsets
 	
 	# Geometría del bloque
@@ -228,8 +225,8 @@ func _create_building_clusters() -> void:
 			building_rows,
 			building_columns,
 			building_cell_height,
-			building_alleyway_offsets,
-			is_clockwise  # NUEVO parámetro
+			building_alleyway_offsets
+			# YA NO PASAR is_clockwise
 		)
 	
 	print("[BlockGenerator] Clusters totales generados: %d" % building_clusters.size())
@@ -546,9 +543,6 @@ func get_core_vertices() -> Array[Vector2]:
 
 func get_lane_planes() -> Dictionary:
 	return lane_planes
-
-func get_is_clockwise() -> bool:
-	return is_clockwise
 
 func get_edge_lane_volume(edge_idx: int) -> Dictionary:
 	if edge_idx < 0 or edge_idx > 3:

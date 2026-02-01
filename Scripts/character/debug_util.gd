@@ -458,10 +458,13 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 # base_vertices: Array[Vector3] con 4 vértices del quad base en orden clockwise [BL, BR, TR, TL]
 #                (Bottom-Left, Bottom-Right, Top-Right, Top-Left)
 # 
-# chamfers: Diccionario donde la clave es el índice del vértice (0-3) y el valor es [c1, c2]
-#           expresado en UNIDADES REALES (distancia en el espacio 3D).
+# chamfers: Diccionario donde la clave es el índice del vértice (0-3) en orden clockwise
+#           y el valor es [c1, c2] expresado en UNIDADES REALES (distancia en el espacio 3D).
 #           c1: distancia chamfereada hacia el edge que conecta con el vértice anterior (sentido anti-clockwise)
 #           c2: distancia chamfereada hacia el edge que conecta con el vértice siguiente (sentido clockwise)
+# 
+# NOTA: Acepta vértices en orden clockwise. Internamente invierte el winding order de los
+#       triángulos para generar normales correctas que apunten hacia afuera.
 # 
 # Ejemplo: Si chamfers={0: [0.5, 1.0]}, el edge vertical en el vértice 0 será chamfereado
 #          0.5 unidades hacia el vértice 3, y 1.0 unidades hacia el vértice 1.
@@ -493,7 +496,7 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 		indices.append(start_idx + 1)
 		indices.append(start_idx + 2)
 	
-	# Construir vértices del contorno inferior y superior en orden clockwise
+	# Construir vértices del contorno inferior y superior
 	var bottom_contour = []
 	var top_contour = []
 	
@@ -505,7 +508,6 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 		var to_prev = (base_vertices[(i - 1 + 4) % 4] - base_vertices[i]).normalized()
 		var to_next = (base_vertices[(i + 1) % 4] - base_vertices[i]).normalized()
 		
-		# Siempre agregar ambos vértices del chamfer
 		bottom_contour.append(base_vertices[i] + to_prev * c1)
 		top_contour.append(base_vertices[i] + Vector3(0, height, 0) + to_prev * c1)
 		
@@ -523,17 +525,17 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 		top_center += v
 	top_center /= top_contour.size()
 	
-	# Cara inferior (normal hacia abajo)
+	# Cara inferior (normal hacia abajo) - INVERTIDO EL WINDING ORDER
 	var bottom_normal = Vector3(0, -1, 0)
 	for i in range(bottom_contour.size()):
 		var next_i = (i + 1) % bottom_contour.size()
-		add_triangle_with_normal.call(bottom_center, bottom_contour[next_i], bottom_contour[i], bottom_normal)
+		add_triangle_with_normal.call(bottom_center, bottom_contour[i], bottom_contour[next_i], bottom_normal)
 	
-	# Cara superior (normal hacia arriba)
+	# Cara superior (normal hacia arriba) - INVERTIDO EL WINDING ORDER
 	var top_normal = Vector3(0, 1, 0)
 	for i in range(top_contour.size()):
 		var next_i = (i + 1) % top_contour.size()
-		add_triangle_with_normal.call(top_center, top_contour[i], top_contour[next_i], top_normal)
+		add_triangle_with_normal.call(top_center, top_contour[next_i], top_contour[i], top_normal)
 	
 	# Caras laterales
 	var center = Vector3.ZERO
@@ -559,8 +561,9 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 		if face_normal.dot(to_outside) < 0:
 			face_normal = -face_normal
 		
-		add_triangle_with_normal.call(v1, v2, v3, face_normal)
-		add_triangle_with_normal.call(v2, v4, v3, face_normal)
+		# INVERTIDO EL WINDING ORDER
+		add_triangle_with_normal.call(v1, v3, v2, face_normal)
+		add_triangle_with_normal.call(v2, v3, v4, face_normal)
 	
 	var arrays = []
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -594,12 +597,15 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 # rows: Número de divisiones para los edges impares (1 y 3 - east/west) en orden clockwise.
 # columns: Número de divisiones para los edges pares (0 y 2 - north/south) en orden clockwise.
 # 
-# chamfers: Diccionario donde la clave es el índice del vértice (0-3) y el valor es [c1, c2]
-#           expresado en NÚMERO DE CELDAS del grid, no en unidades reales.
+# chamfers: Diccionario donde la clave es el índice del vértice (0-3) en orden clockwise
+#           y el valor es [c1, c2] expresado en NÚMERO DE CELDAS del grid, no en unidades reales.
 #           c1: celdas chamfereadas hacia el edge que conecta con el vértice anterior
 #           c2: celdas chamfereadas hacia el edge que conecta con el vértice siguiente
 #           Los edges pares (0, 2) usan 'columns' para calcular el tamaño de celda.
 #           Los edges impares (1, 3) usan 'rows' para calcular el tamaño de celda.
+# 
+# NOTA: Acepta vértices en orden clockwise. Internamente convierte chamfers de unidades de grid
+#       a unidades reales y delega a create_skewed_cube_advanced para la generación del mesh.
 # 
 # Ejemplo: Si rows=6, columns=4, y chamfers={0: [1, 2]}, el edge vertical en v0
 #          será chamfereado 1/6 del edge 3 hacia v3, y 2/4 del edge 0 hacia v1.
@@ -623,19 +629,13 @@ static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float
 			var c1_cells = chamfer_cells[0] if chamfer_cells.size() > 0 else 0
 			var c2_cells = chamfer_cells[1] if chamfer_cells.size() > 1 else 0
 			
-			# Edge hacia el vértice anterior (c1)
 			var prev_i = (i - 1 + 4) % 4
 			var edge_prev_length = base_vertices[i].distance_to(base_vertices[prev_i])
-			# Edge prev_i es el edge que llega a vértice i
-			# Edges pares (0, 2) usan rows, impares (1, 3) usan columns
 			var divisions_prev = rows if prev_i % 2 == 1 else columns
 			var cell_size_prev = edge_prev_length / float(divisions_prev)
 			
-			# Edge hacia el vértice siguiente (c2)
 			var next_i = (i + 1) % 4
 			var edge_next_length = base_vertices[i].distance_to(base_vertices[next_i])
-			# Edge i es el edge que sale del vértice i
-			# Edges pares (0, 2) usan rows, impares (1, 3) usan columns
 			var divisions_next = rows if i % 2 == 1 else columns
 			var cell_size_next = edge_next_length / float(divisions_next)
 			
@@ -654,7 +654,13 @@ static func create_skewed_cube_advanced_grid(base_vertices: Array, height: float
 # rows: Número de divisiones para los edges impares (1 y 3 - east/west) en orden clockwise.
 # columns: Número de divisiones para los edges pares (0 y 2 - north/south) en orden clockwise.
 # 
-# chamfers: Mismo formato que en create_skewed_cube_advanced_grid.
+# chamfers: Mismo formato que en create_skewed_cube_advanced_grid. Diccionario donde la clave
+#           es el índice del vértice (0-3) en orden clockwise y el valor es [c1, c2] en celdas.
+# 
+# NOTA: Acepta vértices en orden clockwise. Genera un ConvexPolygonShape3D que coincide exactamente
+#       con la geometría visual producida por create_skewed_cube_advanced_grid.
+# 
+# Retorna un StaticBody3D con el CollisionShape3D ya configurado.
 static func create_skewed_cube_advanced_grid_collider(base_vertices: Array, height: float, chamfers: Dictionary, rows: int, columns: int) -> StaticBody3D:
 	if base_vertices.size() != 4:
 		push_error("Se requieren exactamente 4 vértices para la base")

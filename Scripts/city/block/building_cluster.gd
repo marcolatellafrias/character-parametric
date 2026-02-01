@@ -21,8 +21,6 @@ var building_alleyway_offsets: Dictionary
 # Cache de BuildingModules creados bajo demanda
 var building_modules: Dictionary = {}
 
-var is_clockwise: bool = false
-
 func _init(p_id: int, p_seed: int, p_min_floors: int = 1, p_max_floors: int = 8) -> void:
 	id = p_id
 	
@@ -45,10 +43,9 @@ func set_grid_config(
 	p_building_rows: int,
 	p_building_columns: int,
 	p_building_cell_height: float,
-	p_building_alleyway_offsets: Dictionary,
-	p_is_clockwise: bool = false  # NUEVO
+	p_building_alleyway_offsets: Dictionary
+	# ELIMINAR: p_is_clockwise
 ) -> void:
-	# Verificar que PathGenerator esté generado
 	if not p_path_generator.is_generated:
 		push_error("PathGenerator debe ser generado antes de configurar BuildingCluster. Llama a path_generator.generate() primero.")
 		return
@@ -59,11 +56,9 @@ func set_grid_config(
 	building_columns = p_building_columns
 	building_cell_height = p_building_cell_height
 	building_alleyway_offsets = p_building_alleyway_offsets
-	is_clockwise = p_is_clockwise  # NUEVO
 
 
 func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
-	# Verificación adicional de seguridad
 	if not path_generator or not path_generator.is_generated:
 		push_error("PathGenerator no está generado")
 		return null
@@ -105,12 +100,6 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 	else:
 		edge_types_array.append(path_generator.get_path_edge_type_vertices(x, z + 1, x, z, floor))
 	
-	# Necesitamos obtener is_clockwise del BlockGenerator
-	# Lo obtendremos a través de una referencia que debemos almacenar
-	var is_cw = false
-	if "is_clockwise" in self:
-		is_cw = self.is_clockwise
-	
 	var building_module = BuildingModule.new(
 		cell_vertices,
 		edge_types_array,
@@ -122,8 +111,7 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 		distorted_grid,
 		x,
 		z,
-		path_generator,
-		is_cw  # NUEVO parámetro
+		path_generator
 	)
 	
 	building_modules[key] = building_module
