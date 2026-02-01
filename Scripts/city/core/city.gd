@@ -5,7 +5,7 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(800/2, 800/2)
+@export var region_size: Vector2 = Vector2(800, 800)
 @export var min_distance: float = 200.5
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
@@ -429,6 +429,13 @@ func _visualize_buildings() -> void:
 						print("base_depth: %.3f" % depth)
 						print("ratio height/width: %.3f" % (building_height / width))
 						print("ratio height/depth: %.3f" % (building_height / depth))
+					
+					# DEBUG: Mostrar chamfers si existen
+					var chamfers = building_module.get_chamfers()
+					if not chamfers.is_empty():
+						print("CHAMFERS detectados:")
+						for vertex_idx in chamfers:
+							print("  Vértice %d: %s" % [vertex_idx, chamfers[vertex_idx]])
 				print("========================")
 			
 			for floor in range(cluster_floors):
@@ -470,10 +477,20 @@ func _visualize_buildings() -> void:
 						core_vertices[1] = core_vertices[3]
 						core_vertices[3] = temp
 					
-					var cube = DebugUtil.create_skewed_cube(
+					# Obtener chamfers y dimensiones del building module
+					var chamfers = building_module.get_chamfers()
+					var bm_rows = building_module.rows
+					var bm_columns = building_module.columns
+					
+					# Usar método con chamfers
+					var cube = DebugUtil.create_skewed_cube_advanced_grid(
 						core_vertices,
 						building_height,
-						floor_color
+						floor_color,
+						chamfers,
+						bm_rows,
+						bm_columns,
+						false
 					)
 					add_child(cube)
 					total_cells += 1

@@ -224,3 +224,117 @@ func _calculate_vertex_at(grid_x: int, grid_z: int) -> Vector2:
 	var wave_offset_v = sin(u * wave_frequency_x * TAU + wave_phase_x) * wave_amplitude_z * v_falloff
 	
 	return base_pos + local_u_dir * wave_offset_u + local_v_dir * wave_offset_v
+
+## Retorna información sobre los edges conectados a un vértice específico de una celda
+## vertex_index: 0=BL, 1=BR, 2=TR, 3=TL
+## Retorna Dictionary con:
+##   - vertex: Vector2i (posición del vértice en coordenadas de grilla)
+##   - corner_edges: Array[Dictionary] (edges que son parte de la celda)
+##   - secondary_edges: Array[Dictionary] (edges conectados al vértice pero no parte de la celda)
+## Cada edge es: {"v1": Vector2i, "v2": Vector2i}
+func get_vertex_edges_info(cell_x: int, cell_z: int, vertex_index: int) -> Dictionary:
+	if cell_x < 0 or cell_x >= columns or cell_z < 0 or cell_z >= rows:
+		return {"vertex": Vector2i(-1, -1), "corner_edges": [], "secondary_edges": []}
+	
+	if vertex_index < 0 or vertex_index > 3:
+		return {"vertex": Vector2i(-1, -1), "corner_edges": [], "secondary_edges": []}
+	
+	var vertex_pos = _get_vertex_grid_position(cell_x, cell_z, vertex_index)
+	var all_edges = _get_edges_connected_to_vertex(vertex_pos)
+	
+	var corner_edges: Array = []
+	var secondary_edges: Array = []
+	
+	for edge in all_edges:
+		if _is_edge_part_of_cell(edge, cell_x, cell_z):
+			corner_edges.append(edge)
+		else:
+			secondary_edges.append(edge)
+	
+	return {
+		"vertex": vertex_pos,
+		"corner_edges": corner_edges,
+		"secondary_edges": secondary_edges
+	}
+
+
+## Convierte el índice de vértice a posición en coordenadas de grilla
+func _get_vertex_grid_position(cell_x: int, cell_z: int, vertex_index: int) -> Vector2i:
+	match vertex_index:
+		0:  # BL
+			return Vector2i(cell_x, cell_z)
+		1:  # BR
+			return Vector2i(cell_x + 1, cell_z)
+		2:  # TR
+			return Vector2i(cell_x + 1, cell_z + 1)
+		3:  # TL
+			return Vector2i(cell_x, cell_z + 1)
+		_:
+			return Vector2i(-1, -1)
+
+
+## Retorna todos los edges que conectan a un vértice (hasta 4: arriba, abajo, izquierda, derecha)
+func _get_edges_connected_to_vertex(vertex: Vector2i) -> Array:
+	var edges: Array = []
+	
+	# Edge horizontal izquierda: de (x-1, z) a (x, z)
+	if vertex.x > 0:
+		edges.append({
+			"v1": Vector2i(vertex.x - 1, vertex.y),
+			"v2": vertex
+		})
+	
+	# Edge horizontal derecha: de (x, z) a (x+1, z)
+	if vertex.x < columns:
+		edges.append({
+			"v1": vertex,
+			"v2": Vector2i(vertex.x + 1, vertex.y)
+		})
+	
+	# Edge vertical arriba: de (x, z-1) a (x, z)
+	if vertex.y > 0:
+		edges.append({
+			"v1": Vector2i(vertex.x, vertex.y - 1),
+			"v2": vertex
+		})
+	
+	# Edge vertical abajo: de (x, z) a (x, z+1)
+	if vertex.y < rows:
+		edges.append({
+			"v1": vertex,
+			"v2": Vector2i(vertex.x, vertex.y + 1)
+		})
+	
+	return edges
+
+
+## Verifica si un edge es parte de los 4 edges de una celda específica
+func _is_edge_part_of_cell(edge: Dictionary, cell_x: int, cell_z: int) -> bool:
+	var v1: Vector2i = edge["v1"]
+	var v2: Vector2i = edge["v2"]
+	
+	# Edge norte: de (x, z) a (x+1, z)
+	if v1 == Vector2i(cell_x, cell_z) and v2 == Vector2i(cell_x + 1, cell_z):
+		return true
+	if v2 == Vector2i(cell_x, cell_z) and v1 == Vector2i(cell_x + 1, cell_z):
+		return true
+	
+	# Edge este: de (x+1, z) a (x+1, z+1)
+	if v1 == Vector2i(cell_x + 1, cell_z) and v2 == Vector2i(cell_x + 1, cell_z + 1):
+		return true
+	if v2 == Vector2i(cell_x + 1, cell_z) and v1 == Vector2i(cell_x + 1, cell_z + 1):
+		return true
+	
+	# Edge sur: de (x, z+1) a (x+1, z+1)
+	if v1 == Vector2i(cell_x, cell_z + 1) and v2 == Vector2i(cell_x + 1, cell_z + 1):
+		return true
+	if v2 == Vector2i(cell_x, cell_z + 1) and v1 == Vector2i(cell_x + 1, cell_z + 1):
+		return true
+	
+	# Edge oeste: de (x, z) a (x, z+1)
+	if v1 == Vector2i(cell_x, cell_z) and v2 == Vector2i(cell_x, cell_z + 1):
+		return true
+	if v2 == Vector2i(cell_x, cell_z) and v1 == Vector2i(cell_x, cell_z + 1):
+		return true
+	
+	return false

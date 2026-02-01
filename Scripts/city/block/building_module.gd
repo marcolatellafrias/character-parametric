@@ -23,6 +23,13 @@ var core_max_z: int
 # Piso al que pertenece este building
 var floor: int
 
+# Chamfers de las esquinas: {vertex_index: [c1, c2]}
+# donde c1 y c2 son el número de celdas chamfereadas
+var chamfers: Dictionary = {}
+
+# Flag para manejar orientación
+var is_clockwise: bool = false
+
 
 func _init(
 	p_vertices: Array[Vector3],
@@ -31,7 +38,12 @@ func _init(
 	p_columns: int,
 	p_cell_height: float,
 	p_alleyway_offsets: Dictionary,
-	p_floor: int = 0
+	p_floor: int = 0,
+	p_distorted_grid: DistortedGrid = null,
+	p_grid_x: int = -1,
+	p_grid_z: int = -1,
+	p_path_generator: PathGenerator = null,
+	p_is_clockwise: bool = false
 ) -> void:
 	vertices = p_vertices
 	edge_types = p_edge_types
@@ -40,8 +52,13 @@ func _init(
 	cell_height = p_cell_height
 	alleyway_offsets = p_alleyway_offsets
 	floor = p_floor
+	is_clockwise = p_is_clockwise
 	
 	_calculate_core_area()
+	
+	# Calcular chamfers si se proporcionó la información necesaria
+	if p_distorted_grid and p_grid_x >= 0 and p_grid_z >= 0 and p_path_generator:
+		_calculate_chamfers(p_distorted_grid, p_grid_x, p_grid_z, p_path_generator)
 
 
 func _calculate_core_area() -> void:
@@ -54,6 +71,167 @@ func _calculate_core_area() -> void:
 	core_max_x = columns - east_offset - 1
 	core_min_z = north_offset
 	core_max_z = rows - south_offset - 1
+
+
+func _calculate_chamfers(
+	distorted_grid: DistortedGrid,
+	grid_x: int,
+	grid_z: int,
+	path_generator: PathGenerator
+) -> void:
+	# Para cada vértice del building module
+	for vertex_index in range(4):
+		var info = distorted_grid.get_vertex_edges_info(grid_x, grid_z, vertex_index)
+		
+		# Verificar que tenga exactamente 2 corner edges y 2 secondary edges
+		if info["corner_edges"].size() != 2 or info["secondary_edges"].size() != 2:
+			continue
+		
+		# Verificar que los corner edges NO tengan offset
+		var corner_edges_valid = true
+		for corner_edge in info["corner_edges"]:
+			var edge_type = _get_edge_type_from_vertices(
+				corner_edge["v1"], corner_edge["v2"], path_generator
+			)
+			# Si tiene offset (no es NORMAL ni FACADE), no es válido
+			if edge_type != DistortedGrid.CellType.NORMAL and edge_type != DistortedGrid.CellType.FACADE:
+				corner_edges_valid = false
+				break
+		
+		if not corner_edges_valid:
+			continue
+		
+		# Obtener offsets de los secondary edges
+		var secondary_edge_data: Array = []
+		var all_secondary_valid = true
+		
+		for secondary_edge in info["secondary_edges"]:
+			var edge_type = _get_edge_type_from_vertices(
+				secondary_edge["v1"], secondary_edge["v2"], path_generator
+			)
+			# Los secondary edges DEBEN tener offset
+			if edge_type == DistortedGrid.CellType.NORMAL or edge_type == DistortedGrid.CellType.FACADE:
+				all_secondary_valid = false
+				break
+			
+			var offset = alleyway_offsets.get(edge_type, 0)
+			secondary_edge_data.append({
+				"edge": secondary_edge,
+				"offset": offset
+			})
+		
+		if not all_secondary_valid or secondary_edge_data.size() != 2:
+			continue
+		
+		# Determinar c1 y c2 basándose en la orientación del vértice
+		var chamfer_values = _determine_chamfer_values(
+			vertex_index, info["vertex"], secondary_edge_data
+		)
+		
+		if chamfer_values.size() == 2:
+			chamfers[vertex_index] = chamfer_values
+	
+	# Si es clockwise, ajustar los índices de los chamfers
+	if is_clockwise:
+		_adjust_chamfers_for_clockwise()
+
+
+func _adjust_chamfers_for_clockwise() -> void:
+	# Cuando hacemos el swap de vértices (1 ↔ 3) para clockwise,
+	# los chamfers también deben ajustarse
+	var adjusted_chamfers: Dictionary = {}
+	
+	for vertex_idx in chamfers:
+		var new_idx = vertex_idx
+		
+		# El swap que se hace en visualización es: vertices[1] ↔ vertices[3]
+		if vertex_idx == 1:
+			new_idx = 3
+		elif vertex_idx == 3:
+			new_idx = 1
+		
+		adjusted_chamfers[new_idx] = chamfers[vertex_idx]
+	
+	chamfers = adjusted_chamfers
+
+
+func _get_edge_type_from_vertices(
+	v1: Vector2i,
+	v2: Vector2i,
+	path_generator: PathGenerator
+) -> int:
+	return path_generator.get_path_edge_type_vertices(v1.x, v1.y, v2.x, v2.y)
+
+
+func _determine_chamfer_values(
+	vertex_index: int,
+	vertex_pos: Vector2i,
+	secondary_edge_data: Array
+) -> Array:
+	# Mapeo de vértice index a las direcciones de c1 y c2
+	# c1: hacia el edge que conecta con el vértice anterior (clockwise)
+	# c2: hacia el edge que conecta con el vértice siguiente (clockwise)
+	
+	# Direcciones para cada vértice:
+	# V0 (BL): c1 hacia west (-x o +z según la orientación), c2 hacia north (+x)
+	# V1 (BR): c1 hacia north (+x o -x), c2 hacia east (+z)
+	# V2 (TR): c1 hacia east (+z o -z), c2 hacia south (-x o +x)
+	# V3 (TL): c1 hacia south (-x o +x), c2 hacia west (-z o +z)
+	
+	var c1_offset = 0
+	var c2_offset = 0
+	
+	# Identificar qué edge secundario corresponde a cada dirección
+	for edge_data in secondary_edge_data:
+		var edge = edge_data["edge"]
+		var offset = edge_data["offset"]
+		var v1: Vector2i = edge["v1"]
+		var v2: Vector2i = edge["v2"]
+		var other_v = v2 if v1 == vertex_pos else v1
+		var direction = other_v - vertex_pos
+		
+		# Determinar si este edge corresponde a c1 o c2 según el vértice
+		match vertex_index:
+			0:  # BL
+				if direction.y > 0:  # Hacia +z (west en términos de la celda, hacia TL)
+					c1_offset = offset
+				elif direction.x > 0:  # Hacia +x (north, hacia BR)
+					c2_offset = offset
+				elif direction.y < 0:  # Hacia -z (norte absoluto)
+					c2_offset = offset
+				elif direction.x < 0:  # Hacia -x (oeste absoluto)
+					c1_offset = offset
+			1:  # BR
+				if direction.x < 0:  # Hacia -x (north, hacia BL)
+					c1_offset = offset
+				elif direction.y > 0:  # Hacia +z (east, hacia TR)
+					c2_offset = offset
+				elif direction.x > 0:  # Hacia +x (este absoluto)
+					c2_offset = offset
+				elif direction.y < 0:  # Hacia -z (norte absoluto)
+					c1_offset = offset
+			2:  # TR
+				if direction.y < 0:  # Hacia -z (east, hacia BR)
+					c1_offset = offset
+				elif direction.x < 0:  # Hacia -x (south, hacia TL)
+					c2_offset = offset
+				elif direction.y > 0:  # Hacia +z (sur absoluto)
+					c2_offset = offset
+				elif direction.x > 0:  # Hacia +x (este absoluto)
+					c1_offset = offset
+			3:  # TL
+				if direction.x > 0:  # Hacia +x (south, hacia TR)
+					c1_offset = offset
+				elif direction.y < 0:  # Hacia -z (west, hacia BL)
+					c2_offset = offset
+				elif direction.x < 0:  # Hacia -x (oeste absoluto)
+					c2_offset = offset
+				elif direction.y > 0:  # Hacia +z (sur absoluto)
+					c1_offset = offset
+	
+	if c1_offset > 0 and c2_offset > 0:
+		return [c1_offset, c2_offset]
+	return []
 
 
 func get_vertex(index: int) -> Vector3:
@@ -165,6 +343,10 @@ func get_core_info() -> Dictionary:
 		"width": core_max_x - core_min_x + 1,
 		"depth": core_max_z - core_min_z + 1
 	}
+
+
+func get_chamfers() -> Dictionary:
+	return chamfers
 
 
 func _vertices_3d_to_2d() -> Array[Vector2]:

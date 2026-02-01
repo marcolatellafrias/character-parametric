@@ -15,6 +15,9 @@ var rng: RandomNumberGenerator
 
 var total_floors: int = 0
 
+# Flag para verificar que generate() fue llamado
+var is_generated: bool = false
+
 
 func _init(
 	p_grid: DistortedGrid,
@@ -47,6 +50,8 @@ func generate() -> void:
 	_generate_alleyways()
 	
 	print("  Edges generados: %d (compartidos por todos los pisos)" % path_edges.size())
+	
+	is_generated = true
 
 
 func _generate_alleyways() -> void:

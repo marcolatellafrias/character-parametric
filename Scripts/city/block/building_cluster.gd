@@ -21,6 +21,8 @@ var building_alleyway_offsets: Dictionary
 # Cache de BuildingModules creados bajo demanda
 var building_modules: Dictionary = {}
 
+var is_clockwise: bool = false
+
 func _init(p_id: int, p_seed: int, p_min_floors: int = 1, p_max_floors: int = 8) -> void:
 	id = p_id
 	
@@ -36,22 +38,36 @@ func _init(p_id: int, p_seed: int, p_min_floors: int = 1, p_max_floors: int = 8)
 	
 	floor_count = rng.randi_range(p_min_floors, p_max_floors)
 
+
 func set_grid_config(
 	p_distorted_grid: DistortedGrid,
 	p_path_generator: PathGenerator,
 	p_building_rows: int,
 	p_building_columns: int,
 	p_building_cell_height: float,
-	p_building_alleyway_offsets: Dictionary
+	p_building_alleyway_offsets: Dictionary,
+	p_is_clockwise: bool = false  # NUEVO
 ) -> void:
+	# Verificar que PathGenerator esté generado
+	if not p_path_generator.is_generated:
+		push_error("PathGenerator debe ser generado antes de configurar BuildingCluster. Llama a path_generator.generate() primero.")
+		return
+	
 	distorted_grid = p_distorted_grid
 	path_generator = p_path_generator
 	building_rows = p_building_rows
 	building_columns = p_building_columns
 	building_cell_height = p_building_cell_height
 	building_alleyway_offsets = p_building_alleyway_offsets
+	is_clockwise = p_is_clockwise  # NUEVO
+
 
 func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
+	# Verificación adicional de seguridad
+	if not path_generator or not path_generator.is_generated:
+		push_error("PathGenerator no está generado")
+		return null
+	
 	if not contains_cell(x, z):
 		return null
 	
@@ -89,6 +105,12 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 	else:
 		edge_types_array.append(path_generator.get_path_edge_type_vertices(x, z + 1, x, z, floor))
 	
+	# Necesitamos obtener is_clockwise del BlockGenerator
+	# Lo obtendremos a través de una referencia que debemos almacenar
+	var is_cw = false
+	if "is_clockwise" in self:
+		is_cw = self.is_clockwise
+	
 	var building_module = BuildingModule.new(
 		cell_vertices,
 		edge_types_array,
@@ -96,11 +118,17 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 		building_columns,
 		building_cell_height,
 		building_alleyway_offsets,
-		floor
+		floor,
+		distorted_grid,
+		x,
+		z,
+		path_generator,
+		is_cw  # NUEVO parámetro
 	)
 	
 	building_modules[key] = building_module
 	return building_module
+
 
 func add_cell(x: int, z: int) -> void:
 	cells.append(Vector2i(x, z))
@@ -116,17 +144,22 @@ func add_cell(x: int, z: int) -> void:
 		min_z = min(min_z, z)
 		max_z = max(max_z, z)
 
+
 func contains_cell(x: int, z: int) -> bool:
 	return Vector2i(x, z) in cells
+
 
 func get_cell_count() -> int:
 	return cells.size()
 
+
 func get_floor_count() -> int:
 	return floor_count
 
+
 func set_block_heart(value: bool) -> void:
 	is_block_heart = value
+
 
 func is_interior_cluster(distorted_grid_rows: int, distorted_grid_columns: int) -> bool:
 	for cell in cells:
@@ -135,6 +168,7 @@ func is_interior_cluster(distorted_grid_rows: int, distorted_grid_columns: int) 
 		if cell.y == 0 or cell.y == distorted_grid_rows - 1:
 			return false
 	return true
+
 
 func get_is_block_heart() -> bool:
 	return is_block_heart
