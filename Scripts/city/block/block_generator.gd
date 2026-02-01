@@ -48,6 +48,7 @@ var cluster_seed: int
 
 var temporal_lane_points: Dictionary = {}
 var lane_planes: Dictionary = {}
+var neighborhood_type: NeighborhoodTypes.Type
 
 func _init(
 	p_rows: int,
@@ -76,10 +77,12 @@ func _init(
 	p_building_alleyway_offsets: Dictionary = {},
 	p_min_floors_per_cluster: int = 1,
 	p_max_floors_per_cluster: int = 8,
-	p_block_heart_probability: float = 0.0
+	p_block_heart_probability: float = 0.0,
+	p_neighborhood_type: NeighborhoodTypes.Type = NeighborhoodTypes.Type.DOWNTOWN
 ) -> void:
 	street_types = p_street_types
 	street_offsets = p_street_offsets
+	neighborhood_type = p_neighborhood_type
 	
 	# Geometría del bloque
 	block_rows = p_rows
@@ -327,10 +330,11 @@ func _subdivide_section_into_clusters(section: Array, rng: RandomNumberGenerator
 	
 	while unassigned_cells.size() > 0:
 		var cluster = BuildingCluster.new(
-			start_cluster_id + clusters_created, 
+			start_cluster_id + clusters_created,
 			cluster_seed,
 			min_floors_per_cluster,
-			max_floors_per_cluster
+			max_floors_per_cluster,
+			neighborhood_type
 		)
 		
 		var start_cell = unassigned_cells[rng.randi_range(0, unassigned_cells.size() - 1)]

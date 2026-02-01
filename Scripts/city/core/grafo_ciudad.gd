@@ -546,7 +546,8 @@ func _generate_block_grids(
 			{},
 			min_floors,
 			max_floors,
-			block_heart_prob
+			block_heart_prob,
+			neighborhood_type
 		)
 		
 		block_grids[face_idx] = block

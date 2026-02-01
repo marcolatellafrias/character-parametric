@@ -10,6 +10,10 @@ var color: Color
 var floor_count: int
 var is_block_heart: bool = false
 
+# Contexto urbano y arquetipo
+var neighborhood_type: NeighborhoodTypes.Type
+var archetype: BuildingArchetype
+
 # Configuración para crear BuildingModules
 var distorted_grid: DistortedGrid
 var path_generator: PathGenerator
@@ -21,8 +25,15 @@ var building_alleyway_offsets: Dictionary
 # Cache de BuildingModules creados bajo demanda
 var building_modules: Dictionary = {}
 
-func _init(p_id: int, p_seed: int, p_min_floors: int = 1, p_max_floors: int = 8) -> void:
+func _init(
+	p_id: int,
+	p_seed: int,
+	p_min_floors: int = 1,
+	p_max_floors: int = 8,
+	p_neighborhood_type: NeighborhoodTypes.Type = NeighborhoodTypes.Type.DOWNTOWN
+) -> void:
 	id = p_id
+	neighborhood_type = p_neighborhood_type
 	
 	var rng = RandomNumberGenerator.new()
 	rng.seed = p_seed + id
@@ -35,6 +46,9 @@ func _init(p_id: int, p_seed: int, p_min_floors: int = 1, p_max_floors: int = 8)
 	)
 	
 	floor_count = rng.randi_range(p_min_floors, p_max_floors)
+	
+	# Asignar arquetipo basado en neighborhood y seed
+	archetype = ArchetypeDefinitions.get_archetype_for_cluster(neighborhood_type, p_seed + id)
 
 
 func set_grid_config(
@@ -159,3 +173,9 @@ func is_interior_cluster(distorted_grid_rows: int, distorted_grid_columns: int) 
 
 func get_is_block_heart() -> bool:
 	return is_block_heart
+
+func get_archetype() -> BuildingArchetype:
+	return archetype
+
+func get_neighborhood_type() -> NeighborhoodTypes.Type:
+	return neighborhood_type
