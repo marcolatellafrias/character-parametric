@@ -436,6 +436,11 @@ func _visualize_buildings() -> void:
 						print("CHAMFERS detectados:")
 						for vertex_idx in chamfers:
 							print("  Vértice %d: %s" % [vertex_idx, chamfers[vertex_idx]])
+					
+					var core_info = building_module.get_core_info()
+					print("core_width: %d" % core_info["width"])
+					print("core_depth: %d" % core_info["depth"])
+					print("is_clockwise: %s" % is_clockwise)
 				print("========================")
 			
 			for floor in range(cluster_floors):
@@ -472,24 +477,32 @@ func _visualize_buildings() -> void:
 					for i in range(core_vertices.size()):
 						core_vertices[i].y += floor_base_y
 					
+					# Preparar dimensiones del core
+					var core_rows = core_info["depth"]
+					var core_columns = core_info["width"]
+					
 					if is_clockwise:
+						# Hacer el swap de vértices
 						var temp = core_vertices[1]
 						core_vertices[1] = core_vertices[3]
 						core_vertices[3] = temp
+						
+						# También intercambiar las dimensiones porque los edges cambiaron
+						var temp_dim = core_rows
+						core_rows = core_columns
+						core_columns = temp_dim
 					
-					# Obtener chamfers y dimensiones del building module
+					# Obtener chamfers
 					var chamfers = building_module.get_chamfers()
-					var bm_rows = building_module.rows
-					var bm_columns = building_module.columns
 					
-					# Usar método con chamfers
+					# Usar método con chamfers y dimensiones ajustadas del CORE
 					var cube = DebugUtil.create_skewed_cube_advanced_grid(
 						core_vertices,
 						building_height,
 						floor_color,
 						chamfers,
-						bm_rows,
-						bm_columns,
+						core_rows,      # Ajustado si es clockwise
+						core_columns,   # Ajustado si es clockwise
 						false
 					)
 					add_child(cube)
@@ -516,8 +529,8 @@ func _visualize_building_colliders() -> void:
 			continue
 		
 		var cells_per_floor = block.get_cells_per_floor()
-		var building_cell_height = block.get_building_cell_height()  # CAMBIO
-		var building_height = cells_per_floor * building_cell_height  # CAMBIO
+		var building_cell_height = block.get_building_cell_height()
+		var building_height = cells_per_floor * building_cell_height
 		var is_clockwise = block.is_clockwise
 		
 		var clusters = block.get_all_clusters()
@@ -529,7 +542,7 @@ func _visualize_building_colliders() -> void:
 			var cluster_floors = cluster.get_floor_count()
 			
 			for floor in range(cluster_floors):
-				var floor_base_y = floor * cells_per_floor * building_cell_height  # CAMBIO
+				var floor_base_y = floor * cells_per_floor * building_cell_height
 				
 				for cell in cluster.cells:
 					var x = cell.x
@@ -552,19 +565,43 @@ func _visualize_building_colliders() -> void:
 					for i in range(core_vertices.size()):
 						core_vertices[i].y += floor_base_y
 					
+					# Preparar dimensiones del core
+					var core_rows = core_info["depth"]
+					var core_columns = core_info["width"]
+					
 					if is_clockwise:
+						# Hacer el swap de vértices
 						var temp = core_vertices[1]
 						core_vertices[1] = core_vertices[3]
 						core_vertices[3] = temp
+						
+						# También intercambiar las dimensiones porque los edges cambiaron
+						var temp_dim = core_rows
+						core_rows = core_columns
+						core_columns = temp_dim
 					
-					var collision_shape = _create_collision_shape_from_vertices(
+					# Obtener chamfers
+					var chamfers = building_module.get_chamfers()
+					
+					# Crear collider con chamfers
+					var collision_body = DebugUtil.create_skewed_cube_advanced_grid_collider(
 						core_vertices,
-						building_height
+						building_height,
+						chamfers,
+						core_rows,      # Ajustado si es clockwise
+						core_columns    # Ajustado si es clockwise
 					)
 					
-					if collision_shape != null:
-						static_body.add_child(collision_shape)
-						has_colliders = true
+					if collision_body != null:
+						# Agregar los collision shapes del body temporal al static_body principal
+						for child in collision_body.get_children():
+							if child is CollisionShape3D:
+								collision_body.remove_child(child)
+								static_body.add_child(child)
+								has_colliders = true
+						
+						# Liberar el body temporal
+						collision_body.queue_free()
 			
 			if has_colliders:
 				add_child(static_body)

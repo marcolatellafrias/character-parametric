@@ -81,7 +81,16 @@ func _calculate_chamfers(
 ) -> void:
 	# Para cada vértice del building module
 	for vertex_index in range(4):
-		var info = distorted_grid.get_vertex_edges_info(grid_x, grid_z, vertex_index)
+		# Si es clockwise, necesitamos mapear el índice al equivalente normalizado
+		var normalized_vertex_index = vertex_index
+		if is_clockwise:
+			# El swap es 1 ↔ 3, así que mapeamos al revés para obtener la topología correcta
+			if vertex_index == 1:
+				normalized_vertex_index = 3
+			elif vertex_index == 3:
+				normalized_vertex_index = 1
+		
+		var info = distorted_grid.get_vertex_edges_info(grid_x, grid_z, normalized_vertex_index)
 		
 		# Verificar que tenga exactamente 2 corner edges y 2 secondary edges
 		if info["corner_edges"].size() != 2 or info["secondary_edges"].size() != 2:
@@ -114,7 +123,9 @@ func _calculate_chamfers(
 				all_secondary_valid = false
 				break
 			
+			# Sin ajuste - el offset ya es correcto para las dimensiones del core
 			var offset = alleyway_offsets.get(edge_type, 0)
+			
 			secondary_edge_data.append({
 				"edge": secondary_edge,
 				"offset": offset
@@ -123,22 +134,23 @@ func _calculate_chamfers(
 		if not all_secondary_valid or secondary_edge_data.size() != 2:
 			continue
 		
-		# Determinar c1 y c2 basándose en la orientación del vértice
+		# Determinar c1 y c2 basándose en la orientación del vértice NORMALIZADO
 		var chamfer_values = _determine_chamfer_values(
-			vertex_index, info["vertex"], secondary_edge_data
+			normalized_vertex_index, info["vertex"], secondary_edge_data
 		)
 		
 		if chamfer_values.size() == 2:
+			# Guardar usando el índice del VÉRTICE DESPUÉS DEL SWAP (el que se usa en visualización)
 			chamfers[vertex_index] = chamfer_values
 	
-	# Si es clockwise, ajustar los índices de los chamfers
-	if is_clockwise:
-		_adjust_chamfers_for_clockwise()
+	# YA NO NECESITAMOS AJUSTAR - los chamfers ya están en la orientación correcta
 
 
 func _adjust_chamfers_for_clockwise() -> void:
 	# Cuando hacemos el swap de vértices (1 ↔ 3) para clockwise,
-	# los chamfers también deben ajustarse
+	# los chamfers también deben ajustarse de dos formas:
+	# 1. Los índices de vértices deben intercambiarse
+	# 2. Los valores [c1, c2] deben invertirse a [c2, c1] porque la orientación cambia
 	var adjusted_chamfers: Dictionary = {}
 	
 	for vertex_idx in chamfers:
@@ -150,7 +162,9 @@ func _adjust_chamfers_for_clockwise() -> void:
 		elif vertex_idx == 3:
 			new_idx = 1
 		
-		adjusted_chamfers[new_idx] = chamfers[vertex_idx]
+		# Invertir los valores [c1, c2] → [c2, c1] porque la orientación se invierte
+		var original_values = chamfers[vertex_idx]
+		adjusted_chamfers[new_idx] = [original_values[1], original_values[0]]
 	
 	chamfers = adjusted_chamfers
 
