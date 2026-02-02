@@ -4,11 +4,11 @@ class_name ArchetypeDefinitions extends RefCounted
 static var DEFINITIONS: Dictionary = {
 	"shanty_basic": {
 		"neighborhoods": [NeighborhoodTypes.Type.SHANTY_TOWN],
-		"has_chamfered_street_corners": false,
+		"has_chamfered_street_corners": true,
 	},
 	"shanty_makeshift": {
 		"neighborhoods": [NeighborhoodTypes.Type.SHANTY_TOWN],
-		"has_chamfered_street_corners": false,
+		"has_chamfered_street_corners": true,
 	},
 	"mansion_classic": {
 		"neighborhoods": [NeighborhoodTypes.Type.RICH_RESIDENTIAL],
@@ -16,15 +16,15 @@ static var DEFINITIONS: Dictionary = {
 	},
 	"mansion_modern": {
 		"neighborhoods": [NeighborhoodTypes.Type.RICH_RESIDENTIAL],
-		"has_chamfered_street_corners": false,
+		"has_chamfered_street_corners": true,
 	},
 	"warehouse_basic": {
 		"neighborhoods": [NeighborhoodTypes.Type.INDUSTRIAL],
-		"has_chamfered_street_corners": false,
+		"has_chamfered_street_corners": true,
 	},
 	"factory_modern": {
 		"neighborhoods": [NeighborhoodTypes.Type.INDUSTRIAL],
-		"has_chamfered_street_corners": false,
+		"has_chamfered_street_corners": true,
 	},
 	"office_tower": {
 		"neighborhoods": [NeighborhoodTypes.Type.DOWNTOWN],

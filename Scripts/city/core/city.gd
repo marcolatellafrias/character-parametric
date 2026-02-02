@@ -90,7 +90,7 @@ extends Node3D
 @export_group("Buildings")
 @export var show_buildings: bool = true
 @export var show_building_colliders: bool = true
-@export var alternate_floor_shading: bool = true  # NUEVO FLAG
+@export var alternate_floor_shading: bool = false 
 @export_range(0.1, 0.9) var floor_shade_factor: float = 0.85  # Factor para alternar tonos
 
 @export_group("Planos Peatonales")

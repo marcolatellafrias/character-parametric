@@ -38,7 +38,8 @@ func _init(
 	p_distorted_grid: DistortedGrid = null,
 	p_grid_x: int = -1,
 	p_grid_z: int = -1,
-	p_path_generator: PathGenerator = null
+	p_path_generator: PathGenerator = null,
+	p_archetype: BuildingArchetype = null
 ) -> void:
 	vertices = p_vertices
 	edge_types = p_edge_types
@@ -51,7 +52,7 @@ func _init(
 	_calculate_core_area()
 	
 	if p_distorted_grid and p_grid_x >= 0 and p_grid_z >= 0 and p_path_generator:
-		_calculate_chamfers(p_distorted_grid, p_grid_x, p_grid_z, p_path_generator)
+		_calculate_chamfers(p_distorted_grid, p_grid_x, p_grid_z, p_path_generator, p_archetype)
 
 
 func _calculate_core_area() -> void:
@@ -70,13 +71,26 @@ func _calculate_chamfers(
 	distorted_grid: DistortedGrid,
 	grid_x: int,
 	grid_z: int,
-	path_generator: PathGenerator
+	path_generator: PathGenerator,
+	archetype: BuildingArchetype = null
 ) -> void:
-	# Ya no necesitamos mapeo de índices - todas las caras están normalizadas
 	for vertex_index in range(4):
 		var info = distorted_grid.get_vertex_edges_info(grid_x, grid_z, vertex_index)
+		var vertex_grid_pos: Vector2i = info["vertex"]
 		
-		if info["corner_edges"].size() != 2 or info["secondary_edges"].size() != 2:
+		# Verificar si es esquina de calle (street corner)
+		if distorted_grid.is_street_corner_vertex(vertex_grid_pos.x, vertex_grid_pos.y):
+			if archetype != null:
+				# Seed único por vértice basado en posición
+				var vertex_seed = hash(Vector2i(grid_x * 1000 + vertex_index, grid_z))
+				var chamfer_value = archetype.get_street_corner_chamfer_value(vertex_seed)
+				
+				if chamfer_value > 0:
+					chamfers[vertex_index] = [chamfer_value, chamfer_value]
+					continue  # Ya procesamos este vértice como street corner
+		
+		# Verificar si es esquina de callejón (alleyway corner)
+		if not distorted_grid.is_alleyway_corner_vertex(vertex_grid_pos.x, vertex_grid_pos.y):
 			continue
 		
 		var corner_edges_valid = true
@@ -113,11 +127,12 @@ func _calculate_chamfers(
 			continue
 		
 		var chamfer_values = _determine_chamfer_values(
-			vertex_index, info["vertex"], secondary_edge_data
+			vertex_index, vertex_grid_pos, secondary_edge_data
 		)
 		
 		if chamfer_values.size() == 2:
 			chamfers[vertex_index] = chamfer_values
+
 
 func _get_edge_type_from_vertices(
 	v1: Vector2i,

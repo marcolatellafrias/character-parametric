@@ -338,3 +338,96 @@ func _is_edge_part_of_cell(edge: Dictionary, cell_x: int, cell_z: int) -> bool:
 		return true
 	
 	return false
+
+## Determina si un vértice en coordenadas de grilla es una esquina de calle
+## Un vértice se considera esquina de calle si no tiene edges secundarios
+## (es decir, está en el perímetro exterior del grid)
+## grid_x, grid_z: coordenadas del vértice (no de celda)
+func is_street_corner_vertex(grid_x: int, grid_z: int) -> bool:
+	if grid_x < 0 or grid_x > columns or grid_z < 0 or grid_z > rows:
+		return false
+	
+	# Un vértice (grid_x, grid_z) puede ser esquina de hasta 4 celdas:
+	# - BL (0) de celda (grid_x, grid_z)
+	# - BR (1) de celda (grid_x-1, grid_z)
+	# - TR (2) de celda (grid_x-1, grid_z-1)
+	# - TL (3) de celda (grid_x, grid_z-1)
+	
+	# Encontrar la primera celda válida
+	var cell_x: int = -1
+	var cell_z: int = -1
+	var vertex_index: int = -1
+	
+	# Prioridad: BL -> BR -> TR -> TL
+	if grid_x < columns and grid_z < rows:
+		# Vértice es BL de esta celda
+		cell_x = grid_x
+		cell_z = grid_z
+		vertex_index = 0
+	elif grid_x > 0 and grid_z < rows:
+		# Vértice es BR de esta celda
+		cell_x = grid_x - 1
+		cell_z = grid_z
+		vertex_index = 1
+	elif grid_x > 0 and grid_z > 0:
+		# Vértice es TR de esta celda
+		cell_x = grid_x - 1
+		cell_z = grid_z - 1
+		vertex_index = 2
+	elif grid_x < columns and grid_z > 0:
+		# Vértice es TL de esta celda
+		cell_x = grid_x
+		cell_z = grid_z - 1
+		vertex_index = 3
+	
+	if cell_x < 0 or cell_z < 0 or vertex_index < 0:
+		return false
+	
+	var info = get_vertex_edges_info(cell_x, cell_z, vertex_index)
+	
+	# Es esquina de calle si no tiene secondary edges
+	return info["secondary_edges"].is_empty()
+	
+## Determina si un vértice en coordenadas de grilla es una esquina de callejón
+## Un vértice se considera esquina de callejón si tiene exactamente 2 edges secundarios
+## (es decir, está en una esquina interior del grid donde se encuentran callejones)
+## grid_x, grid_z: coordenadas del vértice (no de celda)
+func is_alleyway_corner_vertex(grid_x: int, grid_z: int) -> bool:
+	if grid_x < 0 or grid_x > columns or grid_z < 0 or grid_z > rows:
+		return false
+	
+	# Encontrar una celda adyacente válida para consultar
+	var cell_x = grid_x
+	var cell_z = grid_z
+	var vertex_index = 0  # BL por defecto
+	
+	# Ajustar para encontrar una celda válida y el índice de vértice correcto
+	if grid_x == columns:
+		cell_x = columns - 1
+		vertex_index = 1 if grid_z < rows else 2  # BR o TR
+	
+	if grid_z == rows:
+		cell_z = rows - 1
+		vertex_index = 3 if grid_x == 0 else 2  # TL o TR
+	
+	if grid_x == columns and grid_z == rows:
+		cell_x = columns - 1
+		cell_z = rows - 1
+		vertex_index = 2  # TR
+	elif grid_x == 0 and grid_z == rows:
+		cell_x = 0
+		cell_z = rows - 1
+		vertex_index = 3  # TL
+	elif grid_x == columns and grid_z == 0:
+		cell_x = columns - 1
+		cell_z = 0
+		vertex_index = 1  # BR
+	
+	# Verificar que la celda sea válida
+	if cell_x < 0 or cell_x >= columns or cell_z < 0 or cell_z >= rows:
+		return false
+	
+	var info = get_vertex_edges_info(cell_x, cell_z, vertex_index)
+	
+	# Es esquina de callejón si tiene exactamente 2 secondary edges
+	return info["secondary_edges"].size() == 2

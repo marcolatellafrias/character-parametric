@@ -124,11 +124,13 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 		distorted_grid,
 		x,
 		z,
-		path_generator
+		path_generator,
+		archetype  # NUEVO: pasar archetype
 	)
 	
 	building_modules[key] = building_module
 	return building_module
+
 
 
 func add_cell(x: int, z: int) -> void:
