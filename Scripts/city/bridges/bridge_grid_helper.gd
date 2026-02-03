@@ -9,348 +9,158 @@ var distorted_columns: int
 var building_rows: int
 var building_columns: int
 
-## Tamaño total de la mega-grid absoluta
-var absolute_rows: int
-var absolute_columns: int
-
-
 func _init(p_block: BlockGenerator) -> void:
 	block = p_block
 	
-	var distorted = block.get_distorted_grid()
-	distorted_rows = distorted.rows
-	distorted_columns = distorted.columns
+	var distorted_grid = block.get_distorted_grid()
+	if distorted_grid:
+		distorted_rows = distorted_grid.rows
+		distorted_columns = distorted_grid.columns
 	
 	building_rows = block.get_building_rows()
 	building_columns = block.get_building_columns()
-	
-	# Calcular tamaño de mega-grid
-	absolute_rows = distorted_rows * building_rows
-	absolute_columns = distorted_columns * building_columns
 
-
-## Obtiene los 8 vértices de un volumen usando coordenadas absolutas de mega-grid
-## @param abs_x: Coordenada X absoluta en mega-grid (0 a absolute_columns-1)
-## @param abs_z: Coordenada Z absoluta en mega-grid (0 a absolute_rows-1)
-## @param abs_y: Coordenada Y absoluta en altura (índice de celda vertical)
-## @param width: Ancho en celdas (dirección X)
-## @param depth: Profundidad en celdas (dirección Z)
-## @param height: Altura en celdas (dirección Y)
-## @return: Dictionary con {bottom_vertices: Array[Vector3], top_vertices: Array[Vector3]}
-func get_volume_vertices_absolute(
-	abs_x: int,
-	abs_z: int,
-	abs_y: int,
-	width: int = 1,
-	depth: int = 1,
-	height: int = 1
-) -> Dictionary:
-	# Convertir coordenadas absolutas a distorted + building local
-	var coords = _absolute_to_local(abs_x, abs_z)
-	
-	return get_volume_vertices(
-		coords.distorted_x,
-		coords.distorted_z,
-		coords.building_x,
-		coords.building_z,
-		abs_y,
-		width,
-		depth,
-		height
-	)
-
-
-## Obtiene los 8 vértices de un volumen usando coordenadas locales
-## @param distorted_x: Coordenada X en distorted_grid
-## @param distorted_z: Coordenada Z en distorted_grid
-## @param building_x: Coordenada X local en building_grid de esa celda
-## @param building_z: Coordenada Z local en building_grid de esa celda
-## @param building_y: Coordenada Y en altura (índice de celda vertical)
-## @param width: Ancho en celdas (dirección X)
-## @param depth: Profundidad en celdas (dirección Z)
-## @param height: Altura en celdas (dirección Y)
-## @return: Dictionary con {bottom_vertices: Array[Vector3], top_vertices: Array[Vector3]}
-func get_volume_vertices(
-	distorted_x: int,
-	distorted_z: int,
-	building_x: int,
-	building_z: int,
-	building_y: int,
-	width: int = 1,
-	depth: int = 1,
-	height: int = 1
-) -> Dictionary:
-	# Validar coordenadas
-	if not _validate_distorted_coords(distorted_x, distorted_z):
-		push_error("Coordenadas distorted_grid inválidas: (%d, %d)" % [distorted_x, distorted_z])
+## Retorna información completa del edge de fachada en un borde del bloque
+## edge_index: 0=norte, 1=este, 2=sur, 3=oeste
+## cell_index: índice lineal a lo largo de ese borde
+func get_facade_edge_info(edge_index: int, cell_index: int) -> Dictionary:
+	var distorted_grid = block.get_distorted_grid()
+	if distorted_grid == null:
 		return {}
 	
-	if not _validate_building_coords(building_x, building_z, width, depth):
-		push_error("Coordenadas building_grid inválidas: (%d, %d) con tamaño (%d, %d)" % [building_x, building_z, width, depth])
+	# [cell_x, cell_z, max_index, v1_idx, v2_idx]
+	var configs = {
+		0: [cell_index, 0, distorted_columns, 0, 1],  # Norte: BL→BR
+		1: [distorted_columns - 1, cell_index, distorted_rows, 1, 2],  # Este: BR→TR
+		2: [cell_index, distorted_rows - 1, distorted_columns, 2, 3],  # Sur: TR→TL
+		3: [0, cell_index, distorted_rows, 3, 0]  # Oeste: TL→BL
+	}
+	
+	if edge_index not in configs:
 		return {}
 	
-	# Obtener el building de la celda distorted
-	var building_module: BuildingModule = block.get_building_module(distorted_x, distorted_z, 0)
+	var config = configs[edge_index]
 	
+	if cell_index < 0 or cell_index >= config[2]:
+		return {}
+	
+	var cell_vertices = distorted_grid.get_cell_vertices(config[0], config[1])
+	if cell_vertices.size() != 4:
+		return {}
+	
+	return {
+		"edge_index": edge_index,
+		"cell_index": cell_index,
+		"cell_x": config[0],
+		"cell_z": config[1],
+		"vertices": [cell_vertices[config[3]], cell_vertices[config[4]]]
+	}
+
+
+## Retorna los edges del building grid que coinciden con un edge facade
+## facade_edge_info: Dictionary retornado por get_facade_edge_info()
+## is_core: si true, retorna edges del área core (aplicando offsets de alleyway)
+func get_building_edges_from_facade(facade_edge_info: Dictionary, is_core: bool = false) -> Array:
+	var edges: Array = []
+	
+	if facade_edge_info.is_empty():
+		return edges
+	
+	var building_module = block.get_building_module(facade_edge_info["cell_x"], facade_edge_info["cell_z"])
 	if building_module == null:
-		push_error("No existe building module en distorted_grid (%d, %d)" % [distorted_x, distorted_z])
+		return edges
+	
+	var core_info = building_module.get_core_info() if is_core else {}
+	var start_col = core_info.get("min_x", 0)
+	var end_col = core_info.get("max_x", building_columns - 1)
+	var start_row = core_info.get("min_z", 0)
+	var end_row = core_info.get("max_z", building_rows - 1)
+	
+	# [v1_idx, v2_idx, is_horizontal, fixed_coord]
+	var configs = {
+		0: [0, 1, true, start_row],   # Norte: BL→BR
+		1: [1, 2, false, end_col],    # Este: BR→TR
+		2: [2, 3, true, end_row],     # Sur: TR→TL
+		3: [3, 0, false, start_col]   # Oeste: TL→BL
+	}
+	
+	var config = configs[facade_edge_info["edge_index"]]
+	var range_vals = range(start_col, end_col + 1) if config[2] else range(start_row, end_row + 1)
+	
+	for i in range_vals:
+		var col = i if config[2] else config[3]
+		var row = config[3] if config[2] else i
+		var verts = building_module.get_cell_vertices(col, row)
+		
+		if verts.size() == 4:
+			edges.append({
+				"v1": verts[config[0]],
+				"v2": verts[config[1]],
+				"grid_x": col,
+				"grid_z": row
+			})
+	
+	return edges
+	
+## Retorna una grilla vertical de quads a partir de un facade edge
+## Incluye índices relativos (local_x, local_y) para fácil acceso
+func get_vertical_grid_from_facade(facade_edge_info: Dictionary, is_core: bool = false) -> Dictionary:
+	if facade_edge_info.is_empty():
+		return {"quads": [], "width": 0, "height": 0}
+	
+	var cell_x = facade_edge_info["cell_x"]
+	var cell_z = facade_edge_info["cell_z"]
+	
+	var cluster = block.get_cluster_for_cell(cell_x, cell_z)
+	if cluster == null:
+		return {"quads": [], "width": 0, "height": 0}
+	
+	var floor_count = cluster.get_floor_count()
+	var cells_per_floor = block.get_cells_per_floor()
+	var base_edges = get_building_edges_from_facade(facade_edge_info, is_core)
+	
+	var quads: Array = []
+	var edge_index = 0
+	
+	for edge in base_edges:
+		for floor in range(floor_count):
+			var y_bottom = floor * cells_per_floor * block.get_building_cell_height()
+			var y_top = (floor + 1) * cells_per_floor * block.get_building_cell_height()
+			
+			var v1 = Vector3(edge["v1"].x, y_bottom, edge["v1"].z)
+			var v2 = Vector3(edge["v2"].x, y_bottom, edge["v2"].z)
+			var v3 = Vector3(edge["v2"].x, y_top, edge["v2"].z)
+			var v4 = Vector3(edge["v1"].x, y_top, edge["v1"].z)
+			
+			quads.append({
+				"local_x": edge_index,  # índice horizontal relativo
+				"local_y": floor,       # índice vertical relativo
+				"grid_x": edge["grid_x"],
+				"grid_z": edge["grid_z"],
+				"v1": v1,
+				"v2": v2,
+				"v3": v3,
+				"v4": v4
+			})
+		
+		edge_index += 1
+	
+	return {
+		"quads": quads,
+		"width": base_edges.size(),
+		"height": floor_count
+	}
+
+
+## Obtiene un quad específico de una grilla vertical usando coordenadas relativas
+func get_quad_at(vertical_grid: Dictionary, local_x: int, local_y: int) -> Dictionary:
+	if local_x < 0 or local_x >= vertical_grid["width"]:
+		return {}
+	if local_y < 0 or local_y >= vertical_grid["height"]:
 		return {}
 	
-	# Obtener vértices de la base (bottom)
-	var bottom_vertices = _get_quad_vertices(
-		building_module,
-		building_x,
-		building_z,
-		width,
-		depth,
-		building_y
-	)
+	for quad in vertical_grid["quads"]:
+		if quad["local_x"] == local_x and quad["local_y"] == local_y:
+			return quad
 	
-	# Obtener vértices del techo (top)
-	var top_vertices = _get_quad_vertices(
-		building_module,
-		building_x,
-		building_z,
-		width,
-		depth,
-		building_y + height
-	)
-	
-	return {
-		"bottom_vertices": bottom_vertices,
-		"top_vertices": top_vertices
-	}
-
-
-## NUEVO: Obtiene los 4 vértices de una pared específica de un volumen
-## @param distorted_x: Coordenada X en distorted_grid
-## @param distorted_z: Coordenada Z en distorted_grid
-## @param building_x: Coordenada X local en building_grid
-## @param building_z: Coordenada Z local en building_grid
-## @param building_y: Coordenada Y en altura
-## @param width: Ancho del volumen (relevante para north/south)
-## @param depth: Profundidad del volumen (relevante para east/west)
-## @param height: Altura del volumen
-## @param wall: "north", "south", "east", "west"
-## @return: Array[Vector3] con 4 vértices [v1, v2, v3, v4] o vacío si error
-func get_wall_vertices(
-	distorted_x: int,
-	distorted_z: int,
-	building_x: int,
-	building_z: int,
-	building_y: int,
-	width: int,
-	depth: int,
-	height: int,
-	wall: String
-) -> Array[Vector3]:
-	
-	var volume = get_volume_vertices(
-		distorted_x, distorted_z,
-		building_x, building_z, building_y,
-		width, depth, height
-	)
-	
-	if volume.is_empty():
-		return []
-	
-	var bottom = volume.bottom_vertices
-	var top = volume.top_vertices
-	
-	if bottom.size() != 4 or top.size() != 4:
-		return []
-	
-	var result: Array[Vector3] = []
-	
-	match wall:
-		"north":
-			# Cara norte (z mínimo): bottom[0], bottom[1], top[1], top[0]
-			result.append(bottom[0])
-			result.append(bottom[1])
-			result.append(top[1])
-			result.append(top[0])
-		
-		"south":
-			# Cara sur (z máximo): bottom[3], bottom[2], top[2], top[3]
-			result.append(bottom[3])
-			result.append(bottom[2])
-			result.append(top[2])
-			result.append(top[3])
-		
-		"east":
-			# Cara este (x máximo): bottom[1], bottom[2], top[2], top[1]
-			result.append(bottom[1])
-			result.append(bottom[2])
-			result.append(top[2])
-			result.append(top[1])
-		
-		"west":
-			# Cara oeste (x mínimo): bottom[0], bottom[3], top[3], top[0]
-			result.append(bottom[0])
-			result.append(bottom[3])
-			result.append(top[3])
-			result.append(top[0])
-		
-		_:
-			push_error("Dirección de pared inválida: %s (debe ser north/south/east/west)" % wall)
-			return []
-	
-	return result
-
-
-## Obtiene los 4 vértices de un quad rectangular en el building grid
-## @param building: Building de referencia
-## @param start_x: Coordenada X inicial en building_grid
-## @param start_z: Coordenada Z inicial en building_grid
-## @param width: Ancho en celdas
-## @param depth: Profundidad en celdas
-## @param local_floor: Altura en celdas
-## @return: Array[Vector3] con 4 vértices [BL, BR, TR, TL]
-func _get_quad_vertices(
-	building_module: BuildingModule,
-	start_x: int,
-	start_z: int,
-	width: int,
-	depth: int,
-	local_floor: int
-) -> Array[Vector3]:
-	var result: Array[Vector3] = []
-	
-	# Obtener vértices de las 4 esquinas del volumen rectangular
-	# Bottom-Left: (start_x, start_z)
-	var bl_cell = building_module.get_cell_vertices(start_x, start_z, local_floor)
-	if bl_cell.size() == 4:
-		result.append(bl_cell[0])  # Vértice BL de la celda BL
-	
-	# Bottom-Right: (start_x + width, start_z)
-	var br_cell = building_module.get_cell_vertices(start_x + width - 1, start_z, local_floor)
-	if br_cell.size() == 4:
-		result.append(br_cell[1])  # Vértice BR de la celda BR
-	
-	# Top-Right: (start_x + width, start_z + depth)
-	var tr_cell = building_module.get_cell_vertices(start_x + width - 1, start_z + depth - 1, local_floor)
-	if tr_cell.size() == 4:
-		result.append(tr_cell[2])  # Vértice TR de la celda TR
-	
-	# Top-Left: (start_x, start_z + depth)
-	var tl_cell = building_module.get_cell_vertices(start_x, start_z + depth - 1, local_floor)
-	if tl_cell.size() == 4:
-		result.append(tl_cell[3])  # Vértice TL de la celda TL
-	
-	return result
-
-
-## Convierte coordenadas absolutas de mega-grid a locales (distorted + building)
-## @param abs_x: Coordenada X absoluta
-## @param abs_z: Coordenada Z absoluta
-## @return: Dictionary con {distorted_x, distorted_z, building_x, building_z}
-func _absolute_to_local(abs_x: int, abs_z: int) -> Dictionary:
-	var distorted_x = int(abs_x / building_columns)
-	var distorted_z = int(abs_z / building_rows)
-	
-	var building_x = abs_x % building_columns
-	var building_z = abs_z % building_rows
-	
-	return {
-		"distorted_x": distorted_x,
-		"distorted_z": distorted_z,
-		"building_x": building_x,
-		"building_z": building_z
-	}
-
-
-## Convierte coordenadas locales a absolutas de mega-grid
-## @param distorted_x: Coordenada X en distorted_grid
-## @param distorted_z: Coordenada Z en distorted_grid
-## @param building_x: Coordenada X local en building_grid
-## @param building_z: Coordenada Z local en building_grid
-## @return: Dictionary con {abs_x, abs_z}
-func _local_to_absolute(
-	distorted_x: int,
-	distorted_z: int,
-	building_x: int,
-	building_z: int
-) -> Dictionary:
-	return {
-		"abs_x": distorted_x * building_columns + building_x,
-		"abs_z": distorted_z * building_rows + building_z
-	}
-
-
-## Valida que las coordenadas distorted estén dentro de rango
-func _validate_distorted_coords(x: int, z: int) -> bool:
-	return x >= 0 and x < distorted_columns and z >= 0 and z < distorted_rows
-
-
-## Valida que las coordenadas building + tamaño estén dentro de rango
-func _validate_building_coords(x: int, z: int, width: int, depth: int) -> bool:
-	return (x >= 0 and 
-			z >= 0 and 
-			x + width <= building_columns and 
-			z + depth <= building_rows)
-
-
-## Obtiene el tamaño de la mega-grid absoluta
-## @return: Dictionary con {rows, columns}
-func get_absolute_grid_size() -> Dictionary:
-	return {
-		"rows": absolute_rows,
-		"columns": absolute_columns
-	}
-
-
-## Obtiene información de debug sobre una coordenada absoluta
-## @param abs_x: Coordenada X absoluta
-## @param abs_z: Coordenada Z absoluta
-## @return: Dictionary con información de debug
-func get_debug_info(abs_x: int, abs_z: int) -> Dictionary:
-	var coords = _absolute_to_local(abs_x, abs_z)
-	
-	var building_module: BuildingModule = block.get_building_module(
-		coords.distorted_x, 
-		coords.distorted_z, 
-		0
-	)
-	
-	var is_valid = building_module != null
-	var is_in_core = false
-	
-	if is_valid:
-		is_in_core = building_module.is_cell_in_core(
-			coords.building_x, 
-			coords.building_z
-		)
-	
-	return {
-		"absolute": {"x": abs_x, "z": abs_z},
-		"distorted": {"x": coords.distorted_x, "z": coords.distorted_z},
-		"building": {"x": coords.building_x, "z": coords.building_z},
-		"is_valid": is_valid,
-		"is_in_core": is_in_core
-	}
-	
-## NUEVO: Determina qué edges de una celda son exteriores al cluster
-## @param cluster: BuildingCluster de referencia
-## @param x: Coordenada X de la celda en distorted_grid
-## @param z: Coordenada Z de la celda en distorted_grid
-## @return: Array de dictionaries con {direction: String, x: int, z: int}
-func get_exterior_edges(cluster: BuildingCluster, x: int, z: int) -> Array:
-	var exterior: Array = []
-	
-	# Norte (z - 1)
-	if not cluster.contains_cell(x, z - 1) or z == 0:
-		exterior.append({"direction": "north", "x": x, "z": z})
-	
-	# Este (x + 1)
-	if not cluster.contains_cell(x + 1, z) or x == distorted_columns - 1:
-		exterior.append({"direction": "east", "x": x, "z": z})
-	
-	# Sur (z + 1)
-	if not cluster.contains_cell(x, z + 1) or z == distorted_rows - 1:
-		exterior.append({"direction": "south", "x": x, "z": z})
-	
-	# Oeste (x - 1)
-	if not cluster.contains_cell(x - 1, z) or x == 0:
-		exterior.append({"direction": "west", "x": x, "z": z})
-	
-	return exterior
+	return {}
