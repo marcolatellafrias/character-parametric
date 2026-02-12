@@ -1,6 +1,6 @@
-[gd_scene load_steps=19 format=3 uid="uid://dg4wwu387wi12"]
+[gd_scene load_steps=35 format=3 uid="uid://dg4wwu387wi12"]
 
-[ext_resource type="PackedScene" uid="uid://dg7affsliom26" path="res://Scenes/barquetesimple2.blend" id="1_dc2g8"]
+[ext_resource type="PackedScene" uid="uid://npa52w18g2el" path="res://Scenes/barquetesimple2.blend" id="1_dc2g8"]
 [ext_resource type="Material" uid="uid://suxxlwyeavv2" path="res://Models/auto/chasis.tres" id="2_gq4qv"]
 [ext_resource type="Material" uid="uid://dh6alal3pae1n" path="res://Models/auto/cama.tres" id="3_4s23i"]
 [ext_resource type="Material" uid="uid://ios8ttubqev2" path="res://Models/auto/tanque.tres" id="3_586se"]
@@ -9,6 +9,12 @@
 [ext_resource type="Material" uid="uid://c7fdiywnobhhb" path="res://Models/auto/sirenas.tres" id="5_4s23i"]
 [ext_resource type="Material" uid="uid://du5qso8qhjk0v" path="res://Models/auto/metal oscuro.tres" id="5_qng2u"]
 [ext_resource type="Material" uid="uid://hlhue3yyp6on" path="res://Models/auto/cable.tres" id="9_u5wqr"]
+[ext_resource type="Script" uid="uid://lks3qjajvcp" path="res://Scenes/LeverControl.gd" id="10_rvw0b"]
+[ext_resource type="Script" uid="uid://ts7t44kh70a0" path="res://Scenes/steering_wheel.gd" id="11_rvw0b"]
+[ext_resource type="Shader" uid="uid://cqkfvrs4svyg" path="res://Scenes/Glow_Shader.gdshader" id="12_csvot"]
+[ext_resource type="Script" uid="uid://dg0mua2fr6foe" path="res://Scenes/sillon_conductor.gd" id="13_n26vh"]
+
+[sub_resource type="GDScript" id="GDScript_u5wqr"]
 
 [sub_resource type="Curve" id="Curve_4s23i"]
 _data = [Vector2(0, 0.6986756), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
@@ -50,7 +56,50 @@ albedo_color = Color(0.8380958, 0.71804106, 0.35390636, 1)
 shading_mode = 0
 albedo_color = Color(1, 0.38128993, 0.44383693, 1)
 
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_csvot"]
+render_priority = 0
+shader = ExtResource("12_csvot")
+shader_parameter/shine_color = Color(1, 1, 0, 1)
+shader_parameter/intensity = 2.0
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_rvw0b"]
+size = Vector3(1, 1, 1.0019531)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_0pl4y"]
+render_priority = 0
+shader = ExtResource("12_csvot")
+shader_parameter/shine_color = Color(1, 1, 0, 1)
+shader_parameter/intensity = 2.0
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_n26vh"]
+render_priority = 0
+shader = ExtResource("12_csvot")
+shader_parameter/shine_color = Color(1, 1, 0, 1)
+shader_parameter/intensity = 2.0
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_u5wqr"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_rvw0b"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_csvot"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_n26vh"]
+
+[sub_resource type="TorusMesh" id="TorusMesh_0pl4y"]
+inner_radius = 0.648
+outer_radius = 0.546
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_661wu"]
+render_priority = 0
+shader = ExtResource("12_csvot")
+shader_parameter/shine_color = Color(1, 1, 0, 1)
+shader_parameter/intensity = 2.0
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_0pl4y"]
+size = Vector3(0.8934326, 1.3555298, 0.4173584)
+
 [node name="barquetesimple2" instance=ExtResource("1_dc2g8")]
+script = SubResource("GDScript_u5wqr")
 
 [node name="Cube_001" parent="." index="0"]
 material_override = ExtResource("2_gq4qv")
@@ -121,6 +170,8 @@ material_override = ExtResource("5_4s23i")
 material_override = ExtResource("5_4s23i")
 
 [node name="volante" parent="." index="24"]
+transform = Transform3D(1.02489, 0, -4.4799368e-08, 4.479936e-08, 1.9582423e-15, 1.0248901, 0, -1.02489, 1.9582426e-15, 0.68466884, 0.6790709, 1.5138106)
+visible = false
 material_override = ExtResource("5_qng2u")
 
 [node name="Cube_012" parent="." index="26"]
@@ -176,3 +227,82 @@ material_overlay = SubResource("StandardMaterial3D_4s23i")
 
 [node name="Cube_011" parent="." index="50"]
 material_override = SubResource("StandardMaterial3D_u5wqr")
+
+[node name="PalancaDerecha" type="StaticBody3D" parent="." index="51" node_paths=PackedStringArray("mesh_manija", "meshes_visuales")]
+transform = Transform3D(-0.34908667, -19.606894, 0, 19.606894, -0.34908667, 0, 0, 0, 19.61, -0.81235015, 0.5434044, 1.6721227)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("10_rvw0b")
+output_axis_name = "vertical"
+mesh_manija = NodePath("../manivela derecha interior")
+meshes_visuales = [NodePath("../manivela derecha exterior"), NodePath("../manivela derecha interior")]
+highlight_material = SubResource("ShaderMaterial_csvot")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PalancaDerecha" index="0"]
+transform = Transform3D(-0.01, 0, 0, 0, -0.01, 0, 0, 0, -0.01, 0, 0, -0.00035893917)
+shape = SubResource("BoxShape3D_rvw0b")
+
+[node name="PalancaIzquierda" type="StaticBody3D" parent="." index="52" node_paths=PackedStringArray("mesh_manija", "meshes_visuales")]
+transform = Transform3D(-0.34908667, -19.606894, 0, 19.606894, -0.34908667, 0, 0, 0, 19.61, -0.81235015, 0.5434044, 1.6721227)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("10_rvw0b")
+mesh_manija = NodePath("../manivela izquierda interior")
+meshes_visuales = [NodePath("../manivela izquierda exterior"), NodePath("../manivela izquierda interior")]
+highlight_material = SubResource("ShaderMaterial_0pl4y")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PalancaIzquierda" index="0"]
+transform = Transform3D(-0.01, 0, 0, 0, -0.01, 0, 0, 0, -0.01, -0.00020470284, -0.011497412, -0.00035893917)
+shape = SubResource("BoxShape3D_rvw0b")
+
+[node name="VolanteGodot" type="StaticBody3D" parent="." index="53" node_paths=PackedStringArray("pivote_rotacion", "meshes_visuales")]
+transform = Transform3D(0.99760044, -0.06923414, 0, 0.06923414, 0.99760044, 0, 0, 0, 1, 0.99021804, 0, 2.2180645)
+collision_layer = 4
+script = ExtResource("11_rvw0b")
+pivote_rotacion = NodePath("Pivote/Eje_Real")
+meshes_visuales = [NodePath("Pivote")]
+highlight_material = SubResource("ShaderMaterial_n26vh")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="VolanteGodot" index="0"]
+transform = Transform3D(0.23000008, 0, 3.7252903e-09, -3.7252903e-09, -1.0053619e-08, 0.23000008, 0, -0.23, -1.0053619e-08, -0.30775714, 0.4747602, -0.39397454)
+shape = SubResource("CylinderShape3D_u5wqr")
+
+[node name="Pivote" type="Marker3D" parent="VolanteGodot" index="1"]
+
+[node name="Eje_Real" type="Marker3D" parent="VolanteGodot/Pivote" index="0"]
+transform = Transform3D(0.99867845, 0.051394805, 0, -0.051394805, 0.99867845, 0, 0, 0, 1, -0.29938227, 0.48244593, -0.60348356)
+
+[node name="Juntas2" type="MeshInstance3D" parent="VolanteGodot/Pivote/Eje_Real" index="0"]
+transform = Transform3D(0.019974865, -5.122274e-09, 1.7347235e-18, 1.2805685e-09, -0.096415624, -9.1597047e-10, 0, 8.428916e-09, -0.010477468, 0.0028342605, -0.040456593, 0.010637164)
+mesh = SubResource("BoxMesh_rvw0b")
+skeleton = NodePath("../..")
+
+[node name="Juntas" type="MeshInstance3D" parent="VolanteGodot/Pivote/Eje_Real" index="1"]
+transform = Transform3D(0.2168225, 0, -1.7462298e-10, 0, -5.745083e-10, -0.0163898, 0, 0.013143217, -7.164203e-10, -0.0007929802, -0.0074803233, 0.0004698038)
+mesh = SubResource("BoxMesh_csvot")
+skeleton = NodePath("../..")
+
+[node name="Soporte" type="MeshInstance3D" parent="VolanteGodot/Pivote/Eje_Real" index="2"]
+transform = Transform3D(0.04200004, 1.4551915e-11, 0, -4.656613e-10, 0.0065744948, 0.056946658, 0, -0.15185775, 0.0024654341, 0.0014206171, -0.015996277, 0.16391575)
+mesh = SubResource("CylinderMesh_n26vh")
+skeleton = NodePath("../../..")
+
+[node name="Aro" type="MeshInstance3D" parent="VolanteGodot/Pivote/Eje_Real" index="3"]
+transform = Transform3D(0.18, 2.9143354e-16, -8.381903e-09, 0, -5.5950578e-09, 0.14499983, 0, -0.128, -6.3381513e-09, 0.004234791, -0.0035350323, -0.001217246)
+mesh = SubResource("TorusMesh_0pl4y")
+skeleton = NodePath("../../..")
+
+[node name="Sillon Conductor" type="StaticBody3D" parent="." index="54" node_paths=PackedStringArray("posicion_ojos", "meshes_visuales")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.7552846, 0.71827716, 1.0848448)
+collision_layer = 4
+script = ExtResource("13_n26vh")
+posicion_ojos = NodePath("Ojos")
+meshes_visuales = [NodePath("../sillones")]
+highlight_material = SubResource("ShaderMaterial_661wu")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Sillon Conductor" index="0"]
+transform = Transform3D(0.635, 0, 0, 0, 0.635, 0, 0, 0, 0.635, -0.028476536, -0.1575194, -0.0038354397)
+shape = SubResource("BoxShape3D_0pl4y")
+
+[node name="Ojos" type="Marker3D" parent="Sillon Conductor" index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.10684973, 0.008342385, 0.15820122)

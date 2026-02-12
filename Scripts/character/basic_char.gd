@@ -10,6 +10,7 @@ extends CharacterBody3D
 @export var ground_push_impulse: float = 0.4
 @export var ground_push_max_dist: float = 1.2  
 
+var _current_interactable: Node = null
 var _crosshair: ColorRect
 var _ui_layer: CanvasLayer
 
@@ -17,6 +18,10 @@ var _grab_line: MeshInstance3D
 var _grab_line_mesh: CylinderMesh
 var _grab_line_mat: StandardMaterial3D
 var _drag_start_world := Vector3.ZERO
+var _is_interacting: bool = false
+
+var is_sitting: bool = false
+var original_parent: Node = null
 
 @export var grab_ray_length: float = 12.0
 @export var grab_kp: float = 180.0
@@ -56,6 +61,11 @@ func _ready() -> void:
 @export var push_impulse_scale := 2.0
 
 func _physics_process(delta: float) -> void:
+	_process_interaction()
+
+	if is_sitting:
+		return
+
 	if creative_mode:
 		_physics_creative(delta)
 	else:
@@ -63,7 +73,6 @@ func _physics_process(delta: float) -> void:
 	
 	move_and_slide()
 	_update_grab(delta)
-	_check_sphere_look()
 
 func _physics_normal(delta: float) -> void:
 	var g: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -122,6 +131,20 @@ func _push_ground_down() -> void:
 			body.apply_impulse(Vector3.DOWN * ground_push_impulse, contact_point)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _is_interacting and _current_interactable:
+		if is_sitting:
+			_process_interaction()
+
+		if event is InputEventMouseMotion:
+			if _current_interactable.has_method("on_mouse_drag"):
+				_current_interactable.on_mouse_drag(event.relative)
+		
+		if event is InputEventMouseButton and not event.pressed:
+			_is_interacting = false
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		
+		return
+	
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 		var dy: float = event.relative.y
 		var dx: float = event.relative.x
@@ -133,32 +156,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		if is_instance_valid(camera_pivot):
 			camera_pivot.rotation.x = _pitch
 
-	if event is InputEventKey and event.pressed and event.keycode == Key.KEY_ESCAPE:
-		var mode := Input.get_mouse_mode()
-		Input.set_mouse_mode(
-			Input.MOUSE_MODE_VISIBLE if mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
-		)
+	if is_sitting and event.is_action_pressed("interact"):
+		stand_up()
+		return
 
-	if event is InputEventKey and event.pressed and event.keycode == Key.KEY_C:
-		creative_mode = !creative_mode
-
-	if event is InputEventMouseButton and event.button_index == MouseButton.MOUSE_BUTTON_LEFT and event.pressed:
-		if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		if _current_interactable:
+			_current_interactable.interact(self)
+			_is_interacting = true
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
-			return
-
-	if event is InputEventMouseButton and event.button_index == MouseButton.MOUSE_BUTTON_LEFT:
-		if event.pressed:
-			_try_start_grab()
 		else:
-			_stop_grab()
-
-	if event is InputEventMouseButton and is_instance_valid(_grabbed):
-		if event.button_index == MouseButton.MOUSE_BUTTON_WHEEL_UP:
-			_grab_distance = clamp(_grab_distance - 0.3, grab_dist_limits.x, grab_dist_limits.y)
-		elif event.button_index == MouseButton.MOUSE_BUTTON_WHEEL_DOWN:
-			_grab_distance = clamp(_grab_distance + 0.3, grab_dist_limits.x, grab_dist_limits.y)
-
+			if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+				Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 func _build_rig() -> void:
 	var collider := CollisionShape3D.new()
 	collider.name = "Collider"
@@ -347,3 +356,86 @@ func _check_sphere_look() -> void:
 		if collider and collider.get_parent() and collider.get_parent().has_meta("grid_coords"):
 			var grid_coords: Vector2i = collider.get_parent().get_meta("grid_coords")
 			var world_pos: Vector3 = collider.get_parent().get_meta("world_position")
+
+func _process_interaction() -> void:
+	if not is_instance_valid(camera): return
+
+	var vp_size := get_viewport().get_visible_rect().size
+	var screen_center := vp_size * 0.5
+	var from := camera.project_ray_origin(screen_center)
+	var dir := camera.project_ray_normal(screen_center)
+	var to := from + dir * 3.0 # Distancia de 3 metros
+
+	var space := get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.exclude = [self.get_rid()]
+	
+	var hit := space.intersect_ray(query)
+	var new_interactable: Node = null
+
+	if not hit.is_empty():
+		var collider = hit["collider"]
+		
+		# SOLUCIÓN DEFINITIVA:
+		# En lugar de chequear la clase, preguntamos si tiene la función de brillar
+		if collider.has_method("set_highlight"):
+			new_interactable = collider
+
+	# Lógica de cambio
+	if new_interactable != _current_interactable:
+		if _current_interactable:
+			_current_interactable.set_highlight(false)
+		
+		if new_interactable:
+			new_interactable.set_highlight(true)
+		
+		_current_interactable = new_interactable
+
+func sit_down(asiento_marker: Node3D):
+	if is_sitting: return
+	is_sitting = true
+	
+	# 1. Nos volvemos hijos del marker para movernos con la nave
+	reparent(asiento_marker)
+	
+	# 2. Reseteamos posición y velocidad
+	# Esto evita que entres al asiento con "vuelo" acumulado
+	global_position = asiento_marker.global_position
+	global_rotation = asiento_marker.global_rotation
+	velocity = Vector3.ZERO 
+	
+	# 3. EL SALVAVIDAS: Desactivamos el procesamiento de físicas del cuerpo
+	# Esto evita que el CharacterBody3D intente calcular gravedad o colisiones
+	set_physics_process(false)
+	
+	# 4. Apagamos la colisión para no chocar con la cabina
+	$Collider.disabled = true
+func stand_up():
+	if not is_sitting: return
+	is_sitting = false
+	
+	# 1. Antes de salir, obtenemos la nave (el abuelo del jugador, ya que el padre es el Marker)
+	var asiento = get_parent()
+	var nave = asiento.get_parent() if asiento else null
+	
+	# 2. Guardamos la velocidad de la nave si es un RigidBody3D
+	var nave_velocity = Vector3.ZERO
+	if nave is RigidBody3D:
+		nave_velocity = nave.linear_velocity
+	
+	# 3. Salimos al mundo real
+	var main_scene = get_tree().current_scene
+	reparent(main_scene)
+	
+	# 4. LE PASAMOS LA VELOCIDAD: Ahora el jugador nace con el impulso de la nave
+	velocity = nave_velocity
+	
+	# 5. Reactivamos físicas y colisiones
+	set_physics_process(true)
+	if has_node("Collider"):
+		$Collider.disabled = false
+	
+	# 6. Posicionamiento de salida (un poco al costado para no chocar)
+	global_position += global_transform.basis.x * 1.2
+	rotation.x = 0
+	rotation.z = 0
