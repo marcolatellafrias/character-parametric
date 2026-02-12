@@ -10,6 +10,7 @@ size = Vector3(0.37394333, 3.2274766, 3.3490846)
 size = Vector3(5.010269, 1.3486328, 8.905098)
 
 [node name="RigidBody3D" type="RigidBody3D"]
+collision_layer = 2
 script = ExtResource("1_go66d")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
