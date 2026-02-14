@@ -8,12 +8,12 @@
 [ext_resource type="PackedScene" uid="uid://delu2qjrw6teu" path="res://addons/Mirror3D/Mirror3D.tscn" id="8_ecetj"]
 [ext_resource type="Script" uid="uid://s04a8ue62sk4" path="res://Scripts/character/basic_char.gd" id="8_oilx1"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
-[ext_resource type="PackedScene" uid="uid://rg5urvhs01un" path="res://Models/bone.glb" id="11_v3boh"]
+[ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="PackedScene" uid="uid://depimbd5eofjb" path="res://Scenes/car.tscn" id="12_h3puh"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
 [ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/core/city.gd" id="12_v3boh"]
-[ext_resource type="PackedScene" uid="uid://f8qs0whvcr7m" path="res://Scenes/barquetesimple3.blend" id="13_h3puh"]
+[ext_resource type="PackedScene" uid="uid://qbf2ejaplhko" path="res://Scenes/barquetesimple3.blend" id="13_h3puh"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_hfvyn"]
 material = ExtResource("1_lpcab")

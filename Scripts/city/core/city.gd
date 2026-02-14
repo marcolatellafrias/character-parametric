@@ -49,7 +49,7 @@ extends Node3D
 @export_group("Grillas de Manzanas")
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
-@export var block_cells_per_floor: int = 12
+@export var block_cells_per_floor: int = 8
 
 @export_group("Grilla Distorsionada")
 @export var distorted_grid_rows: int = 6
@@ -121,6 +121,13 @@ extends Node3D
 @export_group("Traffic Lights")
 @export var enable_traffic_lights: bool = true
 @export var traffic_light_cycle_duration: float = 5.0
+
+# En el grupo de exports, añadir:
+@export_group("Facade Rects Debug")
+@export var show_facade_rects: bool = true
+@export var facade_rect_min_size: Vector2i = Vector2i(1, 1)
+@export var facade_rect_max_size: Vector2i = Vector2i(1, 1)
+@export var facade_rect_seed: int = 42
 
 # ============================================
 # DATOS DEL GRAFO
@@ -272,6 +279,9 @@ func visualize_graph() -> void:
 	
 	if show_nodes:
 		_visualize_nodes()
+		
+	if show_facade_rects:
+		_visualize_facade_rects()
 
 func _add_lane_volume_areas_to_scene() -> void:
 	if generator == null:
@@ -999,3 +1009,32 @@ func get_lane_volume_area_continuations(face_idx: int, edge_idx: int) -> Array[L
 	
 	var continuations = generator.get_lane_volume_continuations(face_idx, edge_idx)
 	return continuations
+
+func _visualize_facade_rects() -> void:
+	var all_block_faces = generator.get_all_block_faces()
+	var total_rects = 0
+	var rng = RandomNumberGenerator.new()
+	rng.seed = facade_rect_seed
+
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		if block == null:
+			continue
+
+		var helper = BridgeGridHelper.new(block)
+
+		for edge_idx in range(4):
+			var size = Vector2i(
+				rng.randi_range(facade_rect_min_size.x, facade_rect_max_size.x),
+				rng.randi_range(facade_rect_min_size.y, facade_rect_max_size.y)
+			)
+
+			var verts = helper.get_random_facade_rect(edge_idx, size, rng, false)
+			if verts.size() != 4:
+				continue
+
+			var plane = DebugUtil.create_debug_plane(verts[0], verts[1], verts[2], verts[3], Color.WHITE, 0.0)
+			add_child(plane)
+			total_rects += 1
+
+	print("[Visualizer] Facade rects: %d en %d bloques" % [total_rects, all_block_faces.size()])

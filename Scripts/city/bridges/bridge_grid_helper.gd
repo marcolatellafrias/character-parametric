@@ -117,15 +117,17 @@ func get_vertical_grid_from_facade(facade_edge_info: Dictionary, is_core: bool =
 	
 	var floor_count = cluster.get_floor_count()
 	var cells_per_floor = block.get_cells_per_floor()
+	var cell_height = block.get_building_cell_height()
+	var total_cells_vertical = floor_count * cells_per_floor
 	var base_edges = get_building_edges_from_facade(facade_edge_info, is_core)
 	
 	var quads: Array = []
 	var edge_index = 0
 	
 	for edge in base_edges:
-		for floor in range(floor_count):
-			var y_bottom = floor * cells_per_floor * block.get_building_cell_height()
-			var y_top = (floor + 1) * cells_per_floor * block.get_building_cell_height()
+		for cell_y in range(total_cells_vertical):
+			var y_bottom = cell_y * cell_height
+			var y_top = (cell_y + 1) * cell_height
 			
 			var v1 = Vector3(edge["v1"].x, y_bottom, edge["v1"].z)
 			var v2 = Vector3(edge["v2"].x, y_bottom, edge["v2"].z)
@@ -133,8 +135,8 @@ func get_vertical_grid_from_facade(facade_edge_info: Dictionary, is_core: bool =
 			var v4 = Vector3(edge["v1"].x, y_top, edge["v1"].z)
 			
 			quads.append({
-				"local_x": edge_index,  # índice horizontal relativo
-				"local_y": floor,       # índice vertical relativo
+				"local_x": edge_index,
+				"local_y": cell_y,
 				"grid_x": edge["grid_x"],
 				"grid_z": edge["grid_z"],
 				"v1": v1,
@@ -148,7 +150,7 @@ func get_vertical_grid_from_facade(facade_edge_info: Dictionary, is_core: bool =
 	return {
 		"quads": quads,
 		"width": base_edges.size(),
-		"height": floor_count
+		"height": total_cells_vertical
 	}
 
 
@@ -164,3 +166,46 @@ func get_quad_at(vertical_grid: Dictionary, local_x: int, local_y: int) -> Dicti
 			return quad
 	
 	return {}
+
+## Dado un edge del BlockGenerator y un tamaño en celdas, sitúa aleatoriamente
+## un rectángulo que quepa en la grilla vertical de fachada de alguna celda del borde.
+## Retorna los 4 vértices globales (BL, BR, TR, TL) o lista vacía si no cabe.
+func get_random_facade_rect(edge_index: int, size: Vector2i, rng: RandomNumberGenerator, is_core: bool = false) -> Array[Vector3]:
+	var distorted_grid = block.get_distorted_grid()
+	if distorted_grid == null:
+		return []
+	
+	var max_index = distorted_grid.columns if (edge_index == 0 or edge_index == 2) else distorted_grid.rows
+	
+	var cell_index = rng.randi_range(0, max_index - 1)
+	
+	var facade_info = get_facade_edge_info(edge_index, cell_index)
+	if facade_info.is_empty():
+		return []
+	
+	var vgrid = get_vertical_grid_from_facade(facade_info, is_core)
+	
+	if vgrid["width"] < size.x or vgrid["height"] < size.y:
+		return []
+	
+	var local_x = rng.randi_range(0, vgrid["width"] - size.x)
+	var local_y = rng.randi_range(0, vgrid["height"] - size.y)
+	
+	var quad_bl = get_quad_at(vgrid, local_x, local_y)
+	var quad_br = get_quad_at(vgrid, local_x + size.x - 1, local_y)
+	var quad_tr = get_quad_at(vgrid, local_x + size.x - 1, local_y + size.y - 1)
+	var quad_tl = get_quad_at(vgrid, local_x, local_y + size.y - 1)
+	
+	if quad_bl.is_empty() or quad_br.is_empty() or quad_tr.is_empty() or quad_tl.is_empty():
+		return []
+	
+	print("[FacadeRect] rect_size: %s | grid_size: %dx%d" % [size, vgrid["width"], vgrid["height"]])
+	
+	var result: Array[Vector3] = [
+		quad_bl["v1"],
+		quad_br["v2"],
+		quad_tr["v3"],
+		quad_tl["v4"]
+	]
+	
+	return result

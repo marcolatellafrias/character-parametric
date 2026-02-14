@@ -116,8 +116,8 @@ func generate_city_graph(
 	# Calcular distancia mínima del grafo final
 	var actual_min_distance = _calculate_min_edge_length()
 	var global_building_cell_height = actual_min_distance / (p_distorted_grid_rows * p_building_grid_rows)
-	
-	print("[GraphCityGenerator] Min edge length real: %.3f" % actual_min_distance)
+		
+	print("[GraphCityGenerator] Average edge length: %.3f" % actual_min_distance)
 	print("[GraphCityGenerator] Building cell height global: %.3f" % global_building_cell_height)
 	
 	# Asignar tipos de barrios
@@ -142,18 +142,21 @@ func generate_city_graph(
 	# Crear lane volumes con índices ya asignados
 	_generate_lane_volume_areas()
 
+
 func _calculate_min_edge_length() -> float:
-	var min_length = INF
+	var total_length = 0.0
+	var count = 0
 	
 	for edge in plain_graph.edges:
 		var p1 = plain_graph.points[edge[0]]
 		var p2 = plain_graph.points[edge[1]]
-		var length = p1.distance_to(p2)
-		
-		if length < min_length:
-			min_length = length
+		total_length += p1.distance_to(p2)
+		count += 1
 	
-	return min_length
+	if count == 0:
+		return 0.0
+	
+	return total_length / float(count)
 
 # ============================================
 # GESTIÓN DE TIPOS DE CALLES
