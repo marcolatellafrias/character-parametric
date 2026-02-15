@@ -1201,35 +1201,31 @@ static func _add_quad_normals(normals: PackedVector3Array, a: Vector3, b: Vector
 static func _add_quad(
 	verts: PackedVector3Array, indices: PackedInt32Array, normals: PackedVector3Array,
 	a: Vector3, b: Vector3, c: Vector3, d: Vector3,
-	mesh_center: Vector3, flip: bool
+	mesh_center: Vector3
 ) -> void:
-	if flip:
-		_add_quad_to_arrays(verts, indices, d, c, b, a)
-		_add_quad_normals(normals, d, c, b, a, mesh_center)
-	else:
-		_add_quad_to_arrays(verts, indices, a, b, c, d)
-		_add_quad_normals(normals, a, b, c, d, mesh_center)
+	_add_quad_to_arrays(verts, indices, a, b, c, d)
+	_add_quad_normals(normals, a, b, c, d, mesh_center)
 
-# Crea un skewed cube (cubo deformado) a partir de dos planos paralelos
-# plane1_vertices: Array de 4 Vector3 representando el primer plano
-# plane2_vertices: Array de 4 Vector3 representando el segundo plano
+# create_skewed_cube_from_planes
+# Construye un cubo deformado a partir de dos quads paralelos (plano frontal y trasero).
 #
-# Orden de vértices por defecto (is_inverted = false):
+# Orden de vértices esperado para cada plano (vista desde el exterior):
 #
-#  [3] top-left ---- [2] top-right
-#       |                  |
-#  [0] bot-left ---- [1] bot-right
+#   [3] top-left ---- [2] top-right
+#        |                  |
+#   [0] bot-left ---- [1] bot-right
 #
-# Orden de vértices invertido (is_inverted = true):
+# Si is_inverted = true, el eje horizontal está invertido (edges 2 y 3 de fachada):
 #
-#  [2] top-left ---- [3] top-right
-#       |                  |
-#  [1] bot-left ---- [0] bot-right
+#   [2] top-left ---- [3] top-right
+#        |                  |
+#   [1] bot-left ---- [0] bot-right
 #
-# color: Color del mesh
-# alpha: Opacidad (1.0 = opaco, 0.0 = transparente)
-# is_inverted: Invierte el mapeo izquierda/derecha de los vértices
-# Retorna: MeshInstance3D con el skewed cube
+# is_inverted remapea los índices antes de construir las caras, de modo que
+# el winding order resultante siempre sea correcto visto desde afuera.
+#
+# Las 6 caras del cubo son: frontal, trasera, bottom, top, left, right.
+# Las normales se calculan automáticamente apuntando hacia afuera del mesh_center.
 static func create_skewed_cube_from_planes(
 	plane1_vertices: Array,
 	plane2_vertices: Array,
@@ -1237,67 +1233,52 @@ static func create_skewed_cube_from_planes(
 	alpha: float,
 	is_inverted: bool = false
 ) -> MeshInstance3D:
-
 	if plane1_vertices.size() != 4 or plane2_vertices.size() != 4:
 		push_error("create_skewed_cube_from_planes requiere 4 vértices por plano")
 		return null
-
 	var idx := [0, 1, 2, 3] if not is_inverted else [1, 0, 3, 2]
 	var p1 := plane1_vertices
 	var p2 := plane2_vertices
-
 	var mesh_center = Vector3.ZERO
 	for v in p1: mesh_center += v
 	for v in p2: mesh_center += v
 	mesh_center /= 8.0
-
 	var mesh_instance = MeshInstance3D.new()
 	var array_mesh = ArrayMesh.new()
 	var arrays = []
 	arrays.resize(Mesh.ARRAY_MAX)
-
 	var mesh_vertices = PackedVector3Array()
 	var mesh_normals  = PackedVector3Array()
 	var mesh_indices  = PackedInt32Array()
-
 	# Plane 1 (cara frontal)
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p1[idx[0]], p1[idx[1]], p1[idx[2]], p1[idx[3]], mesh_center, is_inverted)
-
+		p1[idx[0]], p1[idx[1]], p1[idx[2]], p1[idx[3]], mesh_center)
 	# Plane 2 (cara trasera)
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p2[idx[3]], p2[idx[2]], p2[idx[1]], p2[idx[0]], mesh_center, is_inverted)
-
+		p2[idx[3]], p2[idx[2]], p2[idx[1]], p2[idx[0]], mesh_center)
 	# Bottom face
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p1[idx[0]], p2[idx[0]], p2[idx[1]], p1[idx[1]], mesh_center, is_inverted)
-
+		p1[idx[0]], p2[idx[0]], p2[idx[1]], p1[idx[1]], mesh_center)
 	# Top face
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p1[idx[3]], p1[idx[2]], p2[idx[2]], p2[idx[3]], mesh_center, is_inverted)
-
+		p1[idx[3]], p1[idx[2]], p2[idx[2]], p2[idx[3]], mesh_center)
 	# Left face
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p1[idx[0]], p1[idx[3]], p2[idx[3]], p2[idx[0]], mesh_center, is_inverted)
-
+		p1[idx[0]], p1[idx[3]], p2[idx[3]], p2[idx[0]], mesh_center)
 	# Right face
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p1[idx[1]], p2[idx[1]], p2[idx[2]], p1[idx[2]], mesh_center, is_inverted)
-
+		p1[idx[1]], p2[idx[1]], p2[idx[2]], p1[idx[2]], mesh_center)
 	arrays[Mesh.ARRAY_VERTEX] = mesh_vertices
 	arrays[Mesh.ARRAY_NORMAL] = mesh_normals
 	arrays[Mesh.ARRAY_INDEX]  = mesh_indices
-
 	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh_instance.mesh = array_mesh
-
 	var material = StandardMaterial3D.new()
 	material.albedo_color = Color(color.r, color.g, color.b, alpha)
 	if alpha < 1.0:
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_instance.material_override = material
-
 	return mesh_instance
 
 # Función helper para agregar un quad a los arrays de mesh

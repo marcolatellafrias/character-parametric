@@ -8,7 +8,7 @@ extends Node3D
 @export var region_size: Vector2 = Vector2(800, 800)
 @export var min_distance: float = 200.5
 @export var rejection_samples: int = 90
-@export var generation_seed: int = 123456
+@export var generation_seed: int = 1234567
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 10
@@ -90,7 +90,7 @@ extends Node3D
 @export_group("Buildings")
 @export var show_buildings: bool = true
 @export var show_building_colliders: bool = true
-@export var alternate_floor_shading: bool = false 
+@export var alternate_floor_shading: bool = true 
 @export_range(0.1, 0.9) var floor_shade_factor: float = 0.85
 
 @export_group("Planos Peatonales")
@@ -1056,11 +1056,13 @@ func _visualize_facade_rects() -> void:
                     add_child(sphere)
 
             if show_bridge_volumes:
+                var is_inverted = BridgeGridHelper.is_facade_edge_inverted(rect_info["edge_index"])
                 var skewed_cube = DebugUtil.create_skewed_cube_from_planes(
                     [verts[0], verts[1], verts[2], verts[3]],
                     opposite,
                     Color(0.2, 0.6, 1.0),
-                    1.0
+                    1.0,
+                    is_inverted
                 )
                 if skewed_cube != null:
                     add_child(skewed_cube)
