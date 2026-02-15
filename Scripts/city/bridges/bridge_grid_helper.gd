@@ -1,5 +1,106 @@
 class_name BridgeGridHelper extends RefCounted
 
+# ============================================================
+# BridgeGridHelper — Documentación de sistemas de coordenadas
+# ============================================================
+#
+# DISTORTED GRID — Edges y celdas de fachada
+# ------------------------------------------------------------
+# La distorted grid es una grilla de (columns x rows) celdas
+# que cubre la manzana. Los 4 edges de fachada son:
+#
+#   Edge 0 (BOTTOM): celdas [0..columns-1] en z=0
+#   Edge 1 (RIGHT):  celdas [0..rows-1]    en x=columns-1
+#   Edge 2 (TOP):    celdas [0..columns-1] en z=rows-1
+#   Edge 3 (LEFT):   celdas [0..rows-1]    en x=0
+#
+# Los edges coinciden con los edges del face del grafo:
+#   face[0]→face[1] = edge 0, face[1]→face[2] = edge 1, etc.
+#
+# WINDING ORDER DE CELDAS DE LA DISTORTED GRID:
+# Cada celda tiene 4 vértices numerados así (vista desde arriba):
+#
+#   3 ── 2
+#   │    │
+#   0 ── 1
+#
+#   v0 = bottom-left, v1 = bottom-right
+#   v2 = top-right,   v3 = top-left
+#
+# get_facade_edge_info devuelve "vertices": [vA, vB] donde
+# vA y vB son los dos vértices del lado exterior de la celda:
+#   Edge 0: v0, v1  (lado bottom de la celda)
+#   Edge 1: v1, v2  (lado right  de la celda)
+#   Edge 2: v2, v3  (lado top    de la celda)
+#   Edge 3: v3, v0  (lado left   de la celda)
+#
+# ============================================================
+# BUILDING GRID — Módulos dentro de cada celda distorsionada
+# ------------------------------------------------------------
+# Cada celda de la distorted grid contiene un BuildingModule
+# con su propia subgrilla de (building_columns x building_rows).
+# Los ejes son: x = columnas (horizontal), z = filas (profundidad).
+#
+# get_building_edges_from_facade recorre la subgrilla en la
+# dirección paralela al edge de fachada y devuelve los edges
+# de cada columna/fila como pares de vértices v1/v2.
+# El índice "local_x" del vertical grid crece en esa dirección.
+#
+# ============================================================
+# VERTICAL GRID — Grilla 2D de quads de fachada
+# ------------------------------------------------------------
+# get_vertical_grid_from_facade construye una grilla de quads
+# donde:
+#   local_x = índice horizontal a lo largo de la fachada
+#   local_y = índice vertical (celda de altura)
+#
+# Cada quad tiene 4 vértices con este winding order
+# (vista desde el exterior del edificio):
+#
+#   v4 ── v3
+#   │      │
+#   v1 ── v2
+#
+#   v1 = bottom-left,  v2 = bottom-right
+#   v3 = top-right,    v4 = top-left
+#
+# ============================================================
+# FACADE RECT — Rectángulo sobre la fachada
+# ------------------------------------------------------------
+# get_random_facade_rect y get_opposite_facade_rect devuelven
+# un Array[Vector3] de 4 vértices con este orden:
+#
+#   3 ── 2
+#   │    │
+#   0 ── 1
+#
+#   [0] = bottom-left  (quad_bl["v1"])
+#   [1] = bottom-right (quad_br["v2"])
+#   [2] = top-right    (quad_tr["v3"])
+#   [3] = top-left     (quad_tl["v4"])
+#
+# "bottom" = y más bajo, "left/right" = desde exterior mirando
+# hacia el edificio, "top" = y más alto.
+#
+# ============================================================
+# CORRESPONDENCIA ENTRE RECT FUENTE Y RECT OPUESTO
+# ------------------------------------------------------------
+# El rect opuesto (fachada del bloque vecino) puede estar
+# invertido horizontalmente respecto al fuente dependiendo de
+# cómo estén orientados los edges de ambos bloques.
+#
+# needs_flip = true  → el eje horizontal está invertido.
+#   En ese caso get_opposite_facade_rect intercambia v1↔v2
+#   y v4↔v3, garantizando que el índice i del array fuente
+#   siempre corresponde con el índice i del array opuesto:
+#
+#   fuente[0] ←→ opuesto[0]   (bottom-left  ↔ bottom-left)
+#   fuente[1] ←→ opuesto[1]   (bottom-right ↔ bottom-right)
+#   fuente[2] ←→ opuesto[2]   (top-right    ↔ top-right)
+#   fuente[3] ←→ opuesto[3]   (top-left     ↔ top-left)
+#
+# ============================================================
+
 var block: BlockGenerator
 var city: GraphCityGenerator
 var face_idx: int
@@ -290,9 +391,20 @@ func get_opposite_facade_rect(edge_index: int, cell_index: int, size: Vector2i, 
 	if quad_bl.is_empty() or quad_br.is_empty() or quad_tr.is_empty() or quad_tl.is_empty():
 		return []
 	
-	return [
-		quad_bl["v1"],
-		quad_br["v2"],
-		quad_tr["v3"],
-		quad_tl["v4"]
-	]
+	# needs_flip = true: el eje horizontal del vecino está invertido respecto al fuente.
+	# Se intercambian v1↔v2 y v4↔v3 para que el índice i del array opuesto
+	# corresponda siempre con el índice i del array fuente.
+	if needs_flip:
+		return [
+			quad_br["v2"],
+			quad_bl["v1"],
+			quad_tl["v4"],
+			quad_tr["v3"]
+		]
+	else:
+		return [
+			quad_bl["v1"],
+			quad_br["v2"],
+			quad_tr["v3"],
+			quad_tl["v4"]
+		]

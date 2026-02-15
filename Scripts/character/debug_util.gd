@@ -1184,71 +1184,120 @@ static func create_ring_volume_colliders(outer_radius: float, inner_radius: floa
 	
 	return colliders
 
+static func _quad_outward_normal(a: Vector3, b: Vector3, c: Vector3, d: Vector3, mesh_center: Vector3) -> Vector3:
+	var n = (b - a).cross(c - a).normalized()
+	var face_center = (a + b + c + d) * 0.25
+	if n.dot(face_center - mesh_center) < 0:
+		n = -n
+	return n
+
+static func _add_quad_normals(normals: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3, mesh_center: Vector3) -> void:
+	var n = _quad_outward_normal(a, b, c, d, mesh_center)
+	normals.append(n)
+	normals.append(n)
+	normals.append(n)
+	normals.append(n)
+
+static func _add_quad(
+	verts: PackedVector3Array, indices: PackedInt32Array, normals: PackedVector3Array,
+	a: Vector3, b: Vector3, c: Vector3, d: Vector3,
+	mesh_center: Vector3, flip: bool
+) -> void:
+	if flip:
+		_add_quad_to_arrays(verts, indices, d, c, b, a)
+		_add_quad_normals(normals, d, c, b, a, mesh_center)
+	else:
+		_add_quad_to_arrays(verts, indices, a, b, c, d)
+		_add_quad_normals(normals, a, b, c, d, mesh_center)
+
 # Crea un skewed cube (cubo deformado) a partir de dos planos paralelos
-# plane1_vertices: Array de 4 Vector3 representando el primer plano [v1_base, v2_base, v3_top, v4_top]
-# plane2_vertices: Array de 4 Vector3 representando el segundo plano [v1_base, v2_base, v3_top, v4_top]
+# plane1_vertices: Array de 4 Vector3 representando el primer plano
+# plane2_vertices: Array de 4 Vector3 representando el segundo plano
+#
+# Orden de vértices por defecto (is_inverted = false):
+#
+#  [3] top-left ---- [2] top-right
+#       |                  |
+#  [0] bot-left ---- [1] bot-right
+#
+# Orden de vértices invertido (is_inverted = true):
+#
+#  [2] top-left ---- [3] top-right
+#       |                  |
+#  [1] bot-left ---- [0] bot-right
+#
 # color: Color del mesh
-# transparency: Transparencia (0.0 = opaco, 1.0 = transparente)
+# alpha: Opacidad (1.0 = opaco, 0.0 = transparente)
+# is_inverted: Invierte el mapeo izquierda/derecha de los vértices
 # Retorna: MeshInstance3D con el skewed cube
 static func create_skewed_cube_from_planes(
-	plane1_vertices: Array, 
-	plane2_vertices: Array, 
-	color: Color, 
-	transparency: float
+	plane1_vertices: Array,
+	plane2_vertices: Array,
+	color: Color,
+	alpha: float,
+	is_inverted: bool = false
 ) -> MeshInstance3D:
-	
+
 	if plane1_vertices.size() != 4 or plane2_vertices.size() != 4:
 		push_error("create_skewed_cube_from_planes requiere 4 vértices por plano")
 		return null
-	
+
+	var idx := [0, 1, 2, 3] if not is_inverted else [1, 0, 3, 2]
+	var p1 := plane1_vertices
+	var p2 := plane2_vertices
+
+	var mesh_center = Vector3.ZERO
+	for v in p1: mesh_center += v
+	for v in p2: mesh_center += v
+	mesh_center /= 8.0
+
 	var mesh_instance = MeshInstance3D.new()
 	var array_mesh = ArrayMesh.new()
 	var arrays = []
 	arrays.resize(Mesh.ARRAY_MAX)
-	
+
 	var mesh_vertices = PackedVector3Array()
-	var mesh_indices = PackedInt32Array()
-	
-	# Los vertices están ordenados como:
-	# [0]: v1 base, [1]: v2 base, [2]: v3 top, [3]: v4 top
-	
+	var mesh_normals  = PackedVector3Array()
+	var mesh_indices  = PackedInt32Array()
+
 	# Plane 1 (cara frontal)
-	_add_quad_to_arrays(mesh_vertices, mesh_indices,
-		plane1_vertices[0], plane1_vertices[1], plane1_vertices[2], plane1_vertices[3])
-	
-	# Plane 2 (cara trasera) - invertir orden para normal correcta
-	_add_quad_to_arrays(mesh_vertices, mesh_indices,
-		plane2_vertices[3], plane2_vertices[2], plane2_vertices[1], plane2_vertices[0])
-	
-	# Bottom face (conecta bases)
-	_add_quad_to_arrays(mesh_vertices, mesh_indices,
-		plane1_vertices[0], plane2_vertices[0], plane2_vertices[1], plane1_vertices[1])
-	
-	# Top face (conecta tops)
-	_add_quad_to_arrays(mesh_vertices, mesh_indices,
-		plane1_vertices[3], plane1_vertices[2], plane2_vertices[2], plane2_vertices[3])
-	
+	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
+		p1[idx[0]], p1[idx[1]], p1[idx[2]], p1[idx[3]], mesh_center, is_inverted)
+
+	# Plane 2 (cara trasera)
+	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
+		p2[idx[3]], p2[idx[2]], p2[idx[1]], p2[idx[0]], mesh_center, is_inverted)
+
+	# Bottom face
+	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
+		p1[idx[0]], p2[idx[0]], p2[idx[1]], p1[idx[1]], mesh_center, is_inverted)
+
+	# Top face
+	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
+		p1[idx[3]], p1[idx[2]], p2[idx[2]], p2[idx[3]], mesh_center, is_inverted)
+
 	# Left face
-	_add_quad_to_arrays(mesh_vertices, mesh_indices,
-		plane1_vertices[0], plane1_vertices[3], plane2_vertices[3], plane2_vertices[0])
-	
+	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
+		p1[idx[0]], p1[idx[3]], p2[idx[3]], p2[idx[0]], mesh_center, is_inverted)
+
 	# Right face
-	_add_quad_to_arrays(mesh_vertices, mesh_indices,
-		plane1_vertices[1], plane2_vertices[1], plane2_vertices[2], plane1_vertices[2])
-	
+	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
+		p1[idx[1]], p2[idx[1]], p2[idx[2]], p1[idx[2]], mesh_center, is_inverted)
+
 	arrays[Mesh.ARRAY_VERTEX] = mesh_vertices
-	arrays[Mesh.ARRAY_INDEX] = mesh_indices
-	
+	arrays[Mesh.ARRAY_NORMAL] = mesh_normals
+	arrays[Mesh.ARRAY_INDEX]  = mesh_indices
+
 	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh_instance.mesh = array_mesh
-	
-	# Material semitransparente
+
 	var material = StandardMaterial3D.new()
-	material.albedo_color = Color(color.r, color.g, color.b, transparency)
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.albedo_color = Color(color.r, color.g, color.b, alpha)
+	if alpha < 1.0:
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_instance.material_override = material
-	
+
 	return mesh_instance
 
 # Función helper para agregar un quad a los arrays de mesh
@@ -1571,6 +1620,38 @@ static func create_debug_sphere_print(grid_coords: Vector2i, color: Color, size:
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.font_size = 16
 	label.outline_size = 4
+	label.outline_modulate = Color.BLACK
+	label.modulate = Color.WHITE
+	label.position = Vector3(0, size * 1.5, 0)
+	
+	container.add_child(label)
+	
+	return container
+
+static func create_debug_sphere_print_int(value: int, color: Color, size: float = 0.1, on_top: bool = false, radial_segments: int = 4, rings: int = 4) -> Node3D:
+	var container := Node3D.new()
+	
+	var mesh_instance := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radial_segments = radial_segments
+	sphere.rings = rings
+	mesh_instance.mesh = sphere
+	mesh_instance.scale = Vector3(size, size, size)
+	
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if on_top:
+		material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
+	mesh_instance.material_override = material
+	
+	container.add_child(mesh_instance)
+	
+	var label := Label3D.new()
+	label.text = "%d" % value
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.font_size = 64
+	label.outline_size = 6
 	label.outline_modulate = Color.BLACK
 	label.modulate = Color.WHITE
 	label.position = Vector3(0, size * 1.5, 0)

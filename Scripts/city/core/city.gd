@@ -77,13 +77,13 @@ extends Node3D
 @export var distorted_grid_floor_to_show: int = 0
 @export var distorted_grid_vertex_radius: float = 0.04
 @export var distorted_grid_normal_vertex_color: Color = Color.CYAN
-@export var distorted_grid_facade_vertex_color: Color = Color.RED  # CAMBIO: era boundary_vertex_color
+@export var distorted_grid_facade_vertex_color: Color = Color.RED
 @export var distorted_grid_normal_edge_color: Color = Color.WHITE
 @export var distorted_grid_small_edge_color: Color = Color.YELLOW
 @export var distorted_grid_big_edge_color: Color = Color.ORANGE
 @export var distorted_grid_small_origin_edge_color: Color = Color.GREEN
 @export var distorted_grid_big_origin_edge_color: Color = Color.MAGENTA
-@export var distorted_grid_facade_edge_color: Color = Color.ORANGE_RED  # CAMBIO: era boundary_edge_color
+@export var distorted_grid_facade_edge_color: Color = Color.ORANGE_RED
 @export var distorted_grid_edge_width: float = 0.015
 @export var distorted_grid_height_offset: float = 0.1
 
@@ -91,7 +91,7 @@ extends Node3D
 @export var show_buildings: bool = true
 @export var show_building_colliders: bool = true
 @export var alternate_floor_shading: bool = false 
-@export_range(0.1, 0.9) var floor_shade_factor: float = 0.85  # Factor para alternar tonos
+@export_range(0.1, 0.9) var floor_shade_factor: float = 0.85
 
 @export_group("Planos Peatonales")
 @export var show_pedestrian_planes: bool = false
@@ -109,7 +109,7 @@ extends Node3D
 
 @export_group("Lane Volumes - Volúmenes de Edges")
 @export var show_lane_volumes: bool = false
-@export_range(0.0, 1.0) var lane_volume_transparency: float = 0.3
+@export_range(0.0, 1.0) var lane_volume_transparency: float = 1.0
 @export var lane_volume_color: Color = Color(0.5, 0.5, 1.0, 0.5)
 
 @export_group("Traffic Planes")
@@ -122,9 +122,10 @@ extends Node3D
 @export var enable_traffic_lights: bool = true
 @export var traffic_light_cycle_duration: float = 5.0
 
-# En el grupo de exports, añadir:
 @export_group("Facade Rects Debug")
 @export var show_facade_rects: bool = true
+@export var show_bridge_faces: bool = true
+@export var show_bridge_volumes: bool = true
 @export var facade_rect_min_size: Vector2i = Vector2i(4, 2)
 @export var facade_rect_max_size: Vector2i = Vector2i(8, 4)
 @export var facade_rect_seed: int = 42
@@ -188,6 +189,7 @@ func _update_traffic_planes_visualization() -> void:
                     
                     color.a = traffic_plane_transparency
                     material.albedo_color = color
+
 # ============================================
 # GENERACIÓN Y VISUALIZACIÓN
 # ============================================
@@ -199,8 +201,6 @@ func generate_and_visualize() -> void:
 func generate_graph() -> void:
     generator = GraphCityGenerator.new()
     
-    # NOTA: block_cell_height ya no se usa para nada importante, 
-    # solo se pasa a GridGeometry por compatibilidad
     var legacy_block_cell_height = min_distance / block_grid_rows
     
     generator.generate_city_graph(
@@ -229,8 +229,8 @@ func generate_graph() -> void:
         grid_seed,
         building_grid_rows,
         building_grid_columns,
-        legacy_block_cell_height,  # Solo para GridGeometry (legacy)
-        0.0,  # Este parámetro ya no se usa, se calcula internamente
+        legacy_block_cell_height,
+        0.0,
         neighborhood_height_falloff,
         num_neighborhoods,
         neighborhood_seed
@@ -279,8 +279,8 @@ func visualize_graph() -> void:
     
     if show_nodes:
         _visualize_nodes()
-        
-    if show_facade_rects:
+    
+    if show_facade_rects or show_bridge_faces or show_bridge_volumes:
         _visualize_facade_rects()
 
 func _add_lane_volume_areas_to_scene() -> void:
@@ -356,7 +356,6 @@ func _visualize_floor_planes() -> void:
         if block == null:
             continue
         
-        # Calcular el máximo de pisos entre todos los clusters de este bloque
         var max_floors = 0
         var clusters = block.get_all_clusters()
         for cluster in clusters:
@@ -417,14 +416,12 @@ func _visualize_buildings() -> void:
             var cluster_floors = cluster.get_floor_count()
             var base_color = cluster.color
             
-            # DEBUG: Solo para edificios de 1 piso y 1 celda
             if cluster_floors == 1 and cluster.get_cell_count() == 1:
                 print("=== DEBUG EDIFICIO 1x1x1 ===")
                 print("cells_per_floor: %d" % cells_per_floor)
                 print("building_cell_height: %.3f" % building_cell_height)
                 print("building_height (1 piso): %.3f" % building_height)
                 
-                # Calcular dimensiones aproximadas de la base
                 var first_cell = cluster.cells[0]
                 var x = first_cell.x
                 var z = first_cell.y
@@ -439,7 +436,6 @@ func _visualize_buildings() -> void:
                         print("ratio height/width: %.3f" % (building_height / width))
                         print("ratio height/depth: %.3f" % (building_height / depth))
                     
-                    # DEBUG: Mostrar chamfers si existen
                     var chamfers = building_module.get_chamfers()
                     if not chamfers.is_empty():
                         print("CHAMFERS detectados:")
@@ -454,7 +450,6 @@ func _visualize_buildings() -> void:
             for floor in range(cluster_floors):
                 var floor_base_y = floor * cells_per_floor * building_cell_height
                 
-                # Calcular color del piso
                 var floor_color: Color
                 if alternate_floor_shading:
                     if floor % 2 == 0:
@@ -485,14 +480,11 @@ func _visualize_buildings() -> void:
                     for i in range(core_vertices.size()):
                         core_vertices[i].y += floor_base_y
                     
-                    # Usar dimensiones del core directamente (sin swap)
                     var core_rows = core_info["depth"]
                     var core_columns = core_info["width"]
                     
-                    # Obtener chamfers
                     var chamfers = building_module.get_chamfers()
                     
-                    # Crear cubo con chamfers
                     var cube = DebugUtil.create_skewed_cube_advanced_grid(
                         core_vertices,
                         building_height,
@@ -561,14 +553,11 @@ func _visualize_building_colliders() -> void:
                     for i in range(core_vertices.size()):
                         core_vertices[i].y += floor_base_y
                     
-                    # Usar dimensiones del core directamente (sin swap)
                     var core_rows = core_info["depth"]
                     var core_columns = core_info["width"]
                     
-                    # Obtener chamfers
                     var chamfers = building_module.get_chamfers()
                     
-                    # Crear collider con chamfers
                     var collision_body = DebugUtil.create_skewed_cube_advanced_grid_collider(
                         core_vertices,
                         building_height,
@@ -578,14 +567,12 @@ func _visualize_building_colliders() -> void:
                     )
                     
                     if collision_body != null:
-                        # Agregar los collision shapes del body temporal al static_body principal
                         for child in collision_body.get_children():
                             if child is CollisionShape3D:
                                 collision_body.remove_child(child)
                                 static_body.add_child(child)
                                 has_colliders = true
                         
-                        # Liberar el body temporal
                         collision_body.queue_free()
             
             if has_colliders:
@@ -680,9 +667,16 @@ func _visualize_distorted_grids() -> void:
                 var is_facade = (grid_x == 0 or grid_x == distorted.columns or 
                                    grid_z == 0 or grid_z == distorted.rows)
                 
-                var vertex_color = distorted_grid_facade_vertex_color if is_facade else distorted_grid_normal_vertex_color
+                var sphere: Node3D
+                if is_facade:
+                    sphere = DebugUtil.create_debug_sphere_print(
+                        Vector2i(grid_x, grid_z),
+                        distorted_grid_facade_vertex_color,
+                        distorted_grid_vertex_radius
+                    )
+                else:
+                    sphere = DebugUtil.create_debug_sphere(distorted_grid_normal_vertex_color, distorted_grid_vertex_radius)
                 
-                var sphere = DebugUtil.create_debug_sphere(vertex_color, distorted_grid_vertex_radius)
                 sphere.position = pos_3d
                 add_child(sphere)
                 total_vertices += 1
@@ -883,7 +877,6 @@ func _visualize_lane_volumes() -> void:
 # ============================================
 # VISUALIZACIÓN DE TRAFFIC PLANES
 # ============================================
-
 func _visualize_traffic_planes() -> void:
     var total_planes = 0
     var index_0_count = 0
@@ -912,10 +905,8 @@ func _visualize_traffic_planes() -> void:
         else:
             index_1_count += 1
         
-        # Crear mesh instance
         var mesh_instance: MeshInstance3D = MeshInstance3D.new()
         
-        # Crear ArrayMesh
         var arrays: Array = []
         arrays.resize(Mesh.ARRAY_MAX)
         
@@ -945,14 +936,12 @@ func _visualize_traffic_planes() -> void:
         
         mesh_instance.mesh = array_mesh
         
-        # Crear material
         var material: StandardMaterial3D = StandardMaterial3D.new()
         material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
         material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
         material.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
         material.cull_mode = BaseMaterial3D.CULL_DISABLED
         
-        # Color según índice actual
         var color: Color
         if traffic_index == active_traffic_index:
             color = traffic_plane_green_color
@@ -964,7 +953,6 @@ func _visualize_traffic_planes() -> void:
         
         mesh_instance.material_override = material
         
-        # Metadata para identificar y actualizar
         mesh_instance.set_meta("traffic_plane_visual", true)
         mesh_instance.set_meta("traffic_index", traffic_index)
         
@@ -973,11 +961,9 @@ func _visualize_traffic_planes() -> void:
     
     print("[Visualizer] Traffic planes: %d planos (índice 0: %d, índice 1: %d, sin asignar: %d)" % [total_planes, index_0_count, index_1_count, unassigned_count])
 
-
 # ============================================
 # HELPERS PÚBLICOS PARA OTRAS ENTIDADES
 # ============================================
-
 func get_generator() -> GraphCityGenerator:
     return generator
 
@@ -1007,9 +993,11 @@ func get_lane_volume_area_continuations(face_idx: int, edge_idx: int) -> Array[L
         push_error("CityVisualizer: generator no inicializado")
         return []
     
-    var continuations = generator.get_lane_volume_continuations(face_idx, edge_idx)
-    return continuations
+    return generator.get_lane_volume_continuations(face_idx, edge_idx)
 
+# ============================================
+# VISUALIZACIÓN DE FACADE RECTS
+# ============================================
 func _visualize_facade_rects() -> void:
     var all_block_faces = generator.get_all_block_faces()
     var total_rects = 0
@@ -1030,16 +1018,13 @@ func _visualize_facade_rects() -> void:
                 rng.randi_range(facade_rect_min_size.y, facade_rect_max_size.y)
             )
 
-            var rect_info = helper.get_random_facade_rect(edge_idx, size, rng, false)
+            var rect_info = helper.get_random_facade_rect(edge_idx, size, rng, true)
             if rect_info.is_empty():
                 continue
 
             var verts: Array = rect_info["verts"]
-            var plane = DebugUtil.create_debug_plane(verts[0], verts[1], verts[2], verts[3], Color.GREEN, 0.0)
-            add_child(plane)
-            total_rects += 1
 
-            var opposite = helper.get_opposite_facade_rect(
+            var opposite: Array[Vector3] = helper.get_opposite_facade_rect(
                 rect_info["edge_index"],
                 rect_info["cell_index"],
                 rect_info["size"],
@@ -1047,31 +1032,33 @@ func _visualize_facade_rects() -> void:
                 rect_info["pos_y"],
                 rect_info["is_core"]
             )
-            if opposite.size() == 4:
+            if opposite.size() != 4:
+                continue
+
+            if show_facade_rects:
+                var plane = DebugUtil.create_debug_plane(verts[0], verts[1], verts[2], verts[3], Color.GREEN, 0.0)
+                add_child(plane)
+                total_rects += 1
+
+                for i in range(4):
+                    var sphere = DebugUtil.create_debug_sphere_print_int(i, Color.GREEN, distorted_grid_vertex_radius)
+                    sphere.position = verts[i]
+                    add_child(sphere)
+
+            if show_bridge_faces:
                 var opp_plane = DebugUtil.create_debug_plane(opposite[0], opposite[1], opposite[2], opposite[3], Color.RED, 0.0)
                 add_child(opp_plane)
                 total_opposite += 1
 
-                # Reordenar opposite por proximidad a cada vértice fuente
-                var reordered_opposite: Array[Vector3] = []
-                reordered_opposite.resize(4)
-                var used: Array[bool] = [false, false, false, false]
                 for i in range(4):
-                    var best_j = -1
-                    var best_dist = INF
-                    for j in range(4):
-                        if used[j]:
-                            continue
-                        var d = verts[i].distance_to(opposite[j])
-                        if d < best_dist:
-                            best_dist = d
-                            best_j = j
-                    reordered_opposite[i] = opposite[best_j]
-                    used[best_j] = true
+                    var sphere = DebugUtil.create_debug_sphere_print_int(i, Color.RED, distorted_grid_vertex_radius)
+                    sphere.position = opposite[i]
+                    add_child(sphere)
 
+            if show_bridge_volumes:
                 var skewed_cube = DebugUtil.create_skewed_cube_from_planes(
                     [verts[0], verts[1], verts[2], verts[3]],
-                    reordered_opposite,
+                    opposite,
                     Color(0.2, 0.6, 1.0),
                     1.0
                 )
