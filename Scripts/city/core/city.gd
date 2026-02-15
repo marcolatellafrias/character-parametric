@@ -5,10 +5,10 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(800, 800)
-@export var min_distance: float = 200.5
+@export var region_size: Vector2 = Vector2(1000, 1000)
+@export var min_distance: float = 180.5
 @export var rejection_samples: int = 90
-@export var generation_seed: int = 1234567
+@export var generation_seed: int = 12345678
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 10
@@ -91,6 +91,7 @@ extends Node3D
 @export var show_buildings: bool = true
 @export var show_building_colliders: bool = true
 @export var alternate_floor_shading: bool = true 
+@export var alternate_module_shading: bool = true
 @export_range(0.1, 0.9) var floor_shade_factor: float = 0.85
 
 @export_group("Planos Peatonales")
@@ -129,6 +130,7 @@ extends Node3D
 @export var facade_rect_min_size: Vector2i = Vector2i(4, 2)
 @export var facade_rect_max_size: Vector2i = Vector2i(8, 4)
 @export var facade_rect_seed: int = 42
+@export var show_bridge_facade_grid_debug: bool = true
 
 # ============================================
 # DATOS DEL GRAFO
@@ -482,13 +484,16 @@ func _visualize_buildings() -> void:
                     
                     var core_rows = core_info["depth"]
                     var core_columns = core_info["width"]
-                    
                     var chamfers = building_module.get_chamfers()
+                    
+                    var module_color = floor_color
+                    if alternate_module_shading and (x + z) % 2 == 1:
+                        module_color = floor_color.darkened(1.0 - floor_shade_factor)
                     
                     var cube = DebugUtil.create_skewed_cube_advanced_grid(
                         core_vertices,
                         building_height,
-                        floor_color,
+                        module_color,
                         chamfers,
                         core_rows,
                         core_columns,
@@ -1035,13 +1040,39 @@ func _visualize_facade_rects() -> void:
             if opposite.size() != 4:
                 continue
 
+            if show_bridge_facade_grid_debug:
+                var face_info = helper.get_facade_edge_info(rect_info["edge_index"], rect_info["cell_index"])
+                if not face_info.is_empty():
+                    var vgrid = helper.get_vertical_grid_from_facade(face_info, true)
+                    var bridge_y_min = rect_info["pos_y"]
+                    var bridge_y_max = rect_info["pos_y"] + rect_info["size"].y - 1
+                    for quad in vgrid["quads"]:
+                        if quad["local_y"] < bridge_y_min or quad["local_y"] > bridge_y_max:
+                            continue
+                        var center = (quad["v1"] + quad["v2"] + quad["v3"] + quad["v4"]) / 4.0
+                        var color = Color.YELLOW if quad["available"] else Color.RED
+                        var sphere = DebugUtil.create_debug_sphere_print(
+                            Vector2i(quad["local_x"], quad["local_y"]),
+                            color,
+                            distorted_grid_vertex_radius,
+                            true
+                        )
+                        sphere.position = center
+                        add_child(sphere)
+
             if show_facade_rects:
                 var plane = DebugUtil.create_debug_plane(verts[0], verts[1], verts[2], verts[3], Color.GREEN, 0.0)
                 add_child(plane)
                 total_rects += 1
 
+                var src_corners = [
+                    Vector2i(rect_info["pos_x"],                           rect_info["pos_y"]),
+                    Vector2i(rect_info["pos_x"] + rect_info["size"].x - 1, rect_info["pos_y"]),
+                    Vector2i(rect_info["pos_x"] + rect_info["size"].x - 1, rect_info["pos_y"] + rect_info["size"].y - 1),
+                    Vector2i(rect_info["pos_x"],                           rect_info["pos_y"] + rect_info["size"].y - 1),
+                ]
                 for i in range(4):
-                    var sphere = DebugUtil.create_debug_sphere_print_int(i, Color.GREEN, distorted_grid_vertex_radius)
+                    var sphere = DebugUtil.create_debug_sphere_print(src_corners[i], Color.GREEN, distorted_grid_vertex_radius, true)
                     sphere.position = verts[i]
                     add_child(sphere)
 
@@ -1050,8 +1081,14 @@ func _visualize_facade_rects() -> void:
                 add_child(opp_plane)
                 total_opposite += 1
 
+                var opp_corners = [
+                    Vector2i(rect_info["pos_x"],                           rect_info["pos_y"]),
+                    Vector2i(rect_info["pos_x"] + rect_info["size"].x - 1, rect_info["pos_y"]),
+                    Vector2i(rect_info["pos_x"] + rect_info["size"].x - 1, rect_info["pos_y"] + rect_info["size"].y - 1),
+                    Vector2i(rect_info["pos_x"],                           rect_info["pos_y"] + rect_info["size"].y - 1),
+                ]
                 for i in range(4):
-                    var sphere = DebugUtil.create_debug_sphere_print_int(i, Color.RED, distorted_grid_vertex_radius)
+                    var sphere = DebugUtil.create_debug_sphere_print(opp_corners[i], Color.RED, distorted_grid_vertex_radius, true)
                     sphere.position = opposite[i]
                     add_child(sphere)
 
@@ -1068,3 +1105,17 @@ func _visualize_facade_rects() -> void:
                     add_child(skewed_cube)
 
     print("[Visualizer] Facade rects: %d verdes, %d rojos opuestos" % [total_rects, total_opposite])
+
+func _debug_visualize_bridge_core_grid(block: BlockGenerator, face_edge_info: Dictionary) -> void:
+    var building_module = block.get_building_module(face_edge_info["cell_x"], face_edge_info["cell_z"], 0)
+    if building_module == null:
+        return
+
+    var core = building_module.get_core_info()
+
+    for gz in range(core["min_z"], core["max_z"] + 1):
+        for gx in range(core["min_x"], core["max_x"] + 1):
+            var pos = building_module.get_cell_position(gx, gz, 0)
+            var sphere = DebugUtil.create_debug_sphere_print(Vector2i(gx, gz), Color.YELLOW, distorted_grid_vertex_radius, true)
+            sphere.position = pos
+            add_child(sphere)
