@@ -131,6 +131,11 @@ func _push_ground_down() -> void:
 			body.apply_impulse(Vector3.DOWN * ground_push_impulse, contact_point)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_creative"):
+		creative_mode = !creative_mode
+		velocity = Vector3.ZERO
+		return
+
 	if _is_interacting and _current_interactable:
 		if is_sitting:
 			_process_interaction()
@@ -168,6 +173,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
 				Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+				
 func _build_rig() -> void:
 	var collider := CollisionShape3D.new()
 	collider.name = "Collider"
@@ -244,6 +250,13 @@ func _ensure_input_map() -> void:
 	mbe.button_index = MouseButton.MOUSE_BUTTON_LEFT
 	if not InputMap.action_has_event("grab", mbe):
 		InputMap.action_add_event("grab", mbe)
+
+	if not InputMap.has_action("toggle_creative"):
+		InputMap.add_action("toggle_creative")
+	var cev := InputEventKey.new()
+	cev.physical_keycode = Key.KEY_C
+	if not InputMap.action_has_event("toggle_creative", cev):
+		InputMap.action_add_event("toggle_creative", cev)
 		
 func _try_start_grab() -> void:
 	if not is_instance_valid(camera):
