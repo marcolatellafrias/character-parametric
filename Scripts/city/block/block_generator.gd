@@ -103,9 +103,9 @@ func _init(
 		building_alleyway_offsets = {
 			-1: 3,
 			0: 0,
-			1: 4,
+			1: 2,
 			2: 4,
-			10: 4,
+			10: 2,
 			11: 4
 		}
 	else:

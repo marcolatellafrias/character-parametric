@@ -5,10 +5,10 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(1000, 1000)
+@export var region_size: Vector2 = Vector2(800, 800)
 @export var min_distance: float = 180.5
 @export var rejection_samples: int = 90
-@export var generation_seed: int = 12345678
+@export var generation_seed: int = 123456
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 10
@@ -49,7 +49,7 @@ extends Node3D
 @export_group("Grillas de Manzanas")
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
-@export var block_cells_per_floor: int = 8
+@export var block_cells_per_floor: int = 4
 
 @export_group("Grilla Distorsionada")
 @export var distorted_grid_rows: int = 6
@@ -123,14 +123,10 @@ extends Node3D
 @export var enable_traffic_lights: bool = true
 @export var traffic_light_cycle_duration: float = 5.0
 
-@export_group("Facade Rects Debug")
+@export_group("Facade Grid Debug")
 @export var show_facade_rects: bool = true
-@export var show_bridge_faces: bool = true
-@export var show_bridge_volumes: bool = true
-@export var facade_rect_min_size: Vector2i = Vector2i(4, 2)
-@export var facade_rect_max_size: Vector2i = Vector2i(8, 4)
 @export var facade_rect_seed: int = 42
-@export var show_bridge_facade_grid_debug: bool = true
+@export var facade_grid_is_core: bool = true
 
 # ============================================
 # DATOS DEL GRAFO
@@ -282,7 +278,7 @@ func visualize_graph() -> void:
     if show_nodes:
         _visualize_nodes()
     
-    if show_facade_rects or show_bridge_faces or show_bridge_volumes:
+    if show_facade_rects:
         _visualize_facade_rects()
 
 func _add_lane_volume_areas_to_scene() -> void:
@@ -1004,118 +1000,51 @@ func get_lane_volume_area_continuations(face_idx: int, edge_idx: int) -> Array[L
 # VISUALIZACIÓN DE FACADE RECTS
 # ============================================
 func _visualize_facade_rects() -> void:
+    if not show_facade_rects:
+        return
     var all_block_faces = generator.get_all_block_faces()
-    var total_rects = 0
-    var total_opposite = 0
     var rng = RandomNumberGenerator.new()
     rng.seed = facade_rect_seed
-
+    var total_grids = 0
     for face_idx in all_block_faces:
         var block: BlockGenerator = generator.get_block_grid(face_idx)
         if block == null:
             continue
-
-        var helper = BridgeGridHelper.new(block, generator, face_idx)
-
-        for edge_idx in range(4):
-            var size = Vector2i(
-                rng.randi_range(facade_rect_min_size.x, facade_rect_max_size.x),
-                rng.randi_range(facade_rect_min_size.y, facade_rect_max_size.y)
-            )
-
-            var rect_info = helper.get_random_facade_rect(edge_idx, size, rng, true)
-            if rect_info.is_empty():
+        var helper = BridgeGridHelper.new(block)
+        var grids = helper.get_all_edges_random_facade_grids(rng, facade_grid_is_core)
+        for vgrid in grids:
+            if vgrid.is_empty():
                 continue
+            _debug_visualize_facade_grid(vgrid)
+            total_grids += 1
+    print("[Visualizer] Facade grids visualizados: %d" % total_grids)
 
-            var verts: Array = rect_info["verts"]
+func _debug_visualize_facade_grid(vgrid: Dictionary) -> void:
+    var unavailable_points: Dictionary = vgrid.get("unavailable_points", {})
+    var nodes: Dictionary = {}
+    for quad in vgrid["quads"]:
+        var nx = quad["local_x"]
+        var ny = quad["local_y"]
+        for corner in [
+            [nx,   ny,   quad["v1"]],
+            [nx+1, ny,   quad["v2"]],
+            [nx+1, ny+1, quad["v3"]],
+            [nx,   ny+1, quad["v4"]]
+        ]:
+            var nkey = "%d_%d" % [corner[0], corner[1]]
+            if nkey not in nodes:
+                nodes[nkey] = {
+                    "pos":   corner[2],
+                    "coord": Vector2i(corner[0], corner[1])
+                }
+    for nkey in nodes:
+        var nd = nodes[nkey]
+        var available = not (nkey in unavailable_points)
+        var color = Color.YELLOW if available else Color.RED
+        var sphere = DebugUtil.create_debug_sphere_print(nd["coord"], color, distorted_grid_vertex_radius, true)
+        sphere.position = nd["pos"]
+        add_child(sphere)
 
-            var opposite: Array[Vector3] = helper.get_opposite_facade_rect(
-                rect_info["edge_index"],
-                rect_info["cell_index"],
-                rect_info["size"],
-                rect_info["pos_x"],
-                rect_info["pos_y"],
-                rect_info["is_core"]
-            )
-            if opposite.size() != 4:
-                continue
-
-            if show_bridge_facade_grid_debug:
-                var face_info = helper.get_facade_edge_info(rect_info["edge_index"], rect_info["cell_index"])
-                if not face_info.is_empty():
-                    var vgrid = helper.get_vertical_grid_from_facade(face_info, true)
-                    var bridge_y_min = rect_info["pos_y"]
-                    var bridge_y_max = rect_info["pos_y"] + rect_info["size"].y - 1
-                    for quad in vgrid["quads"]:
-                        if quad["local_y"] < bridge_y_min or quad["local_y"] > bridge_y_max:
-                            continue
-                        var center = (quad["v1"] + quad["v2"] + quad["v3"] + quad["v4"]) / 4.0
-                        var color = Color.YELLOW if quad["available"] else Color.RED
-                        var sphere = DebugUtil.create_debug_sphere_print(
-                            Vector2i(quad["local_x"], quad["local_y"]),
-                            color,
-                            distorted_grid_vertex_radius,
-                            true
-                        )
-                        sphere.position = center
-                        add_child(sphere)
-
-            if show_facade_rects:
-                var plane = DebugUtil.create_debug_plane(verts[0], verts[1], verts[2], verts[3], Color.GREEN, 0.0)
-                add_child(plane)
-                total_rects += 1
-
-                var src_corners = [
-                    Vector2i(rect_info["pos_x"],                           rect_info["pos_y"]),
-                    Vector2i(rect_info["pos_x"] + rect_info["size"].x - 1, rect_info["pos_y"]),
-                    Vector2i(rect_info["pos_x"] + rect_info["size"].x - 1, rect_info["pos_y"] + rect_info["size"].y - 1),
-                    Vector2i(rect_info["pos_x"],                           rect_info["pos_y"] + rect_info["size"].y - 1),
-                ]
-                for i in range(4):
-                    var sphere = DebugUtil.create_debug_sphere_print(src_corners[i], Color.GREEN, distorted_grid_vertex_radius, true)
-                    sphere.position = verts[i]
-                    add_child(sphere)
-
-            if show_bridge_faces:
-                var opp_plane = DebugUtil.create_debug_plane(opposite[0], opposite[1], opposite[2], opposite[3], Color.RED, 0.0)
-                add_child(opp_plane)
-                total_opposite += 1
-
-                var opp_corners = [
-                    Vector2i(rect_info["pos_x"],                           rect_info["pos_y"]),
-                    Vector2i(rect_info["pos_x"] + rect_info["size"].x - 1, rect_info["pos_y"]),
-                    Vector2i(rect_info["pos_x"] + rect_info["size"].x - 1, rect_info["pos_y"] + rect_info["size"].y - 1),
-                    Vector2i(rect_info["pos_x"],                           rect_info["pos_y"] + rect_info["size"].y - 1),
-                ]
-                for i in range(4):
-                    var sphere = DebugUtil.create_debug_sphere_print(opp_corners[i], Color.RED, distorted_grid_vertex_radius, true)
-                    sphere.position = opposite[i]
-                    add_child(sphere)
-
-            if show_bridge_volumes:
-                var is_inverted = BridgeGridHelper.is_facade_edge_inverted(rect_info["edge_index"])
-                var skewed_cube = DebugUtil.create_skewed_cube_from_planes(
-                    [verts[0], verts[1], verts[2], verts[3]],
-                    opposite,
-                    Color(0.2, 0.6, 1.0),
-                    1.0,
-                    is_inverted
-                )
-                if skewed_cube != null:
-                    add_child(skewed_cube)
-
-    print("[Visualizer] Facade rects: %d verdes, %d rojos opuestos" % [total_rects, total_opposite])
-
-func _debug_visualize_bridge_core_grid(block: BlockGenerator, face_edge_info: Dictionary) -> void:
-    var building_module = block.get_building_module(face_edge_info["cell_x"], face_edge_info["cell_z"], 0)
-    if building_module == null:
-        return
-
-    var core = building_module.get_core_info()
-
-    for gz in range(core["min_z"], core["max_z"] + 1):
-        for gx in range(core["min_x"], core["max_x"] + 1):
-            var pos = building_module.get_cell_position(gx, gz, 0)
-            var sphere = DebugUtil.create_debug_sphere_print(Vector2i(gx, gz), Color.YELLOW, distorted_grid_vertex_radius, true)
-            sphere.position = pos
-            add_child(sphere)
+func _debug_visualize_bridge_core_grid(helper: BridgeGridHelper, facade_edge_info: Dictionary, floor: int) -> void:
+    var vgrid = helper.get_facade_grid_for_floor(facade_edge_info, floor, true)
+    _debug_visualize_facade_grid(vgrid)

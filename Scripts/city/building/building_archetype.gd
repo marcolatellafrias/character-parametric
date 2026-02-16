@@ -21,7 +21,7 @@ func get_street_corner_chamfer_value(vertex_seed: int) -> int:
 	
 	# 100% de probabilidad (para debugging)
 	if rng.randf() < 1.0:
-		return 8  # Hardcoded: 4 celdas
+		return 4  # Hardcoded: 4 celdas
 	
 	return 0
 
