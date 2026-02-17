@@ -14,7 +14,7 @@ class_name AreaInstantiator
 
 @export_group("Lane Volume Visualization")
 @export var show_lane_volumes: bool = false
-@export var lane_volume_color: Color = Color(1.0, 0.5, 0.0) 
+@export var lane_volume_color: Color = Color(1.0, 0.5, 0.0)
 @export var lane_volume_transparency: float = 0.2
 @export var show_continuations: bool = false
 @export var continuation_color: Color = Color(0.0, 1.0, 1.0)
@@ -30,7 +30,7 @@ class_name AreaInstantiator
 @export var spawn_safety_margin: float = 3.0
 @export var max_cars_per_cylinder: int = 50
 
-var city = null
+var generator: GraphCityGenerator = null
 var debug_cylinder_meshes: Array[MeshInstance3D] = []
 var lane_volumes_container: Node3D
 var grid_points_container: Node3D
@@ -45,7 +45,9 @@ var cylinder_car_counts: Array[int] = []
 var global_type_counts: Dictionary = {}
 
 func _ready() -> void:
-	city = get_tree().get_first_node_in_group("city_generator")
+	var city_visualizer = get_tree().get_first_node_in_group("city_generator")
+	if city_visualizer:
+		generator = city_visualizer.get_generator()
 	
 	_create_cylinder_areas()
 	_setup_visualization_containers()
@@ -67,8 +69,8 @@ func _process(delta: float) -> void:
 		print("ERROR: No hay world node")
 		return
 	
-	if not city:
-		print("ERROR: No hay city")
+	if not generator:
+		print("ERROR: No hay generator")
 		return
 	
 	spawn_timer += delta
@@ -187,12 +189,7 @@ func _create_debug_cylinders() -> void:
 	debug_cylinder_meshes.clear()
 	
 	for i in range(cameras.size()):
-		var debug_mesh = DebugUtil.create_debug_cylinder(
-			debug_cylinder_color, 
-			outer_radius, 
-			height, 
-			segments
-		)
+		var debug_mesh = DebugUtil.create_debug_cylinder(debug_cylinder_color, outer_radius, height, segments)
 		debug_mesh.name = "DebugCylinder_" + str(i)
 		add_child(debug_mesh)
 		debug_cylinder_meshes.append(debug_mesh)
@@ -206,15 +203,12 @@ func _update_visualization() -> void:
 	for child in grid_points_container.get_children():
 		child.queue_free()
 	
-	var volumes_to_visualize: Array[LaneVolume] = []
-	volumes_to_visualize.append_array(cylinder_lane_volumes)
-	
 	var continuation_volumes: Array[LaneVolume] = []
-	if show_continuations and city:
+	if show_continuations and generator:
 		for vol in cylinder_lane_volumes:
-			var continuations = city.get_lane_volume_continuations(vol.face_idx, vol.edge_idx)
+			var continuations = generator.get_lane_volume_continuations(vol.face_idx, vol.edge_idx)
 			for cont in continuations:
-				if not _volume_exists_in_array(cont, volumes_to_visualize):
+				if not _volume_exists_in_array(cont, cylinder_lane_volumes):
 					continuation_volumes.append(cont)
 	
 	if show_lane_volumes:
@@ -232,7 +226,6 @@ func _update_visualization() -> void:
 	if show_grid_points:
 		for vol in cylinder_lane_volumes:
 			_create_grid_points_for_volume(vol, grid_point_color)
-		
 		if show_continuations:
 			for cont_vol in continuation_volumes:
 				_create_grid_points_for_volume(cont_vol, continuation_color)
@@ -253,34 +246,21 @@ func _create_volume_mesh(vol: LaneVolume, color: Color, transparency: float) -> 
 	)
 
 func _create_grid_points_for_volume(vol: LaneVolume, color: Color) -> void:
-	var effective_width = granularity
-	var effective_height = granularity
-	
-	var width_steps = vol.width_cells * effective_width
-	var height_steps = vol.height_cells * effective_height
+	var width_steps = vol.width_cells * granularity
+	var height_steps = vol.height_cells * granularity
 	
 	for i in range(width_steps + 1):
 		for j in range(height_steps + 1):
 			var u = float(i) / float(width_steps) if width_steps > 0 else 0.0
 			var v = float(j) / float(height_steps) if height_steps > 0 else 0.0
 			
-			var point_start = vol.get_point_at_grid(u, v, true)
-			var sphere_start = DebugUtil.create_debug_sphere_print(
-				Vector2i(i, j), 
-				color, 
-				grid_point_size
-			)
+			var sphere_start = DebugUtil.create_debug_sphere_print(Vector2i(i, j), color, grid_point_size)
 			grid_points_container.add_child(sphere_start)
-			sphere_start.global_position = point_start
+			sphere_start.global_position = vol.get_point_at_grid(u, v, true)
 			
-			var point_end = vol.get_point_at_grid(u, v, false)
-			var sphere_end = DebugUtil.create_debug_sphere_print(
-				Vector2i(i, j), 
-				color, 
-				grid_point_size
-			)
+			var sphere_end = DebugUtil.create_debug_sphere_print(Vector2i(i, j), color, grid_point_size)
 			grid_points_container.add_child(sphere_end)
-			sphere_end.global_position = point_end
+			sphere_end.global_position = vol.get_point_at_grid(u, v, false)
 
 func _try_spawn_car() -> void:
 	var spawn_candidates: Array[Dictionary] = []
@@ -307,7 +287,6 @@ func _try_spawn_car() -> void:
 		var volume_id = str(selected_vol.face_idx) + "_" + str(selected_vol.edge_idx)
 		
 		var car_seed = randi()
-		
 		var neighborhood_type = selected_vol.get_neighborhood_type()
 		var custom_weights = NeighborhoodTypes.get_car_weights(neighborhood_type)
 		
@@ -320,7 +299,6 @@ func _try_spawn_car() -> void:
 			continue
 		
 		var v_max = selected_vol.get_max_spawn_v()
-		
 		var max_attempts = 10
 		var spawned = false
 		
@@ -332,12 +310,7 @@ func _try_spawn_car() -> void:
 			var end_pos = selected_vol.get_point_at_grid(random_u, random_v, false)
 			
 			var front_face = temp_car.get_front_face_at_segment(spawn_pos, end_pos)
-			
-			var validation = selected_vol.validate_face_projection(
-				front_face,
-				random_u,
-				random_v
-			)
+			var validation = selected_vol.validate_face_projection(front_face, random_u, random_v)
 			
 			if not validation["valid"]:
 				continue
@@ -357,7 +330,7 @@ func _try_spawn_car() -> void:
 		temp_car.free()
 		spawn_candidates.erase(selected)
 
-func _check_spawn_collision(spawn_pos: Vector3, direction: Vector3, 
+func _check_spawn_collision(spawn_pos: Vector3, direction: Vector3,
 							car_width: float, car_height: float, car_depth: float) -> bool:
 	if not world:
 		return false
@@ -400,7 +373,6 @@ func _is_lane_volume_visible(lane_vol: LaneVolume) -> bool:
 	for camera in cameras:
 		if not camera or not is_instance_valid(camera):
 			continue
-		
 		for vertex in vertices:
 			if camera.is_position_in_frustum(vertex):
 				return true
@@ -411,37 +383,15 @@ func is_position_visible(position: Vector3) -> bool:
 	for camera in cameras:
 		if not camera or not is_instance_valid(camera):
 			continue
-		
 		if camera.is_position_in_frustum(position):
 			return true
-	
 	return false
 
-func _select_volume_by_traffic_density(candidates: Array[LaneVolume]) -> LaneVolume:
-	var total_weight = 0.0
-	var weighted_candidates = []
-	
-	for vol in candidates:
-		var density = vol.get_traffic_density()
-		total_weight += density
-		weighted_candidates.append({"volume": vol, "weight": density})
-	
-	var random_value = randf() * total_weight
-	var cumulative = 0.0
-	
-	for item in weighted_candidates:
-		cumulative += item["weight"]
-		if random_value <= cumulative:
-			return item["volume"]
-	
-	return candidates[0]
-
 func _has_continuation_in_cylinder(vol: LaneVolume) -> bool:
-	if not city:
+	if not generator:
 		return false
 	
-	var continuations = city.get_lane_volume_continuations(vol.face_idx, vol.edge_idx)
-	
+	var continuations = generator.get_lane_volume_continuations(vol.face_idx, vol.edge_idx)
 	for cont in continuations:
 		for cyl_vol in cylinder_lane_volumes:
 			if cont.get_id() == cyl_vol.get_id():
@@ -472,25 +422,22 @@ func is_lane_volume_inside_by_calculation(lane_vol: LaneVolume) -> bool:
 	for camera in cameras:
 		if not camera or not is_instance_valid(camera):
 			continue
-		
 		var distance_xz = Vector2(
 			center.x - camera.global_position.x,
 			center.z - camera.global_position.z
 		).length()
-		
 		if distance_xz <= outer_radius:
 			return true
 	
 	return false
 
-func _spawn_car_at_volume(vol: LaneVolume, grid_u: float, grid_v: float, 
+func _spawn_car_at_volume(vol: LaneVolume, grid_u: float, grid_v: float,
 						  car_seed: int, custom_weights: Dictionary, cylinder_idx: int) -> void:
-	
 	var path_segment = vol.get_path_segment_at_grid(grid_u, grid_v)
 	
 	var car = FlyingCar.new()
 	car.world_node = world
-	car.city = city
+	car.generator = generator
 	car.area_instantiator = self
 	car.spawn_time = Time.get_ticks_msec() / 1000.0
 	
@@ -505,7 +452,7 @@ func _spawn_car_at_volume(vol: LaneVolume, grid_u: float, grid_v: float,
 	_add_car_to_global_type(car.car_archetype)
 	
 	car.volume_changed.connect(_on_car_volume_changed)
-	car.tree_exited.connect(func(): 
+	car.tree_exited.connect(func():
 		_remove_car_from_volume(volume_id, car.car_archetype)
 		_remove_car_from_cylinder(cylinder_idx)
 		_remove_car_from_global_type(car.car_archetype)
@@ -544,14 +491,12 @@ func _can_spawn_car_type(volume_id: String, cylinder_idx: int, car_type: int) ->
 func _add_car_to_volume(volume_id: String, car_type: int) -> void:
 	if not volume_car_counts.has(volume_id):
 		volume_car_counts[volume_id] = {}
-	
 	var current = volume_car_counts[volume_id].get(car_type, 0)
 	volume_car_counts[volume_id][car_type] = current + 1
 
 func _remove_car_from_volume(volume_id: String, car_type: int) -> void:
 	if not volume_car_counts.has(volume_id):
 		return
-	
 	var current = volume_car_counts[volume_id].get(car_type, 0)
 	if current > 0:
 		volume_car_counts[volume_id][car_type] = current - 1

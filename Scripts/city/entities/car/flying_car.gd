@@ -26,7 +26,7 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var min_safe_distance: float = 5.0
 @export var timeout_enabled: bool = true
 @export var timeout_duration: float = 3.0
-@export var movement_threshold: float = 2.0  # NUEVA
+@export var movement_threshold: float = 2.0
 @export var max_deceleration: float = 15.0
 @export var max_acceleration: float = 8.0
 @export var reaction_distance: float = 30.0
@@ -68,7 +68,7 @@ var current_width_cells: int = 3
 var current_height_cells: int = 10
 
 var world_node: Node3D
-var city = null
+var generator: GraphCityGenerator = null
 var area_instantiator = null
 var rng: RandomNumberGenerator
 
@@ -114,19 +114,14 @@ func _ready() -> void:
 	collision_avoidance.broadcast_debug_color = broadcast_debug_color
 	collision_avoidance.timeout_enabled = timeout_enabled
 	collision_avoidance.timeout_duration = timeout_duration
+	collision_avoidance.movement_threshold = movement_threshold
 	collision_avoidance.max_deceleration = max_deceleration
 	collision_avoidance.max_acceleration = max_acceleration
 	collision_avoidance.reaction_distance = reaction_distance
-	collision_avoidance.timeout_enabled = timeout_enabled
-	collision_avoidance.timeout_duration = timeout_duration
-	collision_avoidance.movement_threshold = movement_threshold  # NUEVA
-	collision_avoidance.max_deceleration = max_deceleration
 	add_child(collision_avoidance)
 	
 	rng = RandomNumberGenerator.new()
 	rng.seed = seed
-
-
 
 func _process(delta: float) -> void:
 	var effective_delta = delta
@@ -175,7 +170,6 @@ func _update_debug_label() -> void:
 		return
 	
 	var blocking_info = collision_avoidance.get_blocking_info()
-	
 	var archetype_name = CarArchetypes.Type.keys()[car_archetype]
 	
 	var text = "ID: " + car_id.substr(car_id.length() - 6)
@@ -219,8 +213,8 @@ func initialize_from_seed(p_seed: int, archetype_weights: Dictionary = {}) -> vo
 		collision_avoidance.base_speed = speed
 		collision_avoidance.current_speed = speed
 
-func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0, 
-			  grid_u: float = 0.0, grid_v: float = 0.0, 
+func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0,
+			  grid_u: float = 0.0, grid_v: float = 0.0,
 			  volume: Dictionary = {}, width_cells: int = 3, height_cells: int = 10) -> void:
 	
 	current_volume = volume
@@ -230,7 +224,6 @@ func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0,
 	current_height_cells = height_cells
 	
 	var next_segment = _calculate_next_segment(end, volume)
-	
 	path_controller.create_path(start, end, initial_progress, volume, next_segment)
 
 func _on_segment_transition(old_volume_id: String, new_volume_id: String) -> void:
@@ -246,7 +239,6 @@ func _on_segment_transition(old_volume_id: String, new_volume_id: String) -> voi
 	
 	var current_end = path_controller.path_3d.curve.get_point_position(3)
 	var next_segment = _calculate_next_segment(current_end, current_volume)
-	
 	path_controller.advance_to_next_segment(next_segment)
 
 func _on_path_ended() -> void:
@@ -292,8 +284,7 @@ func get_intersecting_traffic_planes() -> Array[Area3D]:
 	if not detection_area:
 		return planes
 	
-	var overlapping = detection_area.get_overlapping_areas()
-	for area in overlapping:
+	for area in detection_area.get_overlapping_areas():
 		if area is TrafficPlane:
 			planes.append(area)
 	
@@ -331,10 +322,10 @@ func _select_archetype_from_seed(rng: RandomNumberGenerator, custom_weights: Dic
 	return CarArchetypes.Type.POOR_CAR
 
 func _calculate_next_segment(current_end: Vector3, volume: Dictionary) -> Dictionary:
-	if not city or not volume.has("face_idx") or not volume.has("edge_idx"):
+	if not generator or not volume.has("face_idx") or not volume.has("edge_idx"):
 		return {}
 	
-	var continuations = city.get_lane_volume_continuations(volume["face_idx"], volume["edge_idx"])
+	var continuations = generator.get_lane_volume_continuations(volume["face_idx"], volume["edge_idx"])
 	
 	if area_instantiator and continuations.is_empty():
 		if not _should_continue_path():
@@ -397,33 +388,24 @@ func _should_continue_path() -> bool:
 			car_inside_cylinder = true
 			break
 	
-	var car_visible = false
-	if take_frustum_into_account_when_despawning:
-		for camera in area_instantiator.cameras:
-			if not camera or not is_instance_valid(camera):
-				continue
-			
-			if camera.is_position_in_frustum(global_position):
-				car_visible = true
-				break
+	if not take_frustum_into_account_when_despawning:
+		return car_inside_cylinder
 	
-	return car_inside_cylinder or car_visible
+	for camera in area_instantiator.cameras:
+		if not camera or not is_instance_valid(camera):
+			continue
+		if camera.is_position_in_frustum(global_position):
+			return true
+	
+	return car_inside_cylinder
 
 func _get_validated_continuation_path(lane_vol: LaneVolume, target_cell_x: int, target_cell_y: int) -> Variant:
 	var cont_width_cells = lane_vol.width_cells
 	var cont_height_cells = lane_vol.height_cells
 	
-	var x_in_range = (target_cell_x >= 0 and target_cell_x <= cont_width_cells)
-	var y_in_range = (target_cell_y >= 0 and target_cell_y <= cont_height_cells)
-	
-	var current_cell_x = target_cell_x
-	var current_cell_y = target_cell_y
-	var is_exact = true
-	
-	if not x_in_range or not y_in_range:
-		current_cell_x = clampi(target_cell_x, 0, cont_width_cells)
-		current_cell_y = clampi(target_cell_y, 0, cont_height_cells)
-		is_exact = false
+	var current_cell_x = clampi(target_cell_x, 0, cont_width_cells)
+	var current_cell_y = clampi(target_cell_y, 0, cont_height_cells)
+	var is_exact = (current_cell_x == target_cell_x and current_cell_y == target_cell_y)
 	
 	for attempt in range(5):
 		var u = float(current_cell_x) / float(cont_width_cells) if cont_width_cells > 0 else 0.0
@@ -465,9 +447,9 @@ func _move_away_from_plane(plane_name: String, current_x: int, current_y: int,
 	
 	match plane_name:
 		"bottom": new_y = current_y + 1
-		"top": new_y = current_y - 1
-		"left": new_x = current_x + 1
-		"right": new_x = current_x - 1
+		"top":    new_y = current_y - 1
+		"left":   new_x = current_x + 1
+		"right":  new_x = current_x - 1
 	
 	if new_x < 0 or new_x > max_width or new_y < 0 or new_y > max_height:
 		return {}
@@ -480,19 +462,13 @@ func _select_continuation_by_angle(continuations: Array) -> Dictionary:
 	
 	for cont in continuations:
 		var lane_vol = cont["volume"]
-		var angle_diff = cont["angle_diff"]
-		
-		var angle_weight = PI - angle_diff
+		var angle_weight = PI - cont["angle_diff"]
 		var traffic_weight = lane_vol.get_traffic_density()
 		var affinity_weight = _get_neighborhood_affinity(lane_vol)
 		
 		var combined_weight = (angle_weight * 0.3) + (traffic_weight * 0.35) + (affinity_weight * 0.35)
-		
 		total_weight += combined_weight
-		weighted_continuations.append({
-			"continuation": cont,
-			"weight": combined_weight
-		})
+		weighted_continuations.append({"continuation": cont, "weight": combined_weight})
 	
 	var random_value = rng.randf() * total_weight
 	var cumulative_weight = 0.0
@@ -505,8 +481,7 @@ func _select_continuation_by_angle(continuations: Array) -> Dictionary:
 	return continuations[0] if not continuations.is_empty() else {}
 
 func _get_neighborhood_affinity(lane_vol: LaneVolume) -> float:
-	var neighborhood_type = lane_vol.get_neighborhood_type()
-	return CarArchetypes.get_neighborhood_affinity(car_archetype, neighborhood_type)
+	return CarArchetypes.get_neighborhood_affinity(car_archetype, lane_vol.get_neighborhood_type())
 
 func get_front_face_at_segment(start: Vector3, end: Vector3) -> Array:
 	var direction = (end - start).normalized()
