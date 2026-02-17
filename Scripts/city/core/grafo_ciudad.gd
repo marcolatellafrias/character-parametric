@@ -7,7 +7,6 @@ var face_distances: Dictionary = {}  # face_idx -> float (0.0 - 1.0)
 var street_types: Dictionary = {}
 var block_grids: Dictionary = {}
 var region_size: Vector2 = Vector2.ZERO
-var pedestrian_planes: Dictionary = {}
 var lane_volume_areas: Dictionary = {}
 var traffic_indices: Dictionary = {}
 
@@ -132,7 +131,6 @@ func generate_city_graph(
 	)
 	
 	# Planos y lanes
-	_generate_pedestrian_planes()
 	_calculate_temporal_lane_points()
 	_calculate_lane_planes()
 	
@@ -591,37 +589,6 @@ func get_max_building_height_global() -> float:
 # GESTIÓN DE PLANOS PEATONALES
 # ============================================
 
-func _generate_pedestrian_planes() -> void:
-	pedestrian_planes.clear()
-	
-	for edge in plain_graph.edges:
-		var node1_idx = edge[0]
-		var node2_idx = edge[1]
-		var edge_key = GraphGenerator._get_edge_key(node1_idx, node2_idx)
-		
-		var adjacent_faces = _find_faces_sharing_edge(node1_idx, node2_idx)
-		
-		if adjacent_faces.size() != 2:
-			continue
-		
-		var face1_idx = adjacent_faces[0]
-		var face2_idx = adjacent_faces[1]
-		
-		var corner1_node1 = get_block_corner_with_offset(node1_idx, edge, face1_idx)
-		var corner1_node2 = get_block_corner_with_offset(node2_idx, edge, face1_idx)
-		
-		var corner2_node1 = get_block_corner_with_offset(node1_idx, edge, face2_idx)
-		var corner2_node2 = get_block_corner_with_offset(node2_idx, edge, face2_idx)
-		
-		if corner1_node1 == Vector2.ZERO or corner1_node2 == Vector2.ZERO or \
-		   corner2_node1 == Vector2.ZERO or corner2_node2 == Vector2.ZERO:
-			continue
-		
-		var plane1 = [corner1_node1, corner2_node1]
-		var plane2 = [corner1_node2, corner2_node2]
-		
-		pedestrian_planes[edge_key] = [plane1, plane2]
-
 func _find_faces_sharing_edge(node1_idx: int, node2_idx: int) -> Array[int]:
 	var sharing_faces: Array[int] = []
 	
@@ -632,13 +599,6 @@ func _find_faces_sharing_edge(node1_idx: int, node2_idx: int) -> Array[int]:
 			sharing_faces.append(face_idx)
 	
 	return sharing_faces
-
-func get_pedestrian_planes_for_edge(node1_idx: int, node2_idx: int) -> Array:
-	var edge_key = GraphGenerator._get_edge_key(node1_idx, node2_idx)
-	return pedestrian_planes.get(edge_key, [])
-
-func get_all_pedestrian_planes() -> Dictionary:
-	return pedestrian_planes
 
 # ============================================
 # GESTIÓN DE LANE LINES
