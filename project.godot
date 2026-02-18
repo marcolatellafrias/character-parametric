@@ -86,9 +86,10 @@ interact={
 [layer_names]
 
 3d_render/layer_1="Visible"
-3d_physics/layer_1="Mundo"
+3d_physics/layer_1="Piso"
 3d_physics/layer_2="Nave"
 3d_physics/layer_3="Gadgets"
+3d_physics/layer_4="Edificios"
 3d_physics/layer_10="Player"
 
 [physics]

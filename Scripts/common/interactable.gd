@@ -7,6 +7,12 @@ class_name Interactable
 # 2. Devolvemos la variable para que ASIGNES TU MATERIAL BONITO
 @export var highlight_material: Material
 
+func interact(_player: Node3D):
+	pass
+
+func on_mouse_drag(_relative: Vector2):
+	pass
+
 func set_highlight(enabled: bool):
 	var material_to_use = highlight_material if enabled else null
 	
