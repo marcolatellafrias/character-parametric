@@ -182,7 +182,9 @@ script = ExtResource("12_v3boh")
 [node name="CharacterBody3D" type="CharacterBody3D" parent="." node_paths=PackedStringArray("camera", "camera_pivot")]
 collision_layer = 512
 collision_mask = 3
+floor_constant_speed = true
 script = ExtResource("8_oilx1")
+jump_velocity = 10.0
 camera = NodePath("camerapivot/Camera3D")
 camera_pivot = NodePath("camerapivot")
 
@@ -203,7 +205,7 @@ metadata/_custom_type_script = "uid://btuoiwrmahgt4"
 [node name="Camera3D" type="Camera3D" parent="CharacterBody3D/camerapivot"]
 current = true
 
-[node name="RigidBody3D" parent="." instance=ExtResource("12_h3puh")]
+[node name="Nave" parent="." instance=ExtResource("12_h3puh")]
 transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -13.9507675, 0.9780211, 10.36355)
 angular_damp_mode = 1
 angular_damp = 1.0

@@ -1,4 +1,4 @@
-extends "steering_wheel.gd" # <--- Cambia esto por la ruta exacta de tu script de volante
+extends "res://Scripts/vehicle/steering_wheel.gd"
 
 @export var posicion_ojos: Marker3D
 

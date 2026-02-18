@@ -1,4 +1,4 @@
-[gd_scene load_steps=35 format=3 uid="uid://dg4wwu387wi12"]
+[gd_scene load_steps=34 format=3 uid="uid://dg4wwu387wi12"]
 
 [ext_resource type="PackedScene" uid="uid://npa52w18g2el" path="res://Scenes/barquetesimple2.blend" id="1_dc2g8"]
 [ext_resource type="Material" uid="uid://suxxlwyeavv2" path="res://Models/auto/chasis.tres" id="2_gq4qv"]
@@ -9,12 +9,10 @@
 [ext_resource type="Material" uid="uid://c7fdiywnobhhb" path="res://Models/auto/sirenas.tres" id="5_4s23i"]
 [ext_resource type="Material" uid="uid://du5qso8qhjk0v" path="res://Models/auto/metal oscuro.tres" id="5_qng2u"]
 [ext_resource type="Material" uid="uid://hlhue3yyp6on" path="res://Models/auto/cable.tres" id="9_u5wqr"]
-[ext_resource type="Script" uid="uid://lks3qjajvcp" path="res://Scenes/LeverControl.gd" id="10_rvw0b"]
-[ext_resource type="Script" uid="uid://ts7t44kh70a0" path="res://Scenes/steering_wheel.gd" id="11_rvw0b"]
+[ext_resource type="Script" uid="uid://6c81l8o24bc7" path="res://Scripts/vehicle/lever_control.gd" id="10_rvw0b"]
+[ext_resource type="Script" uid="uid://bdadqlexcvt4t" path="res://Scripts/vehicle/steering_wheel.gd" id="11_rvw0b"]
 [ext_resource type="Shader" uid="uid://cqkfvrs4svyg" path="res://Scenes/Glow_Shader.gdshader" id="12_csvot"]
-[ext_resource type="Script" uid="uid://dg0mua2fr6foe" path="res://Scenes/sillon_conductor.gd" id="13_n26vh"]
-
-[sub_resource type="GDScript" id="GDScript_u5wqr"]
+[ext_resource type="Script" uid="uid://8kbdxfg185r5" path="res://Scripts/vehicle/pilot_seat.gd" id="13_n26vh"]
 
 [sub_resource type="Curve" id="Curve_4s23i"]
 _data = [Vector2(0, 0.6986756), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
@@ -99,7 +97,6 @@ shader_parameter/intensity = 2.0
 size = Vector3(0.8934326, 1.3555298, 0.4173584)
 
 [node name="barquetesimple2" instance=ExtResource("1_dc2g8")]
-script = SubResource("GDScript_u5wqr")
 
 [node name="Cube_001" parent="." index="0"]
 material_override = ExtResource("2_gq4qv")
@@ -233,6 +230,7 @@ transform = Transform3D(-0.34908667, -19.606894, 0, 19.606894, -0.34908667, 0, 0
 collision_layer = 4
 collision_mask = 0
 script = ExtResource("10_rvw0b")
+sensitivity = 0.006
 output_axis_name = "vertical"
 mesh_manija = NodePath("../manivela derecha interior")
 meshes_visuales = [NodePath("../manivela derecha exterior"), NodePath("../manivela derecha interior")]
@@ -247,6 +245,7 @@ transform = Transform3D(-0.34908667, -19.606894, 0, 19.606894, -0.34908667, 0, 0
 collision_layer = 4
 collision_mask = 0
 script = ExtResource("10_rvw0b")
+sensitivity = 0.006
 mesh_manija = NodePath("../manivela izquierda interior")
 meshes_visuales = [NodePath("../manivela izquierda exterior"), NodePath("../manivela izquierda interior")]
 highlight_material = SubResource("ShaderMaterial_0pl4y")
@@ -259,6 +258,7 @@ shape = SubResource("BoxShape3D_rvw0b")
 transform = Transform3D(0.99760044, -0.06923414, 0, 0.06923414, 0.99760044, 0, 0, 0, 1, 0.99021804, 0, 2.2180645)
 collision_layer = 4
 script = ExtResource("11_rvw0b")
+soft_lock_threshold = 5.0
 pivote_rotacion = NodePath("Pivote/Eje_Real")
 meshes_visuales = [NodePath("Pivote")]
 highlight_material = SubResource("ShaderMaterial_n26vh")
@@ -305,4 +305,7 @@ transform = Transform3D(0.635, 0, 0, 0, 0.635, 0, 0, 0, 0.635, -0.028476536, -0.
 shape = SubResource("BoxShape3D_0pl4y")
 
 [node name="Ojos" type="Marker3D" parent="Sillon Conductor" index="1"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.10684973, 0.008342385, 0.15820122)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.10684973, -0.058107734, 0.2187941)
+
+[node name="Exit Point Conductor" type="Marker3D" parent="." index="55"]
+transform = Transform3D(-0.19755149, 0.1618214, -0.96684396, -0.5471934, 0.80012447, 0.24572343, 0.8133588, 0.5775937, -0.06951812, 0.25008434, 0.7632652, 0.8868197)

@@ -10,7 +10,8 @@ extends CharacterBody3D
 @export var ground_push_impulse: float = 0.4
 @export var ground_push_max_dist: float = 1.2  
 
-var _current_interactable: Node = null
+var _current_interactable: Node = null # El interactuable al que estamos mirando
+var _active_interactable: Node = null # El interactuable con el que estamos operando (drag)
 var _crosshair: ColorRect
 var _ui_layer: CanvasLayer
 
@@ -18,7 +19,7 @@ var _grab_line: MeshInstance3D
 var _grab_line_mesh: CylinderMesh
 var _grab_line_mat: StandardMaterial3D
 var _drag_start_world := Vector3.ZERO
-var _is_interacting: bool = false
+var _is_interacting: bool = false # Ahora significa específicamente "arrastrando/operando"
 
 var is_sitting: bool = false
 var original_parent: Node = null
@@ -32,6 +33,8 @@ var original_parent: Node = null
 var _grabbed: RigidBody3D
 var _grab_local: Vector3
 var _grab_distance: float = 0.0
+
+var _last_platform_obj: Object = null
 
 @export var walk_speed: float = 3.5
 @export var sprint_speed: float = 50.0
@@ -57,12 +60,23 @@ func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	_build_rig()
 	_ensure_input_map()
+	
+	# Inicializar variables de rotación con los valores actuales
+	_yaw = rotation.y
+	if is_instance_valid(camera_pivot):
+		_pitch = camera_pivot.rotation.x
 
 @export var push_impulse_scale := 2.0
 
-func _physics_process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	_process_interaction()
+	
+	# Actualizar la orientación visual en cada frame
+	rotation.y = _yaw
+	if is_instance_valid(camera_pivot):
+		camera_pivot.rotation.x = _pitch
 
+func _physics_process(delta: float) -> void:
 	if is_sitting:
 		return
 
@@ -75,6 +89,20 @@ func _physics_process(delta: float) -> void:
 	_update_grab(delta)
 
 func _physics_normal(delta: float) -> void:
+	if is_on_floor():
+		# Sincronización de rotación con la plataforma (Nave)
+		var plat_rot = get_platform_angular_velocity()
+		
+		if plat_rot.length_squared() > 0.0001:
+			_yaw += plat_rot.y * delta
+			
+		var floor_vel = get_platform_velocity()
+		# Esto ayuda a que el CharacterBody se "pegue" al movimiento del RigidBody
+		# Solo lo aplicamos si no nos estamos moviendo nosotros (para no patinar)
+		if velocity.length() < 0.1: 
+			velocity.x = move_toward(velocity.x, floor_vel.x, delta * 10.0)
+			velocity.z = move_toward(velocity.z, floor_vel.z, delta * 10.0)
+
 	var g: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 	if not is_on_floor():
 		velocity.y -= g * delta
@@ -131,6 +159,7 @@ func _push_ground_down() -> void:
 			body.apply_impulse(Vector3.DOWN * ground_push_impulse, contact_point)
 
 func _unhandled_input(event: InputEvent) -> void:
+<<<<<<< HEAD
 	if event.is_action_pressed("toggle_creative"):
 		creative_mode = !creative_mode
 		velocity = Vector3.ZERO
@@ -140,35 +169,62 @@ func _unhandled_input(event: InputEvent) -> void:
 		if is_sitting:
 			_process_interaction()
 
+=======
+	# 1. Lógica de Interacción Activa (Arrastrar Volante, etc)
+	if _is_interacting and _active_interactable:
+>>>>>>> pr/3
 		if event is InputEventMouseMotion:
-			if _current_interactable.has_method("on_mouse_drag"):
-				_current_interactable.on_mouse_drag(event.relative)
+			if _active_interactable.has_method("on_mouse_drag"):
+				_active_interactable.on_mouse_drag(event.relative)
 		
 		if event is InputEventMouseButton and not event.pressed:
-			_is_interacting = false
-			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+			if event.button_index == MOUSE_BUTTON_LEFT:
+				var temp_active = _active_interactable
+				_is_interacting = false
+				_active_interactable = null
+				
+				# Si ya no lo estamos mirando, apagamos el brillo al soltarlo
+				if temp_active and temp_active != _current_interactable:
+					temp_active.set_highlight(false)
+				
+				Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 		
-		return
+		# Eliminamos el 'return' para que la cámara siga funcionando
 	
+	# 2. Cámara (Funciona SIEMPRE que el mouse esté capturado)
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 		var dy: float = event.relative.y
 		var dx: float = event.relative.x
 		_yaw -= dx * mouse_sensitivity
 		_pitch -= (-dy if invert_y else dy) * mouse_sensitivity
 		_pitch = clamp(_pitch, -_PITCH_LIMIT, _PITCH_LIMIT)
-		
-		rotation.y = _yaw
-		if is_instance_valid(camera_pivot):
-			camera_pivot.rotation.x = _pitch
 
-	if is_sitting and event.is_action_pressed("interact"):
-		stand_up()
+	# 3. Acción de Interactuar (Tecla E)
+	if event.is_action_pressed("interact"):
+		if is_sitting:
+			# Al estar sentados, 'E' siempre nos levanta para evitar bloqueos.
+			# Las interacciones con gadgets (volante/palancas) se hacen con CLICK.
+			stand_up()
+		else:
+			# Comportamiento normal fuera del asiento
+			if _current_interactable:
+				if _current_interactable.has_method("interact"):
+					_current_interactable.interact(self)
 		return
 
+	# 4. Click Izquierdo (Para arrastrar o interactuar también)
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		if _current_interactable:
-			_current_interactable.interact(self)
-			_is_interacting = true
+			_active_interactable = _current_interactable
+			if _active_interactable.has_method("interact"):
+				_active_interactable.interact(self)
+			
+			# Si el objeto tiene drag, iniciamos el estado de interacción
+			if _active_interactable.has_method("on_mouse_drag"):
+				_is_interacting = true
+			else:
+				_active_interactable = null # No hay drag, soltamos inmediatamente
+			
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 		else:
 			if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
@@ -396,13 +452,18 @@ func _process_interaction() -> void:
 
 	# Lógica de cambio
 	if new_interactable != _current_interactable:
-		if _current_interactable:
+		# Solo apagamos el highlight si NO es el objeto que estamos arrastrando activamente
+		if _current_interactable and _current_interactable != _active_interactable:
 			_current_interactable.set_highlight(false)
 		
 		if new_interactable:
 			new_interactable.set_highlight(true)
 		
 		_current_interactable = new_interactable
+	
+	# Mantenimiento: Aseguramos que el objeto activo brille siempre
+	if _active_interactable:
+		_active_interactable.set_highlight(true)
 
 func sit_down(asiento_marker: Node3D):
 	if is_sitting: return
@@ -412,14 +473,13 @@ func sit_down(asiento_marker: Node3D):
 	reparent(asiento_marker)
 	
 	# 2. Reseteamos posición y velocidad
-	# Esto evita que entres al asiento con "vuelo" acumulado
 	global_position = asiento_marker.global_position
 	global_rotation = asiento_marker.global_rotation
 	velocity = Vector3.ZERO 
 	
-	# 3. EL SALVAVIDAS: Desactivamos el procesamiento de físicas del cuerpo
-	# Esto evita que el CharacterBody3D intente calcular gravedad o colisiones
-	set_physics_process(false)
+	# 3. Sincronizar variables de rotación para que sean relativas al asiento
+	_yaw = 0.0
+	_pitch = 0.0
 	
 	# 4. Apagamos la colisión para no chocar con la cabina
 	$Collider.disabled = true
@@ -427,28 +487,57 @@ func stand_up():
 	if not is_sitting: return
 	is_sitting = false
 	
-	# 1. Antes de salir, obtenemos la nave (el abuelo del jugador, ya que el padre es el Marker)
-	var asiento = get_parent()
-	var nave = asiento.get_parent() if asiento else null
+	var seat_marker = get_parent()
 	
-	# 2. Guardamos la velocidad de la nave si es un RigidBody3D
+	# 1. Búsqueda exhaustiva del punto de salida (Exit Point)
+	# Buscamos en el asiento, en la nave, o cualquier ancestro que contenga "Exit"
+	var exit_node = null
+	var search_node = seat_marker
+	while search_node != null and search_node != get_tree().current_scene:
+		for child in search_node.get_children():
+			if "Exit" in child.name:
+				exit_node = child
+				break
+		if exit_node: break
+		search_node = search_node.get_parent()
+	
+	var exit_pos_global: Vector3
+	var exit_rot_global: Vector3
+	
+	if exit_node:
+		exit_pos_global = exit_node.global_position
+		exit_rot_global = exit_node.global_rotation
+	else:
+		# Fallback consistente: 1.5m a la derecha del asiento relativo al ASIENTO
+		# No usamos el basis del jugador porque puede estar mirando a cualquier lado
+		exit_pos_global = seat_marker.global_transform.origin + seat_marker.global_transform.basis.x * 1.5
+		exit_rot_global = seat_marker.global_rotation
+	
+	# 2. Guardamos la velocidad
 	var nave_velocity = Vector3.ZERO
-	if nave is RigidBody3D:
-		nave_velocity = nave.linear_velocity
+	var ship_node = seat_marker.get_parent()
+	while ship_node != null and not (ship_node is RigidBody3D):
+		ship_node = ship_node.get_parent()
+		if ship_node == get_tree().current_scene: break
+		
+	if ship_node is RigidBody3D:
+		nave_velocity = ship_node.linear_velocity
 	
-	# 3. Salimos al mundo real
-	var main_scene = get_tree().current_scene
-	reparent(main_scene)
+	# 3. Volvemos al mundo real
+	reparent(get_tree().current_scene)
 	
-	# 4. LE PASAMOS LA VELOCIDAD: Ahora el jugador nace con el impulso de la nave
+	# 4. APLICAMOS LA TELETRANSPORTACIÓN SEGURA
+	global_position = exit_pos_global
+	global_rotation = Vector3(0, exit_rot_global.y, 0) # Solo rotación Y para estar de pie
+	
+	# 5. Sincronizamos las variables de rotación con el nuevo espacio global
+	_yaw = rotation.y
+	_pitch = camera_pivot.rotation.x
+	
+	# 6. SINCRONIZAMOS LA VELOCIDAD
 	velocity = nave_velocity
 	
-	# 5. Reactivamos físicas y colisiones
-	set_physics_process(true)
 	if has_node("Collider"):
 		$Collider.disabled = false
-	
-	# 6. Posicionamiento de salida (un poco al costado para no chocar)
-	global_position += global_transform.basis.x * 1.2
-	rotation.x = 0
-	rotation.z = 0
+		
+	move_and_slide()
