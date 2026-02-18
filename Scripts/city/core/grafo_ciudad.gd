@@ -9,6 +9,7 @@ var block_grids: Dictionary = {}
 var region_size: Vector2 = Vector2.ZERO
 var lane_volume_areas: Dictionary = {}
 var traffic_indices: Dictionary = {}
+var building_grid_helpers: Dictionary = {}  # face_idx -> BuildingGridHelper
 
 var neighborhood_height_falloff: float = 1.0
 
@@ -468,6 +469,7 @@ func _generate_block_grids(
 	building_cell_height: float
 ) -> void:
 	block_grids.clear()
+	building_grid_helpers.clear()
 	
 	for face_idx in range(plain_graph.faces.size()):
 		var face_nodes = plain_graph.faces[face_idx]
@@ -492,7 +494,6 @@ func _generate_block_grids(
 		var distance_from_seed = face_distances.get(face_idx, 1.0)
 		var falloff_factor = pow(distance_from_seed, neighborhood_height_falloff)
 		
-		# Calcular promedios globales
 		var global_min = 0
 		var global_max = 0
 		var unique_types = {}
@@ -552,6 +553,15 @@ func _generate_block_grids(
 		)
 		
 		block_grids[face_idx] = block
+	
+	# Poblar building_grid_helpers una vez que todos los bloques están construidos
+	for face_idx in block_grids:
+		building_grid_helpers[face_idx] = BuildingGridHelper.new(block_grids[face_idx])
+	
+	print("[GraphCityGenerator] BuildingGridHelpers generados: %d" % building_grid_helpers.size())
+
+func get_building_grid_helper(face_idx: int) -> BuildingGridHelper:
+	return building_grid_helpers.get(face_idx, null)
 
 func _is_face_clockwise(vertices: Array[Vector2]) -> bool:
 	var area = 0.0

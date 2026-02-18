@@ -254,11 +254,11 @@ func _create_grid_points_for_volume(vol: LaneVolume, color: Color) -> void:
 			var u = float(i) / float(width_steps) if width_steps > 0 else 0.0
 			var v = float(j) / float(height_steps) if height_steps > 0 else 0.0
 			
-			var sphere_start = DebugUtil.create_debug_sphere_print(Vector2i(i, j), color, grid_point_size)
+			var sphere_start = DebugUtil.create_debug_sphere_2dprint(Vector2i(i, j), color, grid_point_size)
 			grid_points_container.add_child(sphere_start)
 			sphere_start.global_position = vol.get_point_at_grid(u, v, true)
 			
-			var sphere_end = DebugUtil.create_debug_sphere_print(Vector2i(i, j), color, grid_point_size)
+			var sphere_end = DebugUtil.create_debug_sphere_2dprint(Vector2i(i, j), color, grid_point_size)
 			grid_points_container.add_child(sphere_end)
 			sphere_end.global_position = vol.get_point_at_grid(u, v, false)
 

@@ -1575,7 +1575,7 @@ static func create_debug_path3d(
 	return mesh_instance
 
 # En DebugUtil - versión actualizada
-static func create_debug_sphere_print(grid_coords: Vector2i, color: Color, size: float = 0.1, on_top: bool = false, radial_segments: int = 4, rings: int = 4) -> Node3D:
+static func create_debug_sphere_2dprint(grid_coords: Vector2i, color: Color, size: float = 0.1, on_top: bool = false, radial_segments: int = 4, rings: int = 4) -> Node3D:
 	var container := Node3D.new()
 
 	var mesh_instance := MeshInstance3D.new()
@@ -1606,6 +1606,37 @@ static func create_debug_sphere_print(grid_coords: Vector2i, color: Color, size:
 
 	container.add_child(label)
 
+	return container
+
+static func create_debug_sphere_3dprint(grid_coords: Vector3i, color: Color, size: float = 0.1, on_top: bool = false, radial_segments: int = 4, rings: int = 4) -> Node3D:
+	var container := Node3D.new()
+	var mesh_instance := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radial_segments = radial_segments
+	sphere.rings = rings
+	mesh_instance.mesh = sphere
+	mesh_instance.scale = Vector3(size, size, size)
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color.a = 0.5
+	if on_top:
+		material.no_depth_test = true
+		material.render_priority = 1
+	mesh_instance.material_override = material
+	container.add_child(mesh_instance)
+	var label := Label3D.new()
+	label.text = "[%d, %d, %d]" % [grid_coords.x, grid_coords.y, grid_coords.z]
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.font_size = 16
+	label.outline_size = 4
+	label.outline_modulate = Color.BLACK
+	label.modulate = Color.WHITE
+	label.no_depth_test = true
+	label.position = Vector3(0, size * 1.5, 0)
+	container.add_child(label)
 	return container
 
 static func create_debug_sphere_print_int(value: int, color: Color, size: float = 0.1, on_top: bool = false, radial_segments: int = 4, rings: int = 4) -> Node3D:

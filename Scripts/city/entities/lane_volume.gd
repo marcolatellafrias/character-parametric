@@ -197,14 +197,14 @@ func create_grid_points(width_steps: int, height_steps: int, container: Node3D,
 			
 			var point_start = get_point_at_grid(u, v, true)
 			var grid_coords = Vector2i(i, j)
-			var sphere = DebugUtil.create_debug_sphere_print(grid_coords, color, size)
+			var sphere = DebugUtil.create_debug_sphere_2dprint(grid_coords, color, size)
 			sphere.set_meta("grid_coords", grid_coords)
 			sphere.set_meta("world_position", point_start)
 			container.add_child(sphere)
 			sphere.global_position = point_start
 			
 			var point_end = get_point_at_grid(u, v, false)
-			var sphere_end = DebugUtil.create_debug_sphere_print(grid_coords, color, size)
+			var sphere_end = DebugUtil.create_debug_sphere_2dprint(grid_coords, color, size)
 			sphere_end.set_meta("grid_coords", grid_coords)
 			sphere_end.set_meta("world_position", point_end)
 			container.add_child(sphere_end)
