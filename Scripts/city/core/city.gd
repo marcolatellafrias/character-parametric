@@ -88,7 +88,7 @@ extends Node3D
 @export var distorted_grid_height_offset: float = 0.1
 
 @export_group("Buildings")
-@export var show_buildings: bool = true
+@export var show_buildings: bool = false
 @export var show_building_colliders: bool = true
 @export var alternate_floor_shading: bool = true
 @export var alternate_module_shading: bool = true
@@ -753,22 +753,31 @@ func _visualize_building_grid_helpers() -> void:
         if helper == null:
             continue
 
-        var matrix = helper.matrices
-        for coord_key in matrix:
+        var block: BlockGenerator = generator.get_block_grid(face_idx)
+        if block == null:
+            continue
+
+        for coord_key in helper.matrices:
             var parts = coord_key.split("_")
             var coord = Vector2i(int(parts[0]), int(parts[1]))
-            var cell_matrix = matrix[coord_key]
-            var cells = cell_matrix["cells"]
 
-            for cell_key in cells:
-                var cell = cells[cell_key]
+            var base_module: BuildingModule = block.get_building_module(coord.x, coord.y, 0)
+            if base_module == null:
+                continue
+
+            var cell_matrix = helper.matrices[coord_key]
+            var building_cell_height = cell_matrix["cell_height"]
+
+            for cell_key in cell_matrix["cells"]:
+                var cell = cell_matrix["cells"][cell_key]
                 var is_available: bool = cell["availability"]
-                var color = Color.GREEN if is_available else Color.RED
-                var coords_3d = Vector3i(cell["bx"], cell["height_index"], cell["bz"])
+                var color = Color(0, 1, 0, 0.5) if is_available else Color(1, 0, 0, 0.5)
 
-                var sphere = DebugUtil.create_debug_sphere_3dprint(coords_3d, color, 1.5, true)
-                sphere.position = cell["position"]
-                add_child(sphere)
+                var bottom_vertices = base_module.get_cell_vertices(cell["bx"], cell["bz"], cell["height_index"])
+                if bottom_vertices.size() != 4:
+                    continue
+
+                add_child(DebugUtil.create_skewed_cube(bottom_vertices, building_cell_height, color, true))
 
                 total_cells += 1
                 if is_available:
