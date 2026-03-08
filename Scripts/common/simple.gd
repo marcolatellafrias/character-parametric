@@ -155,22 +155,16 @@ func _process_movement(_delta: float) -> void:
 	apply_central_force(-global_transform.basis.x * lateral_vel * 2.0)
 
 func _process_stability(_delta: float) -> void:
-	# Meta: UP del mundo con inclinaciones cosméticas basadas en movimiento
 	var target_up = Vector3.UP
 	
-	# Banking: Inclinarse hacia los lados al girar
-	target_up = target_up.rotated(-global_transform.basis.z, _smooth_steering * bank_amount)
-	
-	# Pitch: Inclinar la nariz al acelerar/frenar
-	target_up = target_up.rotated(global_transform.basis.x, _smooth_throttle * tilt_amount)
+	target_up = target_up.rotated(-global_transform.basis.z.normalized(), _smooth_steering * bank_amount)
+	target_up = target_up.rotated(global_transform.basis.x.normalized(), _smooth_throttle * tilt_amount)
 	
 	target_up = target_up.normalized()
 	
-	# Torque correctivo para alinear el eje Y de la nave con el target_up
 	var current_up = global_transform.basis.y
 	var torque_correction = current_up.cross(target_up)
 	
-	# Aplicamos el torque de resorte y el de freno (angular velocity)
 	apply_torque(torque_correction * upright_kp - angular_velocity * upright_kd)
 
 func _animate_visual_controls() -> void:

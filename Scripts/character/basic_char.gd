@@ -159,7 +159,6 @@ func _push_ground_down() -> void:
 			body.apply_impulse(Vector3.DOWN * ground_push_impulse, contact_point)
 
 func _unhandled_input(event: InputEvent) -> void:
-<<<<<<< HEAD
 	if event.is_action_pressed("toggle_creative"):
 		creative_mode = !creative_mode
 		velocity = Vector3.ZERO
@@ -169,10 +168,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if is_sitting:
 			_process_interaction()
 
-=======
 	# 1. Lógica de Interacción Activa (Arrastrar Volante, etc)
 	if _is_interacting and _active_interactable:
->>>>>>> pr/3
 		if event is InputEventMouseMotion:
 			if _active_interactable.has_method("on_mouse_drag"):
 				_active_interactable.on_mouse_drag(event.relative)

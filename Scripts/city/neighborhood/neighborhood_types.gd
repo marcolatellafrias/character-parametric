@@ -13,25 +13,33 @@ const CONFIGS = {
 		"min_floors": 1,
 		"max_floors": 2,
 		"block_heart_probability": 0.6,
-		"traffic_density": 0.3
+		"traffic_density": 0.3,
+		"min_crossings": 0,
+		"max_crossings": 1
 	},
 	Type.RICH_RESIDENTIAL: {
 		"min_floors": 2,
 		"max_floors": 4,
 		"block_heart_probability": 0.4,
-		"traffic_density": 0.5
+		"traffic_density": 0.5,
+		"min_crossings": 1,
+		"max_crossings": 2
 	},
 	Type.INDUSTRIAL: {
 		"min_floors": 5,
 		"max_floors": 10,
 		"block_heart_probability": 0.2,
-		"traffic_density": 0.7
+		"traffic_density": 0.7,
+		"min_crossings": 2,
+		"max_crossings": 4
 	},
 	Type.DOWNTOWN: {
 		"min_floors": 8,
 		"max_floors": 15,
 		"block_heart_probability": 0.1,
-		"traffic_density": 1.0
+		"traffic_density": 1.0,
+		"min_crossings": 3,
+		"max_crossings": 6
 	}
 }
 
@@ -105,3 +113,7 @@ static func get_higher_hierarchy_type(type_a: Type, type_b: Type) -> Type:
 	var hierarchy_a = get_hierarchy(type_a)
 	var hierarchy_b = get_hierarchy(type_b)
 	return type_a if hierarchy_a >= hierarchy_b else type_b
+	
+static func get_crossings_range(type: Type) -> Vector2i:
+	var cfg = CONFIGS[type]
+	return Vector2i(cfg["min_crossings"], cfg["max_crossings"])
