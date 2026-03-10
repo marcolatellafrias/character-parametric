@@ -216,7 +216,7 @@ static func tall_lanky_arch() -> EntityStats:
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55
-	arch.hips_width_proportion = 0.08
+	arch.hips_width_proportion = 0.065
 	arch.shoulder_width_proportion = 0.14
 	
 	arch.has_neck = true
@@ -309,15 +309,15 @@ static func old_arch() -> EntityStats:
 	arch.horizontal_turn_spring = 0.8
 	arch.horizontal_turn_damp = 0.8
 	
-	arch.fatness = 0.0
-	arch.muscularity = 0.0
+	arch.fatness = 0.1
+	arch.muscularity = 0.1
 	
 	arch.height = 1.7
 
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55
-	arch.hips_width_proportion = 0.08
+	arch.hips_width_proportion = 0.065
 	arch.shoulder_width_proportion = 0.11
 	
 	arch.has_neck = true

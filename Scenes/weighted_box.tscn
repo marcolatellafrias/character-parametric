@@ -1,11 +1,13 @@
 [gd_scene load_steps=5 format=3 uid="uid://beur8wp4bookx"]
 
 [ext_resource type="Script" uid="uid://c4vkjfs1rafmc" path="res://Scripts/common/labelable.gd" id="1_mnoes"]
-[ext_resource type="Material" uid="uid://bq5ujksxl5avb" path="res://Materials/Shapes.tres" id="2_hyffr"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_oilx1"]
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pwk8l"]
+
 [sub_resource type="BoxMesh" id="BoxMesh_8wo38"]
+material = SubResource("StandardMaterial3D_pwk8l")
 
 [node name="HeavyBox" type="RigidBody3D"]
 script = ExtResource("1_mnoes")
@@ -17,4 +19,3 @@ shape = SubResource("BoxShape3D_oilx1")
 [node name="Box" type="MeshInstance3D" parent="."]
 mesh = SubResource("BoxMesh_8wo38")
 skeleton = NodePath("../../..")
-surface_material_override/0 = ExtResource("2_hyffr")

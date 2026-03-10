@@ -52,7 +52,7 @@ extends Node3D
 	#end
 #end
 ## The minimum distance of objects the mirror will render.
-@export var cull_near:float = 0.05
+@export var cull_near:float = 0.01
 ## The maximum distance of objects the mirror will render.
 @export var cull_far:float = 50.0
 ## The maximum distance of the player camera before the mirror is frozen.

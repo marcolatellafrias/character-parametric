@@ -1,5 +1,6 @@
 extends CharacterBody3D
 
+@export var debug_show_collider: bool = true
 @export var walk_speed: float = 3.5
 @export var sprint_speed: float = 8.0
 @export var jump_velocity: float = 8.0
@@ -19,10 +20,10 @@ extends CharacterBody3D
 @export var grab_rotation_stiffness: float = 50.0
 @export var grab_rotation_damping: float = 8.0
 @export var grab_sag_factor: float = 0.3
-@export var grab_height_offset: float = -0.3
+@export var grab_height_offset: float = -0.0
 
-@export var outline_color: Color = Color(1, 0, 1, 1)
-@export var outline_size: float = 2.05
+@export var outline_color: Color = Color(1, 1, 0, 1)
+@export var outline_size: float = 0.01
 @export var crosshair_size := 6.0
 @export var crosshair_color := Color(1, 1, 1, 0.9)
 
@@ -215,8 +216,8 @@ func _update_curve() -> void:
         { "pos": p2, "in": cp1 - p2,     "out": Vector3.ZERO }
     ]
 
-    _curve_mesh = DebugUtil.create_debug_path3d(points, 16, Color(0.4, 0.9, 1.0), 0.005)
-    get_tree().current_scene.add_child(_curve_mesh)
+    #_curve_mesh = DebugUtil.create_debug_path3d(points, 16, outline_color, 0.01)
+    #get_tree().current_scene.add_child(_curve_mesh)
 
 # --- OUTLINE ---
 
@@ -225,7 +226,7 @@ func _build_outline_material() -> void:
     _outline_material = ShaderMaterial.new()
     _outline_material.shader = shader
     _outline_material.set_shader_parameter("color", outline_color)
-    _outline_material.set_shader_parameter("size", outline_size)
+    _outline_material.set_shader_parameter("outline_thickness", outline_size)
 
 func _process_grab_look() -> void:
     if not is_instance_valid(camera): return
@@ -262,12 +263,18 @@ func _collect_meshes_recursive(node: Node, result: Array[MeshInstance3D]) -> voi
 func _apply_outline() -> void:
     for mesh in _hovered_meshes:
         if is_instance_valid(mesh):
-            mesh.material_overlay = _outline_material
+            for i in mesh.mesh.get_surface_count():
+                var mat := mesh.get_active_material(i)
+                if mat:
+                    mat.next_pass = _outline_material
 
 func _clear_outline() -> void:
     for mesh in _hovered_meshes:
         if is_instance_valid(mesh):
-            mesh.material_overlay = null
+            for i in mesh.mesh.get_surface_count():
+                var mat := mesh.get_active_material(i)
+                if mat:
+                    mat.next_pass = null
     _hovered_meshes.clear()
     _hovered_parent = null
     _hovered_rb = null
@@ -283,6 +290,17 @@ func _build_collider() -> void:
     collider.shape = shape
     add_child(collider)
 
+    if debug_show_collider:
+        var mesh_inst := MeshInstance3D.new()
+        var capsule_mesh := CapsuleMesh.new()
+        capsule_mesh.radius = shape.radius
+        capsule_mesh.height = shape.height
+        var mat := StandardMaterial3D.new()
+        mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+        capsule_mesh.surface_set_material(0, mat)
+        mesh_inst.mesh = capsule_mesh
+        collider.add_child(mesh_inst)
+
 func _build_camera() -> void:
     camera_pivot = Node3D.new()
     camera_pivot.name = "CameraPivot"
@@ -292,6 +310,8 @@ func _build_camera() -> void:
     camera = Camera3D.new()
     camera.name = "Camera"
     camera.current = true
+    camera.near = 0.01
+    camera.far = 10000.0
     camera_pivot.add_child(camera)
 
 func _ensure_input_map() -> void:
