@@ -1,10 +1,10 @@
-[gd_scene load_steps=26 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=24 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://by0al5irc1r60" path="res://Materials/Floor.tres" id="1_lpcab"]
-[ext_resource type="Material" uid="uid://bq5ujksxl5avb" path="res://Materials/Shapes.tres" id="2_fnnck"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
 [ext_resource type="Material" uid="uid://da33e5tos7dp0" path="res://Materials/blue.tres" id="4_oilx1"]
 [ext_resource type="Material" uid="uid://dnj4yx07gux3o" path="res://Materials/green.tres" id="5_4i7ud"]
+[ext_resource type="PackedScene" uid="uid://beur8wp4bookx" path="res://Scenes/weighted_box.tscn" id="7_h3puh"]
 [ext_resource type="PackedScene" uid="uid://delu2qjrw6teu" path="res://addons/Mirror3D/Mirror3D.tscn" id="8_ecetj"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
 [ext_resource type="Script" uid="uid://d2nsi0q7ohep" path="res://Scripts/character/simple_player.gd" id="11_k27g2"]
@@ -57,10 +57,6 @@ volumetric_fog_albedo = Color(0.9072337, 0.6909475, 0.34785485, 1)
 volumetric_fog_emission = Color(0.80489886, 0.5607987, 0.35002738, 1)
 volumetric_fog_sky_affect = 0.35
 adjustment_enabled = true
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_oilx1"]
-
-[sub_resource type="BoxMesh" id="BoxMesh_8wo38"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_k27g2"]
 size = Vector3(2, 2, 2)
@@ -136,16 +132,21 @@ directional_shadow_max_distance = 250.0
 [node name="WorldEnvironment" type="WorldEnvironment" parent="world"]
 environment = SubResource("Environment_bg2jp")
 
-[node name="StaticBody3D" type="StaticBody3D" parent="world"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.8062549, 0, 6.700369)
+[node name="DebugBoxes" type="Node3D" parent="world"]
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D"]
-shape = SubResource("BoxShape3D_oilx1")
+[node name="FiveKGBox" parent="world/DebugBoxes" instance=ExtResource("7_h3puh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.8062549, 0.9564251, 6.700369)
+mass = 5.0
 
-[node name="Box" type="MeshInstance3D" parent="world/StaticBody3D"]
-mesh = SubResource("BoxMesh_8wo38")
-skeleton = NodePath("../../..")
-surface_material_override/0 = ExtResource("2_fnnck")
+[node name="HundredKGBox" parent="world/DebugBoxes" instance=ExtResource("7_h3puh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.80625486, 0.9564251, 6.700369)
+mass = 10.0
+label_text = "10kg"
+
+[node name="ThousandKGBox" parent="world/DebugBoxes" instance=ExtResource("7_h3puh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1937451, 0.9564251, 6.700369)
+mass = 20.0
+label_text = "20kg"
 
 [node name="chars" type="Node3D" parent="."]
 
@@ -182,12 +183,6 @@ collision_layer = 512
 collision_mask = 3
 floor_constant_speed = true
 script = ExtResource("11_k27g2")
-
-[node name="OmniLight3D" type="OmniLight3D" parent="CharacterBody3D"]
-visible = false
-light_energy = 50.0
-omni_range = 50.0
-omni_attenuation = 2.0
 
 [node name="AreaInstantiator" type="Node3D" parent="CharacterBody3D" node_paths=PackedStringArray("cameras", "world")]
 script = ExtResource("12_k27g2")

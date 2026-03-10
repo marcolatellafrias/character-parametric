@@ -1,12 +1,12 @@
+Node3D
+RigidBody3D
 Marker3D
 CollisionShape3D
 StaticBody3D
 MeshInstance3D
-Node3D
 Area3D
 Camera3D
 AreaInstantiator
-RigidBody3D
 OmniLight3D
 WorldEnvironment
 CharacterBody3D
