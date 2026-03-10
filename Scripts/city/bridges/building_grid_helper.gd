@@ -118,13 +118,13 @@ static func get_3d_matrix(block_generator: BlockGenerator, coord: Vector2i) -> D
 
 		for bz in range(building_rows):
 			for bx in range(building_columns):
-				var available = true
+				var available = false
 
 				if floor_module != null and floor_module.is_cell_alleyway(bx, bz):
-					available = false
+					available = true
 
 				if available and _is_cell_in_chamfer_static(bx, bz, chamfer_rects):
-					available = false
+					available = true
 
 				var key = "%d_%d_%d" % [bx, bz, by]
 				cells[key] = {
