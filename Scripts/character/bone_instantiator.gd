@@ -1,11 +1,12 @@
 class_name BoneInstantiator
 extends Node3D
 
+@export var is_active: bool = false
 @export var archetype: EntityStats.Archetype = EntityStats.Archetype.fat_man
 
 var entity_stats : EntityStats
 var skel_sizes_util: SkeletonSizesUtil
-var custom_bones_util: CustomBonesUtil
+var custom_bones_util: CustomBonesUtil 
 var char_rigidbody : CharacterRigidBody3D
 var ik_util : IkUtil
 
@@ -33,7 +34,7 @@ func initialize_skeleton() -> void:
 	#var camera3d = Camera3D.new()
 	#camera3d.position = Vector3(0, 1.7, 2.7)
 	var charRb = Vector3(skel_sizes_util.shoulders_width * 2 ,skel_sizes_util.torso_height +skel_sizes_util.head_height,skel_sizes_util.hips_width*2)
-	char_rigidbody = CharacterRigidBody3D.create(charRb,ik_util.left_leg_raycast,ik_util.right_leg_raycast,skel_sizes_util.distance_from_ground)
+	char_rigidbody = CharacterRigidBody3D.create(charRb, ik_util.left_leg_raycast, ik_util.right_leg_raycast, skel_sizes_util.distance_from_ground, is_active)
 	#Agrego el esqueleto target y la camara como hijo de el rigidbody
 	char_rigidbody.add_child(custom_bones_util.lower_spine)
 	#char_rigidbody.add_child(camera3d)

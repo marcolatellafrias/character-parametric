@@ -1,6 +1,9 @@
 class_name CharacterRigidBody3D
 extends RigidBody3D
 
+
+@export var move_force := 20.0
+@export var max_move_speed := 10.0
 @export var show_mesh := false
 @export var hover_height := 1.0
 @export var height_kp := 800.0
@@ -19,6 +22,7 @@ extends RigidBody3D
 @export var recovery_time := 2.0            # tiempo antes de intentar recuperarse
 @export var upright_threshold := 15.0       # ángulo para considerar "erguido" (grados)
 
+var is_active: bool = false
 var collider: CollisionShape3D 
 var mesh_instance: MeshInstance3D
 var _capsule: CapsuleShape3D
@@ -112,6 +116,8 @@ func _apply_full_control() -> void:
     
     # Upright stabilization
     _apply_upright_torque()
+    if is_active:
+        _apply_movement_force()
 
 # Aplica solo el control de orientación (para fase de levantarse)
 func _apply_upright_only() -> void:
@@ -180,7 +186,7 @@ func force_stop() -> void:
 func force_wake_up() -> void:
     _begin_standing_up()
 
-static func create(root_size: Vector3, new_left_leg_raycast: RayCast3D, new_right_leg_raycast: RayCast3D, distance_from_ground: float) -> CharacterRigidBody3D:
+static func create(root_size: Vector3, new_left_leg_raycast: RayCast3D, new_right_leg_raycast: RayCast3D, distance_from_ground: float, active: bool) -> CharacterRigidBody3D:
     var character_rigidbody := CharacterRigidBody3D.new()
     var new_mesh_instance := MeshInstance3D.new()
     var capsule_mesh := CapsuleMesh.new()
@@ -208,4 +214,25 @@ static func create(root_size: Vector3, new_left_leg_raycast: RayCast3D, new_righ
     character_rigidbody.mesh_instance = new_mesh_instance
     character_rigidbody.hover_height = distance_from_ground
     #character_rigidbody.max_height_error = max_height_error
+    character_rigidbody.is_active = active
     return character_rigidbody
+
+
+func _apply_movement_force() -> void:
+    var input := Vector2(
+        Input.get_axis("move_left", "move_right"),
+        Input.get_axis("move_forward", "move_backward")
+    )
+    if input == Vector2.ZERO:
+        return
+
+    var right := global_transform.basis.x
+    var forward := global_transform.basis.z
+    # Flatten to horizontal plane to avoid tilting affecting direction
+    right.y = 0.0
+    forward.y = 0.0
+
+    var direction := (right * input.x + forward * input.y).normalized()
+    var horizontal_vel := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
+    if horizontal_vel.length() < max_move_speed:
+        apply_central_force(direction * move_force)
