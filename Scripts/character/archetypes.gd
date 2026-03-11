@@ -101,8 +101,8 @@ static func fat_man_arch() -> EntityStats:
 	arch.vertical_turn_spring = 0.8
 	arch.vertical_turn_damp = 0.8
 	arch.horizontal_turn_speed = 0.8
-	arch.horizontal_turn_spring = 0.8
-	arch.horizontal_turn_damp = 0.8
+	arch.horizontal_turn_spring = 80.0
+	arch.horizontal_turn_damp = 15.0
 	
 	arch.fatness = 1.0
 	arch.muscularity = 0.7
@@ -151,8 +151,8 @@ static func kid_arch() -> EntityStats:
 	arch.vertical_turn_spring = 0.8
 	arch.vertical_turn_damp = 0.8
 	arch.horizontal_turn_speed = 0.8
-	arch.horizontal_turn_spring = 0.8
-	arch.horizontal_turn_damp = 0.8
+	arch.horizontal_turn_spring = 80.0
+	arch.horizontal_turn_damp = 15.0
 	
 	arch.fatness = 0.0
 	arch.muscularity = 0.3
@@ -205,8 +205,8 @@ static func tall_lanky_arch() -> EntityStats:
 	arch.vertical_turn_spring = 0.8
 	arch.vertical_turn_damp = 0.8
 	arch.horizontal_turn_speed = 0.8
-	arch.horizontal_turn_spring = 0.8
-	arch.horizontal_turn_damp = 0.8
+	arch.horizontal_turn_spring = 80.0
+	arch.horizontal_turn_damp = 15.0
 	
 	arch.fatness = 0.5
 	arch.muscularity = 0.4
@@ -256,8 +256,8 @@ static func giga_arch() -> EntityStats:
 	arch.vertical_turn_spring = 0.8
 	arch.vertical_turn_damp = 0.8
 	arch.horizontal_turn_speed = 0.8
-	arch.horizontal_turn_spring = 0.8
-	arch.horizontal_turn_damp = 0.8
+	arch.horizontal_turn_spring = 80.0
+	arch.horizontal_turn_damp = 15.0
 	
 	arch.fatness = 0.5
 	arch.muscularity = 1.0
@@ -306,8 +306,8 @@ static func old_arch() -> EntityStats:
 	arch.vertical_turn_spring = 0.8
 	arch.vertical_turn_damp = 0.8
 	arch.horizontal_turn_speed = 0.8
-	arch.horizontal_turn_spring = 0.8
-	arch.horizontal_turn_damp = 0.8
+	arch.horizontal_turn_spring = 80.0
+	arch.horizontal_turn_damp = 15.0
 	
 	arch.fatness = 0.1
 	arch.muscularity = 0.1

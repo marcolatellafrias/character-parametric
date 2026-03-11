@@ -4,6 +4,9 @@ extends Node3D
 @export var is_active: bool = false
 @export var archetype: EntityStats.Archetype = EntityStats.Archetype.fat_man
 
+var camera_pitch: float = 0.0
+var camera_yaw: float = 0.0
+var player_camera: Camera3D
 var entity_stats : EntityStats
 var skel_sizes_util: SkeletonSizesUtil
 var custom_bones_util: CustomBonesUtil 
@@ -18,6 +21,8 @@ var ik_util : IkUtil
 var previous_transform : Transform3D 
 
 func _ready() -> void:
+	if is_active:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	initialize_skeleton()
 
 func initialize_skeleton() -> void:
@@ -57,6 +62,11 @@ func initialize_skeleton() -> void:
 	#Global objects
 	global_targets.add_child(ik_util.left_leg_current_target)
 	global_targets.add_child(ik_util.right_leg_current_target)
+	
+	if is_active:
+		player_camera = Camera3D.new()
+		player_camera.current = true
+		char_rigidbody.add_child(player_camera)
 
 func _clear_prior_generations()-> void:
 	for global_target in global_targets.get_children(): 
@@ -69,6 +79,7 @@ func _clear_prior_generations()-> void:
 		joint.queue_free()
 	if (char_rigidbody):
 		char_rigidbody.queue_free()
+	player_camera = null
 
 func _physics_process(_delta: float) -> void:
 	_update_local_targets_positions()
@@ -77,10 +88,22 @@ func _physics_process(_delta: float) -> void:
 	skel_sizes_util.update(_delta,char_rigidbody,entity_stats,ik_util)
 	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util,char_rigidbody)
 	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util,char_rigidbody)
-		
+	
+	if is_active and player_camera:
+		player_camera.global_position.y = custom_bones_util.head.global_position.y + skel_sizes_util.head_size.y * 0.5
+		char_rigidbody.rotation.y = camera_yaw
 
 
 func _update_local_targets_positions()-> void:
 	pass
 	local_targets.global_position = char_rigidbody.global_position
 	local_targets.global_rotation = Vector3(0,char_rigidbody.global_rotation.y,0)
+
+func _input(event: InputEvent) -> void:
+	if not is_active or not player_camera:
+		return
+	if event is InputEventMouseMotion:
+		camera_pitch = clamp(camera_pitch - event.relative.y * 0.002, -1.2, 1.2)
+		camera_yaw -= event.relative.x * 0.002
+		player_camera.rotation.x = camera_pitch
+		player_camera.rotation.y = 0.0
