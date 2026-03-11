@@ -219,20 +219,22 @@ static func create(root_size: Vector3, new_left_leg_raycast: RayCast3D, new_righ
 
 
 func _apply_movement_force() -> void:
-    var input := Vector2(
-        Input.get_axis("move_left", "move_right"),
-        Input.get_axis("move_forward", "move_backward")
-    )
-    if input == Vector2.ZERO:
-        return
-
-    var right := global_transform.basis.x
-    var forward := global_transform.basis.z
-    # Flatten to horizontal plane to avoid tilting affecting direction
-    right.y = 0.0
-    forward.y = 0.0
-
-    var direction := (right * input.x + forward * input.y).normalized()
     var horizontal_vel := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
-    if horizontal_vel.length() < max_move_speed:
-        apply_central_force(direction * move_force)
+    var brake: Vector3 = -horizontal_vel.normalized() * min(horizontal_vel.length(), max_move_speed)
+
+    if is_active:
+        var input := Vector2(
+            Input.get_axis("move_left", "move_right"),
+            Input.get_axis("move_forward", "move_backward")
+        )
+        if input != Vector2.ZERO:
+            var right := global_transform.basis.x
+            var forward := global_transform.basis.z
+            right.y = 0.0
+            forward.y = 0.0
+            var direction := (right.normalized() * input.x + forward.normalized() * input.y).normalized()
+            # Remove brake component that opposes the desired direction
+            brake -= direction * min(0.0, brake.dot(direction))
+            apply_central_force(direction * move_force)
+
+    apply_central_force(brake)
