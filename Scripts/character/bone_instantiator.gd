@@ -10,6 +10,9 @@ var skel_sizes_util: SkeletonSizesUtil
 var custom_bones_util: CustomBonesUtil 
 var char_rigidbody : CharacterRigidBody3D
 var ik_util : IkUtil
+# NEW
+var locomotion_signals: LocomotionSignals
+var procedural_animator: ProceduralBoneAnimator
 
 @onready var player_controller: PlayerController
 @onready var global_targets : Node3D = $"global_targets"
@@ -26,48 +29,45 @@ func _ready() -> void:
 	initialize_skeleton()
 
 func initialize_skeleton() -> void:
-	#Primero limpio todas las generaciones anteriores
 	_clear_prior_generations()
 	entity_stats = EntityStats.create(archetype)
-	#Luego calculo los tamaños de todos los huesos a partir de las proporciones y medidas de alto nivel
 	skel_sizes_util = SkeletonSizesUtil.create(entity_stats)
-	#Luego ensamblo los huesos en una jerarquia con sus respectivos angulos de reposo, en clases de custombones
 	custom_bones_util = CustomBonesUtil.create(skel_sizes_util, entity_stats)
-	#Luego creo los local targets, global targets y raycasts
 	ik_util = IkUtil.create(skel_sizes_util, self)
-	#Luego creo el character rigidbody
-	#var camera3d = Camera3D.new()
-	#camera3d.position = Vector3(0, 1.7, 2.7)
 	var full_height := skel_sizes_util.leg_height + skel_sizes_util.torso_height + skel_sizes_util.head_height
 	var charRb := Vector3(skel_sizes_util.shoulders_width * 2, full_height, skel_sizes_util.hips_width * 2)
 	char_rigidbody = CharacterRigidBody3D.create(charRb, skel_sizes_util.distance_from_ground, skel_sizes_util.leg_height, is_active)
-	#Agrego el esqueleto target y la camara como hijo de el rigidbody
 	char_rigidbody.add_child(custom_bones_util.lower_spine)
-	
-	#AÑADO AL PLAYER ROOT
-	#Character rigidbody
 	add_child(char_rigidbody) 
-	#Local objects
 	local_targets.add_child(ik_util.left_leg_raycast)
 	local_targets.add_child(ik_util.right_leg_raycast)
 	ik_util.left_leg_raycast.add_exception(char_rigidbody)
 	ik_util.right_leg_raycast.add_exception(char_rigidbody)
-	
-	#local_targets.add_child(ik_util.left_leg_pole)
-	#local_targets.add_child(ik_util.right_leg_pole)
 	local_targets.add_child(ik_util.left_leg_next_target)
 	local_targets.add_child(ik_util.right_leg_next_target)
 	local_targets.add_child(ik_util.left_leg_airborne_target)
 	local_targets.add_child(ik_util.right_leg_airborne_target)
-	#Global objects
 	global_targets.add_child(ik_util.left_leg_current_target)
 	global_targets.add_child(ik_util.right_leg_current_target)
-	
+
 	if is_active:
 		player_camera = Camera3D.new()
 		player_camera.current = true
 		char_rigidbody.add_child(player_camera)
 		player_controller.setup(char_rigidbody, player_camera, custom_bones_util.head, skel_sizes_util.head_size)
+
+	# NEW — create signals and animator
+	locomotion_signals = LocomotionSignals.create(ik_util, char_rigidbody, skel_sizes_util)
+	procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)
+	_register_bone_animations()
+
+# NEW — wire up which bones get animated and how
+func _register_bone_animations() -> void:
+	var PA := ProceduralBoneAnimator
+	var lower_spine := custom_bones_util.lower_spine
+
+	# Root bob: dips down mid-step, scaled by step size
+	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_X, -0.07)
 
 func _clear_prior_generations()-> void:
 	for global_target in global_targets.get_children(): 
@@ -89,6 +89,9 @@ func _physics_process(_delta: float) -> void:
 	skel_sizes_util.update(_delta,char_rigidbody,entity_stats,ik_util)
 	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util,char_rigidbody)
 	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util,char_rigidbody)
+	# NEW — update signals first, then apply bone animations after IK
+	locomotion_signals.update(_delta)
+	procedural_animator.update()
 
 func _update_local_targets_positions()-> void:
 	pass

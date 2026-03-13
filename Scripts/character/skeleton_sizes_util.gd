@@ -50,7 +50,7 @@ var distance_from_ground : float
 var raycast_leg_lenght: float
 var pole_distance: float
 var raycast_max_offset: float
-var raycast_amount := 10.5        # 0 = no se mueve, 1 = normal, >1 = amplifica
+var raycast_amount := 12.5        # 0 = no se mueve, 1 = normal, >1 = amplifica
 var speed_for_max := 10.0          # velocidad a la que llega al offset máximo
 var axis_weights := Vector2(1.0, 1.0)                    # x (lateral), z (adelante) para atenuar por eje
 var speed_curve: Curve     
@@ -167,7 +167,7 @@ func _update_step_radius(char_rigidbody: CharacterRigidBody3D, entity_stats: Ent
 	
 	# Velocidades
 	var min_speed = 0.01
-	var max_speed = entity_stats.speed_forw /3#entity_stats.speed_multiplier
+	var max_speed = entity_stats.speed_forw /1#entity_stats.speed_multiplier
 	 
 	# Interpolación segura
 	var speed_range = max(max_speed - min_speed, 0.01)

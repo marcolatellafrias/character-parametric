@@ -164,7 +164,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 [node name="fat" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.235, 0.3, -10.597)
 is_active = true
-archetype = null
 
 [node name="AreaInstantiator" type="Node3D" parent="chars/fat" node_paths=PackedStringArray("cameras", "world")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.235, -0.3, 10.597)
@@ -178,22 +177,18 @@ environment = SubResource("Environment_bg2jp")
 
 [node name="giga" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3612877, 0.3, -10.597)
-is_active = null
 archetype = 3
 
 [node name="old" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.6626201, 0.3, -10.597)
-is_active = null
 archetype = 4
 
 [node name="tall" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8281984, 0.5, -10.493808)
-is_active = null
 archetype = 2
 
 [node name="kid" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.446537, 0.3, -10.347981)
-is_active = null
 archetype = 1
 
 [node name="bone" parent="chars" instance=ExtResource("11_v3boh")]

@@ -6,7 +6,7 @@ extends RigidBody3D
 @export var acceleration_force := 4.0
 @export var braking_force := 1.5
 @export var max_speed := 4.0
-@export var show_mesh := true
+@export var show_mesh := false
 
 var is_active: bool = false
 var collider: CollisionShape3D
