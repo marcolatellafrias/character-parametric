@@ -50,8 +50,8 @@ var distance_from_ground : float
 var raycast_leg_lenght: float
 var pole_distance: float
 var raycast_max_offset: float
-var raycast_amount := 6.5        # 0 = no se mueve, 1 = normal, >1 = amplifica
-var speed_for_max := 5.0          # velocidad a la que llega al offset máximo
+var raycast_amount := 10.5        # 0 = no se mueve, 1 = normal, >1 = amplifica
+var speed_for_max := 10.0          # velocidad a la que llega al offset máximo
 var axis_weights := Vector2(1.0, 1.0)                    # x (lateral), z (adelante) para atenuar por eje
 var speed_curve: Curve     
 const raycast_accel_gain := 0.06        # meters per (m/s^2)
@@ -149,7 +149,7 @@ static func create(entityStats: EntityStats) -> SkeletonSizesUtil:
 	
 	#TAMAÑOS MISCELANEOS
 	skelSizes.raycast_leg_lenght = new_leg_height
-	skelSizes.distance_from_ground = new_leg_height * (1-entityStats.distance_from_ground_factor)
+	skelSizes.distance_from_ground = new_leg_height * (entityStats.distance_from_ground_factor)
 	skelSizes.step_radius_max   = new_leg_height * 0.5
 	skelSizes.step_radius_min   = new_leg_height * 0.20
 	skelSizes.step_height = new_leg_height * 0.40

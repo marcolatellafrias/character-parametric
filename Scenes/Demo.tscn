@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=26 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
@@ -38,6 +38,12 @@ height = 1.0
 material = ExtResource("5_4i7ud")
 radius = 0.01
 height = 1.0
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_v3boh"]
+size = Vector3(2, 1, 20)
+
+[sub_resource type="BoxMesh" id="BoxMesh_h3puh"]
+size = Vector3(2, 1, 20)
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_2rq0j"]
 ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -141,6 +147,16 @@ label_text = "10kg"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1937451, 0.9564251, 6.700369)
 mass = 20.0
 label_text = "20kg"
+
+[node name="StaticBody3D" type="StaticBody3D" parent="world"]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 0, -14.608703)
+visible = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D"]
+shape = SubResource("BoxShape3D_v3boh")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="world/StaticBody3D"]
+mesh = SubResource("BoxMesh_h3puh")
 
 [node name="chars" type="Node3D" parent="."]
 
