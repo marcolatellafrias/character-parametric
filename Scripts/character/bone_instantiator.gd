@@ -65,9 +65,19 @@ func initialize_skeleton() -> void:
 func _register_bone_animations() -> void:
 	var PA := ProceduralBoneAnimator
 	var lower_spine := custom_bones_util.lower_spine
+	
 
-	# Root bob: dips down mid-step, scaled by step size
+	# Root bob: dips down mid-step, scaled by foot spread
 	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_X, -0.07)
+	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_Z, -0.07)
+	
+	# Hip twist: el pie que va adelante empuja su cadera hacia adelante (ROT_Y en lower_spine)
+	procedural_animator.register(lower_spine, PA.Axis.ROT_Y, PA.SignalType.LEFT_FOOT_Z, -0.3)
+	procedural_animator.register(lower_spine, PA.Axis.ROT_Y, PA.SignalType.RIGHT_FOOT_Z, 0.3)
+
+	# Hip tilt lateral: el pie que está más afuera baja su cadera (ROT_Z)
+	procedural_animator.register(lower_spine, PA.Axis.ROT_Z, PA.SignalType.LEFT_FOOT_X, 0.2)
+	procedural_animator.register(lower_spine, PA.Axis.ROT_Z, PA.SignalType.RIGHT_FOOT_X, -0.2)
 
 func _clear_prior_generations()-> void:
 	for global_target in global_targets.get_children(): 

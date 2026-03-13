@@ -1,20 +1,14 @@
 class_name ProceduralBoneAnimator
 
 enum SignalType {
-    STEP_PROGRESS,
-    STEP_LENGTH,
-    STEP_DRIVEN,
-    H_VEL_X,
-    H_VEL_Z,
-    V_VEL,
-    FOOT_SPREAD_X,
-    FOOT_SPREAD_Z
+    STEP_PROGRESS, STEP_LENGTH, STEP_DRIVEN,
+    H_VEL_X, H_VEL_Z, V_VEL,
+    FOOT_SPREAD_X, FOOT_SPREAD_Z,
+    LEFT_FOOT_X, LEFT_FOOT_Z,
+    RIGHT_FOOT_X, RIGHT_FOOT_Z
 }
-
 enum Axis {
-    ROT_X,
-    ROT_Z,
-    POS_Y
+    ROT_X, ROT_Y, ROT_Z, POS_Y
 }
 
 class BoneAnimEntry:
@@ -25,6 +19,7 @@ class BoneAnimEntry:
     var curve: Curve
     var rest_local_position: Vector3
     var rest_signal_value: float = 0.0
+    var rest_local_basis: Basis
 
 var locomotion_signals: LocomotionSignals
 var _entries: Array = []
@@ -43,9 +38,13 @@ func register(bone: CustomBone, axis: Axis, driver: SignalType, weight: float, c
     entry.curve = curve
     entry.rest_local_position = bone.position
     entry.rest_signal_value = _get_signal_value(driver)
+    entry.rest_local_basis = bone.transform.basis
     _entries.append(entry)
 
 func update() -> void:
+    for entry in _entries:
+        entry.bone.position.y = entry.rest_local_position.y
+        entry.bone.transform.basis = entry.rest_local_basis
     for entry in _entries:
         var raw: float = _get_signal_value(entry.driver) - entry.rest_signal_value
         var shaped: float = entry.curve.sample_baked(clamp(raw, 0.0, 1.0)) if entry.curve else raw
@@ -69,13 +68,23 @@ func _get_signal_value(driver: SignalType) -> float:
             return locomotion_signals.foot_spread_norm.x
         SignalType.FOOT_SPREAD_Z:
             return locomotion_signals.foot_spread_norm.y
+        SignalType.LEFT_FOOT_X:  
+            return locomotion_signals.left_foot_local_norm.x
+        SignalType.LEFT_FOOT_Z:  
+            return locomotion_signals.left_foot_local_norm.y
+        SignalType.RIGHT_FOOT_X: 
+            return locomotion_signals.right_foot_local_norm.x
+        SignalType.RIGHT_FOOT_Z: 
+            return locomotion_signals.right_foot_local_norm.y
     return 0.0
 
 func _apply(bone: CustomBone, axis: Axis, value: float, entry: BoneAnimEntry) -> void:
     match axis:
         Axis.ROT_X:
-            bone.global_transform.basis = bone.global_transform.basis * Basis(Vector3.RIGHT, value)
+            bone.transform.basis = bone.transform.basis * Basis(Vector3.RIGHT, value)
+        Axis.ROT_Y:
+            bone.transform.basis = bone.transform.basis * Basis(Vector3.UP, value)
         Axis.ROT_Z:
-            bone.global_transform.basis = bone.global_transform.basis * Basis(Vector3.FORWARD, value)
+            bone.transform.basis = bone.transform.basis * Basis(Vector3.FORWARD, value)
         Axis.POS_Y:
-            bone.position.y = entry.rest_local_position.y + value
+            bone.position.y += value

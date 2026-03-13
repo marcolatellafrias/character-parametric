@@ -10,6 +10,9 @@ var horizontal_velocity_smooth: Vector2 = Vector2.ZERO
 var vertical_velocity_smooth: float = 0.0
 var foot_spread_norm: Vector2 = Vector2.ZERO
 
+var left_foot_local_norm: Vector2 = Vector2.ZERO
+var right_foot_local_norm: Vector2 = Vector2.ZERO
+
 const H_SMOOTH: float = 8.0
 const V_SMOOTH: float = 6.0
 const SPREAD_SMOOTH: float = 10.0
@@ -55,6 +58,11 @@ func _update_step_signals(delta: float) -> void:
 	)
 	var k_s: float = clamp(delta * SPREAD_SMOOTH, 0.0, 1.0)
 	foot_spread_norm = foot_spread_norm.lerp(raw_spread.clamp(Vector2.ZERO, Vector2.ONE), k_s)
+	var basis_inv := char_rigidbody.global_transform.basis.inverse()
+	var left_local := basis_inv * (ik_util.left_leg_current_target.global_position - char_rigidbody.global_position)
+	var right_local := basis_inv * (ik_util.right_leg_current_target.global_position - char_rigidbody.global_position)
+	left_foot_local_norm = Vector2(left_local.x, left_local.z) / sizes.leg_height
+	right_foot_local_norm = Vector2(right_local.x, right_local.z) / sizes.leg_height
 
 func _update_velocity_signals(delta: float) -> void:
 	var vel := char_rigidbody.linear_velocity
