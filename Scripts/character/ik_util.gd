@@ -1,6 +1,5 @@
 class_name IkUtil
 
-# Change 3: LegData struct replaces ternary resolution blocks
 class LegData:
 	var raycast: RayCast3D
 	var raycast_indicator: MeshInstance3D
@@ -14,8 +13,8 @@ var left_leg_raycast: RayCast3D
 var right_leg_raycast: RayCast3D
 var left_leg_raycast_indicator: MeshInstance3D
 var right_leg_raycast_indicator: MeshInstance3D
-var left_leg_pole: Node3D  # Change 4: was = Node3D (assigned the class, not typed)
-var right_leg_pole: Node3D # Change 4: same fix
+var left_leg_pole: Node3D
+var right_leg_pole: Node3D
 const left_color: Color = Color(1, 0, 0)
 const right_color: Color = Color(0, 1, 0)
 const raycast_color: Color = Color(0, 0, 1)
@@ -38,22 +37,21 @@ var right_leg_airborne_target: Node3D
 var current_step_left_mesh_instance: MeshInstance3D
 var current_step_right_mesh_instance: MeshInstance3D
 
-# Change 2: Per-leg measure data as instance vars, replacing _store_leg_measure node meta
 var _left_dist2: float = 0.0
 var _left_wants_step: bool = false
 var _left_next_pos: Vector3 = Vector3.ZERO
 var _left_step_duration: float = 0.3
+var _left_step_height: float = 0.3
 var _right_dist2: float = 0.0
 var _right_wants_step: bool = false
 var _right_next_pos: Vector3 = Vector3.ZERO
 var _right_step_duration: float = 0.3
+var _right_step_height: float = 0.3
 
-# Change 2: Step coordination vars (were static, now instance vars)
 var _last_step_time: float = -1.0
 var _last_step_frame: int = -1
 var _last_step_leg_id: int = -1
 
-# Change 3: Single helper replaces ternary blocks in update_ik_raycast and update_leg_raycast_offsets
 func get_leg_data(left: bool) -> LegData:
 	var d := LegData.new()
 	d.raycast = left_leg_raycast if left else right_leg_raycast
@@ -155,23 +153,21 @@ func solve_leg_ik(upper_bone: CustomBone, lower_bone: CustomBone, ik_target: Vec
 	upper_bone.global_transform.basis = upper_bone.pose_from_rest_to((knee_pos - root_pos).normalized(), pole_on_plane)
 	lower_bone.global_transform.basis = upper_bone.pose_from_rest_to((target_pos - knee_pos).normalized(), pole_on_plane)
 
-# Change 2: Replaces _store_leg_measure. Data lives on IkUtil, not on nodes.
-func _set_leg_measure(left: bool, dist2: float, wants_step: bool, next_pos: Vector3, step_duration: float = 0.3) -> void:
+func _set_leg_measure(left: bool, dist2: float, wants_step: bool, next_pos: Vector3, step_duration: float = 0.3, step_height: float = 0.3) -> void:
 	if left:
 		_left_dist2 = dist2
 		_left_wants_step = wants_step
 		_left_next_pos = next_pos
 		_left_step_duration = step_duration
+		_left_step_height = step_height
 	else:
 		_right_dist2 = dist2
 		_right_wants_step = wants_step
 		_right_next_pos = next_pos
 		_right_step_duration = step_duration
+		_right_step_height = step_height
 
-# Change 2: Non-static, reads instance vars directly.
-# _fresh_measure removed — BoneInstantiator always updates left before right,
-# so both measures are current when this runs from the right leg update.
-func _try_start_farther_leg(step_height: float, step_cooldown: float, alternate: bool) -> void:
+func _try_start_farther_leg(step_cooldown: float, alternate: bool) -> void:
 	var a := left_leg_current_target
 	var b := right_leg_current_target
 	if _is_stepping(a) or _is_stepping(b):
@@ -188,22 +184,22 @@ func _try_start_farther_leg(step_height: float, step_cooldown: float, alternate:
 	var chosen := a
 	var chosen_pos := _left_next_pos
 	var chosen_dur := _left_step_duration
+	var chosen_height := _left_step_height
 
 	if _left_wants_step and not _right_wants_step:
-		pass  # defaults already left
+		pass
 	elif _right_wants_step and not _left_wants_step:
-		chosen = b; chosen_pos = _right_next_pos; chosen_dur = _right_step_duration
+		chosen = b; chosen_pos = _right_next_pos; chosen_dur = _right_step_duration; chosen_height = _right_step_height
 	else:
 		var eps := 1e-6
 		if _right_dist2 > _left_dist2 + eps:
-			chosen = b; chosen_pos = _right_next_pos; chosen_dur = _right_step_duration
+			chosen = b; chosen_pos = _right_next_pos; chosen_dur = _right_step_duration; chosen_height = _right_step_height
 		elif abs(_left_dist2 - _right_dist2) <= eps and alternate and _last_step_leg_id == a.get_instance_id():
-			chosen = b; chosen_pos = _right_next_pos; chosen_dur = _right_step_duration
+			chosen = b; chosen_pos = _right_next_pos; chosen_dur = _right_step_duration; chosen_height = _right_step_height
 
 	_register_step(chosen)
-	_tween_foot_to(chosen, chosen.global_position, chosen_pos, max(chosen_dur, 0.01), step_height)
+	_tween_foot_to(chosen, chosen.global_position, chosen_pos, max(chosen_dur, 0.01), chosen_height)
 
-# Change 2: Non-static, writes to instance vars
 func _register_step(current_target: Node3D) -> void:
 	_last_step_time = Time.get_ticks_msec() / 1000.0
 	_last_step_frame = Engine.get_physics_frames()
@@ -212,7 +208,6 @@ func _register_step(current_target: Node3D) -> void:
 func update_ik_raycast(
 	left: bool, bones: CustomBonesUtil, sizes: SkeletonSizesUtil, char_rigidbody: CharacterRigidBody3D,
 ) -> void:
-	# Change 3: replaces the 8-line ternary block at the top
 	var leg := get_leg_data(left)
 	var upper_leg := bones.left_upper_leg if left else bones.right_upper_leg
 	var lower_leg := bones.left_lower_leg if left else bones.right_lower_leg
@@ -281,8 +276,9 @@ func update_ik_raycast(
 			var step_distance: float = sqrt(dist2Exp)
 			var wants_step: bool = dist2 > (step_radius * step_radius)
 			var step_duration: float = get_step_duration(char_rigidbody, sizes, step_distance)
+			var step_height: float = sizes.step_height * clamp(step_distance / sizes.step_radius_max, 0.1, 1.0)
 
-			_set_leg_measure(left, dist2, wants_step, collision_point, step_duration)
+			_set_leg_measure(left, dist2, wants_step, collision_point, step_duration, step_height)
 	else:
 		_set_leg_measure(left, 0.0, false, leg.airborne_target.global_position)
 		leg.current_target.set_meta("was_airborne", true)
@@ -290,10 +286,8 @@ func update_ik_raycast(
 		if not _is_stepping(leg.current_target):
 			_tween_foot_to(leg.current_target, leg.current_target.global_position, leg.airborne_target.global_position, 0.0, sizes.step_height)
 
-	# Change 2: Called only from the right update — left's measure is already stored,
-	# both are current. Replaces the per-leg call + freshness check pattern.
 	if not left:
-		_try_start_farther_leg(sizes.step_height, 0.05, false)
+		_try_start_farther_leg(0.05, false)
 
 	solve_leg_ik(upper_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
 
@@ -341,13 +335,10 @@ static func _clear_step_data(node: Node3D) -> void:
 static func _is_stepping(n: Node) -> bool:
 	return n.has_meta("stepping") and bool(n.get_meta("stepping"))
 
-# Change 4: _mark_stepping removed (defined but never called)
-
 func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left: bool, sizes: SkeletonSizesUtil, entity_stats: EntityStats) -> void:
 	var hvel := root_rigidbody.linear_velocity
 	hvel.y = 0.0
 
-	# Change 3: replaces the 3-line ternary block
 	var leg := get_leg_data(left)
 
 	var basis_owner := leg.raycast.get_parent() as Node3D

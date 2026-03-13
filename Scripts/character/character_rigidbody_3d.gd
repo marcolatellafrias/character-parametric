@@ -9,11 +9,10 @@ extends RigidBody3D
 @export var hover_height := 1.0
 @export var height_kp := 800.0
 @export var height_kd := 24.0
-@export var max_height_error_below := 0.5
-@export var max_height_error_above := 0.2
 @export var upright_kp := 30.0
 @export var upright_kd := 4.0
 @export var max_up_force := 40.0
+@export var max_height_error := 0.5
 
 # Umbrales para desactivar estabilización
 @export_group("Stop Trying Thresholds")
@@ -100,13 +99,9 @@ func _apply_full_control() -> void:
 		var height_error := hover_height - vertical_distance
 		
 		# Límites asimétricos
-		var clamped_error: float
-		if height_error > 0:
-			clamped_error = min(height_error, max_height_error_below)
-		else:
-			clamped_error = max(height_error, -max_height_error_above)
+		var clamped_error: float = clamp(height_error, -max_height_error, max_height_error)
+		var spring: float = height_kp * clamped_error
 		
-		var spring := height_kp * clamped_error
 		var damper := -height_kd * v_up
 		
 		var g_scalar := float(ProjectSettings.get_setting("physics/3d/default_gravity"))
