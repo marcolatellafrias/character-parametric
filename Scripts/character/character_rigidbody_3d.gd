@@ -54,15 +54,15 @@ func _apply_movement_force() -> void:
 		if horizontal_vel.length() > 0.0:
 			apply_central_force(-horizontal_vel.normalized() * braking_force)
 
-static func create(root_size: Vector3, distance_from_ground: float, active: bool) -> CharacterRigidBody3D:
+static func create(root_size: Vector3, distance_from_ground: float, leg_height: float, active: bool) -> CharacterRigidBody3D:
 	var character_rigidbody := CharacterRigidBody3D.new()
-
+	var y_offset := root_size.y / 2.0 - (leg_height - distance_from_ground)
 	var new_mesh_instance := MeshInstance3D.new()
 	var capsule_mesh := CapsuleMesh.new()
 	capsule_mesh.height = root_size.y
 	capsule_mesh.radius = root_size.x * 0.5
 	new_mesh_instance.mesh = capsule_mesh
-	new_mesh_instance.position = Vector3(0.0, distance_from_ground, 0.0)
+	new_mesh_instance.position = Vector3(0.0, y_offset, 0.0)
 	var material := StandardMaterial3D.new()
 	material.albedo_color = Color(1, 1, 1, 0.2)
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -74,7 +74,7 @@ static func create(root_size: Vector3, distance_from_ground: float, active: bool
 	capsule_shape.height = root_size.y
 	capsule_shape.radius = root_size.x * 0.5
 	new_collision_shape.shape = capsule_shape
-	new_collision_shape.position = Vector3(0.0, distance_from_ground, 0.0)
+	new_collision_shape.position = Vector3(0.0, y_offset, 0.0)
 
 	character_rigidbody.add_child(new_mesh_instance)
 	character_rigidbody.add_child(new_collision_shape)
