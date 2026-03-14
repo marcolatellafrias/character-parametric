@@ -99,6 +99,9 @@ func _register_bone_animations() -> void:
     procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_X, vertical_bobbing * -0.14)
     procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_Z, vertical_bobbing * -0.14)
     
+    procedural_animator.register(lower_spine, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, 0.05)
+    
+    
     # Root Y rotation: el pie que va adelante gira la columna en su direccion (ROT_Y en lower_spine)    
     var lower_spine_rotation := spine_local_weight(1, 5, _bottom_spine_rotation, _top_spine_rotation)
     procedural_animator.register(lower_spine, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, lower_spine_rotation)

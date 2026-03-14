@@ -319,6 +319,7 @@ static func old_arch() -> EntityStats:
 	arch.legs_to_feet_proportion = 0.55
 	arch.hips_width_proportion = 0.065
 	arch.shoulder_width_proportion = 0.11
+	arch.distance_from_ground_factor = 0.03
 	
 	arch.has_neck = true
 	
