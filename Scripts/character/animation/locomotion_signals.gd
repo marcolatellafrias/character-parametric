@@ -4,6 +4,7 @@ var ik_util: IkUtil
 var char_rigidbody: CharacterRigidBody3D
 var sizes: SkeletonSizesUtil
 
+var foot_spread_unified: Vector2 = Vector2.ZERO  # x = unified_x, y = unified_z
 var step_progress: float = 0.0
 var step_length_norm: float = 0.0
 var horizontal_velocity_smooth: Vector2 = Vector2.ZERO
@@ -52,8 +53,9 @@ func _update_step_signals(delta: float) -> void:
 
 	var left_pos := ik_util.left_leg_current_target.global_position
 	var right_pos := ik_util.right_leg_current_target.global_position
+	var rest_x_separation := sizes.hips_width * 2.0
 	var raw_spread := Vector2(
-		abs(left_pos.x - right_pos.x) / sizes.leg_height,
+		max(0.0, abs(left_pos.x - right_pos.x) - rest_x_separation) / sizes.leg_height,
 		abs(left_pos.z - right_pos.z) / sizes.leg_height
 	)
 	var k_s: float = clamp(delta * SPREAD_SMOOTH, 0.0, 1.0)
@@ -63,6 +65,10 @@ func _update_step_signals(delta: float) -> void:
 	var right_local := basis_inv * (ik_util.right_leg_current_target.global_position - char_rigidbody.global_position)
 	left_foot_local_norm = Vector2(left_local.x, left_local.z) / sizes.leg_height
 	right_foot_local_norm = Vector2(right_local.x, right_local.z) / sizes.leg_height
+	foot_spread_unified = Vector2(
+		clamp((left_foot_local_norm.x - right_foot_local_norm.x) / 2.0, -1.0, 1.0),
+		clamp((left_foot_local_norm.y - right_foot_local_norm.y) / 2.0, -1.0, 1.0)
+	)
 
 func _update_velocity_signals(delta: float) -> void:
 	var vel := char_rigidbody.linear_velocity

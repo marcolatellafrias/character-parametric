@@ -5,7 +5,9 @@ enum SignalType {
     H_VEL_X, H_VEL_Z, V_VEL,
     FOOT_SPREAD_X, FOOT_SPREAD_Z,
     LEFT_FOOT_X, LEFT_FOOT_Z,
-    RIGHT_FOOT_X, RIGHT_FOOT_Z
+    RIGHT_FOOT_X, RIGHT_FOOT_Z,
+    FOOT_SPREAD_UNIFIED_X,
+    FOOT_SPREAD_UNIFIED_Z
 }
 enum Axis {
     ROT_X, ROT_Y, ROT_Z, POS_Y
@@ -76,6 +78,10 @@ func _get_signal_value(driver: SignalType) -> float:
             return locomotion_signals.right_foot_local_norm.x
         SignalType.RIGHT_FOOT_Z: 
             return locomotion_signals.right_foot_local_norm.y
+        SignalType.FOOT_SPREAD_UNIFIED_X:
+            return locomotion_signals.foot_spread_unified.x
+        SignalType.FOOT_SPREAD_UNIFIED_Z:
+            return locomotion_signals.foot_spread_unified.y
     return 0.0
 
 func _apply(bone: CustomBone, axis: Axis, value: float, entry: BoneAnimEntry) -> void:
