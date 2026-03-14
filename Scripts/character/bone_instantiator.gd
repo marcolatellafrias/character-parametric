@@ -79,11 +79,15 @@ func _register_bone_animations() -> void:
     var middle_spine := custom_bones_util.middle_spine
     var upper_spine := custom_bones_util.upper_spine
     var chest := custom_bones_util.chest
+    var right_shoulder := custom_bones_util.right_shoulder	
+    var left_shoulder := custom_bones_util.left_shoulder	
         
     # HIPS   
     # Hip Z rotation: el pie que va adelante rota su cadera hacia adelante (ROT_Z en hips)
-    procedural_animator.register(right_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, hip_swing * 0.2)
-    procedural_animator.register(left_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, hip_swing * 0.2)
+    procedural_animator.register(right_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  0.99)
+    procedural_animator.register(left_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, 0.99)
+    procedural_animator.register(right_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.1)
+    procedural_animator.register(left_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  -0.1)
     
     # Hip Y rotation: el pie que va adelante empuja su cadera hacia adelante (ROT_Y en hips)
     var hips_rotation := spine_local_weight(0, 5, _bottom_spine_rotation, _top_spine_rotation)
@@ -107,6 +111,9 @@ func _register_bone_animations() -> void:
     
     var chest_rotation := spine_local_weight(4, 5, _bottom_spine_rotation, _top_spine_rotation)
     procedural_animator.register(chest, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, chest_rotation)
+    
+    procedural_animator.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
+    procedural_animator.register(left_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
 
 
 func _clear_prior_generations()-> void:

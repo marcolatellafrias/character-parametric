@@ -65,11 +65,15 @@ func _update_step_signals(delta: float) -> void:
 	var right_local := basis_inv * (ik_util.right_leg_current_target.global_position - char_rigidbody.global_position)
 	left_foot_local_norm = Vector2(left_local.x, left_local.z) / sizes.leg_height
 	right_foot_local_norm = Vector2(right_local.x, right_local.z) / sizes.leg_height
+	var left_rest_x := -sizes.hips_width
+	var right_rest_x := sizes.hips_width
+
+	var left_offset: float = (left_local.x - left_rest_x) / sizes.leg_height
+	var right_offset: float = (right_local.x - right_rest_x) / sizes.leg_height
 	foot_spread_unified = Vector2(
-		clamp((left_foot_local_norm.x - right_foot_local_norm.x) / 2.0, -1.0, 1.0),
+		clamp(right_offset - left_offset, -1.0, 1.0),
 		clamp((left_foot_local_norm.y - right_foot_local_norm.y) / 2.0, -1.0, 1.0)
 	)
-
 func _update_velocity_signals(delta: float) -> void:
 	var vel := char_rigidbody.linear_velocity
 	var local_vel := char_rigidbody.global_transform.basis.inverse() * Vector3(vel.x, 0.0, vel.z)
