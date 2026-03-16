@@ -162,11 +162,11 @@ master_seed = 4
 
 [node name="tall" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8281984, 0.5, -10.493808)
-is_active = true
 master_seed = 2
 
 [node name="kid" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.446537, 0.3, -10.347981)
+is_active = true
 master_seed = 1
 
 [node name="normal" parent="chars" instance=ExtResource("11_ymvx6")]

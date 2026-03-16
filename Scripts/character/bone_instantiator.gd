@@ -67,9 +67,9 @@ func _register_bone_animations() -> void:
 	var PA := ProceduralBoneAnimator	
 	var ls := locomotion_signals
 	
-	var vertical_bobbing :=  1.0
+	var vertical_bobbing := entity_instantiation.root_bounciness
+	var shoulder_swing   := entity_instantiation.shoulder_swing
 	var hip_swing :=  0.5
-	var shoulder_swing :=  0.8
 	   
 	var _top_spine_rotation := 0.5 * shoulder_swing
 	var _bottom_spine_rotation := -0.5 * hip_swing
@@ -98,8 +98,8 @@ func _register_bone_animations() -> void:
 	
 	# LOWER SPINE 
 	# Root Y position: dips down mid-step, scaled by foot spread
-	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_X, vertical_bobbing * -0.14*2)
-	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_Z, vertical_bobbing * -0.14*2)
+	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_X, vertical_bobbing * -0.14)
+	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_Z, vertical_bobbing * -0.14)
 	
 	#procedural_animator.register(lower_spine, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, 0.05)
 	
