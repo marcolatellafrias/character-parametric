@@ -70,7 +70,7 @@ static func create(entityStats: EntityArchetype) -> SkeletonSizesUtil:
 	var head_ratio := entityStats.neck_to_head_proportion / total
 	var new_leg_height := entityStats.height * leg_ratio
 	var new_torso_height := entityStats.height * torso_ratio
-	var new_head_height := entityStats.height * head_ratio
+	var new_head_height := entityStats.height * head_ratio 
 	var new_hips_width := entityStats.hips_width_proportion * entityStats.height
 	var new_shoulders_width := entityStats.shoulder_width_proportion * entityStats.height 
 	skelSizes.leg_height = new_leg_height
