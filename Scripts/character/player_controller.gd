@@ -39,7 +39,7 @@ var _grab_target_rotation: Quaternion = Quaternion.IDENTITY
 
 var _hud: PlayerHUD = null
 
-func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3) -> void:
+func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
 	char_rigidbody = rb
 	player_camera = cam
 	head_bone = head
@@ -48,7 +48,7 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_build_outline_material()
-	_hud = PlayerHUD.create(char_rigidbody.max_speed)
+	_hud = PlayerHUD.create(char_rigidbody.max_speed, inst)
 	char_rigidbody.add_child(_hud)
 
 func _get_grab_origin() -> Vector3:
@@ -69,6 +69,7 @@ func _input(event: InputEvent) -> void:
 			player_camera.rotation.x = camera_pitch
 			player_camera.rotation.y = 0.0
 
+
 	if event is InputEventMouseButton:
 		match event.button_index:
 			MOUSE_BUTTON_LEFT:
@@ -84,6 +85,15 @@ func _input(event: InputEvent) -> void:
 			MOUSE_BUTTON_WHEEL_DOWN:
 				if is_instance_valid(_grabbed):
 					_grab_distance = clamp(_grab_distance + 0.3, grab_dist_min, grab_dist_max)
+
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
+		if is_instance_valid(_hovered_rb):
+			var target_bi := _find_bone_instantiator(_hovered_rb)
+			if target_bi and target_bi != char_rigidbody.get_parent():
+				_switch_to(target_bi)
+
+	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
+		_respawn()
 
 func _physics_process(_delta: float) -> void:
 	if not is_ready:
@@ -147,6 +157,38 @@ func _apply_grab_torque() -> void:
 		_grabbed.apply_torque(axis * angle * grab_rotation_stiffness + damping_torque)
 	else:
 		_grabbed.apply_torque(damping_torque)
+
+func _find_bone_instantiator(node: Node) -> BoneInstantiator:
+	var current := node.get_parent()
+	while current:
+		if current is BoneInstantiator:
+			return current
+		current = current.get_parent()
+	return null
+
+func _switch_to(target: BoneInstantiator) -> void:
+	var current_bi := char_rigidbody.get_parent() as BoneInstantiator
+	player_camera.get_parent().remove_child(player_camera)
+	current_bi.is_active = false
+	current_bi.char_rigidbody.is_active = false
+
+	target.is_active = true
+	char_rigidbody = target.char_rigidbody
+	head_bone = target.custom_bones_util.head
+	head_size = target.skel_sizes_util.head_size
+	char_rigidbody.add_child(player_camera)
+	player_camera.current = true
+	char_rigidbody.is_active = true
+	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
+	char_rigidbody.rotation.y = camera_yaw
+
+	if is_instance_valid(_hud):
+		_hud.queue_free()
+	_hud = PlayerHUD.create(char_rigidbody.max_speed, target.entity_instantiation)
+	char_rigidbody.add_child(_hud)
+
+	_stop_grab()
+	_clear_outline()
 
 func _build_outline_material() -> void:
 	var shader := load("res://shaders/outline.gdshader") as Shader
@@ -229,3 +271,35 @@ func _update_curve() -> void:
 
 	_curve_mesh = DebugUtil.create_debug_path3d(points, 16, grab_curve_color, 0.01)
 	get_tree().current_scene.add_child(_curve_mesh)
+
+func _respawn() -> void:
+	var current_bi := char_rigidbody.get_parent() as BoneInstantiator
+	if not current_bi:
+		return
+
+	var prev_position := Vector3(char_rigidbody.global_position.x, 3.0, char_rigidbody.global_position.z)
+	var prev_yaw := camera_yaw
+
+	var new_seed := randi() % 100000
+	current_bi.master_seed = new_seed
+	current_bi.initialize_skeleton()
+
+	char_rigidbody = current_bi.char_rigidbody
+	head_bone = current_bi.custom_bones_util.head
+	head_size = current_bi.skel_sizes_util.head_size
+	char_rigidbody.global_position = prev_position
+	char_rigidbody.rotation.y = prev_yaw
+	camera_yaw = prev_yaw
+	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
+
+	player_camera.get_parent().remove_child(player_camera)
+	char_rigidbody.add_child(player_camera)
+	player_camera.current = true
+
+	if is_instance_valid(_hud):
+		_hud.queue_free()
+	_hud = PlayerHUD.create(char_rigidbody.max_speed, current_bi.entity_instantiation)
+	char_rigidbody.add_child(_hud)
+
+	_stop_grab()
+	_clear_outline()

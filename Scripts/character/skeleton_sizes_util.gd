@@ -59,8 +59,9 @@ const raycast_vel_gain   := 0.02        # meters per (m/s)  -> keeps offset whil
 const raycast_smooth     := 8.0        # 1/sec; higher = snappier
 
 
-static func create(entityStats: EntityArchetype) -> SkeletonSizesUtil:
+static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var skelSizes = SkeletonSizesUtil.new()
+	var entityStats := inst.arch_final
 	#MEDIDAS DE MEDIANO NIVEL
 	var total := entityStats.legs_to_feet_proportion + entityStats.chest_to_low_spine_proportion + entityStats.neck_to_head_proportion
 	if total == 0.0:
@@ -158,8 +159,8 @@ static func create(entityStats: EntityArchetype) -> SkeletonSizesUtil:
 	return skelSizes
 
 
-func update(_delta: float, char_rigidbody: CharacterRigidBody3D, entityStats: EntityArchetype, ik_util: IkUtil) -> void:
-	_update_step_radius(char_rigidbody,entityStats,ik_util)
+func update(_delta: float, char_rigidbody: CharacterRigidBody3D, inst: EntityInstantiation, ik_util: IkUtil) -> void:
+	_update_step_radius(char_rigidbody, inst.arch_final, ik_util)
 
 func _update_step_radius(char_rigidbody: CharacterRigidBody3D, entity_stats: EntityArchetype, ik_util: IkUtil) -> void:
 	var dxz := Vector2(char_rigidbody.linear_velocity.x, char_rigidbody.linear_velocity.z)

@@ -1,6 +1,6 @@
 class_name EntityArchetype
 
-enum Archetype {fat_man, kid, tall_lanky, giga, old, normal}
+enum Archetype {fat_man, kid, tall_lanky, giga, old}
 
 # BASE STATS
 var strenght : float = 1.0
@@ -81,8 +81,6 @@ static func create(archetype: Archetype) -> EntityArchetype:
 		return kid_arch()
 	if(archetype == Archetype.giga):
 		return giga_arch()
-	if(archetype == Archetype.normal):
-		return normal_arch()
 	else:
 		return old_arch()
 
@@ -123,8 +121,8 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.step_radius_max = 0.5
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.0
-	arch.shoulders_height = 1.0
-	arch.shoulders_back = 0.8
+	arch.shoulders_height = 0.8
+	arch.shoulders_back = 0.7
 	arch.arms_openness = 1.0
 	arch.fatness = 1.0
 	arch.muscularity = 0.7
@@ -134,9 +132,9 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.chest_to_low_spine_proportion = 0.35
 	arch.legs_to_feet_proportion = 0.45
 	arch.hips_width_proportion = 0.12
-	arch.shoulder_width_proportion = 0.16
+	arch.shoulder_width_proportion = 0.12
 	arch.distance_from_ground_factor = 0.15
-	arch.uncompatible_archetypes = [Archetype.kid] as Array[Archetype]
+	arch.uncompatible_archetypes = [] as Array[Archetype]
 	arch.archetype_frequency = 1.0
 	return arch
 
@@ -156,7 +154,7 @@ static func kid_arch() -> EntityArchetype:
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 1.0
 	arch.throw_strenght = 0.2
-	arch.reach = 0.35
+	arch.reach = 0.38
 	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.6
 	arch.time_to_max_jump = 0.5
@@ -180,17 +178,17 @@ static func kid_arch() -> EntityArchetype:
 	arch.shoulders_height = 0.0
 	arch.shoulders_back = 0.0
 	arch.arms_openness = 0.8
-	arch.fatness = 0.0
-	arch.muscularity = 0.3
+	arch.fatness = 0.2
+	arch.muscularity = 0.25
 	arch.has_neck = true
-	arch.height = 1.3
+	arch.height = 1.35
 	arch.neck_to_head_proportion = 0.25
-	arch.chest_to_low_spine_proportion = 0.3
-	arch.legs_to_feet_proportion = 0.45
+	arch.chest_to_low_spine_proportion = 0.27
+	arch.legs_to_feet_proportion = 0.48
 	arch.hips_width_proportion = 0.1
 	arch.shoulder_width_proportion = 0.15
-	arch.distance_from_ground_factor = 0.15
-	arch.uncompatible_archetypes = [Archetype.fat_man, Archetype.tall_lanky, Archetype.giga, Archetype.old] as Array[Archetype]
+	arch.distance_from_ground_factor = 0.06
+	arch.uncompatible_archetypes = [] as Array[Archetype]
 	arch.archetype_frequency = 1.0
 	return arch
 
@@ -233,7 +231,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.slouch = 0.3
 	arch.shoulders_height = 0.0
 	arch.shoulders_back = 0.0
-	arch.arms_openness = 0.2
+	arch.arms_openness = 0.25
 	arch.fatness = 0.5
 	arch.muscularity = 0.4
 	arch.has_neck = true
@@ -244,8 +242,8 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.hips_width_proportion = 0.065
 	arch.shoulder_width_proportion = 0.14
 	arch.distance_from_ground_factor = 0.04
-	arch.uncompatible_archetypes = [Archetype.fat_man, Archetype.tall_lanky, Archetype.giga, Archetype.old] as Array[Archetype]
-	arch.archetype_frequency = 0.75
+	arch.uncompatible_archetypes = [] as Array[Archetype]
+	arch.archetype_frequency = 1.0
 	return arch
 
 static func giga_arch() -> EntityArchetype:
@@ -291,15 +289,15 @@ static func giga_arch() -> EntityArchetype:
 	arch.fatness = 0.5
 	arch.muscularity = 1.0
 	arch.has_neck = true
-	arch.height = 1.8
+	arch.height = 1.75
 	arch.neck_to_head_proportion = 0.2
-	arch.chest_to_low_spine_proportion = 0.35
-	arch.legs_to_feet_proportion = 0.45
+	arch.chest_to_low_spine_proportion = 0.37
+	arch.legs_to_feet_proportion = 0.43
 	arch.hips_width_proportion = 0.08
 	arch.shoulder_width_proportion = 0.22
 	arch.distance_from_ground_factor = 0.06
-	arch.uncompatible_archetypes = [Archetype.kid] as Array[Archetype]
-	arch.archetype_frequency = 0.6
+	arch.uncompatible_archetypes = [] as Array[Archetype]
+	arch.archetype_frequency =1.0
 	return arch
 
 static func old_arch() -> EntityArchetype:
@@ -345,67 +343,13 @@ static func old_arch() -> EntityArchetype:
 	arch.fatness = 0.1
 	arch.muscularity = 0.1
 	arch.has_neck = true
-	arch.height = 1.7
+	arch.height = 1.65
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55
 	arch.hips_width_proportion = 0.065
 	arch.shoulder_width_proportion = 0.11
 	arch.distance_from_ground_factor = 0.03
-	arch.uncompatible_archetypes = [Archetype.kid] as Array[Archetype]
-	arch.archetype_frequency = 0.5
-	return arch
-
-static func normal_arch() -> EntityArchetype:
-	var arch = EntityArchetype.new()
-	arch.strenght = 0.55
-	arch.weight = 80.0
-	arch.speed_forw = 3.0
-	arch.speed_back = 3.0
-	arch.speed_side = 3.0
-	arch.sprint_multiplier = 2.0
-	arch.acceleration = 3.0
-	arch.foward_stability = 0.5
-	arch.backwards_stability = 0.5
-	arch.sideways_stability = 0.5
-	arch.stability_spring = 0.7
-	arch.stability_damp = 0.7
-	arch.time_to_standup = 1.0
-	arch.throw_strenght = 0.4
-	arch.reach = 1.0
-	arch.reach_multiplier = 1.0
-	arch.jump_strenght = 0.6
-	arch.time_to_max_jump = 0.5
-	arch.min_age = 20
-	arch.max_age = 40
-	arch.robot_chance = 1.0
-	arch.alien_chance = 1.0
-	arch.human_chance = 1.0
-	arch.shoulder_swing_min = 0.5
-	arch.shoulder_swing_max = 0.5
-	arch.hip_swing_min = 0.5
-	arch.hip_swing_max = 0.5
-	arch.root_bounciness_min = 0.5
-	arch.root_bounciness_max = 0.5
-	arch.step_height_min = 0.5
-	arch.step_height_max = 0.5
-	arch.step_radius_min = 0.5
-	arch.step_radius_max = 0.5
-	arch.leg_cripple_chance = 0.0
-	arch.slouch = 0.3
-	arch.shoulders_height = 0.0
-	arch.shoulders_back = 0.0
-	arch.arms_openness = 0.2
-	arch.fatness = 0.5
-	arch.muscularity = 0.4
-	arch.has_neck = true
-	arch.height = 2.2
-	arch.neck_to_head_proportion = 0.2
-	arch.chest_to_low_spine_proportion = 0.25
-	arch.legs_to_feet_proportion = 0.55
-	arch.hips_width_proportion = 0.065
-	arch.shoulder_width_proportion = 0.14
-	arch.distance_from_ground_factor = 0.04
 	arch.uncompatible_archetypes = [] as Array[Archetype]
 	arch.archetype_frequency = 1.0
 	return arch
