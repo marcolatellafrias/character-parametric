@@ -69,6 +69,7 @@ func _register_bone_animations() -> void:
 	
 	var vertical_bobbing := entity_instantiation.root_bounciness
 	var shoulder_swing   := entity_instantiation.shoulder_swing
+	var side_swing   := entity_instantiation.shoulder_swing
 	var hip_swing :=  0.5
 	   
 	var _top_spine_rotation := 0.5 * shoulder_swing

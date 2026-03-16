@@ -39,6 +39,15 @@ var _grab_target_rotation: Quaternion = Quaternion.IDENTITY
 
 var _hud: PlayerHUD = null
 
+var stamina_max: float = 5.0
+var stamina_drain_rate: float = 2.0
+var stamina_regen_rate: float = 0.75
+var stamina_refractory_time: float = 2.0
+
+var _stamina: float = 5.0
+var _refractory_timer: float = 0.0
+var _was_sprinting: bool = false
+
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
 	char_rigidbody = rb
 	player_camera = cam
@@ -48,7 +57,7 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_build_outline_material()
-	_hud = PlayerHUD.create(char_rigidbody.max_speed_forward, inst)
+	_hud = PlayerHUD.create(inst)
 	char_rigidbody.add_child(_hud)
 
 func _get_grab_origin() -> Vector3:
@@ -68,7 +77,6 @@ func _input(event: InputEvent) -> void:
 			camera_yaw -= event.relative.x * 0.002
 			player_camera.rotation.x = camera_pitch
 			player_camera.rotation.y = 0.0
-
 
 	if event is InputEventMouseButton:
 		match event.button_index:
@@ -109,6 +117,7 @@ func _physics_process(_delta: float) -> void:
 
 	char_rigidbody.rotation.y = camera_yaw
 
+	_process_stamina(_delta)
 	if not is_instance_valid(_grabbed):
 		_process_grab_look()
 
@@ -116,6 +125,7 @@ func _physics_process(_delta: float) -> void:
 	_apply_grab_torque()
 	if is_instance_valid(_grabbed):
 		_update_curve()
+
 
 func _start_grab() -> void:
 	_grabbed = _hovered_rb
@@ -184,7 +194,7 @@ func _switch_to(target: BoneInstantiator) -> void:
 
 	if is_instance_valid(_hud):
 		_hud.queue_free()
-	_hud = PlayerHUD.create(char_rigidbody.max_speed_forward, target.entity_instantiation)
+	_hud = PlayerHUD.create(target.entity_instantiation)
 	char_rigidbody.add_child(_hud)
 
 	_stop_grab()
@@ -298,8 +308,32 @@ func _respawn() -> void:
 
 	if is_instance_valid(_hud):
 		_hud.queue_free()
-	_hud = PlayerHUD.create(char_rigidbody.max_speed_forward, current_bi.entity_instantiation)
+	_hud = PlayerHUD.create(current_bi.entity_instantiation)
 	char_rigidbody.add_child(_hud)
 
 	_stop_grab()
 	_clear_outline()
+
+func _process_stamina(delta: float) -> void:
+	var input_y := Input.get_axis("move_forward", "move_backward")
+	var is_sprinting := Input.is_action_pressed("sprint") and input_y < 0.0 and char_rigidbody.can_sprint
+
+	if is_sprinting:
+		_stamina = max(0.0, _stamina - stamina_drain_rate * delta)
+		if _stamina == 0.0:
+			char_rigidbody.can_sprint = false
+		_refractory_timer = stamina_refractory_time
+		_was_sprinting = true
+	else:
+		if _was_sprinting:
+			_was_sprinting = false
+
+		if _refractory_timer > 0.0:
+			_refractory_timer = max(0.0, _refractory_timer - delta)
+		else:
+			if not char_rigidbody.can_sprint:
+				char_rigidbody.can_sprint = true
+			_stamina = min(stamina_max, _stamina + stamina_regen_rate * delta)
+
+	if is_instance_valid(_hud):
+		_hud.update_stamina(_stamina / stamina_max)

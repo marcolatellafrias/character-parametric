@@ -7,6 +7,7 @@ var strenght_multiplier : float = 1.0
 var speed_forw_multiplier : float = 1.0
 var speed_back_multiplier : float = 1.0
 var speed_side_multiplier : float = 1.0
+var side_swing_multiplier: float = 1.0
 var acceleration_multiplier : float = 1.0
 var forward_stability_multiplier : float = 1.0
 var backwards_stability_multiplier : float = 1.0
@@ -53,6 +54,7 @@ static func human_specie() -> EntitySpecie:
 	specie.step_height_multiplier = 1.0
 	specie.step_radius_multiplier = 1.0
 	specie.leg_cripple_chance_multiplier = 1.0
+	specie.side_swing_multiplier = 1.0
 	specie.skin_colors = [
 		Color(1.0, 0.85, 0.7),
 		Color(0.9, 0.7, 0.5),
@@ -82,6 +84,7 @@ static func alien_specie() -> EntitySpecie:
 	specie.root_bounciness_multiplier = 1.0
 	specie.step_height_multiplier = 1.0
 	specie.step_radius_multiplier = 1.0
+	specie.side_swing_multiplier = 1.0
 	specie.leg_cripple_chance_multiplier = 0.0
 	specie.skin_colors = [
 		Color(0.3, 0.8, 0.4),
@@ -111,6 +114,7 @@ static func robot_specie() -> EntitySpecie:
 	specie.root_bounciness_multiplier = 1.0
 	specie.step_height_multiplier = 0.5
 	specie.step_radius_multiplier = 0.6
+	specie.side_swing_multiplier = 1.0
 	specie.leg_cripple_chance_multiplier = 0.0
 	specie.skin_colors = [
 		Color(0.75, 0.75, 0.75),

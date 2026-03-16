@@ -171,7 +171,7 @@ master_seed = 1
 
 [node name="normal" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.446537, 0.29999995, -10.347981)
-master_seed = 5
+master_seed = 10
 
 [node name="bone" parent="chars" instance=ExtResource("11_v3boh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.0371246, 0.47957346, -19.87078)

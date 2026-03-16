@@ -1,6 +1,8 @@
 class_name CharacterRigidBody3D
 extends RigidBody3D
 
+var can_sprint: bool = true
+
 const SPEED_SCALE := 10.0
 const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
@@ -41,7 +43,6 @@ func _physics_process(_delta: float) -> void:
 
 func _apply_movement_force() -> void:
 	var horizontal_vel := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
-	var is_sprinting := Input.is_action_pressed("sprint")
 
 	var input := Vector2(
 		Input.get_axis("move_left", "move_right"),
@@ -58,6 +59,7 @@ func _apply_movement_force() -> void:
 
 		var forward_component: float = input.y
 		var side_component: float = input.x
+		var is_sprinting := Input.is_action_pressed("sprint") and forward_component < 0.0 and can_sprint
 
 		var abs_fwd: float = abs(forward_component)
 		var abs_side: float = abs(side_component)

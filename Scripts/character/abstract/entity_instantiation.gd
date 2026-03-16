@@ -18,6 +18,7 @@ var root_bounciness: float
 var step_height: float
 var step_radius: float
 var skin_color: Color
+var side_swing: float
 
 
 static func create(seed: int) -> EntityInstantiation:
@@ -69,6 +70,7 @@ func _resolve(rng: RandomNumberGenerator) -> void:
     age             = roundi(rng.randf_range(arch_final.min_age, arch_final.max_age))
     shoulder_swing  = rng.randf_range(arch_final.shoulder_swing_min, arch_final.shoulder_swing_max) * spec.shoulder_swing_multiplier
     hip_swing       = rng.randf_range(arch_final.hip_swing_min, arch_final.hip_swing_max) * spec.hip_swing_multiplier
+    side_swing      = arch_final.side_swing * spec.side_swing_multiplier
     root_bounciness = rng.randf_range(arch_final.root_bounciness_min, arch_final.root_bounciness_max) * spec.root_bounciness_multiplier
     step_height     = rng.randf_range(arch_final.step_height_min, arch_final.step_height_max) * spec.step_height_multiplier
     step_radius     = rng.randf_range(arch_final.step_radius_min, arch_final.step_radius_max) * spec.step_radius_multiplier

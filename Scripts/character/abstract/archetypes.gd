@@ -40,6 +40,7 @@ var shoulder_swing_min : float = 0.5
 var shoulder_swing_max : float = 0.5
 var hip_swing_min : float = 0.5
 var hip_swing_max : float = 0.5
+var side_swing : float = 0.5
 var root_bounciness_min  : float = 0.5
 var root_bounciness_max  : float = 0.5
 var step_height_min : float = 0.5
@@ -90,7 +91,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.speed = 0.35
 	arch.back_speed_factor = 1.0
 	arch.lateral_speed_factor = 1.0
-	arch.sprint_multiplier = 2.0
+	arch.sprint_multiplier = 1.65
 	arch.acceleration = 0.375
 	arch.foward_stability = 0.7
 	arch.backwards_stability = 0.7
@@ -112,6 +113,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.archetype_frequency = 1.0
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
+	arch.side_swing = 0.5
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.5
@@ -144,7 +146,7 @@ static func kid_arch() -> EntityArchetype:
 	arch.speed = 0.4
 	arch.back_speed_factor = 1.0
 	arch.lateral_speed_factor = 1.0
-	arch.sprint_multiplier = 2.0
+	arch.sprint_multiplier = 1.5
 	arch.acceleration = 0.9
 	arch.foward_stability = 0.5
 	arch.backwards_stability = 0.5
@@ -166,6 +168,7 @@ static func kid_arch() -> EntityArchetype:
 	arch.archetype_frequency = 1.0
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
+	arch.side_swing = 0.5
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.7
@@ -198,7 +201,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.speed = 0.3
 	arch.back_speed_factor = 1.0
 	arch.lateral_speed_factor = 1.0
-	arch.sprint_multiplier = 2.0
+	arch.sprint_multiplier = 1.5
 	arch.acceleration = 0.45
 	arch.foward_stability = 0.5
 	arch.backwards_stability = 0.5
@@ -220,6 +223,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.archetype_frequency = 1.0
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
+	arch.side_swing = 0.5
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.8
@@ -252,7 +256,7 @@ static func giga_arch() -> EntityArchetype:
 	arch.speed = 0.3
 	arch.back_speed_factor = 1.0
 	arch.lateral_speed_factor = 1.0
-	arch.sprint_multiplier = 2.0
+	arch.sprint_multiplier = 1.5
 	arch.acceleration = 0.5
 	arch.foward_stability = 0.5
 	arch.backwards_stability = 0.5
@@ -274,6 +278,7 @@ static func giga_arch() -> EntityArchetype:
 	arch.archetype_frequency = 1.0
 	arch.shoulder_swing_min = 1.0
 	arch.shoulder_swing_max = 1.0
+	arch.side_swing = 0.5
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 2.0
@@ -306,7 +311,7 @@ static func old_arch() -> EntityArchetype:
 	arch.speed = 0.15
 	arch.back_speed_factor = 0.6
 	arch.lateral_speed_factor = 0.8
-	arch.sprint_multiplier = 2.0
+	arch.sprint_multiplier = 1.5
 	arch.acceleration = 0.5
 	arch.foward_stability = 0.5
 	arch.backwards_stability = 0.5
@@ -328,6 +333,7 @@ static func old_arch() -> EntityArchetype:
 	arch.archetype_frequency = 1.0
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
+	arch.side_swing = 0.5
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.5
@@ -384,6 +390,7 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.human_chance                  = lerpf(human_chance, b.human_chance, t)
 	r.shoulder_swing_min            = lerpf(shoulder_swing_min, b.shoulder_swing_min, t)
 	r.shoulder_swing_max            = lerpf(shoulder_swing_max, b.shoulder_swing_max, t)
+	r.side_swing 					= lerpf(side_swing, b.side_swing, t)
 	r.hip_swing_min                 = lerpf(hip_swing_min, b.hip_swing_min, t)
 	r.hip_swing_max                 = lerpf(hip_swing_max, b.hip_swing_max, t)
 	r.root_bounciness_min           = lerpf(root_bounciness_min, b.root_bounciness_min, t)
