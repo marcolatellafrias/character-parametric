@@ -38,7 +38,7 @@ func initialize_skeleton() -> void:
 	ik_util = IkUtil.create(skel_sizes_util, self)
 	var full_height := skel_sizes_util.leg_height + skel_sizes_util.torso_height + skel_sizes_util.head_height
 	var charRb := Vector3(skel_sizes_util.shoulders_width * 2, full_height, skel_sizes_util.hips_width * 2)
-	char_rigidbody = CharacterRigidBody3D.create(charRb, skel_sizes_util.distance_from_ground, skel_sizes_util.leg_height, is_active)
+	char_rigidbody = CharacterRigidBody3D.create(charRb, skel_sizes_util.distance_from_ground, skel_sizes_util.leg_height, is_active, entity_instantiation)
 	char_rigidbody.add_child(custom_bones_util.lower_spine)
 	add_child(char_rigidbody)
 	local_targets.add_child(ik_util.left_leg_raycast)

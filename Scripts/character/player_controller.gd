@@ -48,7 +48,7 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_build_outline_material()
-	_hud = PlayerHUD.create(char_rigidbody.max_speed, inst)
+	_hud = PlayerHUD.create(char_rigidbody.max_speed_forward, inst)
 	char_rigidbody.add_child(_hud)
 
 func _get_grab_origin() -> Vector3:
@@ -184,7 +184,7 @@ func _switch_to(target: BoneInstantiator) -> void:
 
 	if is_instance_valid(_hud):
 		_hud.queue_free()
-	_hud = PlayerHUD.create(char_rigidbody.max_speed, target.entity_instantiation)
+	_hud = PlayerHUD.create(char_rigidbody.max_speed_forward, target.entity_instantiation)
 	char_rigidbody.add_child(_hud)
 
 	_stop_grab()
@@ -298,7 +298,7 @@ func _respawn() -> void:
 
 	if is_instance_valid(_hud):
 		_hud.queue_free()
-	_hud = PlayerHUD.create(char_rigidbody.max_speed, current_bi.entity_instantiation)
+	_hud = PlayerHUD.create(char_rigidbody.max_speed_forward, current_bi.entity_instantiation)
 	char_rigidbody.add_child(_hud)
 
 	_stop_grab()

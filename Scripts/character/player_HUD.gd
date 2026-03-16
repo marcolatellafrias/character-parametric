@@ -55,7 +55,7 @@ static func create(max_speed: float, inst: EntityInstantiation) -> PlayerHUD:
 		"",
 		"height    %.2f m" % arch.height,
 		"weight    %.1f kg" % arch.weight,
-		"speed     %.1f" % arch.speed_forw,
+		"speed     %.1f" % arch.speed,
 		"strength  %.2f" % arch.strenght,
 		"jump      %.2f" % arch.jump_strenght,
 		"reach     %.2f" % arch.reach,

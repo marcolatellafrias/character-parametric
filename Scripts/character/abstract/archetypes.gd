@@ -5,10 +5,10 @@ enum Archetype {fat_man, kid, tall_lanky, giga, old}
 # BASE STATS
 var strenght : float = 1.0
 var weight : float = 60.0
-var speed_forw : float = 1.0
-var speed_back : float = 1.0
-var speed_side : float = 1.0
-var sprint_multiplier : float = 2.0 
+var speed : float = 1.0
+var back_speed_factor : float = 1.0
+var lateral_speed_factor : float = 1.0
+var sprint_multiplier : float = 2.0
 var acceleration : float = 4.0
 var foward_stability : float = 1.0
 var backwards_stability : float = 1.0
@@ -66,10 +66,9 @@ var chest_to_low_spine_proportion : float = 1.0
 var legs_to_feet_proportion : float = 1.0
 var hips_width_proportion : float = 1.0
 var shoulder_width_proportion : float = 1.0
-var distance_from_ground_factor := 0.15  #tiene las piernas 15% flexionadas cuando esta en el piso
+var distance_from_ground_factor := 0.15
 
-
-var uncompatible_archetypes : Array[Archetype] = [] # con que otros arquetipos no se puede mezclar
+var uncompatible_archetypes : Array[Archetype] = []
 var archetype_frequency : float = 1.0
 
 static func create(archetype: Archetype) -> EntityArchetype:
@@ -88,9 +87,9 @@ static func fat_man_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
 	arch.strenght = 1.0
 	arch.weight = 120.0
-	arch.speed_forw = 2.0
-	arch.speed_back = 2.0
-	arch.speed_side = 2.0
+	arch.speed = 2.0
+	arch.back_speed_factor = 1.0
+	arch.lateral_speed_factor = 1.0
 	arch.sprint_multiplier = 2.0
 	arch.acceleration = 4.0
 	arch.foward_stability = 0.7
@@ -109,6 +108,8 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.robot_chance = 0.3
 	arch.alien_chance = 0.6
 	arch.human_chance = 1.0
+	arch.uncompatible_archetypes = [] as Array[Archetype]
+	arch.archetype_frequency = 1.0
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
 	arch.hip_swing_min = 0.5
@@ -119,7 +120,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.step_height_max = 0.5
 	arch.step_radius_min = 0.5
 	arch.step_radius_max = 0.5
-	arch.leg_cripple_chance = 0.0
+	arch.leg_cripple_chance = 0.1
 	arch.slouch = 0.0
 	arch.shoulders_height = 0.8
 	arch.shoulders_back = 0.7
@@ -134,17 +135,15 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.hips_width_proportion = 0.12
 	arch.shoulder_width_proportion = 0.12
 	arch.distance_from_ground_factor = 0.15
-	arch.uncompatible_archetypes = [] as Array[Archetype]
-	arch.archetype_frequency = 1.0
 	return arch
 
 static func kid_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
 	arch.strenght = 0.3
 	arch.weight = 30.0
-	arch.speed_forw = 4.0
-	arch.speed_back = 4.0
-	arch.speed_side = 4.0
+	arch.speed = 4.0
+	arch.back_speed_factor = 1.0
+	arch.lateral_speed_factor = 1.0
 	arch.sprint_multiplier = 2.0
 	arch.acceleration = 1.5
 	arch.foward_stability = 0.5
@@ -163,6 +162,8 @@ static func kid_arch() -> EntityArchetype:
 	arch.robot_chance = 0.0
 	arch.alien_chance = 0.0
 	arch.human_chance = 1.0
+	arch.uncompatible_archetypes = [] as Array[Archetype]
+	arch.archetype_frequency = 1.0
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
 	arch.hip_swing_min = 0.5
@@ -188,19 +189,17 @@ static func kid_arch() -> EntityArchetype:
 	arch.hips_width_proportion = 0.1
 	arch.shoulder_width_proportion = 0.15
 	arch.distance_from_ground_factor = 0.06
-	arch.uncompatible_archetypes = [] as Array[Archetype]
-	arch.archetype_frequency = 1.0
 	return arch
 
 static func tall_lanky_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
 	arch.strenght = 0.55
 	arch.weight = 80.0
-	arch.speed_forw = 3.0
-	arch.speed_back = 3.0
-	arch.speed_side = 3.0
+	arch.speed = 0.3
+	arch.back_speed_factor = 1.0
+	arch.lateral_speed_factor = 1.0
 	arch.sprint_multiplier = 2.0
-	arch.acceleration = 3.0
+	arch.acceleration = 0.4
 	arch.foward_stability = 0.5
 	arch.backwards_stability = 0.5
 	arch.sideways_stability = 0.5
@@ -217,16 +216,18 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.robot_chance = 0.0
 	arch.alien_chance = 0.7
 	arch.human_chance = 1.0
+	arch.uncompatible_archetypes = [] as Array[Archetype]
+	arch.archetype_frequency = 1.0
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.5
 	arch.root_bounciness_max = 0.5
-	arch.step_height_min = 0.5
-	arch.step_height_max = 0.5
-	arch.step_radius_min = 0.5
-	arch.step_radius_max = 0.5
+	arch.step_height_min = 0.4
+	arch.step_height_max = 0.4
+	arch.step_radius_min = 0.4
+	arch.step_radius_max = 0.4
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.3
 	arch.shoulders_height = 0.0
@@ -242,19 +243,17 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.hips_width_proportion = 0.065
 	arch.shoulder_width_proportion = 0.14
 	arch.distance_from_ground_factor = 0.04
-	arch.uncompatible_archetypes = [] as Array[Archetype]
-	arch.archetype_frequency = 1.0
 	return arch
 
 static func giga_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
 	arch.strenght = 0.55
 	arch.weight = 120.0
-	arch.speed_forw = 2.0
-	arch.speed_back = 2.0
-	arch.speed_side = 2.0
+	arch.speed = 0.3
+	arch.back_speed_factor = 1.0
+	arch.lateral_speed_factor = 1.0
 	arch.sprint_multiplier = 2.0
-	arch.acceleration = 3.0
+	arch.acceleration = 0.3
 	arch.foward_stability = 0.5
 	arch.backwards_stability = 0.5
 	arch.sideways_stability = 0.5
@@ -266,11 +265,13 @@ static func giga_arch() -> EntityArchetype:
 	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.6
 	arch.time_to_max_jump = 0.5
-	arch.min_age = 1
-	arch.max_age = 99
+	arch.min_age = 20
+	arch.max_age = 90
 	arch.robot_chance = 0.0
 	arch.alien_chance = 1.0
 	arch.human_chance = 1.0
+	arch.uncompatible_archetypes = [] as Array[Archetype]
+	arch.archetype_frequency = 1.0
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
 	arch.hip_swing_min = 0.5
@@ -296,19 +297,17 @@ static func giga_arch() -> EntityArchetype:
 	arch.hips_width_proportion = 0.08
 	arch.shoulder_width_proportion = 0.22
 	arch.distance_from_ground_factor = 0.06
-	arch.uncompatible_archetypes = [] as Array[Archetype]
-	arch.archetype_frequency =1.0
 	return arch
 
 static func old_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
 	arch.strenght = 0.55
 	arch.weight = 120.0
-	arch.speed_forw = 2.0
-	arch.speed_back = 2.0
-	arch.speed_side = 2.0
+	arch.speed = 0.15
+	arch.back_speed_factor = 0.6
+	arch.lateral_speed_factor = 0.8
 	arch.sprint_multiplier = 2.0
-	arch.acceleration = 3.0
+	arch.acceleration = 0.5
 	arch.foward_stability = 0.5
 	arch.backwards_stability = 0.5
 	arch.sideways_stability = 0.5
@@ -320,21 +319,23 @@ static func old_arch() -> EntityArchetype:
 	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.6
 	arch.time_to_max_jump = 0.5
-	arch.min_age = 1
+	arch.min_age = 50
 	arch.max_age = 99
 	arch.robot_chance = 0.0
 	arch.alien_chance = 0.0
 	arch.human_chance = 1.0
+	arch.uncompatible_archetypes = [] as Array[Archetype]
+	arch.archetype_frequency = 1.0
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.5
 	arch.root_bounciness_max = 0.5
-	arch.step_height_min = 0.5
-	arch.step_height_max = 0.5
-	arch.step_radius_min = 0.5
-	arch.step_radius_max = 0.5
+	arch.step_height_min = 0.3
+	arch.step_height_max = 0.3
+	arch.step_radius_min = 0.3
+	arch.step_radius_max = 0.3
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 1.0
 	arch.shoulders_height = 0.5
@@ -350,8 +351,6 @@ static func old_arch() -> EntityArchetype:
 	arch.hips_width_proportion = 0.065
 	arch.shoulder_width_proportion = 0.11
 	arch.distance_from_ground_factor = 0.03
-	arch.uncompatible_archetypes = [] as Array[Archetype]
-	arch.archetype_frequency = 1.0
 	return arch
 
 static func max_leg_lenght() -> float:
@@ -362,9 +361,9 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	var r := EntityArchetype.new()
 	r.strenght                      = lerpf(strenght, b.strenght, t)
 	r.weight                        = lerpf(weight, b.weight, t)
-	r.speed_forw                    = lerpf(speed_forw, b.speed_forw, t)
-	r.speed_back                    = lerpf(speed_back, b.speed_back, t)
-	r.speed_side                    = lerpf(speed_side, b.speed_side, t)
+	r.speed                         = lerpf(speed, b.speed, t)
+	r.back_speed_factor             = lerpf(back_speed_factor, b.back_speed_factor, t)
+	r.lateral_speed_factor          = lerpf(lateral_speed_factor, b.lateral_speed_factor, t)
 	r.sprint_multiplier             = lerpf(sprint_multiplier, b.sprint_multiplier, t)
 	r.acceleration                  = lerpf(acceleration, b.acceleration, t)
 	r.foward_stability              = lerpf(foward_stability, b.foward_stability, t)

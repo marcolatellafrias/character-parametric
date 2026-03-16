@@ -151,9 +151,9 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	#TAMAÑOS MISCELANEOS
 	skelSizes.raycast_leg_lenght = new_leg_height
 	skelSizes.distance_from_ground = new_leg_height * (entityStats.distance_from_ground_factor)
-	skelSizes.step_radius_max   = new_leg_height * 0.5
-	skelSizes.step_radius_min   = new_leg_height * 0.20
-	skelSizes.step_height = new_leg_height * 0.40
+	skelSizes.step_radius_max   = new_leg_height * inst.step_radius
+	skelSizes.step_radius_min   = new_leg_height * inst.step_radius * 0.4
+	skelSizes.step_height = new_leg_height * inst.step_height
 	skelSizes.pole_distance = new_leg_height
 	skelSizes.raycast_max_offset = new_leg_height * 0.20
 	return skelSizes
@@ -168,7 +168,7 @@ func _update_step_radius(char_rigidbody: CharacterRigidBody3D, entity_stats: Ent
 	
 	# Velocidades
 	var min_speed = 0.01
-	var max_speed = entity_stats.speed_forw /1#entity_stats.speed_multiplier
+	var max_speed: float = entity_stats.speed * CharacterRigidBody3D.SPEED_SCALE
 	 
 	# Interpolación segura
 	var speed_range = max(max_speed - min_speed, 0.01)

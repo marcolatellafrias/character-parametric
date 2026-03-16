@@ -1,16 +1,29 @@
 class_name CharacterRigidBody3D
 extends RigidBody3D
 
-@export var sprint_speed_multiplier := 1.5
-@export var sprint_acceleration_multiplier := 1.5
-@export var acceleration_force := 4.0
-@export var braking_force := 1.5
-@export var max_speed := 4.0
+const SPEED_SCALE := 10.0
+const ACCEL_SCALE := 10.0
+const BRAKE_FACTOR := 0.375
+
 @export var show_mesh := false
 
 var is_active: bool = false
 var collider: CollisionShape3D
 var mesh_instance: MeshInstance3D
+
+var accel_forward: float = 4.0
+var accel_back: float = 4.0
+var accel_side: float = 4.0
+
+var brake_forward: float = 1.0
+var brake_back: float = 1.0
+var brake_side: float = 1.0
+
+var max_speed_forward: float = 10.0
+var max_speed_back: float = 10.0
+var max_speed_side: float = 10.0
+
+var sprint_multiplier: float = 2.0
 
 func _ready() -> void:
 	linear_damp = 0.0
@@ -29,8 +42,6 @@ func _physics_process(_delta: float) -> void:
 func _apply_movement_force() -> void:
 	var horizontal_vel := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
 	var is_sprinting := Input.is_action_pressed("sprint")
-	var current_max_speed := max_speed * (sprint_speed_multiplier if is_sprinting else 1.0)
-	var current_acceleration := acceleration_force * (sprint_acceleration_multiplier if is_sprinting else 1.0)
 
 	var input := Vector2(
 		Input.get_axis("move_left", "move_right"),
@@ -42,21 +53,66 @@ func _apply_movement_force() -> void:
 		var forward := global_transform.basis.z
 		right.y = 0.0
 		forward.y = 0.0
-		var direction := (right.normalized() * input.x + forward.normalized() * input.y).normalized()
+		right = right.normalized()
+		forward = forward.normalized()
 
-		if horizontal_vel.length() < current_max_speed or horizontal_vel.dot(direction) < 0.0:
-			apply_central_force(direction * current_acceleration)
+		var forward_component: float = input.y
+		var side_component: float = input.x
+
+		var abs_fwd: float = abs(forward_component)
+		var abs_side: float = abs(side_component)
+		var total_input: float = abs_fwd + abs_side
+
+		var fwd_max: float = max_speed_back if forward_component >= 0.0 else max_speed_forward
+		var effective_max: float = (fwd_max * abs_fwd + max_speed_side * abs_side) / max(total_input, 0.001)
+		if is_sprinting:
+			effective_max *= sprint_multiplier
+
+		var fwd_accel: float = accel_back if forward_component >= 0.0 else accel_forward
+		var current_accel: float = (fwd_accel * abs_fwd + accel_side * abs_side) / max(total_input, 0.001)
+
+		var direction := (right * side_component + forward * forward_component).normalized()
+		var is_changing_direction := horizontal_vel.dot(direction) < 0.0
+		var effective_accel := current_accel * (sprint_multiplier if is_sprinting and not is_changing_direction else 1.0)
+
+		if horizontal_vel.length() < effective_max or is_changing_direction:
+			apply_central_force(direction * effective_accel)
 
 		var opposing_vel: Vector3 = horizontal_vel - direction * max(0.0, horizontal_vel.dot(direction))
 		if opposing_vel.length() > 0.0:
-			apply_central_force(-opposing_vel.normalized() * braking_force)
+			var local_opp: Vector3 = global_transform.basis.inverse() * opposing_vel
+			var brake_opp: float = (brake_side * abs(local_opp.x) + brake_forward * abs(local_opp.z)) / max(abs(local_opp.x) + abs(local_opp.z), 0.001)
+			apply_central_force(-opposing_vel.normalized() * brake_opp)
 	else:
 		if horizontal_vel.length() > 0.0:
-			apply_central_force(-horizontal_vel.normalized() * braking_force)
+			var local_vel: Vector3 = global_transform.basis.inverse() * horizontal_vel
+			var is_moving_back := local_vel.z < 0.0
+			var brake_fwd: float = brake_back if is_moving_back else brake_forward
+			var brake_blend: float = (brake_fwd * abs(local_vel.z) + brake_side * abs(local_vel.x)) / max(abs(local_vel.z) + abs(local_vel.x), 0.001)
+			apply_central_force(-horizontal_vel.normalized() * brake_blend)
 
-static func create(root_size: Vector3, distance_from_ground: float, leg_height: float, active: bool) -> CharacterRigidBody3D:
-	var character_rigidbody := CharacterRigidBody3D.new()
+static func create(root_size: Vector3, distance_from_ground: float, leg_height: float, active: bool, inst: EntityInstantiation) -> CharacterRigidBody3D:
+	var rb := CharacterRigidBody3D.new()
+
+	var arch := inst.arch_final
+	var spec := inst.spec
+	rb.mass = arch.weight
+	rb.sprint_multiplier = arch.sprint_multiplier
+
+	rb.max_speed_forward = arch.speed * spec.speed_forw_multiplier * SPEED_SCALE
+	rb.max_speed_back    = arch.speed * arch.back_speed_factor    * spec.speed_back_multiplier  * SPEED_SCALE
+	rb.max_speed_side    = arch.speed * arch.lateral_speed_factor * spec.speed_side_multiplier  * SPEED_SCALE
+
+	rb.accel_forward = arch.weight * arch.acceleration * spec.acceleration_multiplier * ACCEL_SCALE
+	rb.accel_back    = arch.weight * arch.acceleration * arch.back_speed_factor    * spec.acceleration_multiplier * ACCEL_SCALE
+	rb.accel_side    = arch.weight * arch.acceleration * arch.lateral_speed_factor * spec.acceleration_multiplier * ACCEL_SCALE
+
+	rb.brake_forward = rb.accel_forward * BRAKE_FACTOR
+	rb.brake_back    = rb.accel_back    * BRAKE_FACTOR
+	rb.brake_side    = rb.accel_side    * BRAKE_FACTOR
+
 	var y_offset := root_size.y / 2.0 - (leg_height - distance_from_ground)
+
 	var new_mesh_instance := MeshInstance3D.new()
 	var capsule_mesh := CapsuleMesh.new()
 	capsule_mesh.height = root_size.y
@@ -76,9 +132,9 @@ static func create(root_size: Vector3, distance_from_ground: float, leg_height: 
 	new_collision_shape.shape = capsule_shape
 	new_collision_shape.position = Vector3(0.0, y_offset, 0.0)
 
-	character_rigidbody.add_child(new_mesh_instance)
-	character_rigidbody.add_child(new_collision_shape)
-	character_rigidbody.collider = new_collision_shape
-	character_rigidbody.mesh_instance = new_mesh_instance
-	character_rigidbody.is_active = active
-	return character_rigidbody
+	rb.add_child(new_mesh_instance)
+	rb.add_child(new_collision_shape)
+	rb.collider = new_collision_shape
+	rb.mesh_instance = new_mesh_instance
+	rb.is_active = active
+	return rb
