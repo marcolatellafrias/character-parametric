@@ -21,7 +21,7 @@ var right_lower_arm : CustomBone
 var left_upper_arm : CustomBone
 var left_lower_arm : CustomBone
 
-static func create(sizes: SkeletonSizesUtil, entity_stats: EntityStats) -> CustomBonesUtil:
+static func create(sizes: SkeletonSizesUtil, entity_stats: EntityArchetype) -> CustomBonesUtil:
 	var bones_util = CustomBonesUtil.new()
 	
 	

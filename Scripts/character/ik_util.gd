@@ -335,7 +335,7 @@ static func _clear_step_data(node: Node3D) -> void:
 static func _is_stepping(n: Node) -> bool:
 	return n.has_meta("stepping") and bool(n.get_meta("stepping"))
 
-func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left: bool, sizes: SkeletonSizesUtil, entity_stats: EntityStats) -> void:
+func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left: bool, sizes: SkeletonSizesUtil, entity_stats: EntityArchetype) -> void:
 	var hvel := root_rigidbody.linear_velocity
 	hvel.y = 0.0
 

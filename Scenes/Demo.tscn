@@ -150,7 +150,6 @@ label_text = "20kg"
 
 [node name="StaticBody3D" type="StaticBody3D" parent="world"]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 0, -14.608703)
-visible = false
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D"]
 shape = SubResource("BoxShape3D_v3boh")
@@ -163,7 +162,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 
 [node name="fat" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.235, 0.3, -10.597)
-is_active = true
 
 [node name="AreaInstantiator" type="Node3D" parent="chars/fat" node_paths=PackedStringArray("cameras", "world")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.235, -0.3, 10.597)
@@ -177,6 +175,7 @@ environment = SubResource("Environment_bg2jp")
 
 [node name="giga" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3612877, 0.3, -10.597)
+is_active = true
 archetype = 3
 
 [node name="old" parent="chars" instance=ExtResource("11_ymvx6")]
