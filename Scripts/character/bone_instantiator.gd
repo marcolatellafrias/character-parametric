@@ -137,9 +137,12 @@ func _clear_prior_generations() -> void:
 func _physics_process(_delta: float) -> void:
 	_update_local_targets_positions()
 
-	if is_instance_valid(ragdoll_util) and ragdoll_util.is_active:
+	if is_instance_valid(ragdoll_util):
+		# Always call update so recovery lerp runs
 		ragdoll_util.update(_delta)
-		return
+		# Skip IK only when fully active (not recovering)
+		if ragdoll_util.is_active:
+			return
 
 	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, true, skel_sizes_util, entity_archetype) 
 	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, false, skel_sizes_util, entity_archetype) 
@@ -148,7 +151,8 @@ func _physics_process(_delta: float) -> void:
 	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
 	locomotion_signals.update(_delta)
 	procedural_animator.update()
-	if is_instance_valid(ragdoll_util):
+	# Sync ragdoll bodies to bones only in normal mode (not recovering)
+	if is_instance_valid(ragdoll_util) and not ragdoll_util.is_recovering:
 		ragdoll_util.sync_to_bones()
 
 func _update_local_targets_positions() -> void:

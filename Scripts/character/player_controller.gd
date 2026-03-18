@@ -63,6 +63,10 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 func _get_grab_origin() -> Vector3:
 	return player_camera.global_position
 
+func _is_ragdoll_active() -> bool:
+	var bi := char_rigidbody.get_parent() as BoneInstantiator
+	return is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active
+
 func _input(event: InputEvent) -> void:
 	if not is_ready:
 		return
@@ -76,7 +80,8 @@ func _input(event: InputEvent) -> void:
 			camera_pitch = clamp(camera_pitch - event.relative.y * 0.002, -1.2, 1.2)
 			camera_yaw -= event.relative.x * 0.002
 			player_camera.rotation.x = camera_pitch
-			player_camera.rotation.y = 0.0
+			# During ragdoll, yaw is applied directly to the camera (not through char_rigidbody)
+			player_camera.rotation.y = camera_yaw if _is_ragdoll_active() else 0.0
 
 	if event is InputEventMouseButton:
 		match event.button_index:
@@ -110,21 +115,15 @@ func _physics_process(_delta: float) -> void:
 	if not is_ready:
 		return
 
-	var bi := char_rigidbody.get_parent() as BoneInstantiator
-	var in_ragdoll := is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active
-
 	if is_instance_valid(_hud):
 		var hvel := Vector3(char_rigidbody.linear_velocity.x, 0.0, char_rigidbody.linear_velocity.z)
 		_hud.update_speed(hvel.length())
 
-	if in_ragdoll:
-		if is_instance_valid(bi.ragdoll_util.head_body):
-			var head_rb := bi.ragdoll_util.head_body
-			var target_y: float = head_rb.global_position.y + head_size.y * 0.5
-			var k: float = clamp(_delta * CAMERA_Y_SMOOTH, 0.0, 1.0)
-			camera_y_smooth = lerp(camera_y_smooth, target_y, k)
-			player_camera.global_position = head_rb.global_position
-			player_camera.global_position.y = camera_y_smooth
+	if _is_ragdoll_active():
+		var bi := char_rigidbody.get_parent() as BoneInstantiator
+		# Camera position is updated in ragdoll_util.update(), rotation handled here
+		player_camera.rotation.x = camera_pitch
+		player_camera.rotation.y = camera_yaw
 		return
 
 	var target_y: float = head_bone.global_position.y + head_size.y * 0.5
@@ -150,15 +149,14 @@ func _toggle_ragdoll() -> void:
 		return
 	if bi.ragdoll_util.is_active:
 		bi.ragdoll_util.deactivate(char_rigidbody, bi.custom_bones_util.lower_spine)
-		if player_camera.get_parent() != char_rigidbody:
-			player_camera.get_parent().remove_child(player_camera)
-			char_rigidbody.add_child(player_camera)
-			player_camera.current = true
+		# Restore camera local position/rotation after reparent (deactivate put it back in char_rb)
+		player_camera.position = Vector3.ZERO
+		player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
 		char_rigidbody.rotation.y = camera_yaw
 		camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 	else:
 		_stop_grab()
-		bi.ragdoll_util.activate(char_rigidbody, bi.custom_bones_util.lower_spine)
+		bi.ragdoll_util.activate(char_rigidbody, bi.custom_bones_util.lower_spine, player_camera)
 
 
 func _start_grab() -> void:
@@ -225,6 +223,8 @@ func _switch_to(target: BoneInstantiator) -> void:
 	head_size = target.skel_sizes_util.head_size
 	char_rigidbody.add_child(player_camera)
 	player_camera.current = true
+	player_camera.position = Vector3.ZERO
+	player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
 	char_rigidbody.is_active = true
 	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 	char_rigidbody.rotation.y = camera_yaw
@@ -345,6 +345,8 @@ func _respawn() -> void:
 	player_camera.get_parent().remove_child(player_camera)
 	char_rigidbody.add_child(player_camera)
 	player_camera.current = true
+	player_camera.position = Vector3.ZERO
+	player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
 
 	if is_instance_valid(_hud):
 		_hud.queue_free()
