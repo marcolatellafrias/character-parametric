@@ -116,8 +116,8 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.side_swing = 0.5
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
-	arch.root_bounciness_min = 0.5
-	arch.root_bounciness_max = 0.5
+	arch.root_bounciness_min = 0.8
+	arch.root_bounciness_max = 0.8
 	arch.step_height_min = 0.4
 	arch.step_height_max = 0.4
 	arch.step_radius_min = 0.5
@@ -240,7 +240,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.fatness = 0.5
 	arch.muscularity = 0.4
 	arch.has_neck = true
-	arch.height = 2.2
+	arch.height = 2.1
 	arch.neck_to_head_proportion = 0.2
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55

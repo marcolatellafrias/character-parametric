@@ -100,15 +100,32 @@ func _input(event: InputEvent) -> void:
 			if target_bi and target_bi != char_rigidbody.get_parent():
 				_switch_to(target_bi)
 
+	if event is InputEventKey and event.pressed and event.keycode == KEY_G:
+		_toggle_ragdoll()
+
 	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
 		_respawn()
 
 func _physics_process(_delta: float) -> void:
 	if not is_ready:
 		return
+
+	var bi := char_rigidbody.get_parent() as BoneInstantiator
+	var in_ragdoll := is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active
+
 	if is_instance_valid(_hud):
 		var hvel := Vector3(char_rigidbody.linear_velocity.x, 0.0, char_rigidbody.linear_velocity.z)
 		_hud.update_speed(hvel.length())
+
+	if in_ragdoll:
+		if is_instance_valid(bi.ragdoll_util.head_body):
+			var head_rb := bi.ragdoll_util.head_body
+			var target_y: float = head_rb.global_position.y + head_size.y * 0.5
+			var k: float = clamp(_delta * CAMERA_Y_SMOOTH, 0.0, 1.0)
+			camera_y_smooth = lerp(camera_y_smooth, target_y, k)
+			player_camera.global_position = head_rb.global_position
+			player_camera.global_position.y = camera_y_smooth
+		return
 
 	var target_y: float = head_bone.global_position.y + head_size.y * 0.5
 	var k: float = clamp(_delta * CAMERA_Y_SMOOTH, 0.0, 1.0)
@@ -125,6 +142,23 @@ func _physics_process(_delta: float) -> void:
 	_apply_grab_torque()
 	if is_instance_valid(_grabbed):
 		_update_curve()
+
+
+func _toggle_ragdoll() -> void:
+	var bi := char_rigidbody.get_parent() as BoneInstantiator
+	if not is_instance_valid(bi) or not is_instance_valid(bi.ragdoll_util):
+		return
+	if bi.ragdoll_util.is_active:
+		bi.ragdoll_util.deactivate(char_rigidbody, bi.custom_bones_util.lower_spine)
+		if player_camera.get_parent() != char_rigidbody:
+			player_camera.get_parent().remove_child(player_camera)
+			char_rigidbody.add_child(player_camera)
+			player_camera.current = true
+		char_rigidbody.rotation.y = camera_yaw
+		camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
+	else:
+		_stop_grab()
+		bi.ragdoll_util.activate(char_rigidbody, bi.custom_bones_util.lower_spine)
 
 
 func _start_grab() -> void:
@@ -178,6 +212,9 @@ func _find_bone_instantiator(node: Node) -> BoneInstantiator:
 
 func _switch_to(target: BoneInstantiator) -> void:
 	var current_bi := char_rigidbody.get_parent() as BoneInstantiator
+	if is_instance_valid(current_bi) and is_instance_valid(current_bi.ragdoll_util) and current_bi.ragdoll_util.is_active:
+		current_bi.ragdoll_util.deactivate(char_rigidbody, current_bi.custom_bones_util.lower_spine)
+
 	player_camera.get_parent().remove_child(player_camera)
 	current_bi.is_active = false
 	current_bi.char_rigidbody.is_active = false
@@ -286,6 +323,9 @@ func _respawn() -> void:
 	var current_bi := char_rigidbody.get_parent() as BoneInstantiator
 	if not current_bi:
 		return
+
+	if is_instance_valid(current_bi.ragdoll_util) and current_bi.ragdoll_util.is_active:
+		current_bi.ragdoll_util.deactivate(char_rigidbody, current_bi.custom_bones_util.lower_spine)
 
 	var prev_position := Vector3(char_rigidbody.global_position.x, 3.0, char_rigidbody.global_position.z)
 	var prev_yaw := camera_yaw

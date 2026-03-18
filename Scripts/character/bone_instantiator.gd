@@ -11,9 +11,9 @@ var skel_sizes_util: SkeletonSizesUtil
 var custom_bones_util: CustomBonesUtil 
 var char_rigidbody : CharacterRigidBody3D
 var ik_util : IkUtil
-# NEW
 var locomotion_signals: LocomotionSignals
 var procedural_animator: ProceduralBoneAnimator
+var ragdoll_util: RagdollUtil
 
 var player_controller: PlayerController
 @onready var global_targets : Node3D = $"global_targets"
@@ -61,21 +61,19 @@ func initialize_skeleton() -> void:
 	locomotion_signals = LocomotionSignals.create(ik_util, char_rigidbody, skel_sizes_util)
 	procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)
 	_register_bone_animations()
+	ragdoll_util = RagdollUtil.create(custom_bones_util, skel_rigidbodies, joints)
 
-# NEW — wire up which bones get animated and how
 func _register_bone_animations() -> void:
 	var PA := ProceduralBoneAnimator	
 	var ls := locomotion_signals
 	
 	var vertical_bobbing := entity_instantiation.root_bounciness
 	var shoulder_swing   := entity_instantiation.shoulder_swing
-	var side_swing   := entity_instantiation.shoulder_swing
 	var hip_swing :=  0.5
 	   
 	var _top_spine_rotation := 0.5 * shoulder_swing
 	var _bottom_spine_rotation := -0.5 * hip_swing
 	
-
 	var right_hip := custom_bones_util.right_hip	
 	var left_hip := custom_bones_util.left_hip		
 	var lower_spine := custom_bones_util.lower_spine
@@ -85,30 +83,22 @@ func _register_bone_animations() -> void:
 	var right_shoulder := custom_bones_util.right_shoulder	
 	var left_shoulder := custom_bones_util.left_shoulder	
 		
-	# HIPS   
-	# Hip Z rotation: el pie que va adelante rota su cadera hacia adelante (ROT_Z en hips)
 	procedural_animator.register(right_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  0.99)
 	procedural_animator.register(left_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, 0.99)
 	procedural_animator.register(right_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.1)
 	procedural_animator.register(left_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  -0.1)
 	
-	# Hip Y rotation: el pie que va adelante empuja su cadera hacia adelante (ROT_Y en hips)
 	var hips_rotation := spine_local_weight(0, 5, _bottom_spine_rotation, _top_spine_rotation)
 	procedural_animator.register(right_hip, PA.Axis.ROT_X, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -hips_rotation)
 	procedural_animator.register(left_hip, PA.Axis.ROT_X, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, hips_rotation)    
 	
-	# LOWER SPINE 
-	# Root Y position: dips down mid-step, scaled by foot spread
 	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_X, vertical_bobbing * -0.14)
 	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_Z, vertical_bobbing * -0.14)
-	
-	#procedural_animator.register(lower_spine, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, 0.05)
 	
 	procedural_animator.register_formula(lower_spine, PA.Axis.ROT_Z,
 		func(): return ls.foot_spread_unified.x * (0.01 + 0.04 * ls.speed_norm),
 		1.0)
 	
-	# Root Y rotation: el pie que va adelante gira la columna en su direccion (ROT_Y en lower_spine)    
 	var lower_spine_rotation := spine_local_weight(1, 5, _bottom_spine_rotation, _top_spine_rotation)
 	procedural_animator.register(lower_spine, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, lower_spine_rotation)
 	
@@ -121,14 +111,17 @@ func _register_bone_animations() -> void:
 	var chest_rotation := spine_local_weight(4, 5, _bottom_spine_rotation, _top_spine_rotation)
 	procedural_animator.register(chest, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, chest_rotation)
 	
-	
 	procedural_animator.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
 	procedural_animator.register(left_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
-	
 
+func _clear_prior_generations() -> void:
+	if is_instance_valid(ragdoll_util):
+		if ragdoll_util.is_active and is_instance_valid(char_rigidbody):
+			char_rigidbody.freeze = false
+			char_rigidbody.collider.disabled = false
+		ragdoll_util.cleanup()
+	ragdoll_util = null
 
-
-func _clear_prior_generations()-> void:
 	for global_target in global_targets.get_children(): 
 		global_target.queue_free()
 	for local_target in local_targets.get_children(): 
@@ -137,25 +130,31 @@ func _clear_prior_generations()-> void:
 		skel_rigidbody.queue_free()
 	for joint in joints.get_children(): 
 		joint.queue_free()
-	if (char_rigidbody):
+	if is_instance_valid(char_rigidbody):
 		char_rigidbody.queue_free()
 	player_camera = null
 
 func _physics_process(_delta: float) -> void:
 	_update_local_targets_positions()
+
+	if is_instance_valid(ragdoll_util) and ragdoll_util.is_active:
+		ragdoll_util.update(_delta)
+		return
+
 	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, true, skel_sizes_util, entity_archetype) 
 	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, false, skel_sizes_util, entity_archetype) 
 	skel_sizes_util.update(_delta, char_rigidbody, entity_instantiation, ik_util)
-	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util,char_rigidbody)
-	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util,char_rigidbody)
-	# NEW — update signals first, then apply bone animations after IK
+	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util, char_rigidbody)
+	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
 	locomotion_signals.update(_delta)
 	procedural_animator.update()
+	if is_instance_valid(ragdoll_util):
+		ragdoll_util.sync_to_bones()
 
-func _update_local_targets_positions()-> void:
+func _update_local_targets_positions() -> void:
 	pass
 	local_targets.global_position = char_rigidbody.global_position
-	local_targets.global_rotation = Vector3(0,char_rigidbody.global_rotation.y,0)
+	local_targets.global_rotation = Vector3(0, char_rigidbody.global_rotation.y, 0)
 
 func spine_local_weight(index: int, count: int, min_rot: float, max_rot: float) -> float:
 	var global_weight := func(i: int) -> float:
