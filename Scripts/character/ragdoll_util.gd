@@ -1,6 +1,8 @@
 class_name RagdollUtil
 extends RefCounted
 
+
+
 const RAGDOLL_LAYER := 2
 const RAGDOLL_MASK  := 1
 
@@ -26,6 +28,8 @@ var _ragdoll_rids: Array[RID] = []
 var _joints: Array[Generic6DOFJoint3D] = []
 var _pending_bodies: Array[RigidBody3D] = []
 var _char_rid: RID
+var _char_rb: CharacterRigidBody3D = null
+var _recovering_char_rb: CharacterRigidBody3D = null
 var _lower_spine_body: RigidBody3D = null
 var _camera: Camera3D = null
 
@@ -99,45 +103,22 @@ func _make_body(bone: CustomBone) -> RigidBody3D:
 func _build_joints() -> void:
     var bu := _bones_util
 
-    # Each entry: [bone_a, bone_b, stiffness, damping, xl, xh, yl, yh, zl, zh]
-    # Angles in degrees, converted below. Asymmetric limits allow hinge-like joints
-    # (knee, elbow) to bend only one way, matching human anatomy.
-    #
-    # Axis mapping (Godot Generic6DOF, joint placed at child bone origin):
-    #   X = twist / side-to-side  Y = primary swing  Z = secondary swing
-    #
-    # Spine: limited twist and side bend, moderate forward/back
-    # Hips:  moderate all axes, anchor for leg chain
-    # Knee:  hinge — large range on Y forward only, tiny on X and Z
-    # Feet:  small all axes
-    # Neck/Head: moderate, more freedom than spine
-    # Shoulder: wide ball joint
-    # Elbow: hinge — large range on Y one direction, tiny on X and Z
     var pairs: Array = [
-        # --- Spine chain ---
-        #                              stiff  damp  xl    xh    yl    yh    zl    zh
         [bu.lower_spine,  bu.middle_spine,    55.0, 6.0, -20.0, 20.0, -30.0, 30.0, -20.0, 20.0],
         [bu.middle_spine, bu.upper_spine,     55.0, 6.0, -20.0, 20.0, -30.0, 30.0, -20.0, 20.0],
         [bu.upper_spine,  bu.chest,           50.0, 6.0, -20.0, 20.0, -25.0, 25.0, -20.0, 20.0],
-        # --- Hips ---
         [bu.lower_spine,  bu.left_hip,        40.0, 5.0, -30.0, 30.0, -40.0, 40.0, -30.0, 30.0],
         [bu.lower_spine,  bu.right_hip,       40.0, 5.0, -30.0, 30.0, -40.0, 40.0, -30.0, 30.0],
-        # --- Upper legs (ball joint at hip) ---
         [bu.left_hip,     bu.left_upper_leg,  35.0, 5.0, -40.0, 40.0, -80.0, 40.0, -30.0, 30.0],
         [bu.right_hip,    bu.right_upper_leg, 35.0, 5.0, -40.0, 40.0, -80.0, 40.0, -30.0, 30.0],
-        # --- Knees (hinge: bends forward only) ---
         [bu.left_upper_leg,  bu.left_lower_leg,  25.0, 4.0, -10.0, 10.0,   0.0, 130.0, -10.0, 10.0],
         [bu.right_upper_leg, bu.right_lower_leg, 25.0, 4.0, -10.0, 10.0,   0.0, 130.0, -10.0, 10.0],
-        # --- Feet ---
         [bu.left_lower_leg,  bu.left_upper_feet,  10.0, 3.0, -20.0, 20.0, -30.0, 30.0, -15.0, 15.0],
         [bu.right_lower_leg, bu.right_upper_feet, 10.0, 3.0, -20.0, 20.0, -30.0, 30.0, -15.0, 15.0],
-        # --- Shoulders (wide ball joint) ---
         [bu.chest, bu.left_shoulder,  35.0, 5.0, -50.0, 50.0, -60.0, 60.0, -40.0, 40.0],
         [bu.chest, bu.right_shoulder, 35.0, 5.0, -50.0, 50.0, -60.0, 60.0, -40.0, 40.0],
-        # --- Upper arms (ball joint at shoulder) ---
         [bu.left_shoulder,  bu.left_upper_arm,  25.0, 4.0, -70.0, 70.0, -70.0, 70.0, -70.0, 70.0],
         [bu.right_shoulder, bu.right_upper_arm, 25.0, 4.0, -70.0, 70.0, -70.0, 70.0, -70.0, 70.0],
-        # --- Elbows (hinge: bends one way only) ---
         [bu.left_upper_arm,  bu.left_lower_arm,  15.0, 3.0, -10.0, 10.0,   0.0, 140.0, -10.0, 10.0],
         [bu.right_upper_arm, bu.right_lower_arm, 15.0, 3.0, -10.0, 10.0,   0.0, 140.0, -10.0, 10.0],
     ]
@@ -226,12 +207,14 @@ func sync_to_bones() -> void:
 
 func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone, camera: Camera3D) -> void:
     if is_recovering:
-        is_recovering   = false
-        _recovery_timer = 0.0
+        is_recovering        = false
+        _recovery_timer      = 0.0
+        _recovering_char_rb  = null
         _recovery_start_transforms.clear()
 
     is_active       = true
     _char_rid       = char_rb.get_rid()
+    _char_rb        = char_rb
     _camera         = camera
     _skeleton_root  = skeleton_root
 
@@ -247,10 +230,7 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone, camera: 
     _build_joints()
 
     if is_instance_valid(_camera):
-        var prev_parent := _camera.get_parent()
-        if prev_parent:
-            prev_parent.remove_child(_camera)
-        _skel_rb_node.add_child(_camera)
+        _camera.reparent(_skel_rb_node, true)
         _camera.current = true
 
     var space   := _skel_rb_node.get_world_3d().direct_space_state
@@ -293,10 +273,12 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone, camera: 
 
 
 func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
-    is_active        = false
-    is_recovering    = true
-    _recovery_timer  = recovery_duration
-    _skeleton_root   = skeleton_root
+    is_active            = false
+    is_recovering        = true
+    _recovery_timer      = recovery_duration
+    _skeleton_root       = skeleton_root
+    _char_rb             = null
+    _recovering_char_rb  = char_rb
     _pending_bodies.clear()
     _clear_joints()
 
@@ -320,13 +302,8 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
     if is_instance_valid(_skeleton_root):
         _skeleton_root.visible = false
 
-    if is_instance_valid(_camera):
-        var prev_parent := _camera.get_parent()
-        if prev_parent:
-            prev_parent.remove_child(_camera)
-        char_rb.add_child(_camera)
-        _camera.current = true
-    _camera = null
+    # Camera stays in _skel_rb_node and keeps following head_body during recovery.
+    # It will be reparented to char_rb in _finish_recovery().
 
 
 func update(delta: float) -> void:
@@ -337,6 +314,9 @@ func update(delta: float) -> void:
 
 
 func _update_active(_delta: float) -> void:
+    if is_instance_valid(_char_rb) and is_instance_valid(_lower_spine_body):
+        _char_rb.global_position = _lower_spine_body.global_position
+
     if is_instance_valid(_camera) and is_instance_valid(head_body):
         _camera.global_position = head_body.global_position
 
@@ -387,6 +367,10 @@ func _update_recovery(delta: float) -> void:
             var local_anim_pos: Vector3 = root_bone.to_local(bone.global_position)
             rb.global_position = root_body.to_global(local_anim_pos)
 
+    # Camera keeps following head throughout recovery
+    if is_instance_valid(_camera) and is_instance_valid(head_body):
+        _camera.global_position = head_body.global_position
+
     if _recovery_timer <= 0.0:
         _finish_recovery()
 
@@ -405,6 +389,13 @@ func _finish_recovery() -> void:
         _skeleton_root.visible = true
     _skeleton_root = null
 
+    # Now that recovery is done, move camera to char_rb where it belongs
+    if is_instance_valid(_camera) and is_instance_valid(_recovering_char_rb):
+        _camera.reparent(_recovering_char_rb, true)
+        _camera.current = true
+    _camera             = null
+    _recovering_char_rb = null
+
 
 func cleanup() -> void:
     is_recovering   = false
@@ -417,10 +408,12 @@ func cleanup() -> void:
             rb.queue_free()
     _bodies.clear()
     _ragdoll_rids.clear()
-    head_body         = null
-    _lower_spine_body = null
-    _camera           = null
-    _skeleton_root    = null
+    head_body           = null
+    _lower_spine_body   = null
+    _char_rb            = null
+    _recovering_char_rb = null
+    _camera             = null
+    _skeleton_root      = null
 
 
 func _find_safe_spawn(char_rb: CharacterRigidBody3D) -> Vector3:

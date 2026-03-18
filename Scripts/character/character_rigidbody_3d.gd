@@ -7,7 +7,7 @@ const SPEED_SCALE := 10.0
 const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
 
-@export var show_mesh := false
+@export var show_mesh := true
 
 var is_active: bool = false
 var collider: CollisionShape3D

@@ -65,7 +65,8 @@ func _get_grab_origin() -> Vector3:
 
 func _is_ragdoll_active() -> bool:
     var bi := char_rigidbody.get_parent() as BoneInstantiator
-    return is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active
+    return is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) \
+        and (bi.ragdoll_util.is_active or bi.ragdoll_util.is_recovering)
 
 func _input(event: InputEvent) -> void:
     if not is_ready:
@@ -120,8 +121,7 @@ func _physics_process(_delta: float) -> void:
         _hud.update_speed(hvel.length())
 
     if _is_ragdoll_active():
-        var bi := char_rigidbody.get_parent() as BoneInstantiator
-        # Camera position is updated in ragdoll_util.update(), rotation handled here
+        camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
         player_camera.rotation.x = camera_pitch
         player_camera.rotation.y = camera_yaw
         return
@@ -150,8 +150,6 @@ func _toggle_ragdoll() -> void:
     if bi.ragdoll_util.is_active:
         bi.ragdoll_util.deactivate(char_rigidbody, bi.custom_bones_util.lower_spine)
         # Restore camera local position/rotation after reparent (deactivate put it back in char_rb)
-        player_camera.position = Vector3.ZERO
-        player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
         char_rigidbody.rotation.y = camera_yaw
         camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
     else:
