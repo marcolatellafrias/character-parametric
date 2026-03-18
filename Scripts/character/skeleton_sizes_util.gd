@@ -81,16 +81,20 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.shoulders_width = new_shoulders_width
 	#TAMAÑO DE HUESOS
 	if entityStats.has_neck:
-		skelSizes.neck_size = Vector3(0.1, new_head_height * 0.4, 0.1)
-		skelSizes.head_size = Vector3(0.2, new_head_height * 0.6, 0.15)
+		var neck_ratio: float = entityStats.head_neck_ratio
+		var neck_radius: float = lerp_range(0.05, 0.12, entityStats.muscularity)
+		var head_radius_xz: float = lerp_range(0.1, 0.2, entityStats.head_circumference)
+		skelSizes.neck_size = Vector3(neck_radius, new_head_height * neck_ratio, neck_radius)
+		skelSizes.head_size = Vector3(head_radius_xz, new_head_height * (1.0 - neck_ratio), head_radius_xz * 0.75)
 	else:
+		var head_radius_xz: float = lerp_range(0.15, 0.32, entityStats.head_circumference)
 		skelSizes.neck_size = Vector3.ZERO
-		skelSizes.head_size = Vector3(0.2, new_head_height, 0.2)
+		skelSizes.head_size = Vector3(head_radius_xz, new_head_height, head_radius_xz * 0.85)
 	skelSizes.head_offset = Vector3(0.8, 1.0,-0.8)
 		
 	#TORSO-------------------------------------------------------------------------
-	var chest_u_radius : float = lerp_range(0.08, 0.45, entityStats.muscularity)
-	var chest_l_radius : float = lerp_range(0.08, 0.45, entityStats.muscularity)
+	var chest_u_radius : float = lerp_range(0.16, 0.45, entityStats.muscularity)
+	var chest_l_radius : float = lerp_range(0.16, 0.45, entityStats.muscularity)
 	var chest_new_offset : float = lerp_range( 0.0, -0.35, entityStats.muscularity)
 	skelSizes.chest_offset = Vector3(0.4, 0.4, chest_new_offset)
 	skelSizes.chest_size = Vector3(chest_u_radius, new_torso_height * 0.25, chest_l_radius)
