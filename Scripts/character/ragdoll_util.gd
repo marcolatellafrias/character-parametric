@@ -9,8 +9,8 @@ var is_recovering: bool = false
 var recovery_duration: float = 0.6
 var debug_ragdoll_color: bool = false
 
-var rest_spring_stiffness: float = 30.0
-var rest_spring_damping: float = 4.0
+var trip_force_multiplier: float = 2.0
+var trip_twist_multiplier: float = 0.5
 
 var _recovery_timer: float = 0.0
 var _skeleton_root: CustomBone = null
@@ -98,30 +98,55 @@ func _make_body(bone: CustomBone) -> RigidBody3D:
 
 func _build_joints() -> void:
     var bu := _bones_util
+
+    # Each entry: [bone_a, bone_b, stiffness, damping, xl, xh, yl, yh, zl, zh]
+    # Angles in degrees, converted below. Asymmetric limits allow hinge-like joints
+    # (knee, elbow) to bend only one way, matching human anatomy.
+    #
+    # Axis mapping (Godot Generic6DOF, joint placed at child bone origin):
+    #   X = twist / side-to-side  Y = primary swing  Z = secondary swing
+    #
+    # Spine: limited twist and side bend, moderate forward/back
+    # Hips:  moderate all axes, anchor for leg chain
+    # Knee:  hinge — large range on Y forward only, tiny on X and Z
+    # Feet:  small all axes
+    # Neck/Head: moderate, more freedom than spine
+    # Shoulder: wide ball joint
+    # Elbow: hinge — large range on Y one direction, tiny on X and Z
     var pairs: Array = [
-        [bu.lower_spine,     bu.middle_spine],
-        [bu.middle_spine,    bu.upper_spine],
-        [bu.upper_spine,     bu.chest],
-        [bu.lower_spine,     bu.left_hip],
-        [bu.lower_spine,     bu.right_hip],
-        [bu.left_hip,        bu.left_upper_leg],
-        [bu.left_upper_leg,  bu.left_lower_leg],
-        [bu.left_lower_leg,  bu.left_upper_feet],
-        [bu.right_hip,       bu.right_upper_leg],
-        [bu.right_upper_leg, bu.right_lower_leg],
-        [bu.right_lower_leg, bu.right_upper_feet],
-        [bu.chest,           bu.left_shoulder],
-        [bu.chest,           bu.right_shoulder],
-        [bu.left_shoulder,   bu.left_upper_arm],
-        [bu.left_upper_arm,  bu.left_lower_arm],
-        [bu.right_shoulder,  bu.right_upper_arm],
-        [bu.right_upper_arm, bu.right_lower_arm],
+        # --- Spine chain ---
+        #                              stiff  damp  xl    xh    yl    yh    zl    zh
+        [bu.lower_spine,  bu.middle_spine,    55.0, 6.0, -20.0, 20.0, -30.0, 30.0, -20.0, 20.0],
+        [bu.middle_spine, bu.upper_spine,     55.0, 6.0, -20.0, 20.0, -30.0, 30.0, -20.0, 20.0],
+        [bu.upper_spine,  bu.chest,           50.0, 6.0, -20.0, 20.0, -25.0, 25.0, -20.0, 20.0],
+        # --- Hips ---
+        [bu.lower_spine,  bu.left_hip,        40.0, 5.0, -30.0, 30.0, -40.0, 40.0, -30.0, 30.0],
+        [bu.lower_spine,  bu.right_hip,       40.0, 5.0, -30.0, 30.0, -40.0, 40.0, -30.0, 30.0],
+        # --- Upper legs (ball joint at hip) ---
+        [bu.left_hip,     bu.left_upper_leg,  35.0, 5.0, -40.0, 40.0, -80.0, 40.0, -30.0, 30.0],
+        [bu.right_hip,    bu.right_upper_leg, 35.0, 5.0, -40.0, 40.0, -80.0, 40.0, -30.0, 30.0],
+        # --- Knees (hinge: bends forward only) ---
+        [bu.left_upper_leg,  bu.left_lower_leg,  25.0, 4.0, -10.0, 10.0,   0.0, 130.0, -10.0, 10.0],
+        [bu.right_upper_leg, bu.right_lower_leg, 25.0, 4.0, -10.0, 10.0,   0.0, 130.0, -10.0, 10.0],
+        # --- Feet ---
+        [bu.left_lower_leg,  bu.left_upper_feet,  10.0, 3.0, -20.0, 20.0, -30.0, 30.0, -15.0, 15.0],
+        [bu.right_lower_leg, bu.right_upper_feet, 10.0, 3.0, -20.0, 20.0, -30.0, 30.0, -15.0, 15.0],
+        # --- Shoulders (wide ball joint) ---
+        [bu.chest, bu.left_shoulder,  35.0, 5.0, -50.0, 50.0, -60.0, 60.0, -40.0, 40.0],
+        [bu.chest, bu.right_shoulder, 35.0, 5.0, -50.0, 50.0, -60.0, 60.0, -40.0, 40.0],
+        # --- Upper arms (ball joint at shoulder) ---
+        [bu.left_shoulder,  bu.left_upper_arm,  25.0, 4.0, -70.0, 70.0, -70.0, 70.0, -70.0, 70.0],
+        [bu.right_shoulder, bu.right_upper_arm, 25.0, 4.0, -70.0, 70.0, -70.0, 70.0, -70.0, 70.0],
+        # --- Elbows (hinge: bends one way only) ---
+        [bu.left_upper_arm,  bu.left_lower_arm,  15.0, 3.0, -10.0, 10.0,   0.0, 140.0, -10.0, 10.0],
+        [bu.right_upper_arm, bu.right_lower_arm, 15.0, 3.0, -10.0, 10.0,   0.0, 140.0, -10.0, 10.0],
     ]
+
     if is_instance_valid(bu.neck):
-        pairs.append([bu.chest, bu.neck])
-        pairs.append([bu.neck,  bu.head])
+        pairs.append([bu.chest, bu.neck, 50.0, 6.0, -35.0, 35.0, -40.0, 40.0, -30.0, 30.0])
+        pairs.append([bu.neck,  bu.head, 45.0, 6.0, -25.0, 25.0, -30.0, 30.0, -20.0, 20.0])
     else:
-        pairs.append([bu.chest, bu.head])
+        pairs.append([bu.chest, bu.head, 45.0, 6.0, -35.0, 35.0, -40.0, 40.0, -30.0, 30.0])
 
     for pair in pairs:
         var pa: CustomBone = pair[0]
@@ -130,10 +155,23 @@ func _build_joints() -> void:
             continue
         if not _bodies.has(pa) or not _bodies.has(ch):
             continue
-        _create_joint(_bodies[pa], _bodies[ch], ch.global_position, pa, ch)
+        _create_joint(
+            _bodies[pa], _bodies[ch], ch.global_position, pa, ch,
+            pair[2], pair[3],
+            deg_to_rad(pair[4]), deg_to_rad(pair[5]),
+            deg_to_rad(pair[6]), deg_to_rad(pair[7]),
+            deg_to_rad(pair[8]), deg_to_rad(pair[9])
+        )
 
 
-func _create_joint(body_a: RigidBody3D, body_b: RigidBody3D, anchor: Vector3, bone_a: CustomBone, bone_b: CustomBone) -> void:
+func _create_joint(
+        body_a: RigidBody3D, body_b: RigidBody3D, anchor: Vector3,
+        bone_a: CustomBone, bone_b: CustomBone,
+        stiffness: float, damping: float,
+        xl: float, xh: float,
+        yl: float, yh: float,
+        zl: float, zh: float) -> void:
+
     var j := Generic6DOFJoint3D.new()
     _joints_node.add_child(j)
     j.global_position = anchor
@@ -150,21 +188,17 @@ func _create_joint(body_a: RigidBody3D, body_b: RigidBody3D, anchor: Vector3, bo
     var ASST := Generic6DOFJoint3D.PARAM_ANGULAR_SPRING_STIFFNESS
     var ASSD := Generic6DOFJoint3D.PARAM_ANGULAR_SPRING_DAMPING
     var AEQ  := Generic6DOFJoint3D.PARAM_ANGULAR_SPRING_EQUILIBRIUM_POINT
-    var lim  := deg_to_rad(60.0)
 
     j.set_flag_x(LF, true); j.set_flag_y(LF, true); j.set_flag_z(LF, true)
-    j.set_param_x(LL, 0.0);  j.set_param_x(LU, 0.0)
-    j.set_param_y(LL, 0.0);  j.set_param_y(LU, 0.0)
-    j.set_param_z(LL, 0.0);  j.set_param_z(LU, 0.0)
+    j.set_param_x(LL, 0.0); j.set_param_x(LU, 0.0)
+    j.set_param_y(LL, 0.0); j.set_param_y(LU, 0.0)
+    j.set_param_z(LL, 0.0); j.set_param_z(LU, 0.0)
 
     j.set_flag_x(AF, true); j.set_flag_y(AF, true); j.set_flag_z(AF, true)
-    j.set_param_x(AL, -lim); j.set_param_x(AU, lim)
-    j.set_param_y(AL, -lim); j.set_param_y(AU, lim)
-    j.set_param_z(AL, -lim); j.set_param_z(AU, lim)
+    j.set_param_x(AL, xl); j.set_param_x(AU, xh)
+    j.set_param_y(AL, yl); j.set_param_y(AU, yh)
+    j.set_param_z(AL, zl); j.set_param_z(AU, zh)
 
-    # The equilibrium offset = rotation needed to go from animated pose (at activation
-    # time, when bodies are synced to bones) to rest pose, expressed in joint space.
-    # Since the joint has no rotation offset, joint space == world space here.
     var rest_basis_a  := Basis.from_euler(bone_a.rest_rotation)
     var rest_basis_b  := Basis.from_euler(bone_b.rest_rotation)
     var rest_relative := rest_basis_a.inverse() * rest_basis_b
@@ -174,12 +208,8 @@ func _create_joint(body_a: RigidBody3D, body_b: RigidBody3D, anchor: Vector3, bo
     var offset_euler  := offset_quat.get_euler()
 
     j.set_flag_x(ASF, true); j.set_flag_y(ASF, true); j.set_flag_z(ASF, true)
-    j.set_param_x(ASST, rest_spring_stiffness)
-    j.set_param_y(ASST, rest_spring_stiffness)
-    j.set_param_z(ASST, rest_spring_stiffness)
-    j.set_param_x(ASSD, rest_spring_damping)
-    j.set_param_y(ASSD, rest_spring_damping)
-    j.set_param_z(ASSD, rest_spring_damping)
+    j.set_param_x(ASST, stiffness); j.set_param_y(ASST, stiffness); j.set_param_z(ASST, stiffness)
+    j.set_param_x(ASSD, damping);   j.set_param_y(ASSD, damping);   j.set_param_z(ASSD, damping)
     j.set_param_x(AEQ, offset_euler.x)
     j.set_param_y(AEQ, offset_euler.y)
     j.set_param_z(AEQ, offset_euler.z)
@@ -250,6 +280,16 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone, camera: 
                 _set_body_mesh_color(rb, Color.GREEN)
             else:
                 _clear_body_mesh_color(rb)
+
+    if is_instance_valid(_lower_spine_body):
+        var vel   := char_rb.linear_velocity
+        var speed := vel.length()
+        if speed > 0.01:
+            var forward      := char_rb.global_basis.z
+            var trip_axis    := forward.cross(Vector3.UP).normalized()
+            var trip_torque  := trip_axis  * speed * trip_force_multiplier
+            var twist_torque := Vector3.UP * speed * trip_twist_multiplier
+            _lower_spine_body.apply_torque_impulse(trip_torque + twist_torque)
 
 
 func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
@@ -328,16 +368,11 @@ func _update_recovery(delta: float) -> void:
     var root_bone: CustomBone  = _bones_util.lower_spine
     var root_body: RigidBody3D = _lower_spine_body
 
-    # Root: lerp position and rotation independently toward the animated skeleton root
     if is_instance_valid(root_body) and is_instance_valid(root_bone):
         var start: Transform3D = _recovery_start_transforms.get(root_bone, root_body.global_transform)
         root_body.global_position = start.origin.lerp(root_bone.global_position, t_eased)
         root_body.global_basis    = start.basis.slerp(root_bone.global_transform.basis, t_eased)
 
-    # All other bodies: lerp rotation only toward the animated bone.
-    # Position is derived by expressing the animated bone's position in the animated
-    # root's local space, then re-applying it to the ragdoll root that's already lerping.
-    # This keeps the whole chain coherent instead of each body floating independently.
     for bone: CustomBone in _bodies:
         if bone == root_bone:
             continue

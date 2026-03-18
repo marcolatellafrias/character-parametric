@@ -210,12 +210,16 @@ func _find_bone_instantiator(node: Node) -> BoneInstantiator:
 
 func _switch_to(target: BoneInstantiator) -> void:
     var current_bi := char_rigidbody.get_parent() as BoneInstantiator
-    if is_instance_valid(current_bi) and is_instance_valid(current_bi.ragdoll_util) and current_bi.ragdoll_util.is_active:
-        current_bi.ragdoll_util.deactivate(char_rigidbody, current_bi.custom_bones_util.lower_spine)
 
     player_camera.get_parent().remove_child(player_camera)
+
+    # Si el ragdoll anterior sigue activo, desvinculamos la camara de el
+    if is_instance_valid(current_bi) and is_instance_valid(current_bi.ragdoll_util):
+        current_bi.ragdoll_util._camera = null
+
+    if not (is_instance_valid(current_bi.ragdoll_util) and current_bi.ragdoll_util.is_active):
+        current_bi.char_rigidbody.is_active = false
     current_bi.is_active = false
-    current_bi.char_rigidbody.is_active = false
 
     target.is_active = true
     char_rigidbody = target.char_rigidbody
