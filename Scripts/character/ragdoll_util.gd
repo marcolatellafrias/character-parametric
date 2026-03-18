@@ -9,6 +9,9 @@ var is_recovering: bool = false
 var recovery_duration: float = 0.6
 var debug_ragdoll_color: bool = false
 
+var rest_spring_stiffness: float = 30.0
+var rest_spring_damping: float = 4.0
+
 var _recovery_timer: float = 0.0
 var _skeleton_root: CustomBone = null
 var _recovery_start_transforms: Dictionary = {}
@@ -127,23 +130,27 @@ func _build_joints() -> void:
             continue
         if not _bodies.has(pa) or not _bodies.has(ch):
             continue
-        _create_joint(_bodies[pa], _bodies[ch], ch.global_position)
+        _create_joint(_bodies[pa], _bodies[ch], ch.global_position, pa, ch)
 
 
-func _create_joint(body_a: RigidBody3D, body_b: RigidBody3D, anchor: Vector3) -> void:
+func _create_joint(body_a: RigidBody3D, body_b: RigidBody3D, anchor: Vector3, bone_a: CustomBone, bone_b: CustomBone) -> void:
     var j := Generic6DOFJoint3D.new()
     _joints_node.add_child(j)
     j.global_position = anchor
     j.node_a = j.get_path_to(body_a)
     j.node_b = j.get_path_to(body_b)
 
-    var LL := Generic6DOFJoint3D.PARAM_LINEAR_LOWER_LIMIT
-    var LU := Generic6DOFJoint3D.PARAM_LINEAR_UPPER_LIMIT
-    var AL := Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT
-    var AU := Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT
-    var LF := Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT
-    var AF := Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT
-    var lim := deg_to_rad(60.0)
+    var LL   := Generic6DOFJoint3D.PARAM_LINEAR_LOWER_LIMIT
+    var LU   := Generic6DOFJoint3D.PARAM_LINEAR_UPPER_LIMIT
+    var AL   := Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT
+    var AU   := Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT
+    var LF   := Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT
+    var AF   := Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT
+    var ASF  := Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_SPRING
+    var ASST := Generic6DOFJoint3D.PARAM_ANGULAR_SPRING_STIFFNESS
+    var ASSD := Generic6DOFJoint3D.PARAM_ANGULAR_SPRING_DAMPING
+    var AEQ  := Generic6DOFJoint3D.PARAM_ANGULAR_SPRING_EQUILIBRIUM_POINT
+    var lim  := deg_to_rad(60.0)
 
     j.set_flag_x(LF, true); j.set_flag_y(LF, true); j.set_flag_z(LF, true)
     j.set_param_x(LL, 0.0);  j.set_param_x(LU, 0.0)
@@ -154,6 +161,28 @@ func _create_joint(body_a: RigidBody3D, body_b: RigidBody3D, anchor: Vector3) ->
     j.set_param_x(AL, -lim); j.set_param_x(AU, lim)
     j.set_param_y(AL, -lim); j.set_param_y(AU, lim)
     j.set_param_z(AL, -lim); j.set_param_z(AU, lim)
+
+    # The equilibrium offset = rotation needed to go from animated pose (at activation
+    # time, when bodies are synced to bones) to rest pose, expressed in joint space.
+    # Since the joint has no rotation offset, joint space == world space here.
+    var rest_basis_a  := Basis.from_euler(bone_a.rest_rotation)
+    var rest_basis_b  := Basis.from_euler(bone_b.rest_rotation)
+    var rest_relative := rest_basis_a.inverse() * rest_basis_b
+    var anim_relative := body_a.global_basis.inverse() * body_b.global_basis
+    var offset_quat   := anim_relative.get_rotation_quaternion().inverse() \
+                        * rest_relative.get_rotation_quaternion()
+    var offset_euler  := offset_quat.get_euler()
+
+    j.set_flag_x(ASF, true); j.set_flag_y(ASF, true); j.set_flag_z(ASF, true)
+    j.set_param_x(ASST, rest_spring_stiffness)
+    j.set_param_y(ASST, rest_spring_stiffness)
+    j.set_param_z(ASST, rest_spring_stiffness)
+    j.set_param_x(ASSD, rest_spring_damping)
+    j.set_param_y(ASSD, rest_spring_damping)
+    j.set_param_z(ASSD, rest_spring_damping)
+    j.set_param_x(AEQ, offset_euler.x)
+    j.set_param_y(AEQ, offset_euler.y)
+    j.set_param_z(AEQ, offset_euler.z)
 
     _joints.append(j)
 
@@ -296,12 +325,32 @@ func _update_recovery(delta: float) -> void:
     var t: float = 1.0 - clamp(_recovery_timer / recovery_duration, 0.0, 1.0)
     var t_eased: float = t * t * (3.0 - 2.0 * t)
 
-    for bone in _bodies:
+    var root_bone: CustomBone  = _bones_util.lower_spine
+    var root_body: RigidBody3D = _lower_spine_body
+
+    # Root: lerp position and rotation independently toward the animated skeleton root
+    if is_instance_valid(root_body) and is_instance_valid(root_bone):
+        var start: Transform3D = _recovery_start_transforms.get(root_bone, root_body.global_transform)
+        root_body.global_position = start.origin.lerp(root_bone.global_position, t_eased)
+        root_body.global_basis    = start.basis.slerp(root_bone.global_transform.basis, t_eased)
+
+    # All other bodies: lerp rotation only toward the animated bone.
+    # Position is derived by expressing the animated bone's position in the animated
+    # root's local space, then re-applying it to the ragdoll root that's already lerping.
+    # This keeps the whole chain coherent instead of each body floating independently.
+    for bone: CustomBone in _bodies:
+        if bone == root_bone:
+            continue
         var rb: RigidBody3D = _bodies[bone]
         if not is_instance_valid(rb) or not is_instance_valid(bone):
             continue
+
         var start: Transform3D = _recovery_start_transforms.get(bone, rb.global_transform)
-        rb.global_transform = start.interpolate_with(bone.global_transform, t_eased)
+        rb.global_basis = start.basis.slerp(bone.global_transform.basis, t_eased)
+
+        if is_instance_valid(root_body) and is_instance_valid(root_bone):
+            var local_anim_pos: Vector3 = root_bone.to_local(bone.global_position)
+            rb.global_position = root_body.to_global(local_anim_pos)
 
     if _recovery_timer <= 0.0:
         _finish_recovery()
@@ -393,7 +442,6 @@ func _set_body_mesh_color(rb: RigidBody3D, color: Color) -> void:
 
 
 func _clear_body_mesh_color(rb: RigidBody3D) -> void:
-    # Find the original bone for this body
     var original_bone: CustomBone = null
     for bone in _bodies:
         if _bodies[bone] == rb:
