@@ -11,7 +11,7 @@ var is_recovering: bool = false
 var recovery_duration: float = 0.6
 var debug_ragdoll_color: bool = false
 
-var trip_force_multiplier: float = 2.0
+var trip_force_multiplier: float = 1.0
 var trip_twist_multiplier: float = 0.5
 
 var _recovery_timer: float = 0.0
@@ -233,11 +233,11 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone, camera: 
         _camera.reparent(_skel_rb_node, true)
         _camera.current = true
 
-    var space   := _skel_rb_node.get_world_3d().direct_space_state
-    var exclude := _make_exclude()
+    var space: PhysicsDirectSpaceState3D = _skel_rb_node.get_world_3d().direct_space_state
+    var exclude: Array[RID]              = _make_exclude()
     _pending_bodies.clear()
 
-    for bone in _bodies:
+    for bone: CustomBone in _bodies:
         var rb: RigidBody3D = _bodies[bone]
         if not is_instance_valid(rb):
             continue
@@ -262,14 +262,52 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone, camera: 
                 _clear_body_mesh_color(rb)
 
     if is_instance_valid(_lower_spine_body):
-        var vel   := char_rb.linear_velocity
-        var speed := vel.length()
-        if speed > 0.01:
-            var forward      := char_rb.global_basis.z
-            var trip_axis    := forward.cross(Vector3.UP).normalized()
-            var trip_torque  := trip_axis  * speed * trip_force_multiplier
-            var twist_torque := Vector3.UP * speed * trip_twist_multiplier
-            _lower_spine_body.apply_torque_impulse(trip_torque + twist_torque)
+        var vel: Vector3     = char_rb.linear_velocity
+        var speed: float     = max(vel.length(), 3.0)
+        var forward: Vector3 = vel.normalized() if vel.length() > 0.1 else -char_rb.global_basis.z
+
+        var base_y: float = _lower_spine_body.global_position.y
+        var top_y: float  = head_body.global_position.y if is_instance_valid(head_body) else base_y + 1.5
+
+        var upper_bones: Array = [
+            _bodies.get(_bones_util.lower_spine,    null),
+            _bodies.get(_bones_util.middle_spine,   null),
+            _bodies.get(_bones_util.upper_spine,    null),
+            _bodies.get(_bones_util.chest,          null),
+            _bodies.get(_bones_util.left_shoulder,  null),
+            _bodies.get(_bones_util.right_shoulder, null),
+            _bodies.get(_bones_util.left_upper_arm, null),
+            _bodies.get(_bones_util.right_upper_arm,null),
+            _bodies.get(_bones_util.neck,           null),
+            _bodies.get(_bones_util.head,           null),
+        ]
+
+        for rb: RigidBody3D in upper_bones:
+            if not is_instance_valid(rb):
+                continue
+            var height_t: float  = clamp((rb.global_position.y - base_y) / max(top_y - base_y, 0.001), 0.0, 1.0)
+            var impulse: Vector3 = (forward + Vector3.UP * height_t * 0.5).normalized() * speed * trip_force_multiplier * (0.3 + height_t * 0.7)
+            rb.apply_central_impulse(impulse)
+
+        var lower_bones: Array = [
+            _bodies.get(_bones_util.left_hip,         null),
+            _bodies.get(_bones_util.right_hip,        null),
+            _bodies.get(_bones_util.left_upper_leg,   null),
+            _bodies.get(_bones_util.right_upper_leg,  null),
+            _bodies.get(_bones_util.left_lower_leg,   null),
+            _bodies.get(_bones_util.right_lower_leg,  null),
+        ]
+
+        for rb: RigidBody3D in lower_bones:
+            if not is_instance_valid(rb):
+                continue
+            var height_t: float  = clamp((rb.global_position.y - base_y) / max(top_y - base_y, 0.001), 0.0, 1.0)
+            var impulse: Vector3 = (-forward - Vector3.UP * 0.3).normalized() * speed * trip_force_multiplier * (0.3 + (1.0 - height_t) * 0.7)
+            rb.apply_central_impulse(impulse)
+
+        var trip_axis: Vector3   = forward.cross(Vector3.UP).normalized()
+        var trip_torque: Vector3 = trip_axis * speed * trip_twist_multiplier
+        _lower_spine_body.apply_torque_impulse(trip_torque)
 
 
 func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
