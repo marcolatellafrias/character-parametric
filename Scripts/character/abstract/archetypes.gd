@@ -48,6 +48,7 @@ var step_height_max : float = 0.5
 var step_radius_min : float = 0.5
 var step_radius_max : float = 0.5
 var leg_cripple_chance : float = 0.0
+var stance_width: float = 1.0
 
 # POSTURE
 var slouch : float = 0.0
@@ -136,11 +137,12 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.neck_to_head_proportion = 0.18
 	arch.chest_to_low_spine_proportion = 0.3
 	arch.legs_to_feet_proportion = 0.4
-	arch.hips_width_proportion = 0.12
+	arch.hips_width_proportion = 0.09
 	arch.shoulder_width_proportion = 0.12
 	arch.distance_from_ground_factor = 0.1
 	arch.head_circumference = 1.0
 	arch.head_neck_ratio = 0.45
+	arch.stance_width = 1.4
 	return arch
 
 static func kid_arch() -> EntityArchetype:
@@ -193,11 +195,12 @@ static func kid_arch() -> EntityArchetype:
 	arch.neck_to_head_proportion = 0.23
 	arch.chest_to_low_spine_proportion = 0.27
 	arch.legs_to_feet_proportion = 0.48
-	arch.hips_width_proportion = 0.1
+	arch.hips_width_proportion = 0.07
 	arch.shoulder_width_proportion = 0.15
 	arch.distance_from_ground_factor = 0.06
 	arch.head_circumference = 0.75
 	arch.head_neck_ratio = 0.5
+	arch.stance_width = 1.4
 	return arch
 
 static func tall_lanky_arch() -> EntityArchetype:
@@ -239,7 +242,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.step_radius_min = 0.4
 	arch.step_radius_max = 0.4
 	arch.leg_cripple_chance = 0.0
-	arch.slouch = 0.4
+	arch.slouch = 0.5
 	arch.shoulders_height = 0.0
 	arch.shoulders_back = 0.0
 	arch.arms_openness = 0.25
@@ -250,11 +253,12 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.neck_to_head_proportion = 0.18
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55
-	arch.hips_width_proportion = 0.065
+	arch.hips_width_proportion = 0.05
 	arch.shoulder_width_proportion = 0.13
 	arch.distance_from_ground_factor = 0.04
 	arch.head_circumference = 0.7
 	arch.head_neck_ratio = 0.45
+	arch.stance_width = 1.4
 	return arch
 
 static func giga_arch() -> EntityArchetype:
@@ -291,8 +295,8 @@ static func giga_arch() -> EntityArchetype:
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 2.0
 	arch.root_bounciness_max = 2.0
-	arch.step_height_min = 0.5
-	arch.step_height_max = 0.5
+	arch.step_height_min = 0.45
+	arch.step_height_max = 0.45
 	arch.step_radius_min = 0.5
 	arch.step_radius_max = 0.5
 	arch.leg_cripple_chance = 0.0
@@ -307,11 +311,12 @@ static func giga_arch() -> EntityArchetype:
 	arch.neck_to_head_proportion = 0.23
 	arch.chest_to_low_spine_proportion = 0.37
 	arch.legs_to_feet_proportion = 0.43
-	arch.hips_width_proportion = 0.08
+	arch.hips_width_proportion = 0.07
 	arch.shoulder_width_proportion = 0.21
-	arch.distance_from_ground_factor = 0.06
+	arch.distance_from_ground_factor = 0.04
 	arch.head_circumference = 1.0
 	arch.head_neck_ratio = 0.5
+	arch.stance_width = 1.3
 	return arch
 
 static func old_arch() -> EntityArchetype:
@@ -364,11 +369,12 @@ static func old_arch() -> EntityArchetype:
 	arch.neck_to_head_proportion = 0.21
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55
-	arch.hips_width_proportion = 0.065
+	arch.hips_width_proportion = 0.052
 	arch.shoulder_width_proportion = 0.11
 	arch.distance_from_ground_factor = 0.03
 	arch.head_circumference = 0.9
 	arch.head_neck_ratio = 0.45
+	arch.stance_width = 1.4
 	return arch
 
 static func max_leg_lenght() -> float:
@@ -428,4 +434,5 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.distance_from_ground_factor   = lerpf(distance_from_ground_factor, b.distance_from_ground_factor, t)
 	r.head_circumference = lerpf(head_circumference, b.head_circumference, t)
 	r.head_neck_ratio = lerpf(head_neck_ratio, b.head_neck_ratio, t)
+	r.stance_width = lerpf(stance_width, b.stance_width, t)
 	return r

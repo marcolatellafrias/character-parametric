@@ -38,6 +38,7 @@ var shoulder_width: Vector3
 var shoulder_offset: Vector3
 var hip_size: Vector3
 var hip_offset: Vector3
+var raycast_stance_offset: float  # offset lateral desde el centro del CharRB a cada raycast
 
 #MISCELANEO: Argumentos de caminata, velocidad y iks, dependiendes de medidas
 
@@ -78,6 +79,7 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.torso_height = new_torso_height
 	skelSizes.head_height = new_head_height
 	skelSizes.hips_width = new_hips_width
+	skelSizes.raycast_stance_offset = new_hips_width * inst.arch_final.stance_width
 	skelSizes.shoulders_width = new_shoulders_width
 	#TAMAÑO DE HUESOS
 	if entityStats.has_neck:
@@ -94,10 +96,10 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 		
 	#TORSO-------------------------------------------------------------------------
 	var chest_u_radius : float = lerp_range(0.16, 0.45, entityStats.muscularity)
-	var chest_l_radius : float = lerp_range(0.16, 0.45, entityStats.muscularity)
+	var chest_l_radius : float = lerp_range(0.16, 0.4, entityStats.muscularity)
 	var chest_new_offset : float = lerp_range( 0.0, -0.35, entityStats.muscularity)
 	skelSizes.chest_offset = Vector3(0.4, 0.4, chest_new_offset)
-	skelSizes.chest_size = Vector3(chest_u_radius, new_torso_height * 0.25, chest_l_radius)
+	skelSizes.chest_size = Vector3(chest_u_radius, new_torso_height * 0.3, chest_l_radius)
 	
 	var upper_spine_u_radius : float = lerp_range(0.1,0.3,entityStats.fatness)
 	var upper_spine_l_radius : float = lerp_range(0.1,0.3,entityStats.fatness)
@@ -113,8 +115,8 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	
 	var lower_spine_u_radius : float = lerp_range(0.1,0.1,entityStats.fatness)
 	var lower_spine_l_radius : float = lerp_range(0.1,0.1,entityStats.fatness)
-	var lower_spine_new_offset : float = lerp_range( 0.0, -0.55, entityStats.fatness)
-	skelSizes.lower_spine_size = Vector3(lower_spine_u_radius, new_torso_height * 0.25, lower_spine_l_radius)
+	var lower_spine_new_offset : float = lerp_range( 0.0, -0.1, entityStats.fatness)
+	skelSizes.lower_spine_size = Vector3(lower_spine_u_radius, new_torso_height * 0.2, lower_spine_l_radius)
 	skelSizes.lower_spine_offset = Vector3(0.0, 0.0, lower_spine_new_offset)
 	
 	#HOMBROS-------------------------------------------------------------------------
@@ -147,8 +149,10 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.upper_feet_size = Vector3(0.1, new_leg_height * 0.2, 0.1)
 	skelSizes.lower_feet_size = Vector3(0.1, new_leg_height * 0.02, 0.1)
 
-	
-	skelSizes.hip_size = Vector3( 0.1, new_hips_width, 0.1)
+	var hip_u_radius : float = lerp_range(0.1,0.2,entityStats.fatness)
+	var hip_l_radius : float = lerp_range(0.1,0.2, entityStats.fatness)	
+	skelSizes.hip_size = Vector3(hip_u_radius, new_hips_width, hip_l_radius)
+
 	skelSizes.hip_offset = Vector3(1.0, 1.0,0.0)
 	
 	

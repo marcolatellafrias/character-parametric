@@ -73,8 +73,8 @@ static func create(sizes: SkeletonSizesUtil, skeleton: BoneInstantiator) -> IkUt
     new_ik_util.right_leg_raycast.add_child(new_ik_util.right_leg_raycast_indicator)
     new_ik_util.left_leg_pole = create_pole(true, sizes, skeleton.local_targets)
     new_ik_util.right_leg_pole = create_pole(false, sizes, skeleton.local_targets)
-    new_ik_util.left_leg_next_target = IkUtil.create_next_target(-sizes.hip_size.y, left_color, sizes.raycast_leg_lenght)
-    new_ik_util.right_leg_next_target = IkUtil.create_next_target(sizes.hip_size.y, right_color, sizes.raycast_leg_lenght)
+    new_ik_util.left_leg_next_target  = IkUtil.create_next_target(-sizes.raycast_stance_offset, left_color,  sizes.raycast_leg_lenght)
+    new_ik_util.right_leg_next_target = IkUtil.create_next_target( sizes.raycast_stance_offset, right_color, sizes.raycast_leg_lenght)
     new_ik_util.left_neutral_local = new_ik_util.left_leg_raycast.transform.origin
     new_ik_util.right_neutral_local = new_ik_util.right_leg_raycast.transform.origin
     new_ik_util.left_leg_current_target = IkUtil.create_ik_target(true, sizes.step_radius_min, sizes.step_radius_max, new_ik_util)
@@ -94,11 +94,12 @@ static func create_pole(left: bool, sizes: SkeletonSizesUtil, local_targets: Nod
 
 static func create_leg_raycast(left: bool, sizes: SkeletonSizesUtil) -> RayCast3D:
     var length := sizes.raycast_leg_lenght
-    var x_offset := -sizes.hip_size.y if left else sizes.hip_size.y
+    var x_offset: float = -sizes.raycast_stance_offset if left else sizes.raycast_stance_offset
     var raycast := RayCast3D.new()
     raycast.target_position = Vector3(0, -length, 0)
     raycast.translate(Vector3(x_offset, 0, 0))
     return raycast
+
 
 static func create_leg_raycast_indicator(sizes: SkeletonSizesUtil) -> MeshInstance3D:
     return DebugUtil.create_debug_line(Color.BLUE, sizes.raycast_leg_lenght)
