@@ -138,7 +138,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.legs_to_feet_proportion = 0.4
 	arch.hips_width_proportion = 0.12
 	arch.shoulder_width_proportion = 0.12
-	arch.distance_from_ground_factor = 0.15
+	arch.distance_from_ground_factor = 0.1
 	arch.head_circumference = 1.0
 	arch.head_neck_ratio = 0.45
 	return arch
@@ -251,7 +251,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55
 	arch.hips_width_proportion = 0.065
-	arch.shoulder_width_proportion = 0.135
+	arch.shoulder_width_proportion = 0.13
 	arch.distance_from_ground_factor = 0.04
 	arch.head_circumference = 0.7
 	arch.head_neck_ratio = 0.45
