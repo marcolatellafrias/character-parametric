@@ -12,14 +12,7 @@ var debug_ragdoll_color: bool = false
 var trip_force_multiplier: float = 1.0
 var trip_twist_multiplier: float = 0.5
 
-# --- Impact fall parameters ---
-# Altura normalizada (0=pies, 1=cabeza) por encima de la cual el golpe se considera "alto"
-# Golpe alto → cuerpo cae en direccion opuesta al impacto (hacia atras)
-# Golpe bajo → cuerpo vuela en la misma direccion del impacto (hacia adelante)
-var impact_high_threshold: float = 0.6
-var impact_fall_linear: float = 4.0
-var impact_fall_torque: float = 3.0
-var impact_fall_frames: int = 2
+var impact_fall_linear: float = 1.5
 
 var _recovery_timer: float = 0.0
 var _skeleton_root: CustomBone = null
@@ -43,10 +36,7 @@ var _camera: Camera3D = null
 var _parent_bone: Dictionary = {}
 var _ordered_bones: Array[CustomBone] = []
 
-# Impact fall state
-var _impact_world_dir: Vector3 = Vector3.ZERO
-var _impact_height_ratio: float = 0.5
-var _impact_frames_remaining: int = 0
+var _momentum_dir: Vector3 = Vector3.ZERO
 
 static func create(bones_util: CustomBonesUtil, skel_rb_node: Node3D, joints_node: Node3D) -> RagdollUtil:
     var ru := RagdollUtil.new()
@@ -55,7 +45,6 @@ static func create(bones_util: CustomBonesUtil, skel_rb_node: Node3D, joints_nod
     ru._bones_util   = bones_util
     ru._build_bodies(bones_util)
     return ru
-
 
 func _build_bodies(bu: CustomBonesUtil) -> void:
     var all_bones: Array = [
@@ -79,7 +68,6 @@ func _build_bodies(bu: CustomBonesUtil) -> void:
 
     _lower_spine_body = _bodies.get(bu.lower_spine, null)
     head_body         = _bodies.get(bu.head, null)
-
 
 func _make_body(bone: CustomBone) -> RigidBody3D:
     var rb := RigidBody3D.new()
@@ -112,7 +100,6 @@ func _make_body(bone: CustomBone) -> RigidBody3D:
             break
 
     return rb
-
 
 func _build_joints() -> void:
     _parent_bone.clear()
@@ -159,7 +146,6 @@ func _build_joints() -> void:
             deg_to_rad(pair[6]), deg_to_rad(pair[7]),
             deg_to_rad(pair[8]), deg_to_rad(pair[9])
         )
-
 
 func _create_joint(
         body_a: RigidBody3D, body_b: RigidBody3D, anchor: Vector3,
@@ -213,13 +199,11 @@ func _create_joint(
 
     _joints.append(j)
 
-
 func sync_to_bones() -> void:
     for bone in _bodies:
         var rb: RigidBody3D = _bodies[bone]
         if is_instance_valid(rb) and is_instance_valid(bone):
             rb.global_transform = bone.global_transform
-
 
 func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone, camera: Camera3D) -> void:
     if is_recovering:
@@ -325,44 +309,25 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone, camera: 
         var trip_torque: Vector3 = trip_axis * speed * trip_twist_multiplier
         _lower_spine_body.apply_torque_impulse(trip_torque)
 
-
-# Activa el ragdoll con direccion y altura de impacto para controlar la caida
 func activate_with_impact(
     char_rb: CharacterRigidBody3D,
     skeleton_root: CustomBone,
     camera: Camera3D,
-    world_dir: Vector3,
-    height_ratio: float
+    world_dir: Vector3
 ) -> void:
+    var vel := char_rb._prev_velocity
+    _momentum_dir = vel.normalized() if vel.length() > 0.1 else -char_rb.global_basis.z
     activate(char_rb, skeleton_root, camera)
-    _impact_world_dir       = world_dir
-    _impact_height_ratio    = height_ratio
-    _impact_frames_remaining = impact_fall_frames
-
+    _apply_impact_fall_impulses()
 
 func _apply_impact_fall_impulses() -> void:
     if not is_instance_valid(_lower_spine_body):
         return
-
-    var base_y: float = _lower_spine_body.global_position.y
-    var top_y: float  = head_body.global_position.y if is_instance_valid(head_body) else base_y + 1.5
-
-    # fall_dir ya encode direccion y magnitud: 0 cerca de spine = sin efecto
-    var fall_dir: Vector3 = _impact_world_dir * _impact_height_ratio
-    var torque_cross := fall_dir.cross(Vector3.UP)
-
     for bone: CustomBone in _bodies:
         var rb: RigidBody3D = _bodies[bone]
         if not is_instance_valid(rb):
             continue
-        var height_t: float = clamp((rb.global_position.y - base_y) / max(top_y - base_y, 0.001), 0.0, 1.0)
-        # Huesos mas lejos del punto de impacto reciben mas fuerza
-        var t_bias: float = (_impact_height_ratio + 1.0) * 0.5
-        var height_weight: float = 0.3 + lerp(1.0 - height_t, height_t, t_bias) * 0.7
-        rb.apply_central_impulse(fall_dir * impact_fall_linear * rb.mass * height_weight)
-        if torque_cross.length_squared() > 0.0001:
-            rb.apply_torque_impulse(torque_cross.normalized() * impact_fall_torque * rb.mass * height_weight)
-
+        rb.apply_central_impulse(_momentum_dir * impact_fall_linear * rb.mass)
 
 func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
     is_active            = false
@@ -373,7 +338,6 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
     _recovering_char_rb  = char_rb
     _pending_bodies.clear()
     _clear_joints()
-    _impact_frames_remaining = 0
 
     _recovery_start_transforms.clear()
     for bone: CustomBone in _bodies:
@@ -409,16 +373,11 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
     if is_instance_valid(_skeleton_root):
         _skeleton_root.visible = false
 
-
 func update(delta: float) -> void:
     if is_active:
-        if _impact_frames_remaining > 0:
-            _apply_impact_fall_impulses()
-            _impact_frames_remaining -= 1
         _update_active(delta)
     elif is_recovering:
         _update_recovery(delta)
-
 
 func _update_active(_delta: float) -> void:
     if is_instance_valid(_char_rb) and is_instance_valid(_lower_spine_body):
@@ -445,7 +404,6 @@ func _update_active(_delta: float) -> void:
             else:
                 _clear_body_mesh_color(rb)
     _pending_bodies = still_pending
-
 
 func _update_recovery(delta: float) -> void:
     _recovery_timer -= delta
@@ -474,11 +432,9 @@ func _update_recovery(delta: float) -> void:
 
         if is_instance_valid(parent_rb) and is_instance_valid(parent_bone):
             var parent_start: Transform3D = _recovery_start_transforms.get(parent_bone, parent_rb.global_transform)
-
             var local_start_basis: Basis  = parent_start.basis.inverse() * start.basis
             var local_target_basis: Basis = parent_bone.global_transform.basis.inverse() * bone.global_transform.basis
             rb.global_basis = parent_rb.global_basis * local_start_basis.slerp(local_target_basis, t_eased)
-
             var local_anim_pos: Vector3 = parent_bone.to_local(bone.global_position)
             rb.global_position = parent_rb.to_global(local_anim_pos)
         else:
@@ -492,7 +448,6 @@ func _update_recovery(delta: float) -> void:
 
     if _recovery_timer <= 0.0:
         _finish_recovery()
-
 
 func _finish_recovery() -> void:
     is_recovering = false
@@ -518,7 +473,6 @@ func _finish_recovery() -> void:
     _camera             = null
     _recovering_char_rb = null
 
-
 func cleanup() -> void:
     is_recovering   = false
     _recovery_timer = 0.0
@@ -536,7 +490,6 @@ func cleanup() -> void:
     _recovering_char_rb = null
     _camera             = null
     _skeleton_root      = null
-
 
 func _find_safe_spawn(char_rb: CharacterRigidBody3D) -> Vector3:
     if not is_instance_valid(_lower_spine_body):
@@ -563,13 +516,11 @@ func _find_safe_spawn(char_rb: CharacterRigidBody3D) -> Vector3:
 
     return Vector3(base_pos.x, base_pos.y + 4.0, base_pos.z)
 
-
 func _clear_joints() -> void:
     for j in _joints:
         if is_instance_valid(j):
             j.queue_free()
     _joints.clear()
-
 
 func _set_meshes_visible(value: bool) -> void:
     for bone in _bodies:
@@ -580,7 +531,6 @@ func _set_meshes_visible(value: bool) -> void:
             if child is MeshInstance3D:
                 child.visible = value
 
-
 func _set_body_mesh_color(rb: RigidBody3D, color: Color) -> void:
     for child in rb.get_children():
         if child is MeshInstance3D:
@@ -589,7 +539,6 @@ func _set_body_mesh_color(rb: RigidBody3D, color: Color) -> void:
             mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
             child.material_override = mat
             break
-
 
 func _clear_body_mesh_color(rb: RigidBody3D) -> void:
     var original_bone: CustomBone = null
@@ -608,7 +557,6 @@ func _clear_body_mesh_color(rb: RigidBody3D) -> void:
                 child.material_override = null
             break
 
-
 func _make_exclude() -> Array[RID]:
     var arr: Array[RID] = []
     for rid in _ragdoll_rids:
@@ -616,7 +564,6 @@ func _make_exclude() -> Array[RID]:
     if _char_rid.is_valid():
         arr.append(_char_rid)
     return arr
-
 
 func _is_overlapping(rb: RigidBody3D, space: PhysicsDirectSpaceState3D, exclude: Array[RID]) -> bool:
     var shape_node := rb.get_child(0) as CollisionShape3D

@@ -70,7 +70,7 @@ func _process(delta: float) -> void:
 		return
 	
 	if not generator:
-		print("ERROR: No hay generator")
+		#print("ERROR: No hay generator")
 		return
 	
 	spawn_timer += delta

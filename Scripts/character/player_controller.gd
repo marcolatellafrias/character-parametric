@@ -71,7 +71,7 @@ func _connect_fall_signal(rb: CharacterRigidBody3D) -> void:
             _prev_fall_rb.fall_triggered.disconnect(_impact_debug_hud.notify_fall_triggered)
     _prev_fall_rb = rb
     if is_instance_valid(_impact_debug_hud):
-        rb.fall_triggered.connect(func(_d, _h): _impact_debug_hud.notify_fall_triggered())
+        rb.fall_triggered.connect(func(_d): _impact_debug_hud.notify_fall_triggered())
 
 func _get_grab_origin() -> Vector3:
     return player_camera.global_position
@@ -141,13 +141,17 @@ func _physics_process(_delta: float) -> void:
             char_rigidbody.impact_y,
             char_rigidbody.linear_velocity,
             char_rigidbody._last_impact_world_dir,
-            char_rigidbody._last_contact_height_ratio,
             char_rigidbody.ragdoll_threshold,
             is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active,
             is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_recovering,
             char_rigidbody._last_impact_xz_magnitude,
             max(char_rigidbody.max_speed_forward, char_rigidbody.max_speed_side) * char_rigidbody.sprint_multiplier,
-            char_rigidbody.ragdoll_threshold  # <- nuevo
+            char_rigidbody.ragdoll_threshold,
+            char_rigidbody._snapshot_capture_count,
+            char_rigidbody._snapshot_flag_at_capture,
+            char_rigidbody._snapshot_ragdoll_at_capture,
+            char_rigidbody._snapshot_acc_before,
+            char_rigidbody._snapshot_acc_after
         )
 
     if _is_ragdoll_active():
@@ -187,6 +191,7 @@ func _toggle_ragdoll() -> void:
         camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
     else:
         _stop_grab()
+        char_rigidbody.is_snapshot_active = false
         bi.ragdoll_util.activate(char_rigidbody, bi.custom_bones_util.lower_spine, player_camera)
 
 func _start_grab() -> void:

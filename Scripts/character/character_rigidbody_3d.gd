@@ -29,7 +29,6 @@ var max_speed_side: float = 10.0
 
 var sprint_multiplier: float = 2.0
 
-# --- Stability indicators ---
 var impact_stiffness: float = 25.0
 var impact_damping: float = 6.0
 var impact_xz_scale: float = 0.3
@@ -37,23 +36,28 @@ var impact_y_scale: float = 0.3
 var impact_xz_threshold: float = 1.5
 var impact_y_threshold: float = 2.0
 
-# Radio del circulo de impacto XZ que activa la caida (0.0 - 1.0)
 var ragdoll_threshold: float = 0.85
 
 var velocity_indicator: Vector2 = Vector2.ZERO
 var impact_xz: Vector2 = Vector2.ZERO
 var impact_y: float = 0.0
 
-signal fall_triggered(world_dir: Vector3, height_ratio: float)
+signal fall_triggered(world_dir: Vector3)
 
 var _impact_xz_vel: Vector2 = Vector2.ZERO
 var _impact_y_vel: float = 0.0
 var _prev_velocity: Vector3 = Vector3.ZERO
 var _frame_force: Vector3 = Vector3.ZERO
 
-# El contacto con mayor impulso del frame, actualizado en _integrate_forces
-var _last_contact_height_ratio: float = 0.0 
 var _last_impact_xz_magnitude: float = 0.0
+
+var is_snapshot_active: bool = true
+var _ext_ragdoll_state: int = 0
+var _snapshot_capture_count: int = 0
+var _snapshot_flag_at_capture: bool = false
+var _snapshot_ragdoll_at_capture: int = 0
+var _snapshot_acc_before: float = 0.0
+var _snapshot_acc_after: float = 0.0
 
 func _ready() -> void:
     linear_damp = 0.0
@@ -66,22 +70,6 @@ func _ready() -> void:
     mesh_instance.visible = show_mesh
     contact_monitor = true
     max_contacts_reported = 4
-
-func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
-    var best_impulse := 0.0
-    for i in state.get_contact_count():
-        var imp := state.get_contact_impulse(i).length()
-        if imp > best_impulse:
-            best_impulse = imp
-            var local_pos := state.get_contact_local_position(i)
-            var cap_shape := collider.shape as CapsuleShape3D
-            # El origen del RigidBody es el punto 0 (lower_spine rest), arriba=+1, abajo=-1
-            var cap_top    := collider.position.y + cap_shape.height * 0.5
-            var cap_bottom := collider.position.y - cap_shape.height * 0.5
-            if local_pos.y >= 0.0:
-                _last_contact_height_ratio = clamp(local_pos.y / max(cap_top, 0.001), 0.0, 1.0)
-            else:
-                _last_contact_height_ratio = clamp(local_pos.y / max(-cap_bottom, 0.001), -1.0, 0.0)
 
 func _physics_process(delta: float) -> void:
     _frame_force = Vector3.ZERO
@@ -105,13 +93,21 @@ func _detect_external_impact(delta: float) -> void:
 
     var xz := Vector2(local_impact.x, local_impact.z)
     if xz.length() > impact_xz_threshold:
-        _last_impact_world_dir = (global_transform.basis * Vector3(local_impact.x, 0.0, local_impact.z)).normalized()
-        _last_impact_xz_magnitude = xz.length() * impact_xz_scale
+        var impact_dir_world := (global_transform.basis * Vector3(local_impact.x, 0.0, local_impact.z)).normalized()
+
+        if is_snapshot_active:
+            _last_impact_world_dir = impact_dir_world
+            _last_impact_xz_magnitude = xz.length() * impact_xz_scale
+            _snapshot_flag_at_capture = is_snapshot_active
+            _snapshot_ragdoll_at_capture = _ext_ragdoll_state
+            _snapshot_acc_before = impact_xz.length()
+            _snapshot_capture_count += 1
         impact_xz = (impact_xz + xz * impact_xz_scale).limit_length(1.0)
         _impact_xz_vel = Vector2.ZERO
 
         if impact_xz.length() >= ragdoll_threshold:
-            fall_triggered.emit(_last_impact_world_dir, _last_contact_height_ratio)
+            _snapshot_acc_after = impact_xz.length()
+            fall_triggered.emit(_last_impact_world_dir)
             impact_xz = Vector2.ZERO
             _impact_xz_vel = Vector2.ZERO
 
@@ -121,7 +117,7 @@ func _detect_external_impact(delta: float) -> void:
 
 func _update_velocity_indicator() -> void:
     var local_vel := global_transform.basis.inverse() * linear_velocity
-    var max_vel :float= max(max_speed_forward, max_speed_side) * sprint_multiplier
+    var max_vel: float = max(max_speed_forward, max_speed_side) * sprint_multiplier
     velocity_indicator = (Vector2(local_vel.x, local_vel.z) / max(max_vel, 0.001)).limit_length(1.0)
 
 func _update_impact_pd(delta: float) -> void:
