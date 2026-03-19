@@ -1,4 +1,4 @@
-[gd_scene load_steps=26 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=28 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
@@ -50,6 +50,10 @@ size = Vector3(2, 0.25, 5)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_k27g2"]
 size = Vector3(2, 0.25, 5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_k27g2"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_6aqh6"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_2rq0j"]
 ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -154,7 +158,7 @@ mass = 100.0
 label_text = "100kg"
 
 [node name="StaticBody3D" type="StaticBody3D" parent="world"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -10.382408)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -5.1605434)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="world/StaticBody3D"]
 mesh = SubResource("BoxMesh_v3boh")
@@ -170,6 +174,15 @@ mesh = SubResource("BoxMesh_h3puh")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D2"]
 shape = SubResource("BoxShape3D_k27g2")
+
+[node name="StaticBody3D3" type="StaticBody3D" parent="world"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.182003, -0.24486446, -11.101721)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="world/StaticBody3D3"]
+mesh = SubResource("BoxMesh_k27g2")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D3"]
+shape = SubResource("BoxShape3D_6aqh6")
 
 [node name="chars" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
@@ -218,7 +231,7 @@ current = true
 [node name="city" type="Node3D" parent="."]
 
 [node name="Nave" parent="." instance=ExtResource("12_h3puh")]
-transform = Transform3D(0.44093454, 0, -0.4069112, 0, 0.59999996, 0, 0.4069112, 0, 0.44093454, -11.410902, 0.9780211, -5.9916153)
+transform = Transform3D(0.44093454, 0, -0.4069112, 0, 0.59999996, 0, 0.4069112, 0, 0.44093454, -20.015406, 0.9780211, -4.30853)
 angular_damp_mode = 1
 angular_damp = 1.0
 

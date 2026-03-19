@@ -39,6 +39,7 @@ func initialize_skeleton() -> void:
 	var full_height := skel_sizes_util.leg_height + skel_sizes_util.torso_height + skel_sizes_util.head_height
 	var charRb := Vector3(skel_sizes_util.shoulders_width * 2, full_height, skel_sizes_util.hips_width * 2)
 	char_rigidbody = CharacterRigidBody3D.create(charRb, skel_sizes_util.distance_from_ground, skel_sizes_util.leg_height, is_active, entity_instantiation)
+	char_rigidbody.fall_triggered.connect(_on_fall_triggered)
 	char_rigidbody.add_child(custom_bones_util.lower_spine)
 	add_child(char_rigidbody)
 	local_targets.add_child(ik_util.left_leg_raycast)
@@ -51,17 +52,22 @@ func initialize_skeleton() -> void:
 	local_targets.add_child(ik_util.right_leg_airborne_target)
 	global_targets.add_child(ik_util.left_leg_current_target)
 	global_targets.add_child(ik_util.right_leg_current_target)
-
+ 
 	if is_active and is_instance_valid(player_controller):
 		player_camera = Camera3D.new()
 		player_camera.current = true
 		char_rigidbody.add_child(player_camera)
 		player_controller.setup(char_rigidbody, player_camera, custom_bones_util.head, skel_sizes_util.head_size, entity_instantiation)
-
+ 
 	locomotion_signals = LocomotionSignals.create(ik_util, char_rigidbody, skel_sizes_util)
 	procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)
 	_register_bone_animations()
 	ragdoll_util = RagdollUtil.create(custom_bones_util, skel_rigidbodies, joints)
+ 
+func _on_fall_triggered(world_dir: Vector3, height_ratio: float) -> void:
+	if not is_instance_valid(ragdoll_util) or ragdoll_util.is_active:
+		return
+	ragdoll_util.activate_with_impact(char_rigidbody, custom_bones_util.lower_spine, player_camera, world_dir, height_ratio)
 	
 
 func _register_bone_animations() -> void:

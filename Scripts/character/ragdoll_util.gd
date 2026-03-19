@@ -1,8 +1,6 @@
 class_name RagdollUtil
 extends RefCounted
 
-
-
 const RAGDOLL_LAYER := 2
 const RAGDOLL_MASK  := 1
 
@@ -13,6 +11,15 @@ var debug_ragdoll_color: bool = false
 
 var trip_force_multiplier: float = 1.0
 var trip_twist_multiplier: float = 0.5
+
+# --- Impact fall parameters ---
+# Altura normalizada (0=pies, 1=cabeza) por encima de la cual el golpe se considera "alto"
+# Golpe alto → cuerpo cae en direccion opuesta al impacto (hacia atras)
+# Golpe bajo → cuerpo vuela en la misma direccion del impacto (hacia adelante)
+var impact_high_threshold: float = 0.6
+var impact_fall_linear: float = 4.0
+var impact_fall_torque: float = 3.0
+var impact_fall_frames: int = 2
 
 var _recovery_timer: float = 0.0
 var _skeleton_root: CustomBone = null
@@ -33,8 +40,13 @@ var _recovering_char_rb: CharacterRigidBody3D = null
 var _lower_spine_body: RigidBody3D = null
 var _camera: Camera3D = null
 
-var _parent_bone: Dictionary = {}      # CustomBone -> CustomBone
-var _ordered_bones: Array[CustomBone] = []  # BFS desde root
+var _parent_bone: Dictionary = {}
+var _ordered_bones: Array[CustomBone] = []
+
+# Impact fall state
+var _impact_world_dir: Vector3 = Vector3.ZERO
+var _impact_height_ratio: float = 0.5
+var _impact_frames_remaining: int = 0
 
 static func create(bones_util: CustomBonesUtil, skel_rb_node: Node3D, joints_node: Node3D) -> RagdollUtil:
     var ru := RagdollUtil.new()
@@ -314,6 +326,44 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone, camera: 
         _lower_spine_body.apply_torque_impulse(trip_torque)
 
 
+# Activa el ragdoll con direccion y altura de impacto para controlar la caida
+func activate_with_impact(
+    char_rb: CharacterRigidBody3D,
+    skeleton_root: CustomBone,
+    camera: Camera3D,
+    world_dir: Vector3,
+    height_ratio: float
+) -> void:
+    activate(char_rb, skeleton_root, camera)
+    _impact_world_dir       = world_dir
+    _impact_height_ratio    = height_ratio
+    _impact_frames_remaining = impact_fall_frames
+
+
+func _apply_impact_fall_impulses() -> void:
+    if not is_instance_valid(_lower_spine_body):
+        return
+
+    var base_y: float = _lower_spine_body.global_position.y
+    var top_y: float  = head_body.global_position.y if is_instance_valid(head_body) else base_y + 1.5
+
+    # fall_dir ya encode direccion y magnitud: 0 cerca de spine = sin efecto
+    var fall_dir: Vector3 = _impact_world_dir * _impact_height_ratio
+    var torque_cross := fall_dir.cross(Vector3.UP)
+
+    for bone: CustomBone in _bodies:
+        var rb: RigidBody3D = _bodies[bone]
+        if not is_instance_valid(rb):
+            continue
+        var height_t: float = clamp((rb.global_position.y - base_y) / max(top_y - base_y, 0.001), 0.0, 1.0)
+        # Huesos mas lejos del punto de impacto reciben mas fuerza
+        var t_bias: float = (_impact_height_ratio + 1.0) * 0.5
+        var height_weight: float = 0.3 + lerp(1.0 - height_t, height_t, t_bias) * 0.7
+        rb.apply_central_impulse(fall_dir * impact_fall_linear * rb.mass * height_weight)
+        if torque_cross.length_squared() > 0.0001:
+            rb.apply_torque_impulse(torque_cross.normalized() * impact_fall_torque * rb.mass * height_weight)
+
+
 func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
     is_active            = false
     is_recovering        = true
@@ -323,6 +373,7 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
     _recovering_char_rb  = char_rb
     _pending_bodies.clear()
     _clear_joints()
+    _impact_frames_remaining = 0
 
     _recovery_start_transforms.clear()
     for bone: CustomBone in _bodies:
@@ -333,7 +384,6 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
             rb.collision_layer = 0
             rb.collision_mask  = 0
 
-    # Build topological order (BFS desde root)
     _ordered_bones.clear()
     var root_bone: CustomBone = _bones_util.lower_spine
     var queue: Array[CustomBone] = [root_bone]
@@ -360,9 +410,11 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
         _skeleton_root.visible = false
 
 
-
 func update(delta: float) -> void:
     if is_active:
+        if _impact_frames_remaining > 0:
+            _apply_impact_fall_impulses()
+            _impact_frames_remaining -= 1
         _update_active(delta)
     elif is_recovering:
         _update_recovery(delta)
