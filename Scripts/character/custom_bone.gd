@@ -53,7 +53,7 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	#Añado mesh
 	var bone_mesh_instance := get_bone_mesh(bone.capsule_dimensions, offsets) #DebugUtil.create_debug_colored_cube(bone.capsule_dimensions)
 	var bone_material := StandardMaterial3D.new()
-	bone_material.albedo_color =  Color.WHITE_SMOKE
+	bone_material.albedo_color = new_color
 	bone_mesh_instance.material_override = bone_material
 	bone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	var min_side : float = min(bone.capsule_dimensions.x,bone.capsule_dimensions.z)

@@ -52,6 +52,8 @@ var _last_step_time: float = -1.0
 var _last_step_frame: int = -1
 var _last_step_leg_id: int = -1
 
+var recovery_targets_locked: bool = false
+
 func get_leg_data(left: bool) -> LegData:
     var d := LegData.new()
     d.raycast = left_leg_raycast if left else right_leg_raycast
@@ -214,14 +216,15 @@ func update_ik_raycast(
     var lower_leg := bones.left_lower_leg if left else bones.right_lower_leg
     var step_radius := current_step_radius
 
-    _update_stepping_foot(leg.current_target)
+    if not recovery_targets_locked:
+        _update_stepping_foot(leg.current_target)
     var was_airborne: bool = leg.current_target.get_meta("was_airborne", false)
 
-    var min_raycast_length: float = sizes.raycast_leg_lenght
-    var additional_length: float = sizes.raycast_leg_lenght / 2.0
-    var total_raycast_length: float = min_raycast_length + additional_length
-    leg.raycast.target_position.y = -total_raycast_length
-    var max_raycast_distance: float = leg.raycast.target_position.length()
+    var min_raycast_length: float    = sizes.raycast_leg_lenght
+    var additional_length: float     = sizes.raycast_leg_lenght / 2.0
+    var total_raycast_length: float  = min_raycast_length + additional_length
+    leg.raycast.target_position.y    = -total_raycast_length
+    var max_raycast_distance: float  = leg.raycast.target_position.length()
     var leg_reach_raycast_distance: float = sizes.leg_height
 
     if left:
@@ -232,8 +235,8 @@ func update_ik_raycast(
     leg.raycast.force_raycast_update()
 
     if leg.raycast.is_colliding():
-        var collision_point: Vector3 = leg.raycast.get_collision_point()
-        var collision_distance: float = leg.raycast.global_position.distance_to(collision_point)
+        var collision_point: Vector3    = leg.raycast.get_collision_point()
+        var collision_distance: float   = leg.raycast.global_position.distance_to(collision_point)
 
         if collision_distance >= leg_reach_raycast_distance:
             var t: float = clamp(
@@ -242,52 +245,51 @@ func update_ik_raycast(
             )
             var interpolated_position: Vector3 = collision_point.lerp(leg.airborne_target.global_position, t)
             leg.next_target.global_position = interpolated_position
-            leg.current_target.set_meta("was_airborne", true)
 
-            var dist2: float = (
-                Vector2(leg.next_target.global_position.x, leg.next_target.global_position.z) -
-                Vector2(leg.current_target.global_position.x, leg.current_target.global_position.z)
-            ).length_squared()
+            if not recovery_targets_locked:
+                leg.current_target.set_meta("was_airborne", true)
+                if not _is_stepping(leg.current_target):
+                    _tween_foot_to(leg.current_target, leg.current_target.global_position, interpolated_position, 0.0, sizes.step_height * 0.5)
 
-            _set_leg_measure(left, dist2, false, interpolated_position)
-
-            if not _is_stepping(leg.current_target):
-                _tween_foot_to(leg.current_target, leg.current_target.global_position, interpolated_position, 0.0, sizes.step_height * 0.5)
+            _set_leg_measure(left, 0.0, false, interpolated_position)
         else:
             leg.next_target.global_position = collision_point
 
-            if was_airborne:
-                _clear_step_data(leg.current_target)
-                leg.current_target.global_position = collision_point
-                leg.current_target.set_meta("was_airborne", false)
+            if not recovery_targets_locked:
+                if was_airborne:
+                    _clear_step_data(leg.current_target)
+                    leg.current_target.global_position = collision_point
+                    leg.current_target.set_meta("was_airborne", false)
 
-            var dist2: float = (
-                Vector2(leg.next_target.global_position.x, leg.next_target.global_position.z) -
-                Vector2(leg.current_target.global_position.x, leg.current_target.global_position.z)
-            ).length_squared()
+                var dist2: float = (
+                    Vector2(leg.next_target.global_position.x, leg.next_target.global_position.z) -
+                    Vector2(leg.current_target.global_position.x, leg.current_target.global_position.z)
+                ).length_squared()
 
-            var basis_owner := leg.raycast.get_parent() as Node3D
-            var neutral_world := basis_owner.global_transform * leg.neutral_local
+                var basis_owner    := leg.raycast.get_parent() as Node3D
+                var neutral_world  := basis_owner.global_transform * leg.neutral_local
 
-            var dist2Exp: float = (
-                Vector2(leg.next_target.global_position.x, leg.next_target.global_position.z) -
-                Vector2(neutral_world.x, neutral_world.z)
-            ).length_squared()
+                var dist2Exp: float = (
+                    Vector2(leg.next_target.global_position.x, leg.next_target.global_position.z) -
+                    Vector2(neutral_world.x, neutral_world.z)
+                ).length_squared()
 
-            var step_distance: float = sqrt(dist2Exp)
-            var wants_step: bool = dist2 > (step_radius * step_radius)
-            var step_duration: float = get_step_duration(char_rigidbody, sizes, step_distance)
-            var step_height: float = sizes.step_height * clamp(step_distance / sizes.step_radius_max, 0.1, 1.0)
+                var step_distance: float = sqrt(dist2Exp)
+                var wants_step: bool     = dist2 > (step_radius * step_radius)
+                var step_duration: float = get_step_duration(char_rigidbody, sizes, step_distance)
+                var step_height: float   = sizes.step_height * clamp(step_distance / sizes.step_radius_max, 0.1, 1.0)
 
-            _set_leg_measure(left, dist2, wants_step, collision_point, step_duration, step_height)
+                _set_leg_measure(left, dist2, wants_step, collision_point, step_duration, step_height)
+            else:
+                _set_leg_measure(left, 0.0, false, collision_point)
     else:
+        if not recovery_targets_locked:
+            leg.current_target.set_meta("was_airborne", true)
+            if not _is_stepping(leg.current_target):
+                _tween_foot_to(leg.current_target, leg.current_target.global_position, leg.airborne_target.global_position, 0.0, sizes.step_height)
         _set_leg_measure(left, 0.0, false, leg.airborne_target.global_position)
-        leg.current_target.set_meta("was_airborne", true)
 
-        if not _is_stepping(leg.current_target):
-            _tween_foot_to(leg.current_target, leg.current_target.global_position, leg.airborne_target.global_position, 0.0, sizes.step_height)
-
-    if not left:
+    if not left and not recovery_targets_locked:
         _try_start_farther_leg(0.05, false)
 
     solve_leg_ik(upper_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)

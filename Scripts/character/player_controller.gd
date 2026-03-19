@@ -124,6 +124,11 @@ func _physics_process(_delta: float) -> void:
 		camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 		player_camera.rotation.x = camera_pitch
 		player_camera.rotation.y = camera_yaw
+
+		var bi := char_rigidbody.get_parent() as BoneInstantiator
+		if is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_recovering:
+			char_rigidbody.rotation.y = camera_yaw
+
 		return
 
 	var target_y: float = head_bone.global_position.y + head_size.y * 0.5

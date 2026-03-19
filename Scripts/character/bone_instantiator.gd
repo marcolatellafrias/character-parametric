@@ -138,15 +138,19 @@ func _clear_prior_generations() -> void:
 func _physics_process(_delta: float) -> void:
 	_update_local_targets_positions()
 
-	# Raycasts siempre se actualizan, incluso durante ragdoll,
-	# para que lerpen solos a 0 cuando char_rb está congelado
 	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, true, skel_sizes_util, entity_archetype)
 	ik_util.update_leg_raycast_offsets(char_rigidbody, _delta, false, skel_sizes_util, entity_archetype)
 
 	if is_instance_valid(ragdoll_util):
 		ragdoll_util.update(_delta)
 		if ragdoll_util.is_active:
+			ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util, char_rigidbody)
+			ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
 			return
+		if ragdoll_util.is_recovering and not ik_util.recovery_targets_locked:
+			ik_util.recovery_targets_locked = true
+		elif not ragdoll_util.is_recovering and ik_util.recovery_targets_locked:
+			ik_util.recovery_targets_locked = false
 
 	skel_sizes_util.update(_delta, char_rigidbody, entity_instantiation, ik_util)
 	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util, char_rigidbody)

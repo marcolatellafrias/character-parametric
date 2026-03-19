@@ -8,7 +8,7 @@ const RAGDOLL_MASK  := 1
 
 var is_active: bool = false
 var is_recovering: bool = false
-var recovery_duration: float = 0.6
+var recovery_duration: float = 0.8
 var debug_ragdoll_color: bool = false
 
 var trip_force_multiplier: float = 1.0
@@ -33,6 +33,8 @@ var _recovering_char_rb: CharacterRigidBody3D = null
 var _lower_spine_body: RigidBody3D = null
 var _camera: Camera3D = null
 
+var _parent_bone: Dictionary = {}      # CustomBone -> CustomBone
+var _ordered_bones: Array[CustomBone] = []  # BFS desde root
 
 static func create(bones_util: CustomBonesUtil, skel_rb_node: Node3D, joints_node: Node3D) -> RagdollUtil:
     var ru := RagdollUtil.new()
@@ -101,6 +103,7 @@ func _make_body(bone: CustomBone) -> RigidBody3D:
 
 
 func _build_joints() -> void:
+    _parent_bone.clear()
     var bu := _bones_util
 
     var pairs: Array = [
@@ -136,6 +139,7 @@ func _build_joints() -> void:
             continue
         if not _bodies.has(pa) or not _bodies.has(ch):
             continue
+        _parent_bone[ch] = pa
         _create_joint(
             _bodies[pa], _bodies[ch], ch.global_position, pa, ch,
             pair[2], pair[3],
@@ -321,7 +325,7 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
     _clear_joints()
 
     _recovery_start_transforms.clear()
-    for bone in _bodies:
+    for bone: CustomBone in _bodies:
         var rb: RigidBody3D = _bodies[bone]
         if is_instance_valid(rb):
             _recovery_start_transforms[bone] = rb.global_transform
@@ -329,19 +333,32 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
             rb.collision_layer = 0
             rb.collision_mask  = 0
 
-    var safe_pos := _find_safe_spawn(char_rb)
+    # Build topological order (BFS desde root)
+    _ordered_bones.clear()
+    var root_bone: CustomBone = _bones_util.lower_spine
+    var queue: Array[CustomBone] = [root_bone]
+    var visited: Dictionary = {}
+    while not queue.is_empty():
+        var current: CustomBone = queue.pop_front()
+        if visited.has(current):
+            continue
+        visited[current] = true
+        _ordered_bones.append(current)
+        for child_bone: CustomBone in _parent_bone:
+            if _parent_bone[child_bone] == current and _bodies.has(child_bone):
+                queue.append(child_bone)
+
+    var safe_pos: Vector3 = _find_safe_spawn(char_rb)
     char_rb.global_position   = safe_pos
     char_rb.linear_velocity   = Vector3.ZERO
     char_rb.angular_velocity  = Vector3.ZERO
     char_rb.collider.disabled = false
     char_rb.freeze            = false
-    char_rb.is_active         = true
+    char_rb.is_active         = false
 
     if is_instance_valid(_skeleton_root):
         _skeleton_root.visible = false
 
-    # Camera stays in _skel_rb_node and keeps following head_body during recovery.
-    # It will be reparented to char_rb in _finish_recovery().
 
 
 func update(delta: float) -> void:
@@ -380,32 +397,44 @@ func _update_active(_delta: float) -> void:
 
 func _update_recovery(delta: float) -> void:
     _recovery_timer -= delta
-    var t: float = 1.0 - clamp(_recovery_timer / recovery_duration, 0.0, 1.0)
-    var t_eased: float = t * t * (3.0 - 2.0 * t)
+    var t: float        = 1.0 - clamp(_recovery_timer / recovery_duration, 0.0, 1.0)
+    var t_eased: float  = t * t * (3.0 - 2.0 * t)
 
     var root_bone: CustomBone  = _bones_util.lower_spine
     var root_body: RigidBody3D = _lower_spine_body
 
     if is_instance_valid(root_body) and is_instance_valid(root_bone):
-        var start: Transform3D = _recovery_start_transforms.get(root_bone, root_body.global_transform)
+        var start: Transform3D    = _recovery_start_transforms.get(root_bone, root_body.global_transform)
         root_body.global_position = start.origin.lerp(root_bone.global_position, t_eased)
         root_body.global_basis    = start.basis.slerp(root_bone.global_transform.basis, t_eased)
 
-    for bone: CustomBone in _bodies:
+    for bone: CustomBone in _ordered_bones:
         if bone == root_bone:
             continue
-        var rb: RigidBody3D = _bodies[bone]
+        var rb: RigidBody3D = _bodies.get(bone, null)
         if not is_instance_valid(rb) or not is_instance_valid(bone):
             continue
 
+        var parent_bone: CustomBone  = _parent_bone.get(bone, null)
+        var parent_rb: RigidBody3D   = _bodies.get(parent_bone, null) if is_instance_valid(parent_bone) else null
+
         var start: Transform3D = _recovery_start_transforms.get(bone, rb.global_transform)
-        rb.global_basis = start.basis.slerp(bone.global_transform.basis, t_eased)
 
-        if is_instance_valid(root_body) and is_instance_valid(root_bone):
-            var local_anim_pos: Vector3 = root_bone.to_local(bone.global_position)
-            rb.global_position = root_body.to_global(local_anim_pos)
+        if is_instance_valid(parent_rb) and is_instance_valid(parent_bone):
+            var parent_start: Transform3D = _recovery_start_transforms.get(parent_bone, parent_rb.global_transform)
 
-    # Camera keeps following head throughout recovery
+            var local_start_basis: Basis  = parent_start.basis.inverse() * start.basis
+            var local_target_basis: Basis = parent_bone.global_transform.basis.inverse() * bone.global_transform.basis
+            rb.global_basis = parent_rb.global_basis * local_start_basis.slerp(local_target_basis, t_eased)
+
+            var local_anim_pos: Vector3 = parent_bone.to_local(bone.global_position)
+            rb.global_position = parent_rb.to_global(local_anim_pos)
+        else:
+            rb.global_basis = start.basis.slerp(bone.global_transform.basis, t_eased)
+            if is_instance_valid(root_body) and is_instance_valid(root_bone):
+                var local_anim_pos: Vector3 = root_bone.to_local(bone.global_position)
+                rb.global_position = root_body.to_global(local_anim_pos)
+
     if is_instance_valid(_camera) and is_instance_valid(head_body):
         _camera.global_position = head_body.global_position
 
@@ -417,7 +446,7 @@ func _finish_recovery() -> void:
     is_recovering = false
     _recovery_start_transforms.clear()
     _set_meshes_visible(false)
-    for bone in _bodies:
+    for bone: CustomBone in _bodies:
         var rb: RigidBody3D = _bodies[bone]
         if is_instance_valid(rb) and is_instance_valid(bone):
             rb.global_transform = bone.global_transform
@@ -427,10 +456,13 @@ func _finish_recovery() -> void:
         _skeleton_root.visible = true
     _skeleton_root = null
 
-    # Now that recovery is done, move camera to char_rb where it belongs
     if is_instance_valid(_camera) and is_instance_valid(_recovering_char_rb):
         _camera.reparent(_recovering_char_rb, true)
         _camera.current = true
+
+    if is_instance_valid(_recovering_char_rb):
+        _recovering_char_rb.is_active = true
+
     _camera             = null
     _recovering_char_rb = null
 
