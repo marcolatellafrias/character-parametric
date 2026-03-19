@@ -115,33 +115,34 @@ func _input(event: InputEvent) -> void:
 func _physics_process(_delta: float) -> void:
 	if not is_ready:
 		return
-
+ 
 	if is_instance_valid(_hud):
 		var hvel := Vector3(char_rigidbody.linear_velocity.x, 0.0, char_rigidbody.linear_velocity.z)
 		_hud.update_speed(hvel.length())
-
+		_hud.update_stability(char_rigidbody.velocity_indicator, char_rigidbody.impact_xz, char_rigidbody.impact_y)
+ 
 	if _is_ragdoll_active():
 		camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 		player_camera.rotation.x = camera_pitch
 		player_camera.rotation.y = camera_yaw
-
+ 
 		var bi := char_rigidbody.get_parent() as BoneInstantiator
 		if is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_recovering:
 			char_rigidbody.rotation.y = camera_yaw
-
+ 
 		return
-
+ 
 	var target_y: float = head_bone.global_position.y + head_size.y * 0.5
 	var k: float = clamp(_delta * CAMERA_Y_SMOOTH, 0.0, 1.0)
 	camera_y_smooth = lerp(camera_y_smooth, target_y, k)
 	player_camera.global_position.y = camera_y_smooth
-
+ 
 	char_rigidbody.rotation.y = camera_yaw
-
+ 
 	_process_stamina(_delta)
 	if not is_instance_valid(_grabbed):
 		_process_grab_look()
-
+ 
 	_apply_grab_force()
 	_apply_grab_torque()
 	if is_instance_valid(_grabbed):

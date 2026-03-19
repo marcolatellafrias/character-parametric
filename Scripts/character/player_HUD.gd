@@ -3,6 +3,7 @@ extends CanvasLayer
 
 var _bar_fill: ColorRect
 var _stamina_bar_fill: ColorRect
+var _stability_hud: StabilityHUD
 var _max_speed: float = 1.0
 
 static func create(inst: EntityInstantiation) -> PlayerHUD:
@@ -11,6 +12,7 @@ static func create(inst: EntityInstantiation) -> PlayerHUD:
 	var spec := inst.spec
 	hud._max_speed = arch.speed * spec.speed_forw_multiplier * 10.0 * arch.sprint_multiplier
 
+	# --- Stamina bar ---
 	var stamina_panel := Panel.new()
 	stamina_panel.anchor_left = 0.5
 	stamina_panel.anchor_right = 0.5
@@ -36,6 +38,7 @@ static func create(inst: EntityInstantiation) -> PlayerHUD:
 	hud._stamina_bar_fill = stamina_fill
 	hud.add_child(stamina_panel)
 
+	# --- Speed bar ---
 	var panel := Panel.new()
 	panel.anchor_left = 0.5
 	panel.anchor_right = 0.5
@@ -61,6 +64,23 @@ static func create(inst: EntityInstantiation) -> PlayerHUD:
 	hud._bar_fill = fill
 	hud.add_child(panel)
 
+	# --- Stability indicators ---
+	# Layout: [impacto XZ] [velocidad] [impacto Y]
+	# Posicionado encima de las barras, centrado en pantalla
+	# Control de 180x72 px, offset_top=-140 offset_bottom=-68
+	var stability := StabilityHUD.new()
+	stability.anchor_left = 0.5
+	stability.anchor_right = 0.5
+	stability.anchor_top = 1.0
+	stability.anchor_bottom = 1.0
+	stability.offset_left = -90.0
+	stability.offset_right = 90.0
+	stability.offset_top = -140.0
+	stability.offset_bottom = -68.0
+	hud._stability_hud = stability
+	hud.add_child(stability)
+
+	# --- Stats panel ---
 	var primary_str := str(EntityArchetype.Archetype.keys()[inst.archetype_type])
 	var secondary_str := ""
 	if inst.archetype_blend > 0.0:
@@ -105,6 +125,7 @@ static func create(inst: EntityInstantiation) -> PlayerHUD:
 	label.add_theme_font_size_override("font_size", 13)
 	stats_panel.add_child(label)
 	hud.add_child(stats_panel)
+
 	return hud
 
 func update_speed(current_speed: float) -> void:
@@ -113,3 +134,7 @@ func update_speed(current_speed: float) -> void:
 
 func update_stamina(ratio: float) -> void:
 	_stamina_bar_fill.size.x = ratio * 156.0
+
+func update_stability(v_ind: Vector2, imp_xz: Vector2, imp_y: float) -> void:
+	if is_instance_valid(_stability_hud):
+		_stability_hud.update_stability(v_ind, imp_xz, imp_y)

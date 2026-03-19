@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=26 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
@@ -38,6 +38,18 @@ height = 1.0
 material = ExtResource("5_4i7ud")
 radius = 0.01
 height = 1.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_v3boh"]
+size = Vector3(20, 10, 0.25)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_h3puh"]
+size = Vector3(20, 10, 0.25)
+
+[sub_resource type="BoxMesh" id="BoxMesh_h3puh"]
+size = Vector3(2, 0.25, 5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_k27g2"]
+size = Vector3(2, 0.25, 5)
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_2rq0j"]
 ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -116,7 +128,7 @@ shadow_enabled = true
 directional_shadow_max_distance = 250.0
 
 [node name="DebugBoxes" type="Node3D" parent="world"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3.580421)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18, 0, -20.580421)
 
 [node name="OneKGBox" parent="world/DebugBoxes" instance=ExtResource("7_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.806255, 0.9564251, 6.700369)
@@ -135,6 +147,29 @@ label_text = "10kg"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1937451, 0.9564251, 6.700369)
 mass = 20.0
 label_text = "20kg"
+
+[node name="ThousandKGBox2" parent="world/DebugBoxes" instance=ExtResource("7_h3puh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.1937451, 0.9564251, 6.700369)
+mass = 100.0
+label_text = "100kg"
+
+[node name="StaticBody3D" type="StaticBody3D" parent="world"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -10.382408)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="world/StaticBody3D"]
+mesh = SubResource("BoxMesh_v3boh")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D"]
+shape = SubResource("BoxShape3D_h3puh")
+
+[node name="StaticBody3D2" type="StaticBody3D" parent="world"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 1.8712816, -13)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="world/StaticBody3D2"]
+mesh = SubResource("BoxMesh_h3puh")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D2"]
+shape = SubResource("BoxShape3D_k27g2")
 
 [node name="chars" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
