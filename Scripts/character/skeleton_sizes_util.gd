@@ -51,18 +51,19 @@ const raycast_accel_gain := 0.06
 const raycast_vel_gain   := 0.02
 const raycast_smooth     := 8.0
 
-# Rotaciones de la cadena (movidas desde CustomBonesUtil)
 var slouchiness_chest: float
 var slouchiness_center_spine: float
 var slouchiness_neck: float
 var shoulder_height: float
 var shoulder_back: float
-var upper_arms_openness: float
-var lower_arms_openness: float
 
-# Posición del tip del lower arm en espacio local del char_rigidbody, en rest
+var arm_openness_angle: float
+var arm_bentness: float
+var elbow_pole_direction: float
 var left_arm_tip_rest_local: Vector3
 var right_arm_tip_rest_local: Vector3
+var left_arm_pole_rest_local: Vector3
+var right_arm_pole_rest_local: Vector3
 
 
 static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
@@ -160,60 +161,64 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.pole_distance = new_leg_height
 	skelSizes.raycast_max_offset = new_leg_height * 0.20
 
-	# Rotaciones — fuente de verdad para CustomBonesUtil y FK
 	skelSizes.slouchiness_chest        = lerp_range(0.0, 0.6, entityStats.slouch)
 	skelSizes.slouchiness_center_spine = lerp_range(0.0, 0.6, entityStats.slouch)
 	skelSizes.slouchiness_neck         = lerp_range(0.2, 0.6, entityStats.slouch)
 	skelSizes.shoulder_height          = lerp_range(-0.3, 0.3, entityStats.shoulders_height)
 	skelSizes.shoulder_back            = lerp_range(0.0, 0.3, entityStats.shoulders_back)
-	skelSizes.upper_arms_openness      = lerp_range(0.0, 0.6, entityStats.arms_openness)
-	skelSizes.lower_arms_openness      = lerp_range(0.0, 0.3, entityStats.arms_openness)
 
-	skelSizes.left_arm_tip_rest_local  = _compute_arm_tip_local(true,  skelSizes)
-	skelSizes.right_arm_tip_rest_local = _compute_arm_tip_local(false, skelSizes)
+	skelSizes.arm_openness_angle   = lerp_range(0.0, -PI * 0.25, entityStats.arm_openness)
+	skelSizes.arm_bentness         = entityStats.arm_bentness
+	skelSizes.elbow_pole_direction = entityStats.arm_shoulder_openness
+
+	skelSizes.left_arm_tip_rest_local   = _compute_arm_tip_local(true,  skelSizes)
+	skelSizes.right_arm_tip_rest_local  = _compute_arm_tip_local(false, skelSizes)
+	skelSizes.left_arm_pole_rest_local  = _compute_arm_pole_local(true,  skelSizes)
+	skelSizes.right_arm_pole_rest_local = _compute_arm_pole_local(false, skelSizes)
 
 	return skelSizes
 
 
-static func _compute_arm_tip_local(left: bool, s: SkeletonSizesUtil) -> Vector3:
+static func _compute_arm_shoulder_local(left: bool, s: SkeletonSizesUtil) -> Vector3:
 	var pos := Vector3.ZERO
-
-	# lower_spine: rotation = identity
 	pos += Vector3(0, s.lower_spine_size.y, 0)
-
-	# middle_spine: createFromToUp x_offset = slouchiness_center_spine
 	var b := Basis.from_euler(Vector3(s.slouchiness_center_spine, 0, 0))
 	pos += b * Vector3(0, s.middle_spine_size.y, 0)
-
-	# upper_spine: createFromToUp x=0 z=0
 	pos += Vector3(0, s.upper_spine_size.y, 0)
-
-	# chest: createFromToUp x_offset = -slouchiness_chest
 	b = Basis.from_euler(Vector3(-s.slouchiness_chest, 0, 0))
 	pos += b * Vector3(0, s.chest_size.y, 0)
-
-	# shoulder
-	# left:  createFromToLeft(y=shoulder_back,  z=-shoulder_height) → base (0,0,+90deg) + offset
-	# right: createFromToRight(y=-shoulder_back, z=shoulder_height) → base (0,0,-90deg) + offset
 	if left:
-		b = Basis.from_euler(Vector3(0, s.shoulder_back,  deg_to_rad(90)  - s.shoulder_height))
+		b = Basis.from_euler(Vector3(0, s.shoulder_back, deg_to_rad(90) - s.shoulder_height))
 	else:
 		b = Basis.from_euler(Vector3(0, -s.shoulder_back, deg_to_rad(-90) + s.shoulder_height))
 	pos += b * Vector3(0, s.shoulder_width.y, 0)
-
-	# upper_arm
-	# left:  createFromToDown(z=+upper_arms_openness, x=0) → base (180,0,0) + (0,0,+openness)
-	# right: createFromToDown(z=-upper_arms_openness, x=0) → base (180,0,0) + (0,0,-openness)
-	var ua_openness := s.upper_arms_openness * (1.0 if left else -1.0)
-	b = Basis.from_euler(Vector3(deg_to_rad(180), 0, ua_openness))
-	pos += b * Vector3(0, s.upper_arm_size.y, 0)
-
-	# lower_arm — mismo patrón
-	var la_openness := s.lower_arms_openness * (1.0 if left else -1.0)
-	b = Basis.from_euler(Vector3(deg_to_rad(180), 0, la_openness))
-	pos += b * Vector3(0, s.lower_arm_size.y, 0)
-
 	return pos
+
+static func _compute_arm_tip_local(left: bool, s: SkeletonSizesUtil) -> Vector3:
+	var sign_x := -1.0 if left else 1.0
+	var shoulder := _compute_arm_shoulder_local(left, s)
+	var arm_length := s.upper_arm_size.y + s.lower_arm_size.y \
+		+ 0.4 * s.upper_arm_size.x \
+		+ 0.4 * s.lower_arm_size.z
+	var actual_distance: float = lerp(arm_length, 0.0, s.arm_bentness)
+	var arm_dir := Basis(Vector3.FORWARD, s.arm_openness_angle * sign_x) * Vector3.DOWN
+	return shoulder + arm_dir * actual_distance
+
+static func _compute_arm_pole_local(left: bool, s: SkeletonSizesUtil) -> Vector3:
+	var sign_x := -1.0 if left else 1.0
+	var shoulder := _compute_arm_shoulder_local(left, s)
+	var arm_dir := Basis(Vector3.FORWARD, s.arm_openness_angle * sign_x) * Vector3.DOWN
+	var elbow := shoulder + arm_dir * s.upper_arm_size.y
+
+	var backward := Vector3(0, 0, 1)
+	var outward  := Vector3(sign_x, 0, 0)
+	var pole_dir: Vector3
+	if s.elbow_pole_direction >= 0.5:
+		pole_dir = backward.lerp(outward,  (s.elbow_pole_direction - 0.5) * 2.0).normalized()
+	else:
+		pole_dir = backward.lerp(-outward, (0.5 - s.elbow_pole_direction) * 2.0).normalized()
+
+	return elbow + pole_dir * s.upper_arm_size.y * 0.8 + Vector3(0, 0, 0.5)
 
 
 func update(_delta: float, char_rigidbody: CharacterRigidBody3D, inst: EntityInstantiation, ik_util: IkUtil) -> void:

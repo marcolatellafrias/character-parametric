@@ -54,7 +54,9 @@ var stance_width: float = 1.0
 var slouch : float = 0.0
 var shoulders_height : float = 0.5
 var shoulders_back : float = 0.5
-var arms_openness : float = 0.5
+var arm_openness: float = 0.5
+var arm_bentness: float = 0.3
+var arm_shoulder_openness: float = 0.5
 
 # VISUAL
 var fatness : float = 0.5
@@ -129,7 +131,9 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.slouch = 0.0
 	arch.shoulders_height = 0.8
 	arch.shoulders_back = 0.7
-	arch.arms_openness = 1.0
+	arch.arm_openness = 0.5
+	arch.arm_bentness = 0.0
+	arch.arm_shoulder_openness = 0.5
 	arch.fatness = 1.0
 	arch.muscularity = 0.7
 	arch.has_neck = true
@@ -187,7 +191,9 @@ static func kid_arch() -> EntityArchetype:
 	arch.slouch = 0.0
 	arch.shoulders_height = 0.0
 	arch.shoulders_back = 0.2
-	arch.arms_openness = 0.8
+	arch.arm_openness = 0.0
+	arch.arm_bentness = 1.0
+	arch.arm_shoulder_openness = 0.0
 	arch.fatness = 0.2
 	arch.muscularity = 0.15
 	arch.has_neck = true
@@ -245,7 +251,9 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.slouch = 0.5
 	arch.shoulders_height = 0.0
 	arch.shoulders_back = 0.0
-	arch.arms_openness = 0.25
+	arch.arm_openness = 1.0
+	arch.arm_bentness = 1.0
+	arch.arm_shoulder_openness = 0.0
 	arch.fatness = 0.3
 	arch.muscularity = 0.25
 	arch.has_neck = true
@@ -303,7 +311,9 @@ static func giga_arch() -> EntityArchetype:
 	arch.slouch = 0.0
 	arch.shoulders_height = 1.0
 	arch.shoulders_back = 1.0
-	arch.arms_openness = 0.6
+	arch.arm_openness = 1.0
+	arch.arm_bentness = 1.0
+	arch.arm_shoulder_openness = 0.0
 	arch.fatness = 0.5
 	arch.muscularity = 1.0
 	arch.has_neck = true
@@ -361,7 +371,9 @@ static func old_arch() -> EntityArchetype:
 	arch.slouch = 1.0
 	arch.shoulders_height = 0.5
 	arch.shoulders_back = 0.0
-	arch.arms_openness = 0.5
+	arch.arm_openness = 1.0
+	arch.arm_bentness = 1.0
+	arch.arm_shoulder_openness = 0.0
 	arch.fatness = 0.1
 	arch.muscularity = 0.0
 	arch.has_neck = true
@@ -421,7 +433,6 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.slouch                        = lerpf(slouch, b.slouch, t)
 	r.shoulders_height              = lerpf(shoulders_height, b.shoulders_height, t)
 	r.shoulders_back                = lerpf(shoulders_back, b.shoulders_back, t)
-	r.arms_openness                 = lerpf(arms_openness, b.arms_openness, t)
 	r.fatness                       = lerpf(fatness, b.fatness, t)
 	r.muscularity                   = lerpf(muscularity, b.muscularity, t)
 	r.has_neck                      = has_neck
@@ -435,4 +446,7 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.head_circumference = lerpf(head_circumference, b.head_circumference, t)
 	r.head_neck_ratio = lerpf(head_neck_ratio, b.head_neck_ratio, t)
 	r.stance_width = lerpf(stance_width, b.stance_width, t)
+	r.arm_openness          = lerpf(arm_openness, b.arm_openness, t)
+	r.arm_bentness          = lerpf(arm_bentness, b.arm_bentness, t)
+	r.arm_shoulder_openness = lerpf(arm_shoulder_openness, b.arm_shoulder_openness, t)
 	return r

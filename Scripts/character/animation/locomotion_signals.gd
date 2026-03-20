@@ -14,16 +14,6 @@ var left_foot_local_norm: Vector2 = Vector2.ZERO
 var right_foot_local_norm: Vector2 = Vector2.ZERO
 var speed_norm: float = 0.0
 
-# Posiciones rest de los arm targets y poles en espacio local del rigidbody.
-# Se setean desde BoneInstantiator una vez que sizes está listo.
-var left_arm_rest_local: Vector3 = Vector3.ZERO
-var right_arm_rest_local: Vector3 = Vector3.ZERO
-var left_arm_pole_rest_local: Vector3 = Vector3.ZERO
-var right_arm_pole_rest_local: Vector3 = Vector3.ZERO
-
-# Cuánto se desplazan los targets en Z por unidad de swing (escala proporcional a leg_height)
-const ARM_SWING_FACTOR: float = 0.3
-
 const H_SMOOTH: float = 8.0
 const V_SMOOTH: float = 6.0
 const SPREAD_SMOOTH: float = 10.0
@@ -38,7 +28,6 @@ static func create(ik: IkUtil, rb: CharacterRigidBody3D, sz: SkeletonSizesUtil) 
 func update(delta: float) -> void:
 	_update_step_signals(delta)
 	_update_velocity_signals(delta)
-	_update_arm_targets()
 
 func _update_step_signals(delta: float) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
@@ -94,18 +83,3 @@ func _update_velocity_signals(delta: float) -> void:
 	vertical_velocity_smooth = lerp(vertical_velocity_smooth, vel.y, k_v)
 	var max_speed := sizes.leg_height * 3.0
 	speed_norm = clamp(Vector2(vel.x, vel.z).length() / max_speed, 0.0, 1.0)
-
-func _update_arm_targets() -> void:
-	# foot_spread_unified.y es +1 cuando pie izquierdo está adelante, -1 cuando está atrás.
-	# El brazo izquierdo oscila opuesto al pie izquierdo, y viceversa.
-	var swing := foot_spread_unified.y
-	var rb_transform := char_rigidbody.global_transform
-	var swing_offset := swing * sizes.leg_height * ARM_SWING_FACTOR
-
-	var left_local  := left_arm_rest_local  + Vector3(0.0, 0.0, -swing_offset)
-	var right_local := right_arm_rest_local + Vector3(0.0, 0.0,  swing_offset)
-
-	ik_util.left_arm_ik_target.global_position  = rb_transform * left_local
-	ik_util.right_arm_ik_target.global_position = rb_transform * right_local
-	ik_util.left_arm_pole.global_position  = rb_transform * left_arm_pole_rest_local
-	ik_util.right_arm_pole.global_position = rb_transform * right_arm_pole_rest_local

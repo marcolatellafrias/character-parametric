@@ -46,9 +46,9 @@ static func create(sizes: SkeletonSizesUtil, inst: EntityInstantiation) -> Custo
 	bones_util.left_shoulder  = CustomBone.createFromToLeft(bones_util.chest, sizes.shoulder_width, sizes.shoulder_offset, sizes.shoulder_back, -sizes.shoulder_height, Color.CHOCOLATE, true)
 	bones_util.right_shoulder = CustomBone.createFromToRight(bones_util.chest, sizes.shoulder_width, sizes.shoulder_offset, -sizes.shoulder_back, sizes.shoulder_height, Color.ROYAL_BLUE, true)
 
-	bones_util.right_upper_arm = CustomBone.createFromToDown(bones_util.right_shoulder, sizes.upper_arm_size, sizes.upper_arm_offset, -sizes.upper_arms_openness, 0.0, Color.VIOLET, true)
-	bones_util.left_upper_arm  = CustomBone.createFromToDown(bones_util.left_shoulder,  sizes.upper_arm_size, sizes.upper_arm_offset,  sizes.upper_arms_openness, 0.0, Color.VIOLET, true)
-	bones_util.right_lower_arm = CustomBone.createFromToDown(bones_util.right_upper_arm, sizes.lower_arm_size, sizes.lower_arm_offset, -sizes.lower_arms_openness, 0.0, Color.DEEP_PINK, true)
-	bones_util.left_lower_arm  = CustomBone.createFromToDown(bones_util.left_upper_arm,  sizes.lower_arm_size, sizes.lower_arm_offset,  sizes.lower_arms_openness, 0.0, Color.DEEP_PINK, true)
+	bones_util.right_upper_arm = CustomBone.createFromToDown(bones_util.right_shoulder, sizes.upper_arm_size, sizes.upper_arm_offset, 0.0, 0.0, Color.VIOLET, true)
+	bones_util.left_upper_arm  = CustomBone.createFromToDown(bones_util.left_shoulder,  sizes.upper_arm_size, sizes.upper_arm_offset, 0.0, 0.0, Color.VIOLET, true)
+	bones_util.right_lower_arm = CustomBone.createFromToDown(bones_util.right_upper_arm, sizes.lower_arm_size, sizes.lower_arm_offset, 0.0, 0.0, Color.DEEP_PINK, true)
+	bones_util.left_lower_arm  = CustomBone.createFromToDown(bones_util.left_upper_arm,  sizes.lower_arm_size, sizes.lower_arm_offset, 0.0, 0.0, Color.DEEP_PINK, true)
 
 	return bones_util

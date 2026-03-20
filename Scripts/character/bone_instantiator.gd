@@ -67,12 +67,10 @@ func initialize_skeleton() -> void:
 
 	locomotion_signals = LocomotionSignals.create(ik_util, char_rigidbody, skel_sizes_util)
 
-	var arm_x := skel_sizes_util.shoulders_width
-	var arm_y := skel_sizes_util.torso_height * 0.5
-	locomotion_signals.left_arm_rest_local  = skel_sizes_util.left_arm_tip_rest_local
-	locomotion_signals.right_arm_rest_local = skel_sizes_util.right_arm_tip_rest_local
-	locomotion_signals.left_arm_pole_rest_local  = Vector3(-arm_x, arm_y,  skel_sizes_util.leg_height * 0.5)
-	locomotion_signals.right_arm_pole_rest_local = Vector3( arm_x, arm_y,  skel_sizes_util.leg_height * 0.5)
+	ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
+	ik_util.right_arm_ik_target.position = skel_sizes_util.right_arm_tip_rest_local
+	ik_util.left_arm_pole.position       = skel_sizes_util.left_arm_pole_rest_local
+	ik_util.right_arm_pole.position      = skel_sizes_util.right_arm_pole_rest_local
 
 	procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)
 	_register_bone_animations()
