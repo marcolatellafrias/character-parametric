@@ -42,6 +42,7 @@ func initialize_skeleton() -> void:
 	char_rigidbody.fall_triggered.connect(_on_fall_triggered)
 	char_rigidbody.add_child(custom_bones_util.lower_spine)
 	add_child(char_rigidbody)
+
 	local_targets.add_child(ik_util.left_leg_raycast)
 	local_targets.add_child(ik_util.right_leg_raycast)
 	ik_util.left_leg_raycast.add_exception(char_rigidbody)
@@ -52,24 +53,36 @@ func initialize_skeleton() -> void:
 	local_targets.add_child(ik_util.right_leg_airborne_target)
 	global_targets.add_child(ik_util.left_leg_current_target)
 	global_targets.add_child(ik_util.right_leg_current_target)
- 
+
+	local_targets.add_child(ik_util.left_arm_ik_target)
+	local_targets.add_child(ik_util.right_arm_ik_target)
+	local_targets.add_child(ik_util.left_arm_pole)
+	local_targets.add_child(ik_util.right_arm_pole)
+
 	if is_active and is_instance_valid(player_controller):
 		player_camera = Camera3D.new()
 		player_camera.current = true
 		char_rigidbody.add_child(player_camera)
 		player_controller.setup(char_rigidbody, player_camera, custom_bones_util.head, skel_sizes_util.head_size, entity_instantiation)
- 
+
 	locomotion_signals = LocomotionSignals.create(ik_util, char_rigidbody, skel_sizes_util)
+
+	var arm_x := skel_sizes_util.shoulders_width
+	var arm_y := skel_sizes_util.torso_height * 0.5
+	locomotion_signals.left_arm_rest_local  = skel_sizes_util.left_arm_tip_rest_local
+	locomotion_signals.right_arm_rest_local = skel_sizes_util.right_arm_tip_rest_local
+	locomotion_signals.left_arm_pole_rest_local  = Vector3(-arm_x, arm_y,  skel_sizes_util.leg_height * 0.5)
+	locomotion_signals.right_arm_pole_rest_local = Vector3( arm_x, arm_y,  skel_sizes_util.leg_height * 0.5)
+
 	procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)
 	_register_bone_animations()
 	ragdoll_util = RagdollUtil.create(custom_bones_util, skel_rigidbodies, joints)
- 
+
 func _on_fall_triggered(world_dir: Vector3) -> void:
 	if not is_instance_valid(ragdoll_util) or ragdoll_util.is_active:
 		return
 	char_rigidbody.is_snapshot_active = false
 	ragdoll_util.activate_with_impact(char_rigidbody, custom_bones_util.lower_spine, world_dir)
-	
 
 func _register_bone_animations() -> void:
 	var PA := ProceduralBoneAnimator	
@@ -173,11 +186,16 @@ func _physics_process(_delta: float) -> void:
 	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
 	locomotion_signals.update(_delta)
 	procedural_animator.update()
+
+	ik_util.solve_two_bone_ik(custom_bones_util.left_upper_arm, custom_bones_util.left_lower_arm,
+		ik_util.left_arm_ik_target.global_position, ik_util.left_arm_pole.global_position)
+	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_arm, custom_bones_util.right_lower_arm,
+		ik_util.right_arm_ik_target.global_position, ik_util.right_arm_pole.global_position)
+
 	if is_instance_valid(ragdoll_util) and not ragdoll_util.is_recovering:
 		ragdoll_util.sync_to_bones()
 
 func _update_local_targets_positions() -> void:
-	pass
 	local_targets.global_position = char_rigidbody.global_position
 	local_targets.global_rotation = Vector3(0, char_rigidbody.global_rotation.y, 0)
 
@@ -188,3 +206,20 @@ func spine_local_weight(index: int, count: int, min_rot: float, max_rot: float) 
 		var t := float(i) / float(count - 1)
 		return lerp(max_rot, min_rot, t)
 	return global_weight.call(index) - global_weight.call(index - 1)
+
+
+static func _get_arm_tip_rest_local(left: bool, sizes: SkeletonSizesUtil) -> Vector3:
+	var sign_x := -1.0 if left else 1.0
+
+	# Subida por la columna desde el origen del lower_spine
+	var tip_y := sizes.lower_spine_size.y \
+		+ sizes.middle_spine_size.y \
+		+ sizes.upper_spine_size.y \
+		+ sizes.chest_size.y \
+		- sizes.upper_arm_size.y \
+		- sizes.lower_arm_size.y
+
+	# Ancho lateral: shoulder_width.y es el largo del hueso hombro
+	var tip_x := sign_x * (sizes.shoulder_width.y + sizes.shoulders_width)
+
+	return Vector3(tip_x, tip_y, 0.0)

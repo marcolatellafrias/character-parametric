@@ -37,6 +37,11 @@ var right_leg_airborne_target: Node3D
 var current_step_left_mesh_instance: MeshInstance3D
 var current_step_right_mesh_instance: MeshInstance3D
 
+var left_arm_ik_target: Node3D
+var right_arm_ik_target: Node3D
+var left_arm_pole: Node3D
+var right_arm_pole: Node3D
+
 var _left_dist2: float = 0.0
 var _left_wants_step: bool = false
 var _left_next_pos: Vector3 = Vector3.ZERO
@@ -83,6 +88,10 @@ static func create(sizes: SkeletonSizesUtil, skeleton: BoneInstantiator) -> IkUt
 	new_ik_util.right_leg_current_target = IkUtil.create_ik_target(false, sizes.step_radius_min, sizes.step_radius_max, new_ik_util)
 	new_ik_util.left_leg_airborne_target = IkUtil.create_simple_ik_target(true)
 	new_ik_util.right_leg_airborne_target = IkUtil.create_simple_ik_target(false)
+	new_ik_util.left_arm_ik_target  = IkUtil.create_simple_ik_target(true)
+	new_ik_util.right_arm_ik_target = IkUtil.create_simple_ik_target(false)
+	new_ik_util.left_arm_pole  = IkUtil.create_simple_ik_target(true)
+	new_ik_util.right_arm_pole = IkUtil.create_simple_ik_target(false)
 	return new_ik_util
 
 static func create_pole(left: bool, sizes: SkeletonSizesUtil, local_targets: Node3D) -> Node3D:
@@ -101,7 +110,6 @@ static func create_leg_raycast(left: bool, sizes: SkeletonSizesUtil) -> RayCast3
 	raycast.target_position = Vector3(0, -length, 0)
 	raycast.translate(Vector3(x_offset, 0, 0))
 	return raycast
-
 
 static func create_leg_raycast_indicator(sizes: SkeletonSizesUtil) -> MeshInstance3D:
 	return DebugUtil.create_debug_line(Color.BLUE, sizes.raycast_leg_lenght)
@@ -131,14 +139,13 @@ static func create_ik_target(left: bool, min_radius: float, max_radius: float, i
 		ik_util.current_step_right_mesh_instance = radius_disc
 	return _ik_target
 
-func solve_leg_ik(upper_bone: CustomBone, lower_bone: CustomBone, ik_target: Vector3, pole_target: Vector3) -> void:
+func solve_two_bone_ik(upper_bone: CustomBone, lower_bone: CustomBone, ik_target: Vector3, pole_target: Vector3) -> void:
 	var root_pos: Vector3 = upper_bone.global_position
 	var target_pos: Vector3 = ik_target
 	var upper_len: float = upper_bone.length
 	var lower_len: float = lower_bone.length
 
 	var root_to_target: Vector3 = target_pos - root_pos
-	var total_len: float = root_to_target.length()
 	var clamped_len: float = clamp(root_to_target.length(), 0.001, upper_len + lower_len)
 	var dir_to_target: Vector3 = root_to_target.normalized()
 
@@ -292,7 +299,7 @@ func update_ik_raycast(
 	if not left and not recovery_targets_locked:
 		_try_start_farther_leg(0.05, false)
 
-	solve_leg_ik(upper_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
+	solve_two_bone_ik(upper_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
 
 static func _tween_foot_to(node: Node3D, from_pos: Vector3, to_pos: Vector3, duration: float, step_height: float) -> void:
 	if duration <= 0.0 or from_pos.is_equal_approx(to_pos):
@@ -357,14 +364,8 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	var k: float = clamp(delta * sizes.raycast_smooth, 0.0, 1.0)
 	raycast_offset = raycast_offset.lerp(target_off, k)
 
-	var folded_legs_y_position := sizes.leg_height * 0.5
-	var extended_legs_y_position := sizes.leg_height
-	var falling_max_y_speed := -5.0
-	var jumping_max_y_speed := 1.0
-
 	var y_vel := root_rigidbody.linear_velocity.y
 	var velocity_factor: float = clamp(abs(y_vel) / 5.0, 0.0, 1.0)
-	var target_y_position: float = lerp(sizes.leg_height * 0.5, sizes.leg_height, velocity_factor)
 
 	var transition_start_speed := 0.0
 	var transition_end_speed := -4.0
@@ -376,6 +377,7 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	else:
 		fall_factor = (transition_start_speed - y_vel) / (transition_start_speed - transition_end_speed)
 
+	var target_y_position: float = lerp(sizes.leg_height * 0.5, sizes.leg_height, velocity_factor)
 	var final_xz_offset := (-raycast_offset * 0.3).lerp(raycast_offset, fall_factor)
 
 	leg.raycast.transform.origin = leg.neutral_local + Vector3(raycast_offset.x, 0.0, raycast_offset.y)
