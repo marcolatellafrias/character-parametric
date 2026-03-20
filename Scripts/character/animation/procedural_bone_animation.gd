@@ -9,7 +9,6 @@ enum SignalType {
 	FOOT_SPREAD_UNIFIED_X,
 	FOOT_SPREAD_UNIFIED_Z
 }
-
 enum Axis {
 	ROT_X, ROT_Y, ROT_Z, POS_Y
 }
@@ -24,8 +23,18 @@ class BoneAnimEntry:
 	var rest_signal_value: float = 0.0
 	var rest_local_basis: Basis
 
+class NodeAnimEntry:
+	var node: Node3D
+	var direction: Vector3
+	var driver: Callable
+	var weight: float
+	var curve: Curve
+	var rest_local_position: Vector3
+	var rest_signal_value: float = 0.0
+
 var locomotion_signals: LocomotionSignals
 var _entries: Array = []
+var _node_entries: Array = []
 
 static func create(signals: LocomotionSignals) -> ProceduralBoneAnimator:
 	var a := ProceduralBoneAnimator.new()
@@ -37,6 +46,12 @@ func register(bone: CustomBone, axis: Axis, driver: SignalType, weight: float, c
 
 func register_formula(bone: CustomBone, axis: Axis, formula: Callable, weight: float = 1.0, curve: Curve = null) -> void:
 	_register_internal(bone, axis, formula, weight, curve)
+
+func register_node(node: Node3D, direction: Vector3, driver: SignalType, weight: float, curve: Curve = null) -> void:
+	_register_node_internal(node, direction, func(): return _get_signal_value(driver), weight, curve)
+
+func register_node_formula(node: Node3D, direction: Vector3, formula: Callable, weight: float = 1.0, curve: Curve = null) -> void:
+	_register_node_internal(node, direction, formula, weight, curve)
 
 func _register_internal(bone: CustomBone, axis: Axis, driver_fn: Callable, weight: float, curve: Curve) -> void:
 	var entry := BoneAnimEntry.new()
@@ -50,6 +65,17 @@ func _register_internal(bone: CustomBone, axis: Axis, driver_fn: Callable, weigh
 	entry.rest_local_basis = bone.transform.basis
 	_entries.append(entry)
 
+func _register_node_internal(node: Node3D, direction: Vector3, driver_fn: Callable, weight: float, curve: Curve) -> void:
+	var entry := NodeAnimEntry.new()
+	entry.node = node
+	entry.direction = direction
+	entry.driver = driver_fn
+	entry.weight = weight
+	entry.curve = curve
+	entry.rest_local_position = node.position
+	entry.rest_signal_value = driver_fn.call()
+	_node_entries.append(entry)
+
 func update() -> void:
 	for entry in _entries:
 		entry.bone.position.y = entry.rest_local_position.y
@@ -58,6 +84,13 @@ func update() -> void:
 		var raw: float = entry.driver.call() - entry.rest_signal_value
 		var shaped: float = entry.curve.sample_baked(clamp(raw, 0.0, 1.0)) if entry.curve else raw
 		_apply(entry.bone, entry.axis, shaped * entry.weight, entry)
+
+	for entry in _node_entries:
+		entry.node.position = entry.rest_local_position
+	for entry in _node_entries:
+		var raw: float = entry.driver.call() - entry.rest_signal_value
+		var shaped: float = entry.curve.sample_baked(clamp(raw, 0.0, 1.0)) if entry.curve else raw
+		entry.node.position += entry.direction * shaped * entry.weight
 
 func _get_signal_value(driver: SignalType) -> float:
 	match driver:

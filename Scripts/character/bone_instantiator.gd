@@ -132,6 +132,24 @@ func _register_bone_animations() -> void:
 	
 	procedural_animator.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
 	procedural_animator.register(left_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
+	
+	var arm_swing := 0.5
+	var arm_total := skel_sizes_util.upper_arm_size.y + skel_sizes_util.lower_arm_size.y
+	var z_weight := arm_swing * arm_total
+
+	procedural_animator.register_node(ik_util.left_arm_ik_target,  Vector3.FORWARD, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  z_weight)
+	procedural_animator.register_node(ik_util.right_arm_ik_target, Vector3.FORWARD, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -z_weight)
+
+	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.UP,
+		func():
+			var d := locomotion_signals.foot_spread_unified.y * z_weight
+			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
+		1.0)
+	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.UP,
+		func():
+			var d := locomotion_signals.foot_spread_unified.y * z_weight
+			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
+		1.0)
 
 func _clear_prior_generations() -> void:
 	if is_instance_valid(ragdoll_util):

@@ -169,7 +169,7 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 
 	skelSizes.arm_openness_angle   = lerp_range(0.0, -PI * 0.25, entityStats.arm_openness)
 	skelSizes.arm_bentness         = entityStats.arm_bentness
-	skelSizes.elbow_pole_direction = entityStats.arm_shoulder_openness
+	skelSizes.elbow_pole_direction = entityStats.arm_elbow_openness
 
 	skelSizes.left_arm_tip_rest_local   = _compute_arm_tip_local(true,  skelSizes)
 	skelSizes.right_arm_tip_rest_local  = _compute_arm_tip_local(false, skelSizes)
