@@ -232,6 +232,12 @@ current = true
 
 [node name="Nave" parent="." instance=ExtResource("12_h3puh")]
 transform = Transform3D(0.44093454, 0, -0.4069112, 0, 0.59999996, 0, 0.4069112, 0, 0.44093454, -20.015406, 0.9780211, -4.30853)
+axis_lock_linear_x = true
+axis_lock_linear_y = true
+axis_lock_linear_z = true
+axis_lock_angular_x = true
+axis_lock_angular_y = true
+axis_lock_angular_z = true
 angular_damp_mode = 1
 angular_damp = 1.0
 

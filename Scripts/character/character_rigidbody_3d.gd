@@ -8,7 +8,7 @@ var can_sprint: bool = true
 const SPEED_SCALE := 10.0
 const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
-const JUMP_SCALE := 20.0
+const JUMP_SCALE := 30.0
 
 @export var show_mesh := true
 
@@ -63,6 +63,8 @@ var _snapshot_flag_at_capture: bool = false
 var _snapshot_ragdoll_at_capture: int = 0
 var _snapshot_acc_before: float = 0.0
 var _snapshot_acc_after: float = 0.0
+
+var crouch_speed_factor: float = 1.0
 
 func _ready() -> void:
 	linear_damp = 0.0
@@ -164,6 +166,7 @@ func _apply_movement_force() -> void:
 		var effective_max: float = (fwd_max * abs_fwd + max_speed_side * abs_side) / max(total_input, 0.001)
 		if is_sprinting:
 			effective_max *= sprint_multiplier
+		effective_max *= crouch_speed_factor
 
 		var fwd_accel: float = accel_back if forward_component >= 0.0 else accel_forward
 		var current_accel: float = (fwd_accel * abs_fwd + accel_side * abs_side) / max(total_input, 0.001)
