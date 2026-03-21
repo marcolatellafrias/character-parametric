@@ -277,7 +277,7 @@ static func giga_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
 	arch.strenght = 0.55
 	arch.weight = 120.0
-	arch.speed = 0.25
+	arch.speed = 0.2
 	arch.back_speed_factor = 1.0
 	arch.lateral_speed_factor = 1.0
 	arch.sprint_multiplier = 1.5

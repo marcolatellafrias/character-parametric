@@ -52,6 +52,10 @@ var _prev_fall_rb: CharacterRigidBody3D = null
 
 var _was_ragdoll_active: bool = false
 
+var _is_charging_jump: bool = false
+var _jump_charge: float = 0.0
+var _is_crouched: bool = false
+
 
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
 	char_rigidbody = rb
@@ -67,6 +71,15 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 	_impact_debug_hud = ImpactDebugHUD.create()
 	add_child(_impact_debug_hud)
 	_connect_fall_signal(char_rigidbody)
+
+
+func _get_bi() -> BoneInstantiator:
+	return char_rigidbody.get_parent() as BoneInstantiator
+
+
+func _get_arch() -> EntityArchetype:
+	var bi := _get_bi()
+	return bi.entity_instantiation.arch_final if is_instance_valid(bi) else null
 
 
 func _connect_fall_signal(rb: CharacterRigidBody3D) -> void:
@@ -119,17 +132,26 @@ func _input(event: InputEvent) -> void:
 				if is_instance_valid(_grabbed):
 					_grab_distance = clamp(_grab_distance + 0.3, grab_dist_min, grab_dist_max)
 
-	if event is InputEventKey and event.pressed:
-		match event.keycode:
-			KEY_F:
-				if is_instance_valid(_hovered_rb):
-					var target_bi := _find_bone_instantiator(_hovered_rb)
-					if target_bi and target_bi != char_rigidbody.get_parent():
-						_switch_to(target_bi)
-			KEY_G:
-				_toggle_ragdoll()
-			KEY_R:
-				_respawn()
+	if event is InputEventKey and not event.echo:
+		if event.keycode == KEY_SPACE:
+			if event.pressed and not _is_crouched and char_rigidbody.is_grounded:
+				_is_charging_jump = true
+			elif not event.pressed and _is_charging_jump:
+				_release_jump()
+				_is_charging_jump = false
+		elif event.keycode == KEY_C and event.pressed:
+			_toggle_crouch()
+		elif event.pressed:
+			match event.keycode:
+				KEY_F:
+					if is_instance_valid(_hovered_rb):
+						var target_bi := _find_bone_instantiator(_hovered_rb)
+						if target_bi and target_bi != char_rigidbody.get_parent():
+							_switch_to(target_bi)
+				KEY_G:
+					_toggle_ragdoll()
+				KEY_R:
+					_respawn()
 
 
 func _physics_process(delta: float) -> void:
@@ -138,7 +160,6 @@ func _physics_process(delta: float) -> void:
 
 	var ragdoll_active := _is_ragdoll_active()
 
-	# On ragdoll entry, clear stale hover/grab so F-key works correctly after recovery
 	if ragdoll_active and not _was_ragdoll_active:
 		_stop_grab()
 		_clear_outline()
@@ -181,6 +202,15 @@ func _physics_process(delta: float) -> void:
 	char_rigidbody.rotation.y = camera_yaw
 
 	_process_stamina(delta)
+
+	if _is_charging_jump:
+		if char_rigidbody.is_grounded and not _is_crouched:
+			var arch := _get_arch()
+			_jump_charge = min(_jump_charge + delta, arch.time_to_max_jump)
+			_get_bi().jump_squat_t = _jump_charge / arch.time_to_max_jump
+		else:
+			_cancel_jump_charge()
+
 	if not is_instance_valid(_grabbed):
 		_process_grab_look()
 
@@ -190,8 +220,6 @@ func _physics_process(delta: float) -> void:
 		_update_curve()
 
 
-# PlayerController is the single owner of camera transform during ragdoll.
-# Position comes from head_body (the live physics body), rotation from pitch/yaw.
 func _update_ragdoll_camera(_delta: float) -> void:
 	var rd := _get_ragdoll()
 	if rd != null and is_instance_valid(rd.head_body):
@@ -200,6 +228,43 @@ func _update_ragdoll_camera(_delta: float) -> void:
 
 	if rd != null and rd.is_recovering:
 		char_rigidbody.rotation.y = camera_yaw
+
+
+func _release_jump() -> void:
+	var arch := _get_arch()
+	if arch == null or not char_rigidbody.is_grounded:
+		_cancel_jump_charge()
+		return
+	var t := _jump_charge / arch.time_to_max_jump
+	var max_impulse := arch.jump_strenght * char_rigidbody.mass * CharacterRigidBody3D.JUMP_SCALE
+	char_rigidbody.jump(lerpf(max_impulse * 0.3, max_impulse, t))
+	_cancel_jump_charge()
+
+
+func _cancel_jump_charge() -> void:
+	_jump_charge = 0.0
+	var bi := _get_bi()
+	if is_instance_valid(bi):
+		var tw := create_tween()
+		tw.tween_property(bi, "jump_squat_t", 0.0, 0.08)
+
+
+func _toggle_crouch() -> void:
+	var bi := _get_bi()
+	if not is_instance_valid(bi):
+		return
+	_is_crouched = not _is_crouched
+	if _is_charging_jump:
+		_is_charging_jump = false
+		_jump_charge = 0.0
+	if _is_crouched:
+		var tw := create_tween()
+		tw.tween_property(bi, "crouch_t", 1.0, 0.12)
+		tw.tween_callback(func(): char_rigidbody.set_crouched(true))
+	else:
+		char_rigidbody.set_crouched(false)
+		var tw := create_tween()
+		tw.tween_property(bi, "crouch_t", 0.0, 0.12)
 
 
 func _toggle_ragdoll() -> void:
@@ -212,7 +277,6 @@ func _toggle_ragdoll() -> void:
 		camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 	else:
 		char_rigidbody.is_snapshot_active = false
-		# No camera param — PlayerController manages camera directly
 		bi.ragdoll_util.activate(char_rigidbody, bi.custom_bones_util.lower_spine)
 
 
@@ -280,7 +344,6 @@ func _switch_to(target: BoneInstantiator) -> void:
 	head_bone = target.custom_bones_util.head
 	head_size = target.skel_sizes_util.head_size
 
-	# Camera stays parented to char_rigidbody — just move it to the new one
 	player_camera.get_parent().remove_child(player_camera)
 	char_rigidbody.add_child(player_camera)
 	player_camera.current = true
@@ -290,6 +353,12 @@ func _switch_to(target: BoneInstantiator) -> void:
 	char_rigidbody.rotation.y = camera_yaw
 	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 	_was_ragdoll_active = false
+
+	if _is_crouched:
+		char_rigidbody.set_crouched(false)
+	_is_crouched = false
+	_is_charging_jump = false
+	_jump_charge = 0.0
 
 	if is_instance_valid(_hud):
 		_hud.queue_free()
@@ -412,6 +481,12 @@ func _respawn() -> void:
 	char_rigidbody.rotation.y = camera_yaw
 	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 	_was_ragdoll_active = false
+
+	if _is_crouched:
+		char_rigidbody.set_crouched(false)
+	_is_crouched = false
+	_is_charging_jump = false
+	_jump_charge = 0.0
 
 	player_camera.get_parent().remove_child(player_camera)
 	char_rigidbody.add_child(player_camera)

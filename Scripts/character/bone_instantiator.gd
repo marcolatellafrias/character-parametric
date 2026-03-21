@@ -21,7 +21,18 @@ var player_controller: PlayerController
 @onready var skel_rigidbodies : Node3D = $"skel_rigidbodies"
 @onready var joints : Node3D = $"joints"
 
-var previous_transform : Transform3D 
+var previous_transform : Transform3D
+
+var jump_squat_t: float = 0.0
+var crouch_t: float = 0.0
+var _last_root_z_offset: float = 0.0
+
+const JUMP_SQUAT_Y    := -0.12
+const JUMP_SQUAT_Z    :=  0.05
+const JUMP_SQUAT_TILT :=  0.15
+const CROUCH_Y        := -0.22
+const CROUCH_Z        :=  0.09
+const CROUCH_TILT     :=  0.22
 
 func _ready() -> void:
 	if is_active:
@@ -72,7 +83,6 @@ func initialize_skeleton() -> void:
 	ik_util.left_arm_pole.position       = skel_sizes_util.left_arm_pole_rest_local
 	ik_util.right_arm_pole.position      = skel_sizes_util.right_arm_pole_rest_local
 
-	# bake rest pose into bones so it holds even without per-frame IK
 	ik_util.solve_two_bone_ik(custom_bones_util.left_upper_arm, custom_bones_util.left_lower_arm,
 		ik_util.left_arm_ik_target.global_position, ik_util.left_arm_pole.global_position)
 	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_arm, custom_bones_util.right_lower_arm,
@@ -81,6 +91,10 @@ func initialize_skeleton() -> void:
 	procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)
 	_register_bone_animations()
 	ragdoll_util = RagdollUtil.create(custom_bones_util, skel_rigidbodies, joints)
+
+	jump_squat_t = 0.0
+	crouch_t = 0.0
+	_last_root_z_offset = 0.0
 
 func _on_fall_triggered(world_dir: Vector3) -> void:
 	if not is_instance_valid(ragdoll_util) or ragdoll_util.is_active:
@@ -139,7 +153,6 @@ func _register_bone_animations() -> void:
 	procedural_animator.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
 	procedural_animator.register(left_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
 
-  
 	var tilt_weight := 0.03
 
 	procedural_animator.register(lower_spine, PA.Axis.ROT_X, PA.SignalType.H_VEL_Z, -tilt_weight)
@@ -193,9 +206,6 @@ func _register_bone_animations() -> void:
 			var d := locomotion_signals.foot_spread_unified.y * z_weight
 			return -(arm_total - sqrt(max(0.0, arm_total * arm_total - d * d))),
 		1.0)
-		
-
-
 
 func _clear_prior_generations() -> void:
 	if is_instance_valid(ragdoll_util):
@@ -251,6 +261,7 @@ func _physics_process(_delta: float) -> void:
 	ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
 	ik_util.right_arm_ik_target.position = skel_sizes_util.right_arm_tip_rest_local
 	procedural_animator.update()
+	_apply_root_offsets()
 
 	var rb_basis := custom_bones_util.lower_spine.global_transform.basis
 	var left_anim_offset: Vector3  = ik_util.left_arm_ik_target.position  - skel_sizes_util.left_arm_tip_rest_local
@@ -270,6 +281,17 @@ func _physics_process(_delta: float) -> void:
 	if is_instance_valid(ragdoll_util) and not ragdoll_util.is_recovering:
 		ragdoll_util.sync_to_bones()
 
+func _apply_root_offsets() -> void:
+	var y    := JUMP_SQUAT_Y    * jump_squat_t + CROUCH_Y    * crouch_t
+	var z    := JUMP_SQUAT_Z    * jump_squat_t + CROUCH_Z    * crouch_t
+	var tilt := JUMP_SQUAT_TILT * jump_squat_t + CROUCH_TILT * crouch_t
+	var spine := custom_bones_util.lower_spine
+	spine.position.z -= _last_root_z_offset
+	spine.position.z += z
+	_last_root_z_offset = z
+	spine.position.y += y
+	spine.transform.basis *= Basis(Vector3.RIGHT, -tilt)
+
 func _update_local_targets_positions() -> void:
 	local_targets.global_position = char_rigidbody.global_position
 	local_targets.global_rotation = Vector3(0, char_rigidbody.global_rotation.y, 0)
@@ -282,19 +304,13 @@ func spine_local_weight(index: int, count: int, min_rot: float, max_rot: float) 
 		return lerp(max_rot, min_rot, t)
 	return global_weight.call(index) - global_weight.call(index - 1)
 
-
 static func _get_arm_tip_rest_local(left: bool, sizes: SkeletonSizesUtil) -> Vector3:
 	var sign_x := -1.0 if left else 1.0
-
-	# Subida por la columna desde el origen del lower_spine
 	var tip_y := sizes.lower_spine_size.y \
 		+ sizes.middle_spine_size.y \
 		+ sizes.upper_spine_size.y \
 		+ sizes.chest_size.y \
 		- sizes.upper_arm_size.y \
 		- sizes.lower_arm_size.y
-
-	# Ancho lateral: shoulder_width.y es el largo del hueso hombro
 	var tip_x := sign_x * (sizes.shoulder_width.y + sizes.shoulders_width)
-
 	return Vector3(tip_x, tip_y, 0.0)

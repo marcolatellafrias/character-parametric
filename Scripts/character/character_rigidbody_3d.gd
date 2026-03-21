@@ -8,12 +8,17 @@ var can_sprint: bool = true
 const SPEED_SCALE := 10.0
 const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
+const JUMP_SCALE := 20.0
 
-@export var show_mesh := false
+@export var show_mesh := true
 
 var is_active: bool = false
+var is_grounded: bool = false
 var collider: CollisionShape3D
 var mesh_instance: MeshInstance3D
+
+var _capsule_stand_height: float = 0.0
+var _capsule_stand_y_offset: float = 0.0
 
 var accel_forward: float = 4.0
 var accel_back: float = 4.0
@@ -80,6 +85,8 @@ func _physics_process(delta: float) -> void:
 	_update_velocity_indicator()
 	_detect_external_impact(delta)
 	_update_impact_pd(delta)
+
+	is_grounded = get_colliding_bodies().size() > 0 and linear_velocity.y <= 0.5
 
 	_prev_velocity = linear_velocity
 
@@ -187,6 +194,17 @@ func _apply_movement_force() -> void:
 			apply_central_force(brake_force)
 			_frame_force += brake_force
 
+func jump(impulse: float) -> void:
+	apply_central_impulse(Vector3.UP * impulse)
+
+func set_crouched(crouched: bool) -> void:
+	var shape := collider.shape as CapsuleShape3D
+	var target_height := _capsule_stand_height * 0.55 if crouched else _capsule_stand_height
+	shape.height = target_height
+	var height_diff := _capsule_stand_height - target_height
+	collider.position.y = _capsule_stand_y_offset - height_diff * 0.5
+	mesh_instance.position.y = collider.position.y
+
 static func create(root_size: Vector3, distance_from_ground: float, leg_height: float, active: bool, inst: EntityInstantiation) -> CharacterRigidBody3D:
 	var rb := CharacterRigidBody3D.new()
 
@@ -208,6 +226,9 @@ static func create(root_size: Vector3, distance_from_ground: float, leg_height: 
 	rb.brake_side    = rb.accel_side    * BRAKE_FACTOR
 
 	var y_offset := root_size.y / 2.0 - (leg_height - distance_from_ground)
+
+	rb._capsule_stand_height = root_size.y
+	rb._capsule_stand_y_offset = y_offset
 
 	var new_mesh_instance := MeshInstance3D.new()
 	var capsule_mesh := CapsuleMesh.new()
