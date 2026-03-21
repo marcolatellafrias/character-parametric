@@ -122,7 +122,7 @@ func _register_bone_animations() -> void:
 	
 	procedural_animator.register_formula(lower_spine, PA.Axis.ROT_Z,
 		func(): return ls.foot_spread_unified.x * (0.01 + 0.04 * ls.speed_norm),
-		0.5)
+		1.0)
 	
 	var lower_spine_rotation := spine_local_weight(1, 5, _bottom_spine_rotation, _top_spine_rotation)
 	procedural_animator.register(lower_spine, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, lower_spine_rotation)
@@ -138,42 +138,7 @@ func _register_bone_animations() -> void:
 	
 	procedural_animator.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
 	procedural_animator.register(left_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
-	
-	var arm_swing := 1.0
-	var arm_total := skel_sizes_util.upper_arm_size.y + skel_sizes_util.lower_arm_size.y
-	var z_weight := arm_swing * arm_total
 
-	procedural_animator.register_node(ik_util.left_arm_ik_target,  Vector3.FORWARD, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  z_weight)
-	procedural_animator.register_node(ik_util.right_arm_ik_target, Vector3.FORWARD, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -z_weight)
-
-	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.UP,
-		func():
-			var d := locomotion_signals.foot_spread_unified.y * z_weight
-			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
-		1.0)
-	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.UP,
-		func():
-			var d := locomotion_signals.foot_spread_unified.y * z_weight
-			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
-		1.0)
-		
-	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.RIGHT,
-	func():
-		var d := locomotion_signals.foot_spread_unified.y * z_weight
-		return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
-	1.0)
-	
-	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.RIGHT,
-		func():
-			var d := locomotion_signals.foot_spread_unified.y * z_weight
-			return -(arm_total - sqrt(max(0.0, arm_total * arm_total - d * d))),
-		1.0)
-		
-	var side_arm_weight := arm_total * 0.1
-
-	procedural_animator.register_node(ik_util.left_arm_ik_target,  Vector3.UP, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  side_arm_weight)
-	procedural_animator.register_node(ik_util.right_arm_ik_target, Vector3.UP, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -side_arm_weight)
-	
   
 	var tilt_weight := 0.03
 
@@ -199,6 +164,38 @@ func _register_bone_animations() -> void:
 
 		procedural_animator.register_formula(middle_spine, PA.Axis.ROT_X,
 			pitch_callable, 0.05)
+			
+	var arm_swing := entity_instantiation.arch_final.arm_swing
+	var arm_total := skel_sizes_util.upper_arm_size.y + skel_sizes_util.lower_arm_size.y
+	var z_weight := arm_swing * arm_total
+
+	procedural_animator.register_node(ik_util.left_arm_ik_target,  Vector3.FORWARD, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  z_weight)
+	procedural_animator.register_node(ik_util.right_arm_ik_target, Vector3.FORWARD, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -z_weight)
+
+	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.UP,
+		func():
+			var d := locomotion_signals.foot_spread_unified.y * z_weight
+			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
+		1.0)
+	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.UP,
+		func():
+			var d := locomotion_signals.foot_spread_unified.y * z_weight
+			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
+		1.0)
+
+	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.RIGHT,
+		func():
+			var d := locomotion_signals.foot_spread_unified.y * z_weight
+			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
+		1.0)
+	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.RIGHT,
+		func():
+			var d := locomotion_signals.foot_spread_unified.y * z_weight
+			return -(arm_total - sqrt(max(0.0, arm_total * arm_total - d * d))),
+		1.0)
+		
+
+
 
 func _clear_prior_generations() -> void:
 	if is_instance_valid(ragdoll_util):
@@ -250,23 +247,20 @@ func _physics_process(_delta: float) -> void:
 	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util, char_rigidbody)
 	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
 	locomotion_signals.update(_delta)
+
+	ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
+	ik_util.right_arm_ik_target.position = skel_sizes_util.right_arm_tip_rest_local
 	procedural_animator.update()
-	
-	
-	var arm_total := skel_sizes_util.upper_arm_size.y + skel_sizes_util.lower_arm_size.y
-	var arm_length_full := arm_total + 0.4 * skel_sizes_util.upper_arm_size.x + 0.4 * skel_sizes_util.lower_arm_size.z
-	var max_arm_distance: float = lerp(arm_length_full, 0.0, skel_sizes_util.arm_bentness)
 
-	var left_shoulder_pos := custom_bones_util.left_upper_arm.global_position
-	var right_shoulder_pos := custom_bones_util.right_upper_arm.global_position
+	var rb_basis := custom_bones_util.lower_spine.global_transform.basis
+	var left_anim_offset: Vector3  = ik_util.left_arm_ik_target.position  - skel_sizes_util.left_arm_tip_rest_local
+	var right_anim_offset: Vector3 = ik_util.right_arm_ik_target.position - skel_sizes_util.right_arm_tip_rest_local
 
-	var left_to_target := ik_util.left_arm_ik_target.global_position - left_shoulder_pos
-	if left_to_target.length() > max_arm_distance:
-		ik_util.left_arm_ik_target.global_position = left_shoulder_pos + left_to_target.normalized() * max_arm_distance
+	ik_util.left_arm_ik_target.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_tip_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_anim_offset)
+	ik_util.right_arm_ik_target.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_tip_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_anim_offset)
 
-	var right_to_target := ik_util.right_arm_ik_target.global_position - right_shoulder_pos
-	if right_to_target.length() > max_arm_distance:
-		ik_util.right_arm_ik_target.global_position = right_shoulder_pos + right_to_target.normalized() * max_arm_distance
+	ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local)
+	ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local)
 
 	ik_util.solve_two_bone_ik(custom_bones_util.left_upper_arm, custom_bones_util.left_lower_arm,
 		ik_util.left_arm_ik_target.global_position, ik_util.left_arm_pole.global_position)

@@ -65,6 +65,9 @@ var right_arm_tip_rest_local: Vector3
 var left_arm_pole_rest_local: Vector3
 var right_arm_pole_rest_local: Vector3
 
+var left_arm_shoulder_rest_local: Vector3
+var right_arm_shoulder_rest_local: Vector3
+
 
 static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var skelSizes = SkeletonSizesUtil.new()
@@ -175,6 +178,9 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.right_arm_tip_rest_local  = _compute_arm_tip_local(false, skelSizes)
 	skelSizes.left_arm_pole_rest_local  = _compute_arm_pole_local(true,  skelSizes)
 	skelSizes.right_arm_pole_rest_local = _compute_arm_pole_local(false, skelSizes)
+	
+	skelSizes.left_arm_shoulder_rest_local  = _compute_arm_shoulder_local(true,  skelSizes)
+	skelSizes.right_arm_shoulder_rest_local = _compute_arm_shoulder_local(false, skelSizes)
 
 	return skelSizes
 

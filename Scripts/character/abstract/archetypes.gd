@@ -41,6 +41,7 @@ var shoulder_swing_max : float = 0.5
 var hip_swing_min : float = 0.5
 var hip_swing_max : float = 0.5
 var side_swing : float = 0.5
+var arm_swing : float = 0.5
 var root_bounciness_min  : float = 0.5
 var root_bounciness_max  : float = 0.5
 var step_height_min : float = 0.5
@@ -119,6 +120,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
 	arch.side_swing = 0.5
+	arch.arm_swing = 0.5
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.8
@@ -132,8 +134,8 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.shoulders_height = 0.8
 	arch.shoulders_back = 0.7
 	arch.arm_openness = 0.58
-	arch.arm_bentness = 0.24
-	arch.arm_elbow_openness = 0.5
+	arch.arm_bentness = 0.18
+	arch.arm_elbow_openness = 0.8
 	arch.fatness = 1.0
 	arch.muscularity = 0.7
 	arch.has_neck = true
@@ -179,6 +181,7 @@ static func kid_arch() -> EntityArchetype:
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
 	arch.side_swing = 0.5
+	arch.arm_swing = 0.7
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.7
@@ -191,9 +194,9 @@ static func kid_arch() -> EntityArchetype:
 	arch.slouch = 0.0
 	arch.shoulders_height = 0.0
 	arch.shoulders_back = 0.2
-	arch.arm_openness = 0.3
-	arch.arm_bentness = 0.1
-	arch.arm_elbow_openness = 0.5
+	arch.arm_openness = 0.5
+	arch.arm_bentness = 0.2
+	arch.arm_elbow_openness = 0.7
 	arch.fatness = 0.2
 	arch.muscularity = 0.15
 	arch.has_neck = true
@@ -239,6 +242,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
 	arch.side_swing = 0.5
+	arch.arm_swing = 0.2
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.8
@@ -252,8 +256,8 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.shoulders_height = 0.0
 	arch.shoulders_back = 0.0
 	arch.arm_openness = 0.2
-	arch.arm_bentness = 0.08
-	arch.arm_elbow_openness = 0.5
+	arch.arm_bentness = 0.09
+	arch.arm_elbow_openness = 0.7
 	arch.fatness = 0.3
 	arch.muscularity = 0.25
 	arch.has_neck = true
@@ -273,7 +277,7 @@ static func giga_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
 	arch.strenght = 0.55
 	arch.weight = 120.0
-	arch.speed = 0.3
+	arch.speed = 0.25
 	arch.back_speed_factor = 1.0
 	arch.lateral_speed_factor = 1.0
 	arch.sprint_multiplier = 1.5
@@ -299,6 +303,7 @@ static func giga_arch() -> EntityArchetype:
 	arch.shoulder_swing_min = 1.0
 	arch.shoulder_swing_max = 1.0
 	arch.side_swing = 0.5
+	arch.arm_swing = 0.2
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 2.0
@@ -312,8 +317,8 @@ static func giga_arch() -> EntityArchetype:
 	arch.shoulders_height = 1.0
 	arch.shoulders_back = 1.0
 	arch.arm_openness = 0.4
-	arch.arm_bentness = 0.16
-	arch.arm_elbow_openness = 0.5
+	arch.arm_bentness = 0.18
+	arch.arm_elbow_openness = 0.7
 	arch.fatness = 0.5
 	arch.muscularity = 1.0
 	arch.has_neck = true
@@ -359,6 +364,7 @@ static func old_arch() -> EntityArchetype:
 	arch.shoulder_swing_min = 0.5
 	arch.shoulder_swing_max = 0.5
 	arch.side_swing = 0.5
+	arch.arm_swing = 0.5
 	arch.hip_swing_min = 0.5
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.5
@@ -371,9 +377,9 @@ static func old_arch() -> EntityArchetype:
 	arch.slouch = 1.0
 	arch.shoulders_height = 0.5
 	arch.shoulders_back = 0.0
-	arch.arm_openness = 1.0
-	arch.arm_bentness = 0.0
-	arch.arm_elbow_openness = 0.0
+	arch.arm_openness = 0.25
+	arch.arm_bentness = 0.1
+	arch.arm_elbow_openness = 0.7
 	arch.fatness = 0.1
 	arch.muscularity = 0.0
 	arch.has_neck = true
@@ -421,6 +427,7 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.shoulder_swing_min            = lerpf(shoulder_swing_min, b.shoulder_swing_min, t)
 	r.shoulder_swing_max            = lerpf(shoulder_swing_max, b.shoulder_swing_max, t)
 	r.side_swing 					= lerpf(side_swing, b.side_swing, t)
+	r.arm_swing 					= lerpf(arm_swing, b.arm_swing, t)
 	r.hip_swing_min                 = lerpf(hip_swing_min, b.hip_swing_min, t)
 	r.hip_swing_max                 = lerpf(hip_swing_max, b.hip_swing_max, t)
 	r.root_bounciness_min           = lerpf(root_bounciness_min, b.root_bounciness_min, t)
