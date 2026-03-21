@@ -27,7 +27,7 @@ var show_grab_curve: bool = true
 var grab_curve_color: Color = Color(1, 1, 1)
 
 var stamina_max: float = 5.0
-var stamina_drain_rate: float = 2.0
+var stamina_drain_rate: float = 0.01
 var stamina_regen_rate: float = 0.75
 var stamina_refractory_time: float = 2.0
 
