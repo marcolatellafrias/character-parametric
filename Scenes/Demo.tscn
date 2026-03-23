@@ -46,10 +46,10 @@ size = Vector3(20, 10, 0.25)
 size = Vector3(20, 10, 0.25)
 
 [sub_resource type="BoxMesh" id="BoxMesh_h3puh"]
-size = Vector3(0.4, 0.25, 5)
+size = Vector3(0.25, 0.25, 5)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_k27g2"]
-size = Vector3(0.4, 0.25, 5)
+size = Vector3(0.25, 0.25, 5)
 
 [sub_resource type="BoxMesh" id="BoxMesh_k27g2"]
 
@@ -232,7 +232,12 @@ current = true
 
 [node name="Nave" parent="." instance=ExtResource("12_h3puh")]
 transform = Transform3D(0.44093454, 0, -0.4069112, 0, 0.59999996, 0, 0.4069112, 0, 0.44093454, -20.015406, 0.9780211, -4.30853)
-mass = 1000.0
+axis_lock_linear_x = true
+axis_lock_linear_y = true
+axis_lock_linear_z = true
+axis_lock_angular_x = true
+axis_lock_angular_y = true
+axis_lock_angular_z = true
 angular_damp_mode = 1
 angular_damp = 1.0
 
@@ -241,10 +246,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21.46107, 0.7125503, -1.51300
 
 [node name="Mirror3D" parent="." instance=ExtResource("8_ecetj")]
 transform = Transform3D(1, 0, 0, 0, 0.9659258, -0.25881904, 0, 0.25881904, 0.9659258, -5.587799, 0.52957535, -15.4447)
-size = Vector2(80, 20)
-color = Color(0.882948, 0.80127335, 0.73722345, 1)
-
-[node name="Mirror3D2" parent="." instance=ExtResource("8_ecetj")]
-transform = Transform3D(-4.371139e-08, 0, -0.99999994, 0, 0.9999999, 0, 0.99999994, 0, -4.371138e-08, 13.071838, 0.52957535, -7.9381437)
 size = Vector2(80, 20)
 color = Color(0.882948, 0.80127335, 0.73722345, 1)

@@ -9,7 +9,6 @@ const SPEED_SCALE := 10.0
 const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
 const JUMP_SCALE := 30.0
-const FLOOR_NORMAL_THRESHOLD := 0.7
 
 @export var show_mesh := true
 
@@ -67,8 +66,6 @@ var _snapshot_acc_after: float = 0.0
 
 var crouch_speed_factor: float = 1.0
 
-var _ground_check_ray := RayCast3D.new()
-
 func _ready() -> void:
 	linear_damp = 0.0
 	var physics_mat := PhysicsMaterial.new()
@@ -91,14 +88,7 @@ func _physics_process(delta: float) -> void:
 	_detect_external_impact(delta)
 	_update_impact_pd(delta)
 
-	_ground_check_ray.force_raycast_update()
-	if _ground_check_ray.is_colliding():
-		is_grounded = _ground_check_ray.get_collision_normal().y > FLOOR_NORMAL_THRESHOLD
-	else:
-		is_grounded = false
-
-	var mat := mesh_instance.material_override as StandardMaterial3D
-	mat.albedo_color = Color(1, 1, 1, 0.2) if is_grounded else Color(1, 0.5, 0, 0.2)
+	is_grounded = get_colliding_bodies().size() > 0 and linear_velocity.y <= 0.5
 
 	_prev_velocity = linear_velocity
 
@@ -239,7 +229,6 @@ static func create(root_size: Vector3, distance_from_ground: float, leg_height: 
 	rb.brake_side    = rb.accel_side    * BRAKE_FACTOR
 
 	var y_offset := root_size.y / 2.0 - (leg_height - distance_from_ground)
-	var capsule_bottom_y := y_offset - root_size.y / 2.0
 
 	rb._capsule_stand_height = root_size.y
 	rb._capsule_stand_y_offset = y_offset
@@ -263,13 +252,8 @@ static func create(root_size: Vector3, distance_from_ground: float, leg_height: 
 	new_collision_shape.shape = capsule_shape
 	new_collision_shape.position = Vector3(0.0, y_offset, 0.0)
 
-	rb._ground_check_ray.position = Vector3(0.0, capsule_bottom_y + 0.05, 0.0)
-	rb._ground_check_ray.target_position = Vector3(0, -0.15, 0)
-	rb._ground_check_ray.add_exception(rb)
-
 	rb.add_child(new_mesh_instance)
 	rb.add_child(new_collision_shape)
-	rb.add_child(rb._ground_check_ray)
 	rb.collider = new_collision_shape
 	rb.mesh_instance = new_mesh_instance
 	rb.is_active = active
