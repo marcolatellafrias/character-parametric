@@ -16,6 +16,7 @@ var is_active: bool = false
 var is_grounded: bool = false
 var collider: CollisionShape3D
 var mesh_instance: MeshInstance3D
+var _ground_ray: RayCast3D
 
 var _capsule_stand_height: float = 0.0
 var _capsule_stand_y_offset: float = 0.0
@@ -88,7 +89,10 @@ func _physics_process(delta: float) -> void:
 	_detect_external_impact(delta)
 	_update_impact_pd(delta)
 
-	is_grounded = get_colliding_bodies().size() > 0 and linear_velocity.y <= 0.5
+	_ground_ray.force_raycast_update()
+	is_grounded = _ground_ray.is_colliding()
+	var mat := mesh_instance.material_override as StandardMaterial3D
+	mat.albedo_color = Color(1, 1, 1, 0.2) if is_grounded else Color(1, 0.5, 0, 0.2)
 
 	_prev_velocity = linear_velocity
 
@@ -207,6 +211,7 @@ func set_crouched(crouched: bool) -> void:
 	var height_diff := _capsule_stand_height - target_height
 	collider.position.y = _capsule_stand_y_offset - height_diff * 0.5
 	mesh_instance.position.y = collider.position.y
+	_ground_ray.position.y = collider.position.y - target_height / 2.0 + (collider.shape as CapsuleShape3D).radius
 
 static func create(root_size: Vector3, distance_from_ground: float, leg_height: float, active: bool, inst: EntityInstantiation) -> CharacterRigidBody3D:
 	var rb := CharacterRigidBody3D.new()
@@ -252,9 +257,17 @@ static func create(root_size: Vector3, distance_from_ground: float, leg_height: 
 	new_collision_shape.shape = capsule_shape
 	new_collision_shape.position = Vector3(0.0, y_offset, 0.0)
 
+	var radius := root_size.x * 0.5
+	var ground_ray := RayCast3D.new()
+	ground_ray.position = Vector3(0, y_offset - root_size.y / 2.0 + radius, 0)
+	ground_ray.target_position = Vector3(0, -(radius + 0.12), 0)
+	ground_ray.add_exception(rb)
+	
 	rb.add_child(new_mesh_instance)
 	rb.add_child(new_collision_shape)
+	rb.add_child(ground_ray)
 	rb.collider = new_collision_shape
 	rb.mesh_instance = new_mesh_instance
+	rb._ground_ray = ground_ray
 	rb.is_active = active
 	return rb
