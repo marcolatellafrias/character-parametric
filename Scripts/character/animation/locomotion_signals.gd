@@ -1,7 +1,9 @@
 class_name LocomotionSignals
+
 var ik_util: IkUtil
 var char_rigidbody: CharacterRigidBody3D
 var sizes: SkeletonSizesUtil
+
 var foot_spread_unified: Vector2 = Vector2.ZERO
 var step_progress: float = 0.0
 var step_length_norm: float = 0.0
@@ -11,13 +13,10 @@ var foot_spread_norm: Vector2 = Vector2.ZERO
 var left_foot_local_norm: Vector2 = Vector2.ZERO
 var right_foot_local_norm: Vector2 = Vector2.ZERO
 var speed_norm: float = 0.0
-var foot_height_diff: float = 0.0
-var foot_reach_diff: float = 0.0
+
 const H_SMOOTH: float = 8.0
 const V_SMOOTH: float = 6.0
 const SPREAD_SMOOTH: float = 10.0
-const HEIGHT_SMOOTH: float = 8.0
-const REACH_SMOOTH: float = 6.0
 
 static func create(ik: IkUtil, rb: CharacterRigidBody3D, sz: SkeletonSizesUtil) -> LocomotionSignals:
 	var s := LocomotionSignals.new()
@@ -52,7 +51,6 @@ func _update_step_signals(delta: float) -> void:
 
 	var left_pos := ik_util.left_leg_current_target.global_position
 	var right_pos := ik_util.right_leg_current_target.global_position
-
 	var rest_x_separation := sizes.hips_width * 2.0
 	var raw_spread := Vector2(
 		max(0.0, abs(left_pos.x - right_pos.x) - rest_x_separation) / sizes.leg_height,
@@ -62,8 +60,8 @@ func _update_step_signals(delta: float) -> void:
 	foot_spread_norm = foot_spread_norm.lerp(raw_spread.clamp(Vector2.ZERO, Vector2.ONE), k_s)
 
 	var basis_inv := char_rigidbody.global_transform.basis.inverse()
-	var left_local := basis_inv * (left_pos - char_rigidbody.global_position)
-	var right_local := basis_inv * (right_pos - char_rigidbody.global_position)
+	var left_local := basis_inv * (ik_util.left_leg_current_target.global_position - char_rigidbody.global_position)
+	var right_local := basis_inv * (ik_util.right_leg_current_target.global_position - char_rigidbody.global_position)
 	left_foot_local_norm = Vector2(left_local.x, left_local.z) / sizes.leg_height
 	right_foot_local_norm = Vector2(right_local.x, right_local.z) / sizes.leg_height
 
@@ -75,20 +73,6 @@ func _update_step_signals(delta: float) -> void:
 		clamp(right_offset - left_offset, -1.0, 1.0),
 		clamp((left_foot_local_norm.y - right_foot_local_norm.y) / 2.0, -1.0, 1.0)
 	)
-
-	var raw_height_diff : float = clamp((left_pos.y - right_pos.y) / sizes.leg_height, -1.0, 1.0)
-	var k_h: float = clamp(delta * HEIGHT_SMOOTH, 0.0, 1.0)
-	foot_height_diff = lerp(foot_height_diff, raw_height_diff, k_h)
-
-	var left_dist := 0.0
-	var right_dist := 0.0
-	if ik_util.left_leg_raycast.is_colliding():
-		left_dist = ik_util.left_leg_raycast.global_position.distance_to(ik_util.left_leg_raycast.get_collision_point())
-	if ik_util.right_leg_raycast.is_colliding():
-		right_dist = ik_util.right_leg_raycast.global_position.distance_to(ik_util.right_leg_raycast.get_collision_point())
-	var raw_reach_diff : float = clamp((left_dist - right_dist) / sizes.leg_height, -1.0, 1.0)
-	var k_r: float = clamp(delta * REACH_SMOOTH, 0.0, 1.0)
-	foot_reach_diff = lerp(foot_reach_diff, raw_reach_diff, k_r)
 
 func _update_velocity_signals(delta: float) -> void:
 	var vel := char_rigidbody.linear_velocity

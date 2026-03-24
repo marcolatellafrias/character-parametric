@@ -59,9 +59,6 @@ var _last_step_leg_id: int = -1
 
 var recovery_targets_locked: bool = false
 
-var balance_unstable: bool = false
-var balance_unstable_dir: Vector3 = Vector3.ZERO
-
 func get_leg_data(left: bool) -> LegData:
 	var d := LegData.new()
 	d.raycast = left_leg_raycast if left else right_leg_raycast
@@ -218,22 +215,6 @@ func _register_step(current_target: Node3D) -> void:
 	_last_step_frame = Engine.get_physics_frames()
 	_last_step_leg_id = current_target.get_instance_id()
 
-func update_balance(char_rigidbody: CharacterRigidBody3D) -> void:
-	balance_unstable = false
-	balance_unstable_dir = Vector3.ZERO
-	if not char_rigidbody.is_grounded:
-		return
-	var left_col := left_leg_raycast.is_colliding()
-	var right_col := right_leg_raycast.is_colliding()
-	if not left_col or not right_col:
-		balance_unstable = true
-		if not left_col and not right_col:
-			balance_unstable_dir = -char_rigidbody.global_transform.basis.z
-		elif not left_col:
-			balance_unstable_dir = -char_rigidbody.global_transform.basis.x
-		else:
-			balance_unstable_dir = char_rigidbody.global_transform.basis.x
-
 func update_ik_raycast(
 	left: bool, bones: CustomBonesUtil, sizes: SkeletonSizesUtil, char_rigidbody: CharacterRigidBody3D,
 ) -> void:
@@ -246,14 +227,12 @@ func update_ik_raycast(
 		_update_stepping_foot(leg.current_target)
 	var was_airborne: bool = leg.current_target.get_meta("was_airborne", false)
 
-	var min_raycast_length: float         = sizes.raycast_leg_lenght
-	var additional_length: float          = sizes.raycast_leg_lenght / 2.0
-	var balance_extra: float              = sizes.leg_height * 0.5
-	var total_raycast_length: float       = min_raycast_length + additional_length + balance_extra
-	leg.raycast.target_position.y         = -total_raycast_length
-	var max_raycast_distance: float       = leg.raycast.target_position.length()
+	var min_raycast_length: float    = sizes.raycast_leg_lenght
+	var additional_length: float     = sizes.raycast_leg_lenght / 2.0
+	var total_raycast_length: float  = min_raycast_length + additional_length
+	leg.raycast.target_position.y    = -total_raycast_length
+	var max_raycast_distance: float  = leg.raycast.target_position.length()
 	var leg_reach_raycast_distance: float = sizes.leg_height
-	var leg_balance_zone_end: float       = leg_reach_raycast_distance + additional_length
 
 	if left:
 		left_leg_raycast_indicator = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator, total_raycast_length)
@@ -263,39 +242,26 @@ func update_ik_raycast(
 	leg.raycast.force_raycast_update()
 
 	if leg.raycast.is_colliding():
-		var collision_point: Vector3   = leg.raycast.get_collision_point()
-		var collision_distance: float  = leg.raycast.global_position.distance_to(collision_point)
+		var collision_point: Vector3    = leg.raycast.get_collision_point()
+		var collision_distance: float   = leg.raycast.global_position.distance_to(collision_point)
 
-		if collision_distance >= leg_balance_zone_end:
-			# zona de vuelo real
+		if collision_distance >= leg_reach_raycast_distance:
 			var t: float = clamp(
-				(collision_distance - leg_balance_zone_end) / (max_raycast_distance - leg_balance_zone_end),
+				(collision_distance - leg_reach_raycast_distance) / (max_raycast_distance - leg_reach_raycast_distance),
 				0.0, 1.0
 			)
 			var interpolated_position: Vector3 = collision_point.lerp(leg.airborne_target.global_position, t)
 			leg.next_target.global_position = interpolated_position
+
 			if not recovery_targets_locked:
 				leg.current_target.set_meta("was_airborne", true)
 				if not _is_stepping(leg.current_target):
-					var step_dur := get_step_duration(char_rigidbody, sizes, leg.current_target.global_position.distance_to(interpolated_position))
-					_tween_foot_to(leg.current_target, leg.current_target.global_position, interpolated_position, max(step_dur, 0.08), sizes.step_height * 0.5)
+					_tween_foot_to(leg.current_target, leg.current_target.global_position, interpolated_position, 0.0, sizes.step_height * 0.5)
+
 			_set_leg_measure(left, 0.0, false, interpolated_position)
-
-		elif collision_distance >= leg_reach_raycast_distance:
-			# zona de balance
-			leg.next_target.global_position = collision_point
-			if not recovery_targets_locked:
-				leg.current_target.set_meta("was_airborne", false)
-				if not _is_stepping(leg.current_target):
-					var dist := leg.current_target.global_position.distance_to(collision_point)
-					if dist > step_radius * 0.3:
-						var step_dur := get_step_duration(char_rigidbody, sizes, dist)
-						_tween_foot_to(leg.current_target, leg.current_target.global_position, collision_point, max(step_dur, 0.1), sizes.step_height * 0.5)
-			_set_leg_measure(left, 0.0, false, collision_point)
-
 		else:
-			# zona normal
 			leg.next_target.global_position = collision_point
+
 			if not recovery_targets_locked:
 				if was_airborne:
 					_clear_step_data(leg.current_target)
@@ -307,8 +273,8 @@ func update_ik_raycast(
 					Vector2(leg.current_target.global_position.x, leg.current_target.global_position.z)
 				).length_squared()
 
-				var basis_owner   := leg.raycast.get_parent() as Node3D
-				var neutral_world := basis_owner.global_transform * leg.neutral_local
+				var basis_owner    := leg.raycast.get_parent() as Node3D
+				var neutral_world  := basis_owner.global_transform * leg.neutral_local
 
 				var dist2Exp: float = (
 					Vector2(leg.next_target.global_position.x, leg.next_target.global_position.z) -
@@ -319,6 +285,7 @@ func update_ik_raycast(
 				var wants_step: bool     = dist2 > (step_radius * step_radius)
 				var step_duration: float = get_step_duration(char_rigidbody, sizes, step_distance)
 				var step_height: float   = sizes.step_height * clamp(step_distance / sizes.step_radius_max, 0.1, 1.0)
+
 				_set_leg_measure(left, dist2, wants_step, collision_point, step_duration, step_height)
 			else:
 				_set_leg_measure(left, 0.0, false, collision_point)
@@ -395,23 +362,29 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	var target_off := dir * (amount * sizes.raycast_max_offset)
 	target_off = Vector2(target_off.x * sizes.axis_weights.x, target_off.y * sizes.axis_weights.y)
 	var k: float = clamp(delta * sizes.raycast_smooth, 0.0, 1.0)
-
-	var char_rb := root_rigidbody as CharacterRigidBody3D
-	if char_rb and char_rb.is_grounded:
-		raycast_offset = raycast_offset.lerp(target_off, k)
-		leg.raycast.transform.origin = leg.neutral_local + Vector3(raycast_offset.x, 0.0, raycast_offset.y)
-	else:
-		raycast_offset = raycast_offset.lerp(Vector2.ZERO, k)
-		leg.raycast.transform.origin = leg.neutral_local
+	raycast_offset = raycast_offset.lerp(target_off, k)
 
 	var y_vel := root_rigidbody.linear_velocity.y
 	var velocity_factor: float = clamp(abs(y_vel) / 5.0, 0.0, 1.0)
-	var target_y_position: float = lerp(sizes.leg_height * 0.5, sizes.leg_height, velocity_factor)
 
+	var transition_start_speed := 0.0
+	var transition_end_speed := -4.0
+	var fall_factor: float
+	if y_vel >= transition_start_speed:
+		fall_factor = 0.0
+	elif y_vel <= transition_end_speed:
+		fall_factor = 1.0
+	else:
+		fall_factor = (transition_start_speed - y_vel) / (transition_start_speed - transition_end_speed)
+
+	var target_y_position: float = lerp(sizes.leg_height * 0.5, sizes.leg_height, velocity_factor)
+	var final_xz_offset := (-raycast_offset * 0.3).lerp(raycast_offset, fall_factor)
+
+	leg.raycast.transform.origin = leg.neutral_local + Vector3(raycast_offset.x, 0.0, raycast_offset.y)
 	leg.airborne_target.transform.origin = Vector3(
-		leg.neutral_local.x,
+		leg.neutral_local.x + final_xz_offset.x,
 		leg.neutral_local.y - target_y_position,
-		leg.neutral_local.z
+		leg.neutral_local.z + final_xz_offset.y
 	)
 
 static func get_orthogonal(v: Vector3) -> Vector3:

@@ -34,10 +34,6 @@ const CROUCH_Y        := -0.22
 const CROUCH_Z        :=  0.09
 const CROUCH_TILT     :=  0.22
 
-const BALANCE_TILT_Z  := 0.48
-const BALANCE_HIP_Z   := 0.40
-const BALANCE_DROP_Y  := 0.72
-
 func _ready() -> void:
 	if is_active:
 		player_controller = PlayerController.new()
@@ -158,19 +154,10 @@ func _register_bone_animations() -> void:
 	procedural_animator.register(left_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
 
 	var tilt_weight := 0.03
+
 	procedural_animator.register(lower_spine, PA.Axis.ROT_X, PA.SignalType.H_VEL_Z, -tilt_weight)
 	procedural_animator.register(lower_spine, PA.Axis.ROT_Z, PA.SignalType.H_VEL_X, -tilt_weight)
-
-	# balance animations driven by foot height difference
-	procedural_animator.register_formula(lower_spine, PA.Axis.ROT_Z,
-		func(): return ls.foot_reach_diff * -BALANCE_TILT_Z, 1.0)
-	procedural_animator.register_formula(lower_spine, PA.Axis.POS_Y,
-		func(): return -abs(ls.foot_reach_diff) * BALANCE_DROP_Y * skel_sizes_util.leg_height, 1.0)
-	procedural_animator.register_formula(left_hip, PA.Axis.ROT_Z,
-		func(): return ls.foot_reach_diff * -BALANCE_HIP_Z, 1.0)
-	procedural_animator.register_formula(right_hip, PA.Axis.ROT_Z,
-		func(): return ls.foot_reach_diff * -BALANCE_HIP_Z, 1.0)
-
+	
 	if is_active and is_instance_valid(player_camera):
 		var pitch_callable := func() -> float:
 			return clamp(player_camera.rotation.x, -0.5, 0.8)
@@ -269,12 +256,6 @@ func _physics_process(_delta: float) -> void:
 	skel_sizes_util.update(_delta, char_rigidbody, entity_instantiation, ik_util)
 	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util, char_rigidbody)
 	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
-
-	ik_util.update_balance(char_rigidbody)
-	if ik_util.balance_unstable and is_instance_valid(ragdoll_util) and not ragdoll_util.is_active:
-		char_rigidbody.is_snapshot_active = false
-		ragdoll_util.activate_with_impact(char_rigidbody, custom_bones_util.lower_spine, ik_util.balance_unstable_dir)
-
 	locomotion_signals.update(_delta)
 
 	ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
