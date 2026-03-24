@@ -109,7 +109,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.reach = 0.65
 	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.3
-	arch.time_to_max_jump = 1.0
+	arch.time_to_max_jump = 0.3
 	arch.min_age = 1
 	arch.max_age = 99
 	arch.robot_chance = 0.3

@@ -59,6 +59,10 @@ var _last_step_leg_id: int = -1
 
 var recovery_targets_locked: bool = false
 
+var _airborne_time: float = 0.0
+var _airborne_start_offset: Vector2 = Vector2.ZERO
+var airborne_offset_return_time: float = 0.4
+
 func get_leg_data(left: bool) -> LegData:
 	var d := LegData.new()
 	d.raycast = left_leg_raycast if left else right_leg_raycast
@@ -250,7 +254,11 @@ func update_ik_raycast(
 				(collision_distance - leg_reach_raycast_distance) / (max_raycast_distance - leg_reach_raycast_distance),
 				0.0, 1.0
 			)
-			var interpolated_position: Vector3 = collision_point.lerp(leg.airborne_target.global_position, t)
+			var interpolated_position: Vector3 = Vector3(
+				leg.airborne_target.global_position.x,
+				lerpf(collision_point.y, leg.airborne_target.global_position.y, t),
+				leg.airborne_target.global_position.z
+			)
 			leg.next_target.global_position = interpolated_position
 
 			if not recovery_targets_locked:
@@ -361,30 +369,20 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	var amount := sizes.raycast_amount * curve_gain
 	var target_off := dir * (amount * sizes.raycast_max_offset)
 	target_off = Vector2(target_off.x * sizes.axis_weights.x, target_off.y * sizes.axis_weights.y)
+
+	var grounded_target := target_off if root_rigidbody.is_grounded else Vector2.ZERO
 	var k: float = clamp(delta * sizes.raycast_smooth, 0.0, 1.0)
-	raycast_offset = raycast_offset.lerp(target_off, k)
+	raycast_offset = raycast_offset.lerp(grounded_target, k)
 
 	var y_vel := root_rigidbody.linear_velocity.y
 	var velocity_factor: float = clamp(abs(y_vel) / 5.0, 0.0, 1.0)
-
-	var transition_start_speed := 0.0
-	var transition_end_speed := -4.0
-	var fall_factor: float
-	if y_vel >= transition_start_speed:
-		fall_factor = 0.0
-	elif y_vel <= transition_end_speed:
-		fall_factor = 1.0
-	else:
-		fall_factor = (transition_start_speed - y_vel) / (transition_start_speed - transition_end_speed)
-
 	var target_y_position: float = lerp(sizes.leg_height * 0.5, sizes.leg_height, velocity_factor)
-	var final_xz_offset := (-raycast_offset * 0.3).lerp(raycast_offset, fall_factor)
 
 	leg.raycast.transform.origin = leg.neutral_local + Vector3(raycast_offset.x, 0.0, raycast_offset.y)
 	leg.airborne_target.transform.origin = Vector3(
-		leg.neutral_local.x + final_xz_offset.x,
+		leg.neutral_local.x,
 		leg.neutral_local.y - target_y_position,
-		leg.neutral_local.z + final_xz_offset.y
+		leg.neutral_local.z
 	)
 
 static func get_orthogonal(v: Vector3) -> Vector3:

@@ -27,9 +27,9 @@ var jump_squat_t: float = 0.0
 var crouch_t: float = 0.0
 var _last_root_z_offset: float = 0.0
 
-const JUMP_SQUAT_Y    := -0.12
-const JUMP_SQUAT_Z    :=  0.05
-const JUMP_SQUAT_TILT :=  0.15
+const JUMP_SQUAT_Y    := -0.22
+const JUMP_SQUAT_Z    :=  0.09
+const JUMP_SQUAT_TILT :=  0.22
 const CROUCH_Y        := -0.22
 const CROUCH_Z        :=  0.09
 const CROUCH_TILT     :=  0.22

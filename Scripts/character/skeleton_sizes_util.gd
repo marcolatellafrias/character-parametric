@@ -49,7 +49,7 @@ var axis_weights := Vector2(1.0, 1.0)
 var speed_curve: Curve
 const raycast_accel_gain := 0.06
 const raycast_vel_gain   := 0.02
-const raycast_smooth     := 8.0
+const raycast_smooth     := 8.0 
 
 var slouchiness_chest: float
 var slouchiness_center_spine: float
