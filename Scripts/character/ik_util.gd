@@ -286,18 +286,12 @@ func update_ik_raycast(
 			leg.next_target.global_position = collision_point
 			if not recovery_targets_locked:
 				leg.current_target.set_meta("was_airborne", false)
-
-				var dist2: float = (
-					Vector2(leg.next_target.global_position.x, leg.next_target.global_position.z) -
-					Vector2(leg.current_target.global_position.x, leg.current_target.global_position.z)
-				).length_squared()
-				var step_distance: float = sqrt(dist2)
-				var wants_step: bool = dist2 > (step_radius * step_radius)
-				var step_duration: float = get_step_duration(char_rigidbody, sizes, step_distance)
-				var step_height: float = sizes.step_height * clamp(step_distance / sizes.step_radius_max, 0.1, 1.0)
-				_set_leg_measure(left, dist2, wants_step, collision_point, step_duration, step_height)
-			else:
-				_set_leg_measure(left, 0.0, false, collision_point)
+				if not _is_stepping(leg.current_target):
+					var dist := leg.current_target.global_position.distance_to(collision_point)
+					if dist > step_radius * 0.3:
+						var step_dur := get_step_duration(char_rigidbody, sizes, dist)
+						_tween_foot_to(leg.current_target, leg.current_target.global_position, collision_point, max(step_dur, 0.1), sizes.step_height * 0.5)
+			_set_leg_measure(left, 0.0, false, collision_point)
 
 		else:
 			# zona normal

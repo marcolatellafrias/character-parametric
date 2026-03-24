@@ -1,4 +1,4 @@
-[gd_scene load_steps=30 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=28 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
@@ -54,12 +54,6 @@ size = Vector3(0.25, 0.25, 5)
 [sub_resource type="BoxMesh" id="BoxMesh_k27g2"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_6aqh6"]
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_v3boh"]
-height = 10.0
-
-[sub_resource type="CylinderShape3D" id="CylinderShape3D_h3puh"]
-height = 10.0
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_2rq0j"]
 ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -198,15 +192,6 @@ mesh = SubResource("BoxMesh_k27g2")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D4"]
 shape = SubResource("BoxShape3D_6aqh6")
-
-[node name="StaticBody3D5" type="StaticBody3D" parent="world"]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 1.7137427, -10.329777)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="world/StaticBody3D5"]
-mesh = SubResource("CylinderMesh_v3boh")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D5"]
-shape = SubResource("CylinderShape3D_h3puh")
 
 [node name="chars" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
