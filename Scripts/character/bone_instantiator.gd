@@ -163,13 +163,13 @@ func _register_bone_animations() -> void:
 
 	# balance animations driven by foot height difference
 	procedural_animator.register_formula(lower_spine, PA.Axis.ROT_Z,
-		func(): return ls.foot_reach_diff * -BALANCE_TILT_Z, 1.0)
+		func(): return ls.foot_height_diff * BALANCE_TILT_Z, 1.0)
 	procedural_animator.register_formula(lower_spine, PA.Axis.POS_Y,
-		func(): return -abs(ls.foot_reach_diff) * BALANCE_DROP_Y * skel_sizes_util.leg_height, 1.0)
+		func(): return -abs(ls.foot_height_diff) * BALANCE_DROP_Y * skel_sizes_util.leg_height, 1.0)
 	procedural_animator.register_formula(left_hip, PA.Axis.ROT_Z,
-		func(): return ls.foot_reach_diff * -BALANCE_HIP_Z, 1.0)
+		func(): return ls.foot_height_diff * BALANCE_HIP_Z, 1.0)
 	procedural_animator.register_formula(right_hip, PA.Axis.ROT_Z,
-		func(): return ls.foot_reach_diff * -BALANCE_HIP_Z, 1.0)
+		func(): return ls.foot_height_diff * BALANCE_HIP_Z, 1.0)
 
 	if is_active and is_instance_valid(player_camera):
 		var pitch_callable := func() -> float:
