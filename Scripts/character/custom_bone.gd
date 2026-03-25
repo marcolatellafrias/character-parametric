@@ -57,7 +57,7 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	bone_mesh_instance.material_override = bone_material
 	bone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	#bone_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	#bone_material.albedo_color = Color(new_color.r, new_color.g, new_color.b, 0.25)
+	#bone_material.albedo_color = Color(new_color.r, new_color.g, new_color.b, 0.0)
 	var min_side : float = min(bone.capsule_dimensions.x,bone.capsule_dimensions.z)
 	bone_mesh_instance.position = Vector3(0.0, 0.0,min_side * (offsets.z/2))
 	#var debug_line := DebugUtil.create_debug_line(Color.RED,bone.capsule_dimensions.y,true,false)

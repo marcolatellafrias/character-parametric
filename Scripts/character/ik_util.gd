@@ -13,11 +13,18 @@ var left_leg_raycast: RayCast3D
 var right_leg_raycast: RayCast3D
 var left_leg_raycast_indicator: MeshInstance3D
 var right_leg_raycast_indicator: MeshInstance3D
+var left_leg_raycast_indicator_b: MeshInstance3D
+var right_leg_raycast_indicator_b: MeshInstance3D
+var left_leg_raycast_indicator_c: MeshInstance3D
+var right_leg_raycast_indicator_c: MeshInstance3D
+var left_leg_raycast_indicator_d: MeshInstance3D
+var right_leg_raycast_indicator_d: MeshInstance3D
 var left_leg_pole: Node3D
 var right_leg_pole: Node3D
 const left_color: Color = Color(1, 0, 0)
 const right_color: Color = Color(0, 1, 0)
 const raycast_color: Color = Color(0, 0, 1)
+const inactive_raycast_color: Color = Color(0.3, 0.3, 0.3)
 var left_leg_next_target: Node3D
 var right_leg_next_target: Node3D
 var left_leg_current_target: Node3D
@@ -59,10 +66,6 @@ var _last_step_leg_id: int = -1
 
 var recovery_targets_locked: bool = false
 
-var _airborne_time: float = 0.0
-var _airborne_start_offset: Vector2 = Vector2.ZERO
-var airborne_offset_return_time: float = 0.4
-
 func get_leg_data(left: bool) -> LegData:
 	var d := LegData.new()
 	d.raycast = left_leg_raycast if left else right_leg_raycast
@@ -82,6 +85,20 @@ static func create(sizes: SkeletonSizesUtil, skeleton: BoneInstantiator) -> IkUt
 	new_ik_util.left_leg_raycast.add_child(new_ik_util.left_leg_raycast_indicator)
 	new_ik_util.right_leg_raycast_indicator = create_leg_raycast_indicator(sizes)
 	new_ik_util.right_leg_raycast.add_child(new_ik_util.right_leg_raycast_indicator)
+
+	new_ik_util.left_leg_raycast_indicator_b = create_leg_raycast_indicator(sizes)
+	new_ik_util.left_leg_raycast.add_child(new_ik_util.left_leg_raycast_indicator_b)
+	new_ik_util.right_leg_raycast_indicator_b = create_leg_raycast_indicator(sizes)
+	new_ik_util.right_leg_raycast.add_child(new_ik_util.right_leg_raycast_indicator_b)
+	new_ik_util.left_leg_raycast_indicator_c = create_leg_raycast_indicator(sizes)
+	new_ik_util.left_leg_raycast.add_child(new_ik_util.left_leg_raycast_indicator_c)
+	new_ik_util.right_leg_raycast_indicator_c = create_leg_raycast_indicator(sizes)
+	new_ik_util.right_leg_raycast.add_child(new_ik_util.right_leg_raycast_indicator_c)
+	new_ik_util.left_leg_raycast_indicator_d = create_leg_raycast_indicator(sizes)
+	new_ik_util.left_leg_raycast.add_child(new_ik_util.left_leg_raycast_indicator_d)
+	new_ik_util.right_leg_raycast_indicator_d = create_leg_raycast_indicator(sizes)
+	new_ik_util.right_leg_raycast.add_child(new_ik_util.right_leg_raycast_indicator_d)
+
 	new_ik_util.left_leg_pole = create_pole(true, sizes, skeleton.local_targets)
 	new_ik_util.right_leg_pole = create_pole(false, sizes, skeleton.local_targets)
 	new_ik_util.left_leg_next_target  = IkUtil.create_next_target(-sizes.raycast_stance_offset, left_color,  sizes.raycast_leg_lenght)
@@ -231,30 +248,79 @@ func update_ik_raycast(
 		_update_stepping_foot(leg.current_target)
 	var was_airborne: bool = leg.current_target.get_meta("was_airborne", false)
 
-	var min_raycast_length: float    = sizes.raycast_leg_lenght
-	var additional_length: float     = sizes.raycast_leg_lenght / 2.0
-	var total_raycast_length: float  = min_raycast_length + additional_length
-	leg.raycast.target_position.y    = -total_raycast_length
-	var max_raycast_distance: float  = leg.raycast.target_position.length()
+	var min_raycast_length: float   = sizes.raycast_leg_lenght
+	var additional_length: float    = sizes.raycast_leg_lenght / 2.0
+	var total_raycast_length: float = min_raycast_length + additional_length
+	leg.raycast.target_position.y   = -total_raycast_length
+	var max_raycast_distance: float       = leg.raycast.target_position.length()
 	var leg_reach_raycast_distance: float = sizes.leg_height
 
 	if left:
-		left_leg_raycast_indicator = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator, total_raycast_length)
+		left_leg_raycast_indicator   = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator,   total_raycast_length)
+		left_leg_raycast_indicator_b = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator_b, total_raycast_length)
+		left_leg_raycast_indicator_c = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator_c, total_raycast_length)
+		left_leg_raycast_indicator_d = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator_d, total_raycast_length)
 	else:
-		right_leg_raycast_indicator = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator, total_raycast_length)
+		right_leg_raycast_indicator   = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator,   total_raycast_length)
+		right_leg_raycast_indicator_b = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator_b, total_raycast_length)
+		right_leg_raycast_indicator_c = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator_c, total_raycast_length)
+		right_leg_raycast_indicator_d = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator_d, total_raycast_length)
 
-	leg.raycast.force_raycast_update()
+	var indicator_a := left_leg_raycast_indicator   if left else right_leg_raycast_indicator
+	var indicator_b := left_leg_raycast_indicator_b if left else right_leg_raycast_indicator_b
+	var indicator_c := left_leg_raycast_indicator_c if left else right_leg_raycast_indicator_c
+	var indicator_d := left_leg_raycast_indicator_d if left else right_leg_raycast_indicator_d
 
-	if leg.raycast.is_colliding():
-		var collision_point: Vector3    = leg.raycast.get_collision_point()
-		var collision_distance: float   = leg.raycast.global_position.distance_to(collision_point)
+	if not char_rigidbody.is_grounded:
+		if not recovery_targets_locked:
+			leg.current_target.set_meta("was_airborne", true)
+			if not _is_stepping(leg.current_target):
+				_tween_foot_to(leg.current_target, leg.current_target.global_position, leg.airborne_target.global_position, 0.0, sizes.step_height)
+		_set_leg_measure(left, 0.0, false, leg.airborne_target.global_position)
+		indicator_b.visible = false
+		indicator_c.visible = false
+		indicator_d.visible = false
+		solve_two_bone_ik(upper_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
+		return
+
+	indicator_b.visible = true
+	indicator_c.visible = true
+	indicator_d.visible = true
+
+	var original_origin := leg.raycast.transform.origin
+
+	var basis_owner := leg.raycast.get_parent() as Node3D
+	var ground_world := char_rigidbody.get_ground_collision_point()
+	var ground_local := basis_owner.global_transform.affine_inverse() * ground_world
+
+	var candidate_origins: Array[Vector3] = [
+		original_origin,
+		Vector3(raycast_offset.x, leg.neutral_local.y,  raycast_offset.y),
+		Vector3(raycast_offset.x, leg.neutral_local.y, leg.neutral_local.z + raycast_offset.y),
+		Vector3(ground_local.x,   leg.neutral_local.y, ground_local.z),
+	]
+
+	var active_candidate_idx := -1
+	var resolved := false
+
+	for i in candidate_origins.size():
+		leg.raycast.transform.origin = candidate_origins[i]
+		leg.raycast.force_raycast_update()
+
+		if not leg.raycast.is_colliding():
+			continue
+
+		var collision_point    := leg.raycast.get_collision_point()
+		var collision_distance := leg.raycast.global_position.distance_to(collision_point)
+		leg.raycast.transform.origin = original_origin
+		active_candidate_idx = i
 
 		if collision_distance >= leg_reach_raycast_distance:
 			var t: float = clamp(
 				(collision_distance - leg_reach_raycast_distance) / (max_raycast_distance - leg_reach_raycast_distance),
 				0.0, 1.0
 			)
-			var interpolated_position: Vector3 = Vector3(
+			var interpolated_position := Vector3(
 				leg.airborne_target.global_position.x,
 				lerpf(collision_point.y, leg.airborne_target.global_position.y, t),
 				leg.airborne_target.global_position.z
@@ -265,7 +331,6 @@ func update_ik_raycast(
 				leg.current_target.set_meta("was_airborne", true)
 				if not _is_stepping(leg.current_target):
 					_tween_foot_to(leg.current_target, leg.current_target.global_position, interpolated_position, 0.0, sizes.step_height * 0.5)
-
 			_set_leg_measure(left, 0.0, false, interpolated_position)
 		else:
 			leg.next_target.global_position = collision_point
@@ -281,8 +346,7 @@ func update_ik_raycast(
 					Vector2(leg.current_target.global_position.x, leg.current_target.global_position.z)
 				).length_squared()
 
-				var basis_owner    := leg.raycast.get_parent() as Node3D
-				var neutral_world  := basis_owner.global_transform * leg.neutral_local
+				var neutral_world := basis_owner.global_transform * leg.neutral_local
 
 				var dist2Exp: float = (
 					Vector2(leg.next_target.global_position.x, leg.next_target.global_position.z) -
@@ -297,17 +361,40 @@ func update_ik_raycast(
 				_set_leg_measure(left, dist2, wants_step, collision_point, step_duration, step_height)
 			else:
 				_set_leg_measure(left, 0.0, false, collision_point)
-	else:
+
+		resolved = true
+		break
+
+	if not resolved:
+		leg.raycast.transform.origin = original_origin
 		if not recovery_targets_locked:
 			leg.current_target.set_meta("was_airborne", true)
 			if not _is_stepping(leg.current_target):
 				_tween_foot_to(leg.current_target, leg.current_target.global_position, leg.airborne_target.global_position, 0.0, sizes.step_height)
 		_set_leg_measure(left, 0.0, false, leg.airborne_target.global_position)
 
+	var offset_b := candidate_origins[1] - original_origin
+	var offset_c := candidate_origins[2] - original_origin
+	var offset_d := candidate_origins[3] - original_origin
+	indicator_b.position = Vector3(offset_b.x, indicator_b.position.y, offset_b.z)
+	indicator_c.position = Vector3(offset_c.x, indicator_c.position.y, offset_c.z)
+	indicator_d.position = Vector3(offset_d.x, indicator_d.position.y, offset_d.z)
+	_set_indicator_color(indicator_a, raycast_color if active_candidate_idx == 0 else inactive_raycast_color)
+	_set_indicator_color(indicator_b, raycast_color if active_candidate_idx == 1 else inactive_raycast_color)
+	_set_indicator_color(indicator_c, raycast_color if active_candidate_idx == 2 else inactive_raycast_color)
+	_set_indicator_color(indicator_d, raycast_color if active_candidate_idx == 3 else inactive_raycast_color)
+
 	if not left and not recovery_targets_locked:
 		_try_start_farther_leg(0.05, false)
 
 	solve_two_bone_ik(upper_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
+
+static func _set_indicator_color(indicator: MeshInstance3D, color: Color) -> void:
+	if not indicator.material_override is StandardMaterial3D:
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		indicator.material_override = mat
+	(indicator.material_override as StandardMaterial3D).albedo_color = color
 
 static func _tween_foot_to(node: Node3D, from_pos: Vector3, to_pos: Vector3, duration: float, step_height: float) -> void:
 	if duration <= 0.0 or from_pos.is_equal_approx(to_pos):

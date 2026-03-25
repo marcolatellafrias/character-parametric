@@ -43,7 +43,7 @@ var distance_from_ground: float
 var raycast_leg_lenght: float
 var pole_distance: float
 var raycast_max_offset: float
-var raycast_amount := 12.5
+var raycast_amount := 11.5
 var speed_for_max := 10.0
 var axis_weights := Vector2(1.0, 1.0)
 var speed_curve: Curve

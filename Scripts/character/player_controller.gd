@@ -56,6 +56,10 @@ var _is_charging_jump: bool = false
 var _jump_charge: float = 0.0
 var _is_crouched: bool = false
 
+var is_third_person: bool = false
+var third_person_distance: float = 4.0
+var third_person_height: float = 1.5
+
 
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
 	char_rigidbody = rb
@@ -69,7 +73,7 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 	_hud = PlayerHUD.create(inst)
 	char_rigidbody.add_child(_hud)
 	_impact_debug_hud = ImpactDebugHUD.create()
-	add_child(_impact_debug_hud)
+	#add_child(_impact_debug_hud)
 	_connect_fall_signal(char_rigidbody)
 
 
@@ -113,7 +117,7 @@ func _input(event: InputEvent) -> void:
 		else:
 			camera_pitch = clamp(camera_pitch - event.relative.y * 0.002, -1.2, 1.2)
 			camera_yaw -= event.relative.x * 0.002
-			if not _is_ragdoll_active():
+			if not _is_ragdoll_active() and not is_third_person:
 				player_camera.rotation.x = camera_pitch
 
 	if event is InputEventMouseButton:
@@ -155,6 +159,8 @@ func _input(event: InputEvent) -> void:
 					_toggle_ragdoll()
 				KEY_R:
 					_respawn()
+				KEY_M:
+					is_third_person = not is_third_person
 
 
 func _physics_process(delta: float) -> void:
@@ -198,11 +204,18 @@ func _physics_process(delta: float) -> void:
 		_update_ragdoll_camera(delta)
 		return
 
-	var target_y := head_bone.global_position.y + head_size.y * 0.5
-	camera_y_smooth = lerp(camera_y_smooth, target_y, clamp(delta * CAMERA_Y_SMOOTH, 0.0, 1.0))
-	player_camera.global_position.y = camera_y_smooth
-
 	char_rigidbody.rotation.y = camera_yaw
+
+	if is_third_person:
+		var behind := player_camera.global_transform.basis.z * third_person_distance
+		var target_pos := head_bone.global_position + Vector3(0, third_person_height, 0) + behind
+		player_camera.global_position = target_pos
+		player_camera.global_rotation = Vector3(camera_pitch, camera_yaw, 0.0)
+	else:
+		var target_y := head_bone.global_position.y + head_size.y * 0.5
+		camera_y_smooth = lerp(camera_y_smooth, target_y, clamp(delta * CAMERA_Y_SMOOTH, 0.0, 1.0))
+		player_camera.global_position.y = camera_y_smooth
+		player_camera.rotation.x = camera_pitch
 
 	_process_stamina(delta)
 

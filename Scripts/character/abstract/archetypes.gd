@@ -125,10 +125,10 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.hip_swing_max = 0.5
 	arch.root_bounciness_min = 0.8
 	arch.root_bounciness_max = 0.8
-	arch.step_height_min = 0.4
-	arch.step_height_max = 0.4
-	arch.step_radius_min = 0.5
-	arch.step_radius_max = 0.5
+	arch.step_height_min = 0.6
+	arch.step_height_max = 0.6
+	arch.step_radius_min = 0.9
+	arch.step_radius_max = 0.9
 	arch.leg_cripple_chance = 0.1
 	arch.slouch = 0.0
 	arch.shoulders_height = 0.8
