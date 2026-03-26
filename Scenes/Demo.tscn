@@ -198,6 +198,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
 
 [node name="fat" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.235, 0.3, -10.597)
+is_active = true
 
 [node name="AreaInstantiator" type="Node3D" parent="chars/fat" node_paths=PackedStringArray("cameras", "world")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.235, -0.3, 10.597)
@@ -211,7 +212,6 @@ environment = SubResource("Environment_bg2jp")
 
 [node name="giga" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3612877, 0.3, -10.597)
-is_active = true
 master_seed = 3
 
 [node name="old" parent="chars" instance=ExtResource("11_ymvx6")]

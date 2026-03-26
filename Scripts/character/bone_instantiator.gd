@@ -34,6 +34,15 @@ const CROUCH_Y        := -0.22
 const CROUCH_Z        :=  0.13
 const CROUCH_TILT     :=  0.3
 
+const ARM_COMPRESS_CROUCH: float = 1.35
+const ARM_COMPRESS_JUMP:   float = 0.45
+const ARM_COMPRESS_IMPACT: float = 0.30
+const ARM_FORWARD_SCALE:   float = 0.25  # cuanto se mueven hacia adelante por unidad de compress
+const ARM_BEND_SCALE:      float = 0.18  # cuanto suben (bend) por unidad de compress
+
+var ARM_JUMP_EXTENSION_FACTOR: float = 0.35
+
+
 func _ready() -> void:
 	if is_active:
 		player_controller = PlayerController.new()
@@ -113,12 +122,12 @@ func _register_bone_animations() -> void:
 	var _top_spine_rotation    := 0.1
 	var _bottom_spine_rotation := -0.5 * hip_swing
 
-	var right_hip     := custom_bones_util.right_hip
-	var left_hip      := custom_bones_util.left_hip
-	var lower_spine   := custom_bones_util.lower_spine
-	var middle_spine  := custom_bones_util.middle_spine
-	var upper_spine   := custom_bones_util.upper_spine
-	var chest         := custom_bones_util.chest
+	var right_hip      := custom_bones_util.right_hip
+	var left_hip       := custom_bones_util.left_hip
+	var lower_spine    := custom_bones_util.lower_spine
+	var middle_spine   := custom_bones_util.middle_spine
+	var upper_spine    := custom_bones_util.upper_spine
+	var chest          := custom_bones_util.chest
 	var right_shoulder := custom_bones_util.right_shoulder
 	var left_shoulder  := custom_bones_util.left_shoulder
 
@@ -183,14 +192,15 @@ func _register_bone_animations() -> void:
 	# ─── HEAD / NECK PITCH (player camera follow) ────────────────────────────────
 
 	if is_active and is_instance_valid(player_camera):
+		var bi := self
 		var pitch_callable := func() -> float:
-			return clamp(player_camera.rotation.x, -0.5, 0.8)
+			if not is_instance_valid(bi.player_camera):
+				return 0.0
+			return clamp(bi.player_camera.rotation.x, -0.5, 0.8)
 
 		procedural_animator.register_formula(custom_bones_util.head, PA.Axis.ROT_X, pitch_callable, 0.50)
-
 		if is_instance_valid(custom_bones_util.neck):
 			procedural_animator.register_formula(custom_bones_util.neck, PA.Axis.ROT_X, pitch_callable, 0.25)
-
 		procedural_animator.register_formula(chest,        PA.Axis.ROT_X, pitch_callable, 0.12)
 		procedural_animator.register_formula(upper_spine,  PA.Axis.ROT_X, pitch_callable, 0.08)
 		procedural_animator.register_formula(middle_spine, PA.Axis.ROT_X, pitch_callable, 0.05)
@@ -232,16 +242,20 @@ func _register_bone_animations() -> void:
 			var d := ls.foot_spread_unified.y * z_weight * ls.speed_norm
 			return -(arm_total - sqrt(max(0.0, arm_total * arm_total - d * d))),
 		1.0)
-		
+
+	# ─── VERTICAL VELOCITY (jump / fall) ─────────────────────────────────────────
+
 	var v_vel_arm_weight := 0.44
+	var arm_bentness     := entity_instantiation.arch_final.arm_bentness
+	var max_extension    := arm_bentness * ARM_JUMP_EXTENSION_FACTOR * arm_total
 
 	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.UP,
 		func():
-			return ls.vertical_velocity_smooth / -10.0,
+			return max(ls.vertical_velocity_smooth / -10.0, -max_extension),
 		v_vel_arm_weight)
 	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.UP,
 		func():
-			return ls.vertical_velocity_smooth / -10.0,
+			return max(ls.vertical_velocity_smooth / -10.0, -max_extension),
 		v_vel_arm_weight)
 
 	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.LEFT,
@@ -263,12 +277,12 @@ func _register_bone_animations() -> void:
 		func():
 			return ls.vertical_velocity_smooth / 10.0,
 		-0.3)
-		
+
 	procedural_animator.register_node_formula(ik_util.left_arm_pole, Vector3.LEFT,
-	func():
-		var d : float = max(0.0, ls.vertical_velocity_smooth / -10.0) * v_vel_arm_weight
-		return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
-	1.0)
+		func():
+			var d : float = max(0.0, ls.vertical_velocity_smooth / -10.0) * v_vel_arm_weight
+			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
+		1.0)
 	procedural_animator.register_node_formula(ik_util.right_arm_pole, Vector3.LEFT,
 		func():
 			var d : float = max(0.0, ls.vertical_velocity_smooth / -10.0) * v_vel_arm_weight
@@ -284,28 +298,47 @@ func _register_bone_animations() -> void:
 			return max(0.0, ls.vertical_velocity_smooth / -10.0),
 		v_vel_arm_weight * 1.0)
 
-	var impact_y_weight := 0.9
+	# ─── ARM COMPRESS (crouch / jump squat / landing) ────────────────────────────
+
+	var arm_forward_scale := ARM_FORWARD_SCALE
+	var arm_bend_scale    := ARM_BEND_SCALE
+	var bi                := self
+
+	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.FORWARD,
+		func(): return bi.locomotion_signals.arm_compress,
+		arm_forward_scale)
+	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.FORWARD,
+		func(): return bi.locomotion_signals.arm_compress,
+		arm_forward_scale)
+
+	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.UP,
+		func(): return bi.locomotion_signals.arm_compress,
+		arm_bend_scale)
+	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.UP,
+		func(): return bi.locomotion_signals.arm_compress,
+		arm_bend_scale)
 
 	# ─── LANDING ────────────────────────────────────────────────────────────────
-	# root baja y se va para atras
+
+	var impact_y_weight := 0.9
+
 	procedural_animator.register_formula(lower_spine, PA.Axis.POS_Y,
 		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
-		-impact_y_weight*2)
+		-impact_y_weight * 2)
 	procedural_animator.register_formula(lower_spine, PA.Axis.POS_Z,
 		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
 		impact_y_weight)
 	procedural_animator.register_formula(lower_spine, PA.Axis.ROT_X,
 		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
-		-impact_y_weight*3)
+		-impact_y_weight * 3)
 
-	# shoulders suben al landing
 	procedural_animator.register_formula(right_shoulder, PA.Axis.ROT_Z,
 		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
 		-impact_y_weight * 0.5)
 	procedural_animator.register_formula(left_shoulder, PA.Axis.ROT_Z,
 		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
 		impact_y_weight * 0.5)
-
+		
 func _clear_prior_generations() -> void:
 	if is_instance_valid(ragdoll_util):
 		if ragdoll_util.is_active and is_instance_valid(char_rigidbody):
@@ -355,6 +388,12 @@ func _physics_process(_delta: float) -> void:
 	skel_sizes_util.update(_delta, char_rigidbody, entity_instantiation, ik_util)
 	ik_util.update_ik_raycast(true, custom_bones_util, skel_sizes_util, char_rigidbody)
 	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
+	var arm_bentness := entity_instantiation.arch_final.arm_bentness
+	var remaining := 1.0 - arm_bentness
+	var raw_compress : float = crouch_t * ARM_COMPRESS_CROUCH \
+		+ jump_squat_t * ARM_COMPRESS_JUMP \
+		+ max(0.0, char_rigidbody.impact_y) * ARM_COMPRESS_IMPACT
+	locomotion_signals.arm_compress = clamp(raw_compress * remaining, 0.0, remaining)
 	locomotion_signals.update(_delta)
 
 	ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
@@ -416,3 +455,20 @@ static func _get_arm_tip_rest_local(left: bool, sizes: SkeletonSizesUtil) -> Vec
 		- sizes.lower_arm_size.y
 	var tip_x := sign_x * (sizes.shoulder_width.y + sizes.shoulders_width)
 	return Vector3(tip_x, tip_y, 0.0)
+
+func refresh_camera_animations() -> void:
+	if not is_active or not is_instance_valid(player_camera):
+		return
+	var PA := ProceduralBoneAnimator
+	var bi := self
+	var pitch_callable := func() -> float:
+		if not is_instance_valid(bi.player_camera):
+			return 0.0
+		return clamp(bi.player_camera.rotation.x, -0.5, 0.8)
+
+	procedural_animator.register_formula(custom_bones_util.head, PA.Axis.ROT_X, pitch_callable, 0.50)
+	if is_instance_valid(custom_bones_util.neck):
+		procedural_animator.register_formula(custom_bones_util.neck, PA.Axis.ROT_X, pitch_callable, 0.25)
+	procedural_animator.register_formula(custom_bones_util.chest,        PA.Axis.ROT_X, pitch_callable, 0.12)
+	procedural_animator.register_formula(custom_bones_util.upper_spine,  PA.Axis.ROT_X, pitch_callable, 0.08)
+	procedural_animator.register_formula(custom_bones_util.middle_spine, PA.Axis.ROT_X, pitch_callable, 0.05)

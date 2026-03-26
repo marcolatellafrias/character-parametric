@@ -21,6 +21,8 @@ const SPREAD_SMOOTH: float = 10.0
 var impact_y_signed_smooth: float = 0.0
 const IMPACT_Y_SMOOTH: float = 12.0
 
+var arm_compress: float = 0.0
+
 static func create(ik: IkUtil, rb: CharacterRigidBody3D, sz: SkeletonSizesUtil) -> LocomotionSignals:
 	var s := LocomotionSignals.new()
 	s.ik_util = ik

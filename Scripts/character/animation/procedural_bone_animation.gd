@@ -137,3 +137,6 @@ func _apply(bone: CustomBone, axis: Axis, value: float, _entry: BoneAnimEntry) -
 			bone.position.y += value
 		Axis.POS_Z:
 			bone.position.z += value
+			
+func unregister_bone(bone: CustomBone) -> void:
+	_entries = _entries.filter(func(e): return e.bone != bone)
