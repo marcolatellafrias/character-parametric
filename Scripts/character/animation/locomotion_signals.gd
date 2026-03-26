@@ -23,6 +23,9 @@ const IMPACT_Y_SMOOTH: float = 12.0
 
 var arm_compress: float = 0.0
 
+var impact_xz_smooth: Vector2 = Vector2.ZERO
+const IMPACT_XZ_SMOOTH: float = 8.0
+
 static func create(ik: IkUtil, rb: CharacterRigidBody3D, sz: SkeletonSizesUtil) -> LocomotionSignals:
 	var s := LocomotionSignals.new()
 	s.ik_util = ik
@@ -91,3 +94,5 @@ func _update_velocity_signals(delta: float) -> void:
 	var k_i: float = clamp(delta * IMPACT_Y_SMOOTH, 0.0, 1.0)
 	impact_y_signed_smooth = char_rigidbody.impact_y
 	char_rigidbody.impact_y_signed = 0.0  # reset cada frame para que sea un pulso
+	var k_xz: float = clamp(delta * IMPACT_XZ_SMOOTH, 0.0, 1.0)
+	impact_xz_smooth = impact_xz_smooth.lerp(char_rigidbody.impact_xz, k_xz)

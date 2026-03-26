@@ -339,6 +339,17 @@ func _register_bone_animations() -> void:
 		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
 		impact_y_weight * 0.5)
 		
+	# ─── XZ IMPACT ──────────────────────────────────────────────────────────────
+
+	procedural_animator.register_formula(lower_spine, PA.Axis.ROT_X,
+		func(): return ls.impact_xz_smooth.y,
+		impact_y_weight * 1.5)
+	procedural_animator.register_formula(lower_spine, PA.Axis.ROT_Z,
+		func(): return ls.impact_xz_smooth.x,
+		impact_y_weight * 1.5)
+	
+	
+	
 func _clear_prior_generations() -> void:
 	if is_instance_valid(ragdoll_util):
 		if ragdoll_util.is_active and is_instance_valid(char_rigidbody):

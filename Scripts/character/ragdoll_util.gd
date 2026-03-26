@@ -12,7 +12,7 @@ var debug_ragdoll_color: bool = false
 var trip_force_multiplier: float = 1.0
 var trip_twist_multiplier: float = 0.5
 
-var impact_fall_linear: float = 1.5
+var impact_fall_linear: float = 2.0
 
 var _recovery_timer: float = 0.0
 var _skeleton_root: CustomBone = null
@@ -310,18 +310,28 @@ func activate_with_impact(
 	world_dir: Vector3
 ) -> void:
 	var vel := char_rb._prev_velocity
-	_momentum_dir = vel.normalized() if vel.length() > 0.1 else -char_rb.global_basis.z
-	activate(char_rb, skeleton_root)
-	_apply_impact_fall_impulses()
+	var speed := vel.length()
+	var impact_magnitude := char_rb._last_impact_xz_magnitude
 
-func _apply_impact_fall_impulses() -> void:
+	if speed > 0.5:
+		_momentum_dir = vel.normalized()
+	else:
+		_momentum_dir = world_dir
+	
+	activate(char_rb, skeleton_root)
+
+	var effective_speed : float = max(speed, impact_magnitude * 2.0)
+	_apply_impact_fall_impulses(effective_speed)
+
+
+func _apply_impact_fall_impulses(speed: float) -> void:
 	if not is_instance_valid(_lower_spine_body):
 		return
 	for bone: CustomBone in _bodies:
 		var rb: RigidBody3D = _bodies[bone]
 		if not is_instance_valid(rb):
 			continue
-		rb.apply_central_impulse(_momentum_dir * impact_fall_linear * rb.mass)
+		rb.apply_central_impulse(_momentum_dir * speed * impact_fall_linear * rb.mass)
 
 func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
 	is_active            = false
