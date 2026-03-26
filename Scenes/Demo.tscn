@@ -242,7 +242,6 @@ current = true
 [node name="Nave" parent="." instance=ExtResource("12_h3puh")]
 transform = Transform3D(0.44093454, 0, -0.4069112, 0, 0.59999996, 0, 0.4069112, 0, 0.44093454, -20.015406, 0.9780211, -4.30853)
 axis_lock_linear_x = true
-axis_lock_linear_y = true
 axis_lock_linear_z = true
 axis_lock_angular_x = true
 axis_lock_angular_y = true
@@ -254,7 +253,6 @@ angular_damp = 1.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21.46107, 0.7125503, -1.5130081)
 
 [node name="Mirror3D" parent="." instance=ExtResource("8_ecetj")]
-transform = Transform3D(0.6157164, -0.20394106, -0.76111835, -8.881785e-16, 0.9659259, -0.25881904, 0.7879679, 0.15935913, 0.59473634, 13.763744, 0.52957535, -15.4447)
-visible = false
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 0.9999998, 13.763744, 0.52957535, -21.834743)
 size = Vector2(80, 20)
 color = Color(0.882948, 0.80127335, 0.73722345, 1)

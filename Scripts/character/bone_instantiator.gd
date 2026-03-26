@@ -28,11 +28,11 @@ var crouch_t: float = 0.0
 var _last_root_z_offset: float = 0.0
 
 const JUMP_SQUAT_Y    := -0.22
-const JUMP_SQUAT_Z    :=  0.09
-const JUMP_SQUAT_TILT :=  0.22
+const JUMP_SQUAT_Z    :=  0.13
+const JUMP_SQUAT_TILT :=  0.3
 const CROUCH_Y        := -0.22
 const CROUCH_Z        :=  0.13
-const CROUCH_TILT     :=  0.3
+const CROUCH_TILT     :=  0.4
 
 const ARM_COMPRESS_CROUCH: float = 1.35
 const ARM_COMPRESS_JUMP:   float = 0.45
@@ -438,9 +438,7 @@ func _apply_root_offsets() -> void:
 	var z    := JUMP_SQUAT_Z    * jump_squat_t + CROUCH_Z    * crouch_t
 	var tilt := JUMP_SQUAT_TILT * jump_squat_t + CROUCH_TILT * crouch_t
 	var spine := custom_bones_util.lower_spine
-	spine.position.z -= _last_root_z_offset
 	spine.position.z += z
-	_last_root_z_offset = z
 	spine.position.y += y
 	spine.transform.basis *= Basis(Vector3.RIGHT, -tilt)
 
