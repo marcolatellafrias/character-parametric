@@ -56,16 +56,16 @@ var _is_charging_jump: bool = false
 var _jump_charge: float = 0.0
 var _is_crouched: bool = false
 
+var _max_reach_distance: float = 1.0
+
 # Debug cameras
-# Layout mirrors the numpad: 7 8 9 / 4 5 6 / 1 2 3
-# 5 = first person, others = orbiting fixed-height debug views
 var _debug_camera: Camera3D = null
-var _debug_cam_mode: int = 0  # 0 = first person; matches KP number otherwise
+var _debug_cam_mode: int = 0
 const DEBUG_CAM_DISTANCE: float = 5.0
 const DEBUG_CAM_HEIGHT: float = 1.5
 
 var throw_strength: float = 500.0
-var throw_max_charge_time: float = 1.5
+var throw_max_charge_time: float = 0.5
 
 var _is_charging_throw: bool = false
 var _throw_charge: float = 0.0
@@ -77,6 +77,8 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
     head_size = h_size
     is_ready = true
     camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
+    _max_reach_distance = inst.arch_final.reach * inst.arch_final.reach_multiplier
+    grab_ray_length = _max_reach_distance + 2.0
     Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
     _build_outline_material()
     _hud = PlayerHUD.create(inst)
@@ -158,7 +160,7 @@ func _input(event: InputEvent) -> void:
                 KEY_SPACE:
                     if not _is_crouched and char_rigidbody.is_grounded:
                         _is_charging_jump = true
-                KEY_T:
+                KEY_R:
                     if not _is_charging_throw:
                         _is_charging_throw = true
                         _throw_charge = 0.0
@@ -172,7 +174,7 @@ func _input(event: InputEvent) -> void:
                             _switch_to(target_bi)
                 KEY_G:
                     _toggle_ragdoll()
-                KEY_R:
+                KEY_P:
                     _respawn()
                 KEY_KP_5:
                     _set_debug_cam(0)
@@ -201,7 +203,7 @@ func _input(event: InputEvent) -> void:
                 KEY_CTRL:
                     if _is_crouched:
                         _stop_crouch()
-                KEY_T:
+                KEY_R:
                     if _is_charging_throw:
                         _release_throw()
                         _is_charging_throw = false
@@ -235,21 +237,21 @@ func _update_debug_camera() -> void:
 
     var flat_offset := Vector3.ZERO
     match _debug_cam_mode:
-        1:  # back-left diagonal
+        1:
             flat_offset = (-forward - right).normalized() * DEBUG_CAM_DISTANCE
-        2:  # behind — looking at the back of the character
+        2:
             flat_offset = -forward * DEBUG_CAM_DISTANCE
-        3:  # back-right diagonal
+        3:
             flat_offset = (-forward + right).normalized() * DEBUG_CAM_DISTANCE
-        4:  # left lateral
+        4:
             flat_offset = -right * DEBUG_CAM_DISTANCE
-        6:  # right lateral
+        6:
             flat_offset = right * DEBUG_CAM_DISTANCE
-        7:  # front-left diagonal — looking at the front-left of the character
+        7:
             flat_offset = (forward - right).normalized() * DEBUG_CAM_DISTANCE
-        8:  # front — looking at the front of the character
+        8:
             flat_offset = forward * DEBUG_CAM_DISTANCE
-        9:  # front-right diagonal
+        9:
             flat_offset = (forward + right).normalized() * DEBUG_CAM_DISTANCE
 
     _debug_camera.global_position = look_target + Vector3(flat_offset.x, 0.0, flat_offset.z)
@@ -319,6 +321,13 @@ func _physics_process(delta: float) -> void:
 
     if _is_charging_throw:
         _throw_charge = min(_throw_charge + delta, throw_max_charge_time)
+
+    # Actualizar animación de brazos para throw
+    var bi := _get_bi()
+    if is_instance_valid(bi):
+        bi.throw_t = (_throw_charge / throw_max_charge_time) if _is_charging_throw else 0.0
+        if _is_charging_throw:
+            bi.throw_world_dir = -player_camera.global_transform.basis.z
 
     if is_instance_valid(_hud):
         var arch := _get_arch()
@@ -466,6 +475,9 @@ func _switch_to(target: BoneInstantiator) -> void:
     head_bone = target.custom_bones_util.head
     head_size = target.skel_sizes_util.head_size
 
+    _max_reach_distance = target.entity_instantiation.arch_final.reach * target.entity_instantiation.arch_final.reach_multiplier
+    grab_ray_length = _max_reach_distance + 2.0
+
     player_camera.get_parent().remove_child(player_camera)
     char_rigidbody.add_child(player_camera)
     target.player_camera = player_camera
@@ -538,6 +550,13 @@ func _process_grab_look() -> void:
         if hit_bi != null and hit_bi == own_bi:
             _clear_outline()
             return
+        # Comprobar rango de alcance desde la punta del chest
+        if is_instance_valid(own_bi):
+            var chest := own_bi.custom_bones_util.chest
+            var chest_tip := chest.global_position + chest.global_transform.basis.y * own_bi.skel_sizes_util.chest_size.y
+            if hit["position"].distance_to(chest_tip) > _max_reach_distance:
+                _clear_outline()
+                return
         var parent: Node = hit.collider.get_parent()
         if parent != _hovered_parent:
             _clear_outline()
@@ -621,6 +640,8 @@ func _respawn() -> void:
     char_rigidbody = current_bi.char_rigidbody
     head_bone      = current_bi.custom_bones_util.head
     head_size      = current_bi.skel_sizes_util.head_size
+    _max_reach_distance = current_bi.entity_instantiation.arch_final.reach * current_bi.entity_instantiation.arch_final.reach_multiplier
+    grab_ray_length = _max_reach_distance + 2.0
     char_rigidbody.global_position = prev_pos
     char_rigidbody.rotation.y = camera_yaw
     camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
@@ -674,14 +695,14 @@ func _process_stamina(delta: float) -> void:
         _hud.update_stamina(_stamina / stamina_max)
 
 func _release_throw() -> void:
-    if not is_instance_valid(_hovered_rb):
-        _throw_charge = 0.0
-        return
     var bi := _get_bi()
-    var chest_bone := bi.custom_bones_util.chest
-    var origin := chest_bone.global_position + chest_bone.global_transform.basis.y * bi.skel_sizes_util.chest_size.y
     var dir := -player_camera.global_transform.basis.z
-    var t := _throw_charge / throw_max_charge_time
-    var impulse := dir * throw_strength * t
-    _hovered_rb.apply_impulse(impulse, _hovered_rb.global_position - origin)
+    if is_instance_valid(_hovered_rb) and is_instance_valid(bi):
+        var chest_bone := bi.custom_bones_util.chest
+        var origin := chest_bone.global_position + chest_bone.global_transform.basis.y * bi.skel_sizes_util.chest_size.y
+        var t := _throw_charge / throw_max_charge_time
+        _hovered_rb.apply_impulse(dir * throw_strength * t, _hovered_rb.global_position - origin)
+    if is_instance_valid(bi):
+        bi.throw_push_t = 1.0
+        bi.throw_world_dir = dir
     _throw_charge = 0.0

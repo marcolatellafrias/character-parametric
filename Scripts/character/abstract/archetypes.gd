@@ -109,7 +109,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.time_to_standup = 2.0
 	arch.throw_strenght = 0.7
 	arch.reach = 0.65
-	arch.reach_multiplier = 1.0
+	arch.reach_multiplier = 1.5
 	arch.jump_strenght = 0.2
 	arch.time_to_max_jump = 0.3
 	arch.min_age = 1
