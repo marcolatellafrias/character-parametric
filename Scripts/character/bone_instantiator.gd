@@ -483,3 +483,37 @@ func refresh_camera_animations() -> void:
 	procedural_animator.register_formula(custom_bones_util.chest,        PA.Axis.ROT_X, pitch_callable, 0.12)
 	procedural_animator.register_formula(custom_bones_util.upper_spine,  PA.Axis.ROT_X, pitch_callable, 0.08)
 	procedural_animator.register_formula(custom_bones_util.middle_spine, PA.Axis.ROT_X, pitch_callable, 0.05)
+
+func set_first_person_visibility(first_person: bool) -> void:
+	var visible_bones: Array[CustomBone] = [
+		custom_bones_util.left_upper_feet,
+		custom_bones_util.right_upper_feet,
+		custom_bones_util.left_lower_arm,
+		custom_bones_util.right_lower_arm,
+	]
+	var all_bones: Array[CustomBone] = [
+		custom_bones_util.lower_spine,
+		custom_bones_util.middle_spine,
+		custom_bones_util.upper_spine,
+		custom_bones_util.chest,
+		custom_bones_util.left_hip,
+		custom_bones_util.right_hip,
+		custom_bones_util.left_upper_leg,
+		custom_bones_util.left_lower_leg,
+		custom_bones_util.right_upper_leg,
+		custom_bones_util.right_lower_leg,
+		custom_bones_util.left_upper_feet,
+		custom_bones_util.right_upper_feet,
+		custom_bones_util.left_shoulder,
+		custom_bones_util.right_shoulder,
+		custom_bones_util.left_upper_arm,
+		custom_bones_util.left_lower_arm,
+		custom_bones_util.right_upper_arm,
+		custom_bones_util.right_lower_arm,
+		custom_bones_util.neck,
+		custom_bones_util.head,
+	]
+	for bone in all_bones:
+		if not is_instance_valid(bone):
+			continue
+		bone.set_mesh_visible(first_person == false or visible_bones.has(bone))

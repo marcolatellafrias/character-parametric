@@ -12,7 +12,7 @@ var debug_ragdoll_color: bool = false
 var trip_force_multiplier: float = 1.0
 var trip_twist_multiplier: float = 0.5
 
-var impact_fall_linear: float = 2.0
+var impact_fall_linear: float = 1.5
 
 var _recovery_timer: float = 0.0
 var _skeleton_root: CustomBone = null

@@ -10,7 +10,7 @@ const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
 const JUMP_SCALE := 30.0
 
-@export var show_mesh := true
+@export var show_mesh := false
 
 var is_active: bool = false
 var is_grounded: bool = false

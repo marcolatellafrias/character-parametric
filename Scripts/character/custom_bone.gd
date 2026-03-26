@@ -214,3 +214,9 @@ static func _get_accumulated_rotation(bone: CustomBone) -> Basis:
 		current = current.get_parent()
 	
 	return accumulated
+
+func set_mesh_visible(value: bool) -> void:
+	for child in get_children():
+		if child is MeshInstance3D:
+			child.visible = value
+			return
