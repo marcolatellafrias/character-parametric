@@ -45,7 +45,9 @@ var pole_distance: float
 var raycast_max_offset: float
 var raycast_amount := 11.5
 var speed_for_max := 10.0
-var axis_weights := Vector2(1.0, 1.0)
+var axis_weight_lateral:  float = 0.6
+var axis_weight_forward:  float = 0.8
+var axis_weight_backward: float = 1.0
 var speed_curve: Curve
 const raycast_accel_gain := 0.06
 const raycast_vel_gain   := 0.02
@@ -68,6 +70,7 @@ var right_arm_pole_rest_local: Vector3
 var left_arm_shoulder_rest_local: Vector3
 var right_arm_shoulder_rest_local: Vector3
 
+var step_duration_scale: float = 1.0
 
 static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var skelSizes = SkeletonSizesUtil.new()
@@ -162,7 +165,8 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.step_radius_min = new_leg_height * inst.step_radius * 0.4
 	skelSizes.step_height = new_leg_height * inst.step_height
 	skelSizes.pole_distance = new_leg_height
-	skelSizes.raycast_max_offset = new_leg_height * 0.20
+	skelSizes.step_duration_scale    = entityStats.step_duration_scale
+	skelSizes.raycast_max_offset     = new_leg_height * 0.20 * entityStats.step_duration_scale
 
 	skelSizes.slouchiness_chest        = lerp_range(0.0, 0.6, entityStats.slouch)
 	skelSizes.slouchiness_center_spine = lerp_range(0.0, 0.6, entityStats.slouch)

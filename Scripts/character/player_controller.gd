@@ -56,9 +56,13 @@ var _is_charging_jump: bool = false
 var _jump_charge: float = 0.0
 var _is_crouched: bool = false
 
-var is_third_person: bool = false
-var third_person_distance: float = 4.0
-var third_person_height: float = 1.5
+# Debug cameras
+# Layout mirrors the numpad: 7 8 9 / 4 5 6 / 1 2 3
+# 5 = first person, others = orbiting fixed-height debug views
+var _debug_camera: Camera3D = null
+var _debug_cam_mode: int = 0  # 0 = first person; matches KP number otherwise
+const DEBUG_CAM_DISTANCE: float = 5.0
+const DEBUG_CAM_HEIGHT: float = 1.5
 
 
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
@@ -75,6 +79,10 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 	_impact_debug_hud = ImpactDebugHUD.create()
 	#add_child(_impact_debug_hud)
 	_connect_fall_signal(char_rigidbody)
+
+	_debug_camera = Camera3D.new()
+	_debug_camera.current = false
+	add_child(_debug_camera)
 
 
 func _get_bi() -> BoneInstantiator:
@@ -117,7 +125,7 @@ func _input(event: InputEvent) -> void:
 		else:
 			camera_pitch = clamp(camera_pitch - event.relative.y * 0.002, -1.2, 1.2)
 			camera_yaw -= event.relative.x * 0.002
-			if not _is_ragdoll_active() and not is_third_person:
+			if not _is_ragdoll_active():
 				player_camera.rotation.x = camera_pitch
 
 	if event is InputEventMouseButton:
@@ -137,19 +145,14 @@ func _input(event: InputEvent) -> void:
 					_grab_distance = clamp(_grab_distance + 0.3, grab_dist_min, grab_dist_max)
 
 	if event is InputEventKey and not event.echo:
-		if event.keycode == KEY_SPACE:
-			if event.pressed and not _is_crouched and char_rigidbody.is_grounded:
-				_is_charging_jump = true
-			elif not event.pressed and _is_charging_jump:
-				_release_jump()
-				_is_charging_jump = false
-		elif event.keycode == KEY_CTRL:
-			if event.pressed and not _is_crouched:
-				_start_crouch()
-			elif not event.pressed and _is_crouched:
-				_stop_crouch()
-		elif event.pressed:
+		if event.pressed:
 			match event.keycode:
+				KEY_SPACE:
+					if not _is_crouched and char_rigidbody.is_grounded:
+						_is_charging_jump = true
+				KEY_CTRL:
+					if not _is_crouched:
+						_start_crouch()
 				KEY_F:
 					if is_instance_valid(_hovered_rb):
 						var target_bi := _find_bone_instantiator(_hovered_rb)
@@ -159,8 +162,76 @@ func _input(event: InputEvent) -> void:
 					_toggle_ragdoll()
 				KEY_R:
 					_respawn()
-				KEY_M:
-					is_third_person = not is_third_person
+				KEY_KP_5:
+					_set_debug_cam(0)
+				KEY_KP_1:
+					_set_debug_cam(1)
+				KEY_KP_2:
+					_set_debug_cam(2)
+				KEY_KP_3:
+					_set_debug_cam(3)
+				KEY_KP_4:
+					_set_debug_cam(4)
+				KEY_KP_6:
+					_set_debug_cam(6)
+				KEY_KP_7:
+					_set_debug_cam(7)
+				KEY_KP_8:
+					_set_debug_cam(8)
+				KEY_KP_9:
+					_set_debug_cam(9)
+		else:
+			match event.keycode:
+				KEY_SPACE:
+					if _is_charging_jump:
+						_release_jump()
+						_is_charging_jump = false
+				KEY_CTRL:
+					if _is_crouched:
+						_stop_crouch()
+
+
+func _set_debug_cam(mode: int) -> void:
+	_debug_cam_mode = mode
+	if mode == 0:
+		player_camera.current = true
+		_debug_camera.current = false
+	else:
+		_debug_camera.current = true
+		player_camera.current = false
+
+
+func _update_debug_camera() -> void:
+	if _debug_cam_mode == 0 or not is_instance_valid(_debug_camera):
+		return
+
+	var yaw_basis := Basis(Vector3.UP, camera_yaw)
+	var forward   := -yaw_basis.z
+	var right     := yaw_basis.x
+
+	var look_target := char_rigidbody.global_position + Vector3(0.0, DEBUG_CAM_HEIGHT, 0.0)
+
+	var flat_offset := Vector3.ZERO
+	match _debug_cam_mode:
+		1:  # back-left diagonal
+			flat_offset = (-forward - right).normalized() * DEBUG_CAM_DISTANCE
+		2:  # behind — looking at the back of the character
+			flat_offset = -forward * DEBUG_CAM_DISTANCE
+		3:  # back-right diagonal
+			flat_offset = (-forward + right).normalized() * DEBUG_CAM_DISTANCE
+		4:  # left lateral
+			flat_offset = -right * DEBUG_CAM_DISTANCE
+		6:  # right lateral
+			flat_offset = right * DEBUG_CAM_DISTANCE
+		7:  # front-left diagonal — looking at the front-left of the character
+			flat_offset = (forward - right).normalized() * DEBUG_CAM_DISTANCE
+		8:  # front — looking at the front of the character
+			flat_offset = forward * DEBUG_CAM_DISTANCE
+		9:  # front-right diagonal
+			flat_offset = (forward + right).normalized() * DEBUG_CAM_DISTANCE
+
+	_debug_camera.global_position = look_target + Vector3(flat_offset.x, 0.0, flat_offset.z)
+	_debug_camera.look_at(look_target, Vector3.UP)
 
 
 func _physics_process(delta: float) -> void:
@@ -200,18 +271,15 @@ func _physics_process(delta: float) -> void:
 			char_rigidbody._snapshot_acc_after
 		)
 
+	_update_debug_camera()
+
 	if ragdoll_active:
 		_update_ragdoll_camera(delta)
 		return
 
 	char_rigidbody.rotation.y = camera_yaw
 
-	if is_third_person:
-		var behind := player_camera.global_transform.basis.z * third_person_distance
-		var target_pos := head_bone.global_position + Vector3(0, third_person_height, 0) + behind
-		player_camera.global_position = target_pos
-		player_camera.global_rotation = Vector3(camera_pitch, camera_yaw, 0.0)
-	else:
+	if _debug_cam_mode == 0:
 		var target_y := head_bone.global_position.y + head_size.y * 0.5
 		camera_y_smooth = lerp(camera_y_smooth, target_y, clamp(delta * CAMERA_Y_SMOOTH, 0.0, 1.0))
 		player_camera.global_position.y = camera_y_smooth
@@ -238,10 +306,10 @@ func _physics_process(delta: float) -> void:
 
 func _update_ragdoll_camera(_delta: float) -> void:
 	var rd := _get_ragdoll()
-	if rd != null and is_instance_valid(rd.head_body):
-		player_camera.global_position = rd.head_body.global_position
-	player_camera.global_rotation = Vector3(camera_pitch, camera_yaw, 0.0)
-
+	if _debug_cam_mode == 0:
+		if rd != null and is_instance_valid(rd.head_body):
+			player_camera.global_position = rd.head_body.global_position
+		player_camera.global_rotation = Vector3(camera_pitch, camera_yaw, 0.0)
 	if rd != null and rd.is_recovering:
 		char_rigidbody.rotation.y = camera_yaw
 
@@ -277,6 +345,7 @@ func _start_crouch() -> void:
 	tw.tween_property(bi, "crouch_t", 1.0, 0.12)
 	tw.tween_callback(func(): char_rigidbody.set_crouched(true))
 	char_rigidbody.crouch_speed_factor = 0.6
+
 
 func _stop_crouch() -> void:
 	var bi := _get_bi()
@@ -368,7 +437,7 @@ func _switch_to(target: BoneInstantiator) -> void:
 
 	player_camera.get_parent().remove_child(player_camera)
 	char_rigidbody.add_child(player_camera)
-	player_camera.current = true
+	player_camera.current = _debug_cam_mode == 0
 	player_camera.position = Vector3.ZERO
 	player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
 	char_rigidbody.is_active = true
@@ -514,7 +583,7 @@ func _respawn() -> void:
 
 	player_camera.get_parent().remove_child(player_camera)
 	char_rigidbody.add_child(player_camera)
-	player_camera.current = true
+	player_camera.current = _debug_cam_mode == 0
 	player_camera.position = Vector3.ZERO
 	player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
 

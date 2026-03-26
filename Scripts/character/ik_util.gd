@@ -1,5 +1,7 @@
 class_name IkUtil
 
+const STEP_DURATION_FACTOR := 1.0
+
 class LegData:
 	var raycast: RayCast3D
 	var raycast_indicator: MeshInstance3D
@@ -418,13 +420,17 @@ static func _update_stepping_foot(node: Node3D) -> void:
 	var to_pos := Vector3(node.get_meta("ik_step_to"))
 	var step_height := float(node.get_meta("ik_step_height"))
 	var progress: float = clamp((now - start_time) / duration, 0.0, 1.0)
-	var eased_progress := ease_out_sine(progress)
-	var pos := from_pos.lerp(to_pos, eased_progress)
-	pos.y += sin(eased_progress * PI) * step_height
+	var eased_xz := ease_in_out(progress)
+	var eased_y  := ease_in_out(progress)
+	var pos := from_pos.lerp(to_pos, eased_xz)
+	pos.y += sin(eased_y * PI) * step_height
 	node.global_position = pos
 	if progress >= 1.0:
 		node.global_position = to_pos
 		_clear_step_data(node)
+
+static func ease_in_out(t: float) -> float:
+	return t * t * (3.0 - 2.0 * t)
 
 static func ease_out_sine(t: float) -> float:
 	return sin(t * PI * 0.5)
@@ -451,11 +457,11 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	var v2 := Vector2(local_vel.x, local_vel.z)
 	var speed := v2.length()
 	var dir := (v2 / speed) if (speed > 0.0) else Vector2.ZERO
-	var n: float = clamp(speed / sizes.speed_for_max, 0.0, 1.0)
-	var curve_gain: float = sizes.speed_curve.sample_baked(n) if (sizes.speed_curve != null) else n
-	var amount := sizes.raycast_amount * curve_gain
-	var target_off := dir * (amount * sizes.raycast_max_offset)
-	target_off = Vector2(target_off.x * sizes.axis_weights.x, target_off.y * sizes.axis_weights.y)
+
+	var needed_offset := current_step_radius / STEP_DURATION_FACTOR
+	var target_off := dir * needed_offset
+	var weight_z := sizes.axis_weight_forward if v2.y <= 0.0 else sizes.axis_weight_backward
+	target_off = Vector2(target_off.x * sizes.axis_weight_lateral, target_off.y * weight_z)
 
 	var grounded_target := target_off if root_rigidbody.is_grounded else Vector2.ZERO
 	var k: float = clamp(delta * sizes.raycast_smooth, 0.0, 1.0)
@@ -483,7 +489,7 @@ func get_step_duration(char_rigidbody: CharacterRigidBody3D, sizes: SkeletonSize
 	var horizontal_speed := dxz.length()
 	if horizontal_speed < 0.01:
 		return 0.3
-	var step_duration := (step_distance / horizontal_speed) * 0.8
+	var step_duration := (step_distance / horizontal_speed) * STEP_DURATION_FACTOR
 	var min_duration := 0.04 * sizes.leg_height
 	var max_duration := 0.4 * sizes.leg_height
 	return clamp(step_duration, min_duration, max_duration)

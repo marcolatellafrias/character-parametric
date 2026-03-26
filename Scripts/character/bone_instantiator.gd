@@ -132,7 +132,7 @@ func _register_bone_animations() -> void:
 	procedural_animator.register(left_hip, PA.Axis.ROT_X, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, hips_rotation)    
 	
 	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_X, vertical_bobbing * -0.14)
-	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_Z, vertical_bobbing * -0.14)
+	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_Z, vertical_bobbing * -0.3)
 	
 	procedural_animator.register_formula(lower_spine, PA.Axis.ROT_Z,
 		func(): return ls.foot_spread_unified.x * (0.01 + 0.04 * ls.speed_norm),
@@ -206,6 +206,12 @@ func _register_bone_animations() -> void:
 			var d := locomotion_signals.foot_spread_unified.y * z_weight
 			return -(arm_total - sqrt(max(0.0, arm_total * arm_total - d * d))),
 		1.0)
+		
+	var bow_w := 0.15
+	procedural_animator.register(lower_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  bow_w * 0.5)
+	procedural_animator.register(middle_spine, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  bow_w * 1.0)
+	procedural_animator.register(upper_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -bow_w * 1.0)
+	procedural_animator.register(chest,        PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -bow_w * 0.5)
 
 func _clear_prior_generations() -> void:
 	if is_instance_valid(ragdoll_util):

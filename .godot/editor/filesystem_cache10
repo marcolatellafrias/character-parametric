@@ -1,5 +1,5 @@
 63f7b34db8d8cdea90c76aacccf841ec
-::res://::1774107252
+::res://::1774531931
 dledtk_8x8_fo.png::CompressedTexture2D::9182871763473998172::1773172499::1773172500::1::::<><><>0<>0<>82367680f8fa88a990d0bd0c5b821044<>res://.godot/imported/dledtk_8x8_fo.png-c44b05e89ae9a7f92c245da178500be9.ctex::
 export_presets.cfg::TextFile::-1::1771210500::0::1::::<><><>0<>0<><>::
 LICENSE.md::TextFile::-1::1761072817::0::1::::<><><>0<>0<><>::
@@ -18,9 +18,9 @@ CupMaterialHatch.tres::ShaderMaterial::7602021699068158699::1761961581::0::1::::
 cup_specular.png::CompressedTexture2D::4532760392078651040::1761961582::1771448309::1::::<><><>0<>0<>6cb09ab3b897a6a4fb18db0e25166b50<>res://.godot/imported/cup_specular.png-67fd376e8d3f08cde7226bf38fa4025a.s3tc.ctex::
 cup_texture.png::CompressedTexture2D::6972018436747226027::1761961582::1771448310::1::::<><><>0<>0<>4cd1ccd20ae4cd1ae5f0e78ac5b733f3<>res://.godot/imported/cup_texture.png-248b9ddc88aa7c0fd85bab1be0a04e72.s3tc.ctex::
 ExampleScene.tscn::PackedScene::7227118104903473099::1761961582::0::1::::<><><>0<>0<><>::uid://konhnqnbl47a::::res://addons/flexible_toon_shader/example/CupMaterial.tres<>uid://dseolga3h4nvk::::res://addons/flexible_toon_shader/example/cup.obj<>uid://dgkqgl3vfek6v::::res://addons/flexible_toon_shader/example/CupMaterialHatch.tres
-::res://addons/Mirror3D/::1774031997
+::res://addons/Mirror3D/::1774393221
 Mirror3D.gd::GDScript::6114414996668009307::1773170702::0::1::::Mirror3D<>Node3D<><>0<>1<><>::
-Mirror3D.gdshader::Shader::3030333951447338880::1774031997::0::1::::<><><>0<>0<><>::
+Mirror3D.gdshader::Shader::3030333951447338880::1774393221::0::1::::<><><>0<>0<><>::
 Mirror3D.tscn::PackedScene::7463988992296735904::1761072817::0::1::::<><><>0<>0<><>::uid://ctd4r0bvuy052::::res://addons/Mirror3D/Mirror3D.gd<>uid://bjf6fmae00yno::::res://addons/Mirror3D/Mirror3D.gdshader
 ::res://Demo/::1773171012
 default_env.tres::Environment::-1::1773171012::0::1::::<><><>0<>0<><>::
@@ -53,7 +53,7 @@ sirenas.tres::ShaderMaterial::7029403985058593299::1762721173::0::1::::<><><>0<>
 tanque.tres::ShaderMaterial::591564902935369541::1762720686::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader<>uid://cbd6vu1ivw2i1::::res://Scenes/textures/garrafa textura.png
 ventanas.tres::ShaderMaterial::2518200112153308807::1762705985::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
 vidriov2.tres::StandardMaterial3D::2582558305666477124::1762721266::0::1::::<><><>0<>0<><>::
-::res://Scenes/::1774047689
+::res://Scenes/::1774404445
 auto_uwrapeado.tscn::PackedScene::1560697273719487759::1762726465::0::1::::<><><>0<>0<><>::uid://bc2amf27w1l6k::::res://Models/auto/vidriov2.tres<>uid://suxxlwyeavv2::::res://Models/auto/chasis.tres<>uid://bb43ngplsfis2::::res://Models/auto/ventanas.tres<>uid://bkbwwloqshhjn::::res://Models/auto/metal.tres<>uid://dkqtay12afnj7::::res://Models/auto/cuero.tres<>uid://du5qso8qhjk0v::::res://Models/auto/metal oscuro.tres<>uid://m2sodxy1bcep::::res://Models/auto/luces.tres
 barquetenew.tscn::PackedScene::1343632861069545948::1762726465::0::1::::<><><>0<>0<><>::uid://dp0gbaeu2p8ty::::res://Models/auto/barquetenew.blend<>uid://bb43ngplsfis2::::res://Models/auto/ventanas.tres<>uid://suxxlwyeavv2::::res://Models/auto/chasis.tres<>uid://m2sodxy1bcep::::res://Models/auto/luces.tres<>uid://du5qso8qhjk0v::::res://Models/auto/metal oscuro.tres<>uid://bkbwwloqshhjn::::res://Models/auto/metal.tres<>uid://dkqtay12afnj7::::res://Models/auto/cuero.tres<>uid://bc2amf27w1l6k::::res://Models/auto/vidriov2.tres
 barquetesimple2.blend::PackedScene::7646464420941210421::1762725931::1771448318::1::::<><><>0<>0<>2b2ee5db42e6e57a5658b3e871b2a0b8<>res://.godot/imported/barquetesimple2.blend-a6e51f4a7717c1f1f7ef31955d98ed60.scn::uid://c7qbnsaief52r::::res://Scenes/textures/chasis textura.png<>uid://dnmxb2rwhps::::res://Scenes/textures/base textura.png<>uid://b1r06xhpfqjh5::::res://Scenes/textures/base chasis texture.png<>uid://cbd6vu1ivw2i1::::res://Scenes/textures/garrafa textura.png<>uid://b78ffs2id7is3::::res://Scenes/textures/marco textura.png<>uid://chbqrwq15vnyn::::res://Scenes/textures/luz textura.png
@@ -64,12 +64,12 @@ bone_instantiator.tscn::PackedScene::8724258772597005664::1773814261::0::1::::<>
 car.tscn::PackedScene::7471490315938047607::1770872724::0::1::::<><><>0<>0<><>::uid://xaap58qp57ub::::res://Scripts/common/simple.gd<>uid://dg4wwu387wi12::::res://Scenes/barquetesimple_2.tscn
 character.tscn::PackedScene::2112007048381938646::1773155775::0::1::::<><><>0<>0<><>::uid://cq25yhl2dfmgv::::res://Scripts/common/deprecated.gd
 custom_bone.tscn::PackedScene::610371420497144079::1773880283::0::1::::<><><>0<>0<><>::uid://dcb7s64cnh8gt::::res://Scripts/character/custom_bone.gd
-Demo.tscn::PackedScene::1102047196677309766::1774047689::0::1::::<><><>0<>0<><>::uid://dri6aufdetmtv::::res://Materials/dledtk_8x8_cr.png<>uid://s7fo7igsctb4::::res://Materials/red.tres<>uid://da33e5tos7dp0::::res://Materials/blue.tres<>uid://dnj4yx07gux3o::::res://Materials/green.tres<>uid://beur8wp4bookx::::res://Scenes/weighted_box.tscn<>uid://delu2qjrw6teu::::res://addons/Mirror3D/Mirror3D.tscn<>uid://ckrqq415fubai::::res://Scenes/test_slab.tscn<>uid://dvbx7rqdampcm::::res://Models/bone.glb<>uid://k543h15j5sew::::res://Scenes/player.tscn<>uid://depimbd5eofjb::::res://Scenes/car.tscn<>uid://btuoiwrmahgt4::::res://Scripts/city/entities/area_instantiator.gd<>uid://qbf2ejaplhko::::res://Scenes/barquetesimple3.blend
-Glow_Shader.gdshader::Shader::174024960347562346::1774031997::0::1::::<><><>0<>0<><>::
+Demo.tscn::PackedScene::1102047196677309766::1774404445::0::1::::<><><>0<>0<><>::uid://dri6aufdetmtv::::res://Materials/dledtk_8x8_cr.png<>uid://s7fo7igsctb4::::res://Materials/red.tres<>uid://da33e5tos7dp0::::res://Materials/blue.tres<>uid://dnj4yx07gux3o::::res://Materials/green.tres<>uid://beur8wp4bookx::::res://Scenes/weighted_box.tscn<>uid://delu2qjrw6teu::::res://addons/Mirror3D/Mirror3D.tscn<>uid://ckrqq415fubai::::res://Scenes/test_slab.tscn<>uid://dvbx7rqdampcm::::res://Models/bone.glb<>uid://k543h15j5sew::::res://Scenes/player.tscn<>uid://depimbd5eofjb::::res://Scenes/car.tscn<>uid://btuoiwrmahgt4::::res://Scripts/city/entities/area_instantiator.gd<>uid://qbf2ejaplhko::::res://Scenes/barquetesimple3.blend
+Glow_Shader.gdshader::Shader::174024960347562346::1774393221::0::1::::<><><>0<>0<><>::
 player.tscn::PackedScene::765630973226337318::1767573746::0::1::::<><><>0<>0<><>::uid://rp6tci1gjxpq::::res://Scripts/character/bone_instantiator.gd
 testttttttt.tscn::PackedScene::5724835780795847803::1764883568::0::1::::<><><>0<>0<><>::uid://coaepmwjjqvww::::res://Models/auto/barqueted3.blend<>uid://suxxlwyeavv2::::res://Models/auto/chasis.tres<>uid://m2sodxy1bcep::::res://Models/auto/luces.tres<>uid://bb43ngplsfis2::::res://Models/auto/ventanas.tres<>uid://bkbwwloqshhjn::::res://Models/auto/metal.tres<>uid://du5qso8qhjk0v::::res://Models/auto/metal oscuro.tres
 test_slab.tscn::PackedScene::5510825834884884540::1761072817::0::1::::<><><>0<>0<><>::
-weighted_box.tscn::PackedScene::2709555913407617411::1773176315::0::1::::<><><>0<>0<><>::uid://c4vkjfs1rafmc::::res://Scripts/common/labelable.gd
+weighted_box.tscn::PackedScene::2709555913407617411::1774227099::0::1::::<><><>0<>0<><>::uid://c4vkjfs1rafmc::::res://Scripts/common/labelable.gd
 ::res://Scenes/textures/::1771448323
 barquetesimple2.blend::PackedScene::7619643494219548846::1762725892::1771448323::1::::<><><>0<>0<>510e9f66448178979d9cfadf5f1f026d<>res://.godot/imported/barquetesimple2.blend-6324cf49cf8d03ee48f0dda45117a243.scn::uid://dksiwlb81u761::::res://Scenes/textures/textures/chasis textura.png<>uid://byyd7xy8ah8yc::::res://Scenes/textures/textures/base textura.png<>uid://ch07xecgu07ey::::res://Scenes/textures/textures/base chasis texture.png<>uid://gtl7d27j7kfj::::res://Scenes/textures/textures/garrafa textura.png<>uid://b5oci0gbh7gd4::::res://Scenes/textures/textures/marco textura.png<>uid://c37w1sd2wjksl::::res://Scenes/textures/textures/luz textura.png
 base chasis texture.png::CompressedTexture2D::4247999544070709408::1762720382::1771448310::1::::<><><>0<>0<>12f8ec9990aff7c6b6593f1c61953a6d<>res://.godot/imported/base chasis texture.png-9f662fc872f15e60c8ff470c65b3a672.s3tc.ctex::
@@ -86,26 +86,26 @@ garrafa textura.png::CompressedTexture2D::461081472227717547::1762725894::177144
 luz textura.png::CompressedTexture2D::6805572233174648799::1762725894::1771448310::1::::<><><>0<>0<>0f3169eb8756f134879737925f8e474e<>res://.godot/imported/luz textura.png-2095f43252374ee62891d932323d5e47.s3tc.ctex::
 marco textura.png::CompressedTexture2D::4521124324136316203::1762725894::1771448310::1::::<><><>0<>0<>11432400c400efbc1bd85e8e222073f8<>res://.godot/imported/marco textura.png-a8d6d54c180bd6055d5d46e758bde3cd.s3tc.ctex::
 ::res://Scripts/::1773936067
-::res://Scripts/character/::1774048284
+::res://Scripts/character/::1774467393
 basic_char.gd::GDScript::1316771186517198337::1771462877::0::1::::<>CharacterBody3D<><>0<>0<><>::
-bone_instantiator.gd::GDScript::1226092283612256082::1774048284::0::1::::BoneInstantiator<>Node3D<><>0<>0<><>::
-character_rigidbody_3d.gd::GDScript::4124879486145027151::1774015683::0::1::::CharacterRigidBody3D<>RigidBody3D<><>0<>0<><>::
-custom_bone.gd::GDScript::7303680877299981931::1774045329::0::1::::CustomBone<>Node3D<><>0<>0<><>::
+bone_instantiator.gd::GDScript::1226092283612256082::1774465990::0::1::::BoneInstantiator<>Node3D<><>0<>0<><>::
+character_rigidbody_3d.gd::GDScript::4124879486145027151::1774463083::0::1::::CharacterRigidBody3D<>RigidBody3D<><>0<>0<><>::
+custom_bone.gd::GDScript::7303680877299981931::1774402578::0::1::::CustomBone<>Node3D<><>0<>0<><>::
 custom_bones_util.gd::GDScript::7938771750587122071::1774038960::0::1::::CustomBonesUtil<>RefCounted<><>0<>0<><>::
-ik_util.gd::GDScript::4007581012796352977::1774022320::0::1::::IkUtil<>RefCounted<><>0<>0<><>::
+ik_util.gd::GDScript::4007581012796352977::1774467393::0::1::::IkUtil<>RefCounted<><>0<>0<><>::
 impact_debug.gd::GDScript::5598155494036319537::1774015683::0::1::::ImpactDebugHUD<>Control<><>0<>0<><>::
-player_controller.gd::GDScript::435046117816229089::1774020462::0::1::::PlayerController<>Node<><>0<>0<><>::
-player_HUD.gd::GDScript::2239889982950050570::1773891286::0::1::::PlayerHUD<>CanvasLayer<><>0<>0<><>::
+player_controller.gd::GDScript::435046117816229089::1774402536::0::1::::PlayerController<>Node<><>0<>0<><>::
+player_HUD.gd::GDScript::2239889982950050570::1774398334::0::1::::PlayerHUD<>CanvasLayer<><>0<>0<><>::
 ragdoll_util.gd::GDScript::4917027309412070728::1774020462::0::1::::RagdollUtil<>RefCounted<><>0<>0<><>::
-skeleton_sizes_util.gd::GDScript::8137534484398750668::1774045892::0::1::::SkeletonSizesUtil<>RefCounted<><>0<>0<><>::
+skeleton_sizes_util.gd::GDScript::8137534484398750668::1774466312::0::1::::SkeletonSizesUtil<>RefCounted<><>0<>0<><>::
 stability_hud.gd::GDScript::4076658641964936561::1773928258::0::1::::StabilityHUD<>Control<><>0<>0<><>::
-::res://Scripts/character/abstract/::1774047717
-archetypes.gd::GDScript::8027365844528752703::1774047717::0::1::::EntityArchetype<>RefCounted<><>0<>0<><>::
+::res://Scripts/character/abstract/::1774468004
+archetypes.gd::GDScript::8027365844528752703::1774468004::0::1::::EntityArchetype<>RefCounted<><>0<>0<><>::
 entity_instantiation.gd::GDScript::6817974987898998302::1773751546::0::1::::EntityInstantiation<>RefCounted<><>0<>0<><>::
 species.gd::GDScript::345204219848979680::1773694567::0::1::::EntitySpecie<>RefCounted<><>0<>0<><>::
-::res://Scripts/character/animation/::1774047449
-locomotion_signals.gd::GDScript::8138627130483821961::1774035630::0::1::::LocomotionSignals<>RefCounted<><>0<>0<><>::
-procedural_bone_animation.gd::GDScript::939499812986483018::1774047449::0::1::::ProceduralBoneAnimator<>RefCounted<><>0<>0<><>::
+::res://Scripts/character/animation/::1774378420
+locomotion_signals.gd::GDScript::8138627130483821961::1774378420::0::1::::LocomotionSignals<>RefCounted<><>0<>0<><>::
+procedural_bone_animation.gd::GDScript::939499812986483018::1774236363::0::1::::ProceduralBoneAnimator<>RefCounted<><>0<>0<><>::
 ::res://Scripts/city/::1769987205
 ::res://Scripts/city/block/::1773096059
 block_generator.gd::GDScript::7432849795240157090::1773096059::0::1::::BlockGenerator<>RefCounted<><>0<>0<><>::
@@ -151,5 +151,5 @@ control.gd::GDScript::1389082671590191364::1761072817::0::1::::<>CanvasLayer<><>
 lever_control.gd::GDScript::2182033629098659456::1771448212::0::1::::LeverControl<>StaticBody3D<><>0<>0<><>::
 pilot_seat.gd::GDScript::2336942908039912576::1771448212::0::1::::<>StaticBody3D<><>0<>0<><>::
 steering_wheel.gd::GDScript::2597198523272580961::1771448212::0::1::::WheelControl<>StaticBody3D<><>0<>0<><>::
-::res://shaders/::1774031997
-outline.gdshader::Shader::3521646808262034861::1774031997::0::1::::<><><>0<>0<><>::
+::res://shaders/::1774393221
+outline.gdshader::Shader::3521646808262034861::1774393221::0::1::::<><><>0<>0<><>::
