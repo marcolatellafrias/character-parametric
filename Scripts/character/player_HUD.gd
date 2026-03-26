@@ -3,6 +3,8 @@ extends CanvasLayer
 
 var _bar_fill: ColorRect
 var _stamina_bar_fill: ColorRect
+var _jump_bar_fill: ColorRect
+var _throw_bar_fill: ColorRect
 var _stability_hud: StabilityHUD
 var _max_speed: float = 1.0
 
@@ -64,10 +66,59 @@ static func create(inst: EntityInstantiation) -> PlayerHUD:
 	hud._bar_fill = fill
 	hud.add_child(panel)
 
+	# --- Jump bar ---
+	var jump_panel := Panel.new()
+	jump_panel.anchor_left = 0.5
+	jump_panel.anchor_right = 0.5
+	jump_panel.anchor_top = 1.0
+	jump_panel.anchor_bottom = 1.0
+	jump_panel.offset_left = -80
+	jump_panel.offset_right = 80
+	jump_panel.offset_top = -78
+	jump_panel.offset_bottom = -70
+	var jump_border := StyleBoxFlat.new()
+	jump_border.bg_color = Color(0, 0, 0, 0)
+	jump_border.border_color = Color(0.4, 1.0, 0.5, 1.0)
+	jump_border.border_width_left = 2
+	jump_border.border_width_right = 2
+	jump_border.border_width_top = 2
+	jump_border.border_width_bottom = 2
+	jump_panel.add_theme_stylebox_override("panel", jump_border)
+	var jump_fill := ColorRect.new()
+	jump_fill.color = Color(0.4, 1.0, 0.5, 1.0)
+	jump_fill.size = Vector2(0, 4)
+	jump_fill.position = Vector2(2, 2)
+	jump_panel.add_child(jump_fill)
+	hud._jump_bar_fill = jump_fill
+	hud.add_child(jump_panel)
+
+	# --- Throw bar ---
+	var throw_panel := Panel.new()
+	throw_panel.anchor_left = 0.5
+	throw_panel.anchor_right = 0.5
+	throw_panel.anchor_top = 1.0
+	throw_panel.anchor_bottom = 1.0
+	throw_panel.offset_left = -80
+	throw_panel.offset_right = 80
+	throw_panel.offset_top = -100
+	throw_panel.offset_bottom = -92
+	var throw_border := StyleBoxFlat.new()
+	throw_border.bg_color = Color(0, 0, 0, 0)
+	throw_border.border_color = Color(1.0, 0.4, 0.4, 1.0)
+	throw_border.border_width_left = 2
+	throw_border.border_width_right = 2
+	throw_border.border_width_top = 2
+	throw_border.border_width_bottom = 2
+	throw_panel.add_theme_stylebox_override("panel", throw_border)
+	var throw_fill := ColorRect.new()
+	throw_fill.color = Color(1.0, 0.4, 0.4, 1.0)
+	throw_fill.size = Vector2(0, 4)
+	throw_fill.position = Vector2(2, 2)
+	throw_panel.add_child(throw_fill)
+	hud._throw_bar_fill = throw_fill
+	hud.add_child(throw_panel)
+
 	# --- Stability indicators ---
-	# Layout: [impacto XZ] [velocidad] [impacto Y]
-	# Posicionado encima de las barras, centrado en pantalla
-	# Control de 180x72 px, offset_top=-140 offset_bottom=-68
 	var stability := StabilityHUD.new()
 	stability.anchor_left = 0.5
 	stability.anchor_right = 0.5
@@ -134,6 +185,12 @@ func update_speed(current_speed: float) -> void:
 
 func update_stamina(ratio: float) -> void:
 	_stamina_bar_fill.size.x = ratio * 156.0
+
+func update_jump(ratio: float) -> void:
+	_jump_bar_fill.size.x = clamp(ratio, 0.0, 1.0) * 156.0
+
+func update_throw(ratio: float) -> void:
+	_throw_bar_fill.size.x = clamp(ratio, 0.0, 1.0) * 156.0
 
 func update_stability(v_ind: Vector2, imp_xz: Vector2, imp_y: float) -> void:
 	if is_instance_valid(_stability_hud):

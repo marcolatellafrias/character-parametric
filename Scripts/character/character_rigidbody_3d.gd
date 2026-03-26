@@ -10,7 +10,7 @@ const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
 const JUMP_SCALE := 30.0
 
-@export var show_mesh := false
+@export var show_mesh := true
 
 var is_active: bool = false
 var is_grounded: bool = false
@@ -35,6 +35,8 @@ var max_speed_side: float = 10.0
 
 var sprint_multiplier: float = 2.0
 
+var impact_y_stiffness: float = 25.0
+var impact_y_damping: float = 6.0
 var impact_stiffness: float = 25.0
 var impact_damping: float = 6.0
 var impact_xz_scale: float = 0.3
@@ -67,6 +69,8 @@ var _snapshot_acc_after: float = 0.0
 
 var crouch_speed_factor: float = 1.0
 
+var impact_y_signed: float = 0.0
+
 func get_ground_collision_point() -> Vector3:
 	return _ground_ray.get_collision_point()
 
@@ -83,12 +87,14 @@ func _ready() -> void:
 	mesh_instance.visible = show_mesh
 	contact_monitor = true
 	max_contacts_reported = 4
+	axis_lock_angular_y = true
 
 func _physics_process(delta: float) -> void:
 	_frame_force = Vector3.ZERO
 
 	if is_active:
 		_apply_movement_force()
+	_apply_braking_force()
 
 	_update_velocity_indicator()
 	_detect_external_impact(delta)
@@ -100,7 +106,7 @@ func _physics_process(delta: float) -> void:
 	mat.albedo_color = Color(1, 1, 1, 0.2) if is_grounded else Color(1, 0.5, 0, 0.2)
 
 	_prev_velocity = linear_velocity
-
+	
 func _detect_external_impact(delta: float) -> void:
 	var gravity := get_gravity()
 	var expected_dv := (_frame_force / mass + gravity) * delta
@@ -130,6 +136,7 @@ func _detect_external_impact(delta: float) -> void:
 			_impact_xz_vel = Vector2.ZERO
 
 	if abs(local_impact.y) > impact_y_threshold:
+		impact_y_signed = local_impact.y  # agregá esta línea
 		impact_y = clamp(impact_y + local_impact.y * impact_y_scale, -1.0, 1.0)
 		_impact_y_vel = 0.0
 
@@ -143,7 +150,7 @@ func _update_impact_pd(delta: float) -> void:
 	_impact_xz_vel += xz_acc * delta
 	impact_xz += _impact_xz_vel * delta
 
-	var y_acc := -impact_y * impact_stiffness - _impact_y_vel * impact_damping
+	var y_acc := -impact_y * impact_y_stiffness - _impact_y_vel * impact_y_damping
 	_impact_y_vel += y_acc * delta
 	impact_y += _impact_y_vel * delta
 
@@ -155,56 +162,49 @@ func _apply_movement_force() -> void:
 		Input.get_axis("move_forward", "move_backward")
 	)
 
-	if input != Vector2.ZERO:
-		var right := global_transform.basis.x
-		var forward := global_transform.basis.z
-		right.y = 0.0
-		forward.y = 0.0
-		right = right.normalized()
-		forward = forward.normalized()
+	if input == Vector2.ZERO:
+		return
 
-		var forward_component: float = input.y
-		var side_component: float = input.x
-		var is_sprinting := Input.is_action_pressed("sprint") and forward_component < 0.0 and can_sprint
+	var right := global_transform.basis.x
+	var forward := global_transform.basis.z
+	right.y = 0.0
+	forward.y = 0.0
+	right = right.normalized()
+	forward = forward.normalized()
 
-		var abs_fwd: float = abs(forward_component)
-		var abs_side: float = abs(side_component)
-		var total_input: float = abs_fwd + abs_side
+	var forward_component: float = input.y
+	var side_component: float = input.x
+	var is_sprinting := Input.is_action_pressed("sprint") and forward_component < 0.0 and can_sprint
 
-		var fwd_max: float = max_speed_back if forward_component >= 0.0 else max_speed_forward
-		var effective_max: float = (fwd_max * abs_fwd + max_speed_side * abs_side) / max(total_input, 0.001)
-		if is_sprinting:
-			effective_max *= sprint_multiplier
-		effective_max *= crouch_speed_factor
+	var abs_fwd: float = abs(forward_component)
+	var abs_side: float = abs(side_component)
+	var total_input: float = abs_fwd + abs_side
 
-		var fwd_accel: float = accel_back if forward_component >= 0.0 else accel_forward
-		var current_accel: float = (fwd_accel * abs_fwd + accel_side * abs_side) / max(total_input, 0.001)
+	var fwd_max: float = max_speed_back if forward_component >= 0.0 else max_speed_forward
+	var effective_max: float = (fwd_max * abs_fwd + max_speed_side * abs_side) / max(total_input, 0.001)
+	if is_sprinting:
+		effective_max *= sprint_multiplier
+	effective_max *= crouch_speed_factor
 
-		var direction := (right * side_component + forward * forward_component).normalized()
-		var is_changing_direction := horizontal_vel.dot(direction) < 0.0
-		var effective_accel := current_accel * (sprint_multiplier if is_sprinting and not is_changing_direction else 1.0)
+	var fwd_accel: float = accel_back if forward_component >= 0.0 else accel_forward
+	var current_accel: float = (fwd_accel * abs_fwd + accel_side * abs_side) / max(total_input, 0.001)
 
-		if horizontal_vel.length() < effective_max or is_changing_direction:
-			var force := direction * effective_accel
-			apply_central_force(force)
-			_frame_force += force
+	var direction := (right * side_component + forward * forward_component).normalized()
+	var is_changing_direction := horizontal_vel.dot(direction) < 0.0
+	var effective_accel := current_accel * (sprint_multiplier if is_sprinting and not is_changing_direction else 1.0)
 
-		var opposing_vel: Vector3 = horizontal_vel - direction * max(0.0, horizontal_vel.dot(direction))
-		if opposing_vel.length() > 0.0:
-			var local_opp: Vector3 = global_transform.basis.inverse() * opposing_vel
-			var brake_opp: float = (brake_side * abs(local_opp.x) + brake_forward * abs(local_opp.z)) / max(abs(local_opp.x) + abs(local_opp.z), 0.001)
-			var brake_force := -opposing_vel.normalized() * brake_opp
-			apply_central_force(brake_force)
-			_frame_force += brake_force
-	else:
-		if horizontal_vel.length() > 0.0:
-			var local_vel: Vector3 = global_transform.basis.inverse() * horizontal_vel
-			var is_moving_back := local_vel.z < 0.0
-			var brake_fwd: float = brake_back if is_moving_back else brake_forward
-			var brake_blend: float = (brake_fwd * abs(local_vel.z) + brake_side * abs(local_vel.x)) / max(abs(local_vel.z) + abs(local_vel.x), 0.001)
-			var brake_force := -horizontal_vel.normalized() * brake_blend
-			apply_central_force(brake_force)
-			_frame_force += brake_force
+	if horizontal_vel.length() < effective_max or is_changing_direction:
+		var force := direction * effective_accel
+		apply_central_force(force)
+		_frame_force += force
+
+	var opposing_vel: Vector3 = horizontal_vel - direction * max(0.0, horizontal_vel.dot(direction))
+	if opposing_vel.length() > 0.0:
+		var local_opp: Vector3 = global_transform.basis.inverse() * opposing_vel
+		var brake_opp: float = (brake_side * abs(local_opp.x) + brake_forward * abs(local_opp.z)) / max(abs(local_opp.x) + abs(local_opp.z), 0.001)
+		var brake_force := -opposing_vel.normalized() * brake_opp
+		apply_central_force(brake_force)
+		_frame_force += brake_force
 
 func jump(impulse: float) -> void:
 	apply_central_impulse(Vector3.UP * impulse)
@@ -276,3 +276,14 @@ static func create(root_size: Vector3, distance_from_ground: float, leg_height: 
 	rb._ground_ray = ground_ray
 	rb.is_active = active
 	return rb
+
+func _apply_braking_force() -> void:
+	var horizontal_vel := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
+	if horizontal_vel.length() > 0.0:
+		var local_vel := global_transform.basis.inverse() * horizontal_vel
+		var is_moving_back := local_vel.z < 0.0
+		var brake_fwd := brake_back if is_moving_back else brake_forward
+		var brake_blend : float = (brake_fwd * abs(local_vel.z) + brake_side * abs(local_vel.x)) / max(abs(local_vel.z) + abs(local_vel.x), 0.001)
+		var brake_force := -horizontal_vel.normalized() * brake_blend
+		apply_central_force(brake_force)
+		_frame_force += brake_force

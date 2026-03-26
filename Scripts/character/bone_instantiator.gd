@@ -31,8 +31,8 @@ const JUMP_SQUAT_Y    := -0.22
 const JUMP_SQUAT_Z    :=  0.09
 const JUMP_SQUAT_TILT :=  0.22
 const CROUCH_Y        := -0.22
-const CROUCH_Z        :=  0.09
-const CROUCH_TILT     :=  0.22
+const CROUCH_Z        :=  0.13
+const CROUCH_TILT     :=  0.3
 
 func _ready() -> void:
 	if is_active:
@@ -103,115 +103,208 @@ func _on_fall_triggered(world_dir: Vector3) -> void:
 	ragdoll_util.activate_with_impact(char_rigidbody, custom_bones_util.lower_spine, world_dir)
 
 func _register_bone_animations() -> void:
-	var PA := ProceduralBoneAnimator	
+	var PA := ProceduralBoneAnimator
 	var ls := locomotion_signals
-	
+
 	var vertical_bobbing := entity_instantiation.root_bounciness
 	var shoulder_swing   := entity_instantiation.shoulder_swing
-	var hip_swing :=  0.5
-	   
-	var _top_spine_rotation := 0.5 * shoulder_swing
+	var hip_swing        := entity_instantiation.hip_swing
+
+	var _top_spine_rotation    := 0.1
 	var _bottom_spine_rotation := -0.5 * hip_swing
-	
-	var right_hip := custom_bones_util.right_hip	
-	var left_hip := custom_bones_util.left_hip		
-	var lower_spine := custom_bones_util.lower_spine
-	var middle_spine := custom_bones_util.middle_spine
-	var upper_spine := custom_bones_util.upper_spine
-	var chest := custom_bones_util.chest
-	var right_shoulder := custom_bones_util.right_shoulder	
-	var left_shoulder := custom_bones_util.left_shoulder	
-		
-	procedural_animator.register(right_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  0.99)
-	procedural_animator.register(left_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, 0.99)
-	procedural_animator.register(right_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.1)
-	procedural_animator.register(left_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  -0.1)
-	
+
+	var right_hip     := custom_bones_util.right_hip
+	var left_hip      := custom_bones_util.left_hip
+	var lower_spine   := custom_bones_util.lower_spine
+	var middle_spine  := custom_bones_util.middle_spine
+	var upper_spine   := custom_bones_util.upper_spine
+	var chest         := custom_bones_util.chest
+	var right_shoulder := custom_bones_util.right_shoulder
+	var left_shoulder  := custom_bones_util.left_shoulder
+
+	# ─── HIPS ───────────────────────────────────────────────────────────────────
+
+	procedural_animator.register(right_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  0.6 * hip_swing)
+	procedural_animator.register(left_hip,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  0.6 * hip_swing)
+	procedural_animator.register(right_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.1 * hip_swing)
+	procedural_animator.register(left_hip,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.1 * hip_swing)
+
 	var hips_rotation := spine_local_weight(0, 5, _bottom_spine_rotation, _top_spine_rotation)
 	procedural_animator.register(right_hip, PA.Axis.ROT_X, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -hips_rotation)
-	procedural_animator.register(left_hip, PA.Axis.ROT_X, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, hips_rotation)    
-	
+	procedural_animator.register(left_hip,  PA.Axis.ROT_X, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  hips_rotation)
+
+	# ─── SPINE ──────────────────────────────────────────────────────────────────
+
 	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_X, vertical_bobbing * -0.14)
 	procedural_animator.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_Z, vertical_bobbing * -0.3)
-	
+
 	procedural_animator.register_formula(lower_spine, PA.Axis.ROT_Z,
 		func(): return ls.foot_spread_unified.x * (0.01 + 0.04 * ls.speed_norm),
 		1.0)
-	
-	var lower_spine_rotation := spine_local_weight(1, 5, _bottom_spine_rotation, _top_spine_rotation)
-	procedural_animator.register(lower_spine, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, lower_spine_rotation)
-	
+
+	var lower_spine_rotation  := spine_local_weight(1, 5, _bottom_spine_rotation, _top_spine_rotation)
 	var middle_spine_rotation := spine_local_weight(2, 5, _bottom_spine_rotation, _top_spine_rotation)
+	var upper_spine_rotation  := spine_local_weight(3, 5, _bottom_spine_rotation, _top_spine_rotation)
+	var chest_rotation        := spine_local_weight(4, 5, _bottom_spine_rotation, _top_spine_rotation)
+
+	procedural_animator.register(lower_spine,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, lower_spine_rotation)
 	procedural_animator.register(middle_spine, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, middle_spine_rotation)
-	
-	var upper_spine_rotation := spine_local_weight(3, 5, _bottom_spine_rotation, _top_spine_rotation)
-	procedural_animator.register(upper_spine, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, upper_spine_rotation)
-	
-	var chest_rotation := spine_local_weight(4, 5, _bottom_spine_rotation, _top_spine_rotation)
-	procedural_animator.register(chest, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, chest_rotation)
-	
-	procedural_animator.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
-	procedural_animator.register(left_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * 0.1)
+	procedural_animator.register(upper_spine,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, upper_spine_rotation)
+	procedural_animator.register(chest,        PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, chest_rotation)
 
-	var tilt_weight := 0.03
+	# ─── SPINE BOW (forward lean while walking) ──────────────────────────────────
 
-	procedural_animator.register(lower_spine, PA.Axis.ROT_X, PA.SignalType.H_VEL_Z, -tilt_weight)
-	procedural_animator.register(lower_spine, PA.Axis.ROT_Z, PA.SignalType.H_VEL_X, -tilt_weight)
-	
-	if is_active and is_instance_valid(player_camera):
-		var pitch_callable := func() -> float:
-			return clamp(player_camera.rotation.x, -0.5, 0.8)
-
-		procedural_animator.register_formula(custom_bones_util.head, PA.Axis.ROT_X,
-			pitch_callable, 0.5)
-
-		if is_instance_valid(custom_bones_util.neck):
-			procedural_animator.register_formula(custom_bones_util.neck, PA.Axis.ROT_X,
-				pitch_callable, 0.25)
-
-		procedural_animator.register_formula(chest, PA.Axis.ROT_X,
-			pitch_callable, 0.12)
-
-		procedural_animator.register_formula(upper_spine, PA.Axis.ROT_X,
-			pitch_callable, 0.08)
-
-		procedural_animator.register_formula(middle_spine, PA.Axis.ROT_X,
-			pitch_callable, 0.05)
-			
-	var arm_swing := entity_instantiation.arch_final.arm_swing
-	var arm_total := skel_sizes_util.upper_arm_size.y + skel_sizes_util.lower_arm_size.y
-	var z_weight := arm_swing * arm_total
-
-	procedural_animator.register_node(ik_util.left_arm_ik_target,  Vector3.FORWARD, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  z_weight)
-	procedural_animator.register_node(ik_util.right_arm_ik_target, Vector3.FORWARD, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -z_weight)
-
-	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.UP,
-		func():
-			var d := locomotion_signals.foot_spread_unified.y * z_weight
-			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
-		1.0)
-	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.UP,
-		func():
-			var d := locomotion_signals.foot_spread_unified.y * z_weight
-			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
-		1.0)
-
-	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.RIGHT,
-		func():
-			var d := locomotion_signals.foot_spread_unified.y * z_weight
-			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
-		1.0)
-	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.RIGHT,
-		func():
-			var d := locomotion_signals.foot_spread_unified.y * z_weight
-			return -(arm_total - sqrt(max(0.0, arm_total * arm_total - d * d))),
-		1.0)
-		
 	var bow_w := 0.15
 	procedural_animator.register(lower_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  bow_w * 0.5)
 	procedural_animator.register(middle_spine, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  bow_w * 1.0)
 	procedural_animator.register(upper_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -bow_w * 1.0)
 	procedural_animator.register(chest,        PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -bow_w * 0.5)
+	procedural_animator.register(lower_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  0.03)
+
+	# ─── SPINE TILT (velocity lean) ──────────────────────────────────────────────
+
+	var tilt_weight := 0.05
+	procedural_animator.register(lower_spine, PA.Axis.ROT_X, PA.SignalType.H_VEL_Z, -tilt_weight)
+	procedural_animator.register(lower_spine, PA.Axis.ROT_Z, PA.SignalType.H_VEL_X, -tilt_weight)
+
+	# ─── SHOULDERS ───────────────────────────────────────────────────────────────
+
+	procedural_animator.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  shoulder_swing * 0.1)
+	procedural_animator.register(left_shoulder,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  shoulder_swing * 0.1)
+	procedural_animator.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -0.3)
+	procedural_animator.register(left_shoulder,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -0.3)
+	procedural_animator.register(right_shoulder, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -0.95)
+	procedural_animator.register(left_shoulder,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -0.95)
+	procedural_animator.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  0.0)
+	procedural_animator.register(left_shoulder,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  0.0)
+	procedural_animator.register(right_shoulder, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.5)
+	procedural_animator.register(left_shoulder,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.5)
+
+	# ─── HEAD / NECK PITCH (player camera follow) ────────────────────────────────
+
+	if is_active and is_instance_valid(player_camera):
+		var pitch_callable := func() -> float:
+			return clamp(player_camera.rotation.x, -0.5, 0.8)
+
+		procedural_animator.register_formula(custom_bones_util.head, PA.Axis.ROT_X, pitch_callable, 0.50)
+
+		if is_instance_valid(custom_bones_util.neck):
+			procedural_animator.register_formula(custom_bones_util.neck, PA.Axis.ROT_X, pitch_callable, 0.25)
+
+		procedural_animator.register_formula(chest,        PA.Axis.ROT_X, pitch_callable, 0.12)
+		procedural_animator.register_formula(upper_spine,  PA.Axis.ROT_X, pitch_callable, 0.08)
+		procedural_animator.register_formula(middle_spine, PA.Axis.ROT_X, pitch_callable, 0.05)
+
+	# ─── ARM SWING ───────────────────────────────────────────────────────────────
+
+	var arm_swing  := entity_instantiation.arch_final.arm_swing
+	var arm_total  := skel_sizes_util.upper_arm_size.y + skel_sizes_util.lower_arm_size.y
+	var z_weight   := arm_swing * arm_total
+	var arc_extra  := 0.4
+
+	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.FORWARD,
+		func():
+			return ls.foot_spread_unified.y * z_weight * ls.speed_norm,
+		1.0)
+	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.FORWARD,
+		func():
+			return -ls.foot_spread_unified.y * z_weight * ls.speed_norm,
+		1.0)
+
+	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.UP,
+		func():
+			var d := ls.foot_spread_unified.y * z_weight * ls.speed_norm
+			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)) + abs(d) * arc_extra,
+		1.0)
+	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.UP,
+		func():
+			var d := ls.foot_spread_unified.y * z_weight * ls.speed_norm
+			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)) + abs(d) * arc_extra,
+		1.0)
+
+	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.LEFT,
+		func():
+			var d := ls.foot_spread_unified.y * z_weight * ls.speed_norm
+			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
+		1.0)
+	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.LEFT,
+		func():
+			var d := ls.foot_spread_unified.y * z_weight * ls.speed_norm
+			return -(arm_total - sqrt(max(0.0, arm_total * arm_total - d * d))),
+		1.0)
+		
+	var v_vel_arm_weight := 0.44
+
+	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.UP,
+		func():
+			return ls.vertical_velocity_smooth / -10.0,
+		v_vel_arm_weight)
+	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.UP,
+		func():
+			return ls.vertical_velocity_smooth / -10.0,
+		v_vel_arm_weight)
+
+	procedural_animator.register_node_formula(ik_util.left_arm_ik_target, Vector3.LEFT,
+		func():
+			var d : float = max(0.0, ls.vertical_velocity_smooth / -10.0) * v_vel_arm_weight
+			return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
+		1.0)
+	procedural_animator.register_node_formula(ik_util.right_arm_ik_target, Vector3.LEFT,
+		func():
+			var d : float = max(0.0, ls.vertical_velocity_smooth / -10.0) * v_vel_arm_weight
+			return -(arm_total - sqrt(max(0.0, arm_total * arm_total - d * d))),
+		1.0)
+
+	procedural_animator.register_formula(right_shoulder, PA.Axis.ROT_Z,
+		func():
+			return ls.vertical_velocity_smooth / 10.0,
+		0.3)
+	procedural_animator.register_formula(left_shoulder, PA.Axis.ROT_Z,
+		func():
+			return ls.vertical_velocity_smooth / 10.0,
+		-0.3)
+		
+	procedural_animator.register_node_formula(ik_util.left_arm_pole, Vector3.LEFT,
+	func():
+		var d : float = max(0.0, ls.vertical_velocity_smooth / -10.0) * v_vel_arm_weight
+		return arm_total - sqrt(max(0.0, arm_total * arm_total - d * d)),
+	1.0)
+	procedural_animator.register_node_formula(ik_util.right_arm_pole, Vector3.LEFT,
+		func():
+			var d : float = max(0.0, ls.vertical_velocity_smooth / -10.0) * v_vel_arm_weight
+			return -(arm_total - sqrt(max(0.0, arm_total * arm_total - d * d))),
+		1.0)
+
+	procedural_animator.register_node_formula(ik_util.left_arm_pole, Vector3.UP,
+		func():
+			return max(0.0, ls.vertical_velocity_smooth / -10.0),
+		v_vel_arm_weight * 1.0)
+	procedural_animator.register_node_formula(ik_util.right_arm_pole, Vector3.UP,
+		func():
+			return max(0.0, ls.vertical_velocity_smooth / -10.0),
+		v_vel_arm_weight * 1.0)
+
+	var impact_y_weight := 0.9
+
+	# ─── LANDING ────────────────────────────────────────────────────────────────
+	# root baja y se va para atras
+	procedural_animator.register_formula(lower_spine, PA.Axis.POS_Y,
+		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
+		-impact_y_weight*2)
+	procedural_animator.register_formula(lower_spine, PA.Axis.POS_Z,
+		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
+		impact_y_weight)
+	procedural_animator.register_formula(lower_spine, PA.Axis.ROT_X,
+		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
+		-impact_y_weight*3)
+
+	# shoulders suben al landing
+	procedural_animator.register_formula(right_shoulder, PA.Axis.ROT_Z,
+		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
+		-impact_y_weight * 0.5)
+	procedural_animator.register_formula(left_shoulder, PA.Axis.ROT_Z,
+		func(): return max(0.0, ls.impact_y_signed_smooth / 10.0),
+		impact_y_weight * 0.5)
 
 func _clear_prior_generations() -> void:
 	if is_instance_valid(ragdoll_util):
@@ -276,8 +369,11 @@ func _physics_process(_delta: float) -> void:
 	ik_util.left_arm_ik_target.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_tip_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_anim_offset)
 	ik_util.right_arm_ik_target.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_tip_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_anim_offset)
 
-	ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local)
-	ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local)
+	var left_pole_anim_offset: Vector3  = ik_util.left_arm_pole.position  - skel_sizes_util.left_arm_pole_rest_local
+	var right_pole_anim_offset: Vector3 = ik_util.right_arm_pole.position - skel_sizes_util.right_arm_pole_rest_local
+
+	ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_pole_anim_offset)
+	ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_pole_anim_offset)
 
 	ik_util.solve_two_bone_ik(custom_bones_util.left_upper_arm, custom_bones_util.left_lower_arm,
 		ik_util.left_arm_ik_target.global_position, ik_util.left_arm_pole.global_position)

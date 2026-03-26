@@ -162,7 +162,7 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.raycast_leg_lenght = new_leg_height
 	skelSizes.distance_from_ground = new_leg_height * entityStats.distance_from_ground_factor
 	skelSizes.step_radius_max = new_leg_height * inst.step_radius
-	skelSizes.step_radius_min = new_leg_height * inst.step_radius * 0.4
+	skelSizes.step_radius_min = new_leg_height * inst.step_radius * 0.2
 	skelSizes.step_height = new_leg_height * inst.step_height
 	skelSizes.pole_distance = new_leg_height
 	skelSizes.step_duration_scale    = entityStats.step_duration_scale
@@ -238,7 +238,7 @@ func _update_step_radius(char_rigidbody: CharacterRigidBody3D, entity_stats: Ent
 	var dxz := Vector2(char_rigidbody.linear_velocity.x, char_rigidbody.linear_velocity.z)
 	var instant_speed = dxz.length()
 	var min_speed = 0.01
-	var max_speed: float = entity_stats.speed * CharacterRigidBody3D.SPEED_SCALE
+	var max_speed: float = entity_stats.speed * entity_stats.sprint_multiplier * CharacterRigidBody3D.SPEED_SCALE
 	var speed_range = max(max_speed - min_speed, 0.01)
 	var t = clamp((instant_speed - min_speed) / speed_range, 0.0, 1.0)
 	ik_util.current_step_radius = lerp(step_radius_min, step_radius_max, t)

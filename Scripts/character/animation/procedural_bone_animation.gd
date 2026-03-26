@@ -10,7 +10,7 @@ enum SignalType {
 	FOOT_SPREAD_UNIFIED_Z
 }
 enum Axis {
-	ROT_X, ROT_Y, ROT_Z, POS_Y
+	ROT_X, ROT_Y, ROT_Z, POS_Y, POS_Z
 }
 
 class BoneAnimEntry:
@@ -79,6 +79,7 @@ func _register_node_internal(node: Node3D, direction: Vector3, driver_fn: Callab
 func update() -> void:
 	for entry in _entries:
 		entry.bone.position.y = entry.rest_local_position.y
+		entry.bone.position.z = entry.rest_local_position.z
 		entry.bone.transform.basis = entry.rest_local_basis
 	for entry in _entries:
 		var raw: float = entry.driver.call() - entry.rest_signal_value
@@ -134,3 +135,5 @@ func _apply(bone: CustomBone, axis: Axis, value: float, _entry: BoneAnimEntry) -
 			bone.transform.basis = bone.transform.basis * Basis(Vector3.FORWARD, value)
 		Axis.POS_Y:
 			bone.position.y += value
+		Axis.POS_Z:
+			bone.position.z += value

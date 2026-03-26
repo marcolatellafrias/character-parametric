@@ -15,8 +15,11 @@ var right_foot_local_norm: Vector2 = Vector2.ZERO
 var speed_norm: float = 0.0
 
 const H_SMOOTH: float = 8.0
-const V_SMOOTH: float = 6.0
+const V_SMOOTH: float = 12.0
 const SPREAD_SMOOTH: float = 10.0
+
+var impact_y_signed_smooth: float = 0.0
+const IMPACT_Y_SMOOTH: float = 12.0
 
 static func create(ik: IkUtil, rb: CharacterRigidBody3D, sz: SkeletonSizesUtil) -> LocomotionSignals:
 	var s := LocomotionSignals.new()
@@ -83,3 +86,6 @@ func _update_velocity_signals(delta: float) -> void:
 	vertical_velocity_smooth = lerp(vertical_velocity_smooth, vel.y, k_v)
 	var max_speed := sizes.leg_height * 3.0
 	speed_norm = clamp(Vector2(vel.x, vel.z).length() / max_speed, 0.0, 1.0)
+	var k_i: float = clamp(delta * IMPACT_Y_SMOOTH, 0.0, 1.0)
+	impact_y_signed_smooth = char_rigidbody.impact_y
+	char_rigidbody.impact_y_signed = 0.0  # reset cada frame para que sea un pulso
