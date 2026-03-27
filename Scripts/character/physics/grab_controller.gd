@@ -42,21 +42,22 @@ var _throw_charge: float = 0.0
 
 var _max_reach_distance: float = 1.0
 
-signal throw_released(direction: Vector3, strength: float, target: RigidBody3D)
-
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: AnimationModifiers, max_reach: float) -> void:
-	char_rigidbody = rb
-	player_camera = cam
+	char_rigidbody  = rb
+	player_camera   = cam
 	arms_controller = arms
-	anim_mod = anim
+	anim_mod        = anim
 	set_reach(max_reach)
 	_build_outline_material()
 
+func set_anim_mod(anim: AnimationModifiers) -> void:
+	anim_mod = anim
+
 func set_reach(max_reach: float) -> void:
 	_max_reach_distance = max_reach
-	grab_dist_max = max_reach
-	grab_dist_min = max_reach * 0.1
-	grab_ray_length = grab_dist_max + 2.0
+	grab_dist_max       = max_reach
+	grab_dist_min       = max_reach * 0.1
+	grab_ray_length     = grab_dist_max + 2.0
 
 func handle_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -84,7 +85,7 @@ func handle_input(event: InputEvent) -> void:
 		if event.keycode == KEY_R:
 			if event.pressed and not _is_charging_throw:
 				_is_charging_throw = true
-				_throw_charge = 0.0
+				_throw_charge      = 0.0
 			elif not event.pressed and _is_charging_throw:
 				_release_throw()
 
@@ -99,7 +100,8 @@ func update(delta: float) -> void:
 	else:
 		_apply_grab_force()
 		_apply_grab_torque()
-		arms_controller.update_grab_handles(delta, _grabbed, _get_grabbable)
+		if is_instance_valid(arms_controller):
+			arms_controller.update_grab_handles(delta, _grabbed, _get_grabbable)
 		_update_curve()
 
 func _start_grab() -> void:
@@ -112,19 +114,21 @@ func _start_grab() -> void:
 	var grab_world := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
 	_grab_distance = clamp(origin.distance_to(grab_world), grab_dist_min, grab_dist_max)
 	_grabbed.sleeping = false
-	_grab_target_rotation = _grabbed.global_transform.basis.get_rotation_quaternion()
-	var player_rot := Quaternion(char_rigidbody.global_transform.basis)
+	_grab_target_rotation   = _grabbed.global_transform.basis.get_rotation_quaternion()
+	var player_rot          := Quaternion(char_rigidbody.global_transform.basis)
 	_grab_relative_rotation = player_rot.inverse() * _grab_target_rotation
-	arms_controller.start_grab(_grabbed, _get_grabbable)
+	if is_instance_valid(arms_controller):
+		arms_controller.start_grab(_grabbed, _get_grabbable)
 
 func _stop_grab() -> void:
-	_grabbed = null
+	_grabbed            = null
 	_grabbed_grab_point = null
-	_is_rotating = false
+	_is_rotating        = false
 	if is_instance_valid(_curve_mesh):
 		_curve_mesh.queue_free()
 		_curve_mesh = null
-	arms_controller.stop_grab()
+	if is_instance_valid(arms_controller):
+		arms_controller.stop_grab()
 
 func _apply_grab_force() -> void:
 	if not is_instance_valid(_grabbed):
@@ -141,10 +145,10 @@ func _apply_grab_torque() -> void:
 	if not is_instance_valid(_grabbed):
 		return
 	if not _is_rotating:
-		var player_rot := Quaternion(char_rigidbody.global_transform.basis)
-		_grab_target_rotation = player_rot * _grab_relative_rotation
+		var player_rot          := Quaternion(char_rigidbody.global_transform.basis)
+		_grab_target_rotation   = player_rot * _grab_relative_rotation
 	else:
-		var player_rot := Quaternion(char_rigidbody.global_transform.basis)
+		var player_rot          := Quaternion(char_rigidbody.global_transform.basis)
 		_grab_relative_rotation = player_rot.inverse() * _grab_target_rotation
 	var current := _grabbed.global_transform.basis.get_rotation_quaternion()
 	var error   := (_grab_target_rotation * current.inverse()).normalized()
@@ -161,11 +165,11 @@ func _release_throw() -> void:
 	if is_instance_valid(anim_mod):
 		anim_mod.trigger_throw_push(dir)
 	_is_charging_throw = false
-	_throw_charge = 0.0
+	_throw_charge      = 0.0
 
 func cancel_throw() -> void:
 	_is_charging_throw = false
-	_throw_charge = 0.0
+	_throw_charge      = 0.0
 	if is_instance_valid(anim_mod):
 		anim_mod.cancel_throw()
 
@@ -177,6 +181,11 @@ func is_charging_throw() -> bool:
 
 func get_hovered_rb() -> RigidBody3D:
 	return _hovered_rb
+
+func stop_all() -> void:
+	_stop_grab()
+	_clear_outline()
+	cancel_throw()
 
 func _process_hover() -> void:
 	if not is_instance_valid(player_camera):
@@ -251,8 +260,8 @@ func _collect_meshes_recursive(node: Node, result: Array[MeshInstance3D]) -> voi
 		_collect_meshes_recursive(child, result)
 
 func _build_outline_material() -> void:
-	var shader       := load("res://shaders/outline.gdshader") as Shader
-	_outline_material = ShaderMaterial.new()
+	var shader        := load("res://shaders/outline.gdshader") as Shader
+	_outline_material  = ShaderMaterial.new()
 	_outline_material.shader = shader
 	_outline_material.set_shader_parameter("color", outline_color)
 	_outline_material.set_shader_parameter("outline_thickness", outline_size)
@@ -275,11 +284,6 @@ func _clear_outline() -> void:
 	_hovered_meshes.clear()
 	_hovered_parent = null
 	_hovered_rb     = null
-
-func stop_all() -> void:
-	_stop_grab()
-	_clear_outline()
-	cancel_throw()
 
 func _update_curve() -> void:
 	if is_instance_valid(_curve_mesh):

@@ -37,6 +37,7 @@ func _ready() -> void:
 
 func initialize_skeleton() -> void:
     _clear_prior_generations()
+
     entity_instantiation = EntityInstantiation.create(master_seed)
     entity_archetype     = entity_instantiation.arch_final
     skel_sizes_util      = SkeletonSizesUtil.create(entity_instantiation)
@@ -67,6 +68,16 @@ func initialize_skeleton() -> void:
     local_targets.add_child(ik_util.left_arm_pole)
     local_targets.add_child(ik_util.right_arm_pole)
 
+    # Creamos anim_mod y arms_controller antes del player para que setup los reciba
+    anim_mod = AnimationModifiers.new()
+    add_child(anim_mod)
+    anim_mod.bi = self
+
+    arms_controller = ArmsController.new()
+    add_child(arms_controller)
+    arms_controller.bi = self
+    arms_controller.setup(anim_mod)
+
     if is_active and is_instance_valid(player_controller):
         player_camera = Camera3D.new()
         player_camera.current = true
@@ -86,13 +97,6 @@ func initialize_skeleton() -> void:
         ik_util.right_arm_ik_target.global_position, ik_util.right_arm_pole.global_position)
 
     procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)
-
-    anim_mod = AnimationModifiers.new()
-    add_child(anim_mod)
-
-    arms_controller = ArmsController.new()
-    add_child(arms_controller)
-    arms_controller.bi = self
 
     bone_animations = BoneAnimations.new()
     add_child(bone_animations)
@@ -168,16 +172,25 @@ func _physics_process(delta: float) -> void:
     ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, char_rigidbody)
     ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
 
+    if is_instance_valid(arms_controller):
+        arms_controller.update_arm_compress(jump_squat_t, crouch_t)
+
     locomotion_signals.update(delta)
 
+    # 1. Reset arm targets a rest
     ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
     ik_util.right_arm_ik_target.position = skel_sizes_util.right_arm_tip_rest_local
+
+    # 2. Procedural animator acumula offsets sobre rest
     procedural_animator.update()
 
-    # arms_controller aplica compress y throw visual sobre los targets ya animados
-    if is_instance_valid(arms_controller):
-        arms_controller._physics_process(delta)
+    # 3. AnimationModifiers aplica root offsets (crouch, jump squat, throw tilt)
+    if is_instance_valid(anim_mod):
+        anim_mod.jump_squat_t = jump_squat_t
+        anim_mod.crouch_t = crouch_t
+        anim_mod.apply(delta)
 
+    # 4. Convertir posiciones locales a globales
     var rb_basis := custom_bones_util.lower_spine.global_transform.basis
     var left_anim_offset:  Vector3 = ik_util.left_arm_ik_target.position  - skel_sizes_util.left_arm_tip_rest_local
     var right_anim_offset: Vector3 = ik_util.right_arm_ik_target.position - skel_sizes_util.right_arm_tip_rest_local
@@ -191,6 +204,11 @@ func _physics_process(delta: float) -> void:
     ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_pole_anim_offset)
     ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_pole_anim_offset)
 
+    # 5. ArmsController aplica throw visual y grab visual sobre posiciones globales
+    if is_instance_valid(arms_controller):
+        arms_controller.apply_world_overrides(delta)
+
+    # 6. Solve IK final
     ik_util.solve_two_bone_ik(custom_bones_util.left_upper_arm, custom_bones_util.left_lower_arm,
         ik_util.left_arm_ik_target.global_position, ik_util.left_arm_pole.global_position)
     ik_util.solve_two_bone_ik(custom_bones_util.right_upper_arm, custom_bones_util.right_lower_arm,
