@@ -107,7 +107,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.stability_spring = 0.7
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 2.0
-	arch.throw_strenght = 0.7
+	arch.throw_strenght = 0.35
 	arch.reach = 0.65
 	arch.reach_multiplier = 1.5
 	arch.jump_strenght = 0.2
@@ -172,7 +172,7 @@ static func kid_arch() -> EntityArchetype:
 	arch.throw_strenght = 0.2
 	arch.reach = 0.38
 	arch.reach_multiplier = 1.0
-	arch.jump_strenght = 0.6
+	arch.jump_strenght = 0.3
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 1
 	arch.max_age = 99
@@ -194,7 +194,7 @@ static func kid_arch() -> EntityArchetype:
 	arch.step_radius_min = 1.8
 	arch.step_radius_max = 1.8
 	arch.leg_cripple_chance = 0.0
-	arch.slouch = 0.0
+	arch.slouch = 0.1
 	arch.shoulders_height = 0.0
 	arch.shoulders_back = 0.2
 	arch.arm_openness = 0.5
@@ -211,7 +211,7 @@ static func kid_arch() -> EntityArchetype:
 	arch.shoulder_width_proportion = 0.15
 	arch.distance_from_ground_factor = 0.06
 	arch.head_circumference = 0.75
-	arch.head_neck_ratio = 0.5
+	arch.head_neck_ratio = 0.4
 	arch.stance_width = 1.4
 	return arch
 

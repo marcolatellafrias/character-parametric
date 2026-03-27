@@ -71,6 +71,7 @@ var _is_charging_throw: bool = false
 var _throw_charge: float = 0.0
 
 var _grabbed_grab_point: Node3D = null
+var _grab_relative_rotation: Quaternion = Quaternion.IDENTITY
 
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
     char_rigidbody = rb
@@ -431,6 +432,9 @@ func _start_grab() -> void:
         bi.set_grab_handles(left_h, right_h)
         var tw := create_tween()
         tw.tween_property(bi, "_grab_arm_blend", 1.0, 0.15)
+    _grab_target_rotation = _grabbed.global_transform.basis.get_rotation_quaternion()
+    var player_rot := Quaternion(char_rigidbody.global_transform.basis)
+    _grab_relative_rotation = player_rot.inverse() * _grab_target_rotation
 
 
 func _stop_grab() -> void:
@@ -461,15 +465,14 @@ func _apply_grab_force() -> void:
 func _apply_grab_torque() -> void:
     if not is_instance_valid(_grabbed):
         return
-    var damping_torque := -_grabbed.angular_velocity * grab_rotation_damping
-    if _is_rotating:
-        var current := _grabbed.global_transform.basis.get_rotation_quaternion()
-        var error := (_grab_target_rotation * current.inverse()).normalized()
-        var angle := error.get_angle()
-        if angle > PI: angle -= TAU
-        _grabbed.apply_torque(error.get_axis() * angle * grab_rotation_stiffness + damping_torque)
-    else:
-        _grabbed.apply_torque(damping_torque)
+    if not _is_rotating:
+        var player_rot := Quaternion(char_rigidbody.global_transform.basis)
+        _grab_target_rotation = player_rot * _grab_relative_rotation
+    var current := _grabbed.global_transform.basis.get_rotation_quaternion()
+    var error := (_grab_target_rotation * current.inverse()).normalized()
+    var angle := error.get_angle()
+    if angle > PI: angle -= TAU
+    _grabbed.apply_torque(error.get_axis() * angle * grab_rotation_stiffness - _grabbed.angular_velocity * grab_rotation_damping)
 
 
 func _find_bone_instantiator(node: Node) -> BoneInstantiator:

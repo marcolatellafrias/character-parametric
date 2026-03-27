@@ -2,7 +2,7 @@ class_name PackageGenerator
 extends RefCounted
 
 static func create(cells_x: int, cells_y: int, cells_z: int) -> RigidBody3D:
-	const CELL := 0.2
+	const CELL := 0.15
 	var size := Vector3(cells_x, cells_y, cells_z) * CELL
 
 	var rb := RigidBody3D.new()
