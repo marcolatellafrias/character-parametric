@@ -33,10 +33,10 @@ var throw_world_dir: Vector3 = Vector3.FORWARD
 
 const THROW_PUSH_DECAY: float = 2.5
 
-const JUMP_SQUAT_Y    := -0.22
+const JUMP_SQUAT_Y    := -0.3
 const JUMP_SQUAT_Z    :=  0.13
 const JUMP_SQUAT_TILT :=  0.3
-const CROUCH_Y        := -0.22
+const CROUCH_Y        := -0.3
 const CROUCH_Z        :=  0.13
 const CROUCH_TILT     :=  0.3
 
@@ -51,17 +51,17 @@ var ARM_JUMP_EXTENSION_FACTOR: float = 0.35
 @export var throw_arm_charge_factor: float = 0.5  # qué tan doblados quedan los brazos al cargar completamente (proporción de arm_total)
 @export var throw_arm_push_factor: float = 1.0    # extensión al soltar (proporción de arm_total, no completamente extendido)
 
-const THROW_CHARGE_TILT: float = 0.18  # cuánto se inclina la raíz hacia atrás al cargar
+const THROW_CHARGE_TILT: float = 0.3  # cuánto se inclina la raíz hacia atrás al cargar
 const THROW_PUSH_TILT:   float = 0.48  # cuánto se inclina la raíz hacia adelante al soltar
 
 const THROW_CHARGE_SMOOTH: float = 8.0
 const THROW_PUSH_SMOOTH: float = 14.0
 
 var _throw_was_active: bool = false
-var _throw_left_smooth: Vector3 = Vector3.ZERO
-var _throw_right_smooth: Vector3 = Vector3.ZERO
-var _throw_left_pole_smooth: Vector3 = Vector3.ZERO
-var _throw_right_pole_smooth: Vector3 = Vector3.ZERO
+var _throw_left_local: Vector3 = Vector3.ZERO
+var _throw_right_local: Vector3 = Vector3.ZERO
+var _throw_left_pole_local: Vector3 = Vector3.ZERO
+var _throw_right_pole_local: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
     if is_active:
@@ -452,61 +452,68 @@ func _physics_process(_delta: float) -> void:
     if throw_push_t > 0.0:
         throw_push_t = max(0.0, throw_push_t - _delta * THROW_PUSH_DECAY)
 
-    if throw_t > 0.0 or throw_push_t > 0.0:
-        var arm_total := skel_sizes_util.upper_arm_size.y + skel_sizes_util.lower_arm_size.y
-        var chest := custom_bones_util.chest
-        var chest_tip := chest.global_position + chest.global_transform.basis.y * skel_sizes_util.chest_size.y
-        var char_right := char_rigidbody.global_transform.basis.x
-        var char_up := char_rigidbody.global_transform.basis.y
-        var hand_sep := skel_sizes_util.shoulders_width * 0.35
-        var left_shoulder_pos  := custom_bones_util.left_upper_arm.global_position
-        var right_shoulder_pos := custom_bones_util.right_upper_arm.global_position
-        var pitch := player_camera.rotation.x if (is_active and is_instance_valid(player_camera)) else 0.0
-        var pitch_norm : float = clamp(pitch / 1.2, -1.0, 1.0)
+    var char_basis     := char_rigidbody.global_transform.basis
+    var char_basis_inv := char_basis.inverse()
+    var left_shoulder_pos  := custom_bones_util.left_upper_arm.global_position
+    var right_shoulder_pos := custom_bones_util.right_upper_arm.global_position
 
-        var left_world: Vector3
-        var right_world: Vector3
-        var left_pole_world: Vector3
-        var right_pole_world: Vector3
+    if throw_t > 0.0 or throw_push_t > 0.0:
+        var arm_total  := skel_sizes_util.upper_arm_size.y + skel_sizes_util.lower_arm_size.y
+        var char_right := char_basis.x
+        var char_up    := char_basis.y
+        var pitch      := player_camera.rotation.x if (is_active and is_instance_valid(player_camera)) else 0.0
+        var pitch_norm : float = clamp(pitch / 1.2, -1.0, 1.0)
         var blend_t: float
 
         if throw_push_t > 0.0:
-            var extension := arm_total * throw_arm_push_factor
-            left_world  = left_shoulder_pos  + throw_world_dir * extension - char_right * hand_sep
-            right_world = right_shoulder_pos + throw_world_dir * extension + char_right * hand_sep
-            var elbow_drop := -char_up * arm_total * 0.4
-            left_pole_world  = left_world  + elbow_drop - throw_world_dir * arm_total * 0.3
-            right_pole_world = right_world + elbow_drop - throw_world_dir * arm_total * 0.3
+            var hand_sep     := skel_sizes_util.shoulders_width * 0.35
+            hand_sep         *= lerpf(1.0, 0.4, abs(pitch_norm))
+            var left_dir     := (throw_world_dir - char_right * (hand_sep / arm_total)).normalized()
+            var right_dir    := (throw_world_dir + char_right * (hand_sep / arm_total)).normalized()
+            var left_world   := left_shoulder_pos  + left_dir  * arm_total * throw_arm_push_factor
+            var right_world  := right_shoulder_pos + right_dir * arm_total * throw_arm_push_factor
+            var elbow_drop   := -char_up * arm_total * 0.4
+            var left_pole_world  := left_world  + elbow_drop - throw_world_dir * arm_total * 0.3
+            var right_pole_world := right_world + elbow_drop - throw_world_dir * arm_total * 0.3
+            var k: float = clamp(_delta * THROW_PUSH_SMOOTH, 0.0, 1.0)
+            _throw_left_local       = _throw_left_local.lerp(       char_basis_inv * (left_world       - left_shoulder_pos),  k)
+            _throw_right_local      = _throw_right_local.lerp(      char_basis_inv * (right_world      - right_shoulder_pos), k)
+            _throw_left_pole_local  = _throw_left_pole_local.lerp(  char_basis_inv * (left_pole_world  - left_shoulder_pos),  k)
+            _throw_right_pole_local = _throw_right_pole_local.lerp( char_basis_inv * (right_pole_world - right_shoulder_pos), k)
             blend_t = throw_push_t
         else:
-            var vertical_shift := pitch * skel_sizes_util.torso_height * 0.4
-            var side_ext := arm_total * throw_arm_charge_factor
-            var forward_pull := throw_world_dir * arm_total * lerpf(0.0, 0.15, throw_t)
-            left_world  = left_shoulder_pos  - char_right * side_ext + forward_pull + char_up * vertical_shift
-            right_world = right_shoulder_pos + char_right * side_ext + forward_pull + char_up * vertical_shift
-            var pole_spread : float = arm_total * (0.6 + abs(pitch_norm) * 0.4)
-            var elbow_back  := -throw_world_dir * arm_total * 0.4
-            var elbow_down  := -char_up * arm_total * 0.1
-            left_pole_world  = left_shoulder_pos  + elbow_back + elbow_down - char_right * pole_spread + char_up * vertical_shift
-            right_pole_world = right_shoulder_pos + elbow_back + elbow_down + char_right * pole_spread + char_up * vertical_shift
+            var vertical_shift   := pitch * skel_sizes_util.torso_height * 0.4
+            var side_ext         := arm_total * throw_arm_charge_factor
+            side_ext             *= lerpf(1.0, 0.4, abs(pitch_norm))
+            var forward_pull     := throw_world_dir * arm_total * lerpf(0.0, 0.15, throw_t)
+            var left_world       := left_shoulder_pos  - char_right * side_ext + forward_pull + char_up * vertical_shift
+            var right_world      := right_shoulder_pos + char_right * side_ext + forward_pull + char_up * vertical_shift
+            var pole_spread      : float = arm_total * (0.6 + abs(pitch_norm) * 0.4)
+            var elbow_back       := -throw_world_dir * arm_total * 0.4
+            var elbow_down       := -char_up * arm_total * (0.25 + pitch_norm * 0.2)
+            var left_pole_world  := left_shoulder_pos  + elbow_back + elbow_down - char_right * pole_spread + char_up * vertical_shift
+            var right_pole_world := right_shoulder_pos + elbow_back + elbow_down + char_right * pole_spread + char_up * vertical_shift
+            var k : float = clamp(_delta * THROW_CHARGE_SMOOTH, 0.0, 1.0)
+            _throw_left_local       = _throw_left_local.lerp(       char_basis_inv * (left_world       - left_shoulder_pos),  k)
+            _throw_right_local      = _throw_right_local.lerp(      char_basis_inv * (right_world      - right_shoulder_pos), k)
+            _throw_left_pole_local  = _throw_left_pole_local.lerp(  char_basis_inv * (left_pole_world  - left_shoulder_pos),  k)
+            _throw_right_pole_local = _throw_right_pole_local.lerp( char_basis_inv * (right_pole_world - right_shoulder_pos), k)
             blend_t = throw_t
 
-        var smooth_speed := THROW_PUSH_SMOOTH if throw_push_t > 0.0 else THROW_CHARGE_SMOOTH
-        var k : float = clamp(_delta * smooth_speed, 0.0, 1.0)
-        _throw_left_smooth       = _throw_left_smooth.lerp(left_world,        k)
-        _throw_right_smooth      = _throw_right_smooth.lerp(right_world,       k)
-        _throw_left_pole_smooth  = _throw_left_pole_smooth.lerp(left_pole_world,  k)
-        _throw_right_pole_smooth = _throw_right_pole_smooth.lerp(right_pole_world, k)
+        var left_ws       := left_shoulder_pos  + char_basis * _throw_left_local
+        var right_ws      := right_shoulder_pos + char_basis * _throw_right_local
+        var left_pole_ws  := left_shoulder_pos  + char_basis * _throw_left_pole_local
+        var right_pole_ws := right_shoulder_pos + char_basis * _throw_right_pole_local
 
-        ik_util.left_arm_ik_target.global_position  = ik_util.left_arm_ik_target.global_position.lerp(_throw_left_smooth,       blend_t)
-        ik_util.right_arm_ik_target.global_position = ik_util.right_arm_ik_target.global_position.lerp(_throw_right_smooth,      blend_t)
-        ik_util.left_arm_pole.global_position       = ik_util.left_arm_pole.global_position.lerp(_throw_left_pole_smooth,  blend_t)
-        ik_util.right_arm_pole.global_position      = ik_util.right_arm_pole.global_position.lerp(_throw_right_pole_smooth, blend_t)
+        ik_util.left_arm_ik_target.global_position  = ik_util.left_arm_ik_target.global_position.lerp(left_ws,        blend_t)
+        ik_util.right_arm_ik_target.global_position = ik_util.right_arm_ik_target.global_position.lerp(right_ws,       blend_t)
+        ik_util.left_arm_pole.global_position       = ik_util.left_arm_pole.global_position.lerp(left_pole_ws,   blend_t)
+        ik_util.right_arm_pole.global_position      = ik_util.right_arm_pole.global_position.lerp(right_pole_ws,  blend_t)
     else:
-        _throw_left_smooth       = ik_util.left_arm_ik_target.global_position
-        _throw_right_smooth      = ik_util.right_arm_ik_target.global_position
-        _throw_left_pole_smooth  = ik_util.left_arm_pole.global_position
-        _throw_right_pole_smooth = ik_util.right_arm_pole.global_position
+        _throw_left_local       = char_basis_inv * (ik_util.left_arm_ik_target.global_position - left_shoulder_pos)
+        _throw_right_local      = char_basis_inv * (ik_util.right_arm_ik_target.global_position - right_shoulder_pos)
+        _throw_left_pole_local  = char_basis_inv * (ik_util.left_arm_pole.global_position       - left_shoulder_pos)
+        _throw_right_pole_local = char_basis_inv * (ik_util.right_arm_pole.global_position      - right_shoulder_pos)
 
     # ────────────────────────────────────────────────────────────────────────────
 
