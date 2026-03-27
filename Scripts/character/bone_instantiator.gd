@@ -31,7 +31,7 @@ var throw_t: float = 0.0
 var throw_push_t: float = 0.0
 var throw_world_dir: Vector3 = Vector3.FORWARD
 
-const THROW_PUSH_DECAY: float = 3.5
+const THROW_PUSH_DECAY: float = 2.5
 
 const JUMP_SQUAT_Y    := -0.22
 const JUMP_SQUAT_Z    :=  0.13
@@ -49,11 +49,19 @@ const ARM_BEND_SCALE:      float = 0.18
 var ARM_JUMP_EXTENSION_FACTOR: float = 0.35
 
 @export var throw_arm_charge_factor: float = 0.5  # qué tan doblados quedan los brazos al cargar completamente (proporción de arm_total)
-@export var throw_arm_push_factor: float = 0.82    # extensión al soltar (proporción de arm_total, no completamente extendido)
+@export var throw_arm_push_factor: float = 1.0    # extensión al soltar (proporción de arm_total, no completamente extendido)
 
-const THROW_CHARGE_TILT: float = 0.12  # cuánto se inclina la raíz hacia atrás al cargar
-const THROW_PUSH_TILT:   float = 0.18  # cuánto se inclina la raíz hacia adelante al soltar
+const THROW_CHARGE_TILT: float = 0.18  # cuánto se inclina la raíz hacia atrás al cargar
+const THROW_PUSH_TILT:   float = 0.48  # cuánto se inclina la raíz hacia adelante al soltar
 
+const THROW_CHARGE_SMOOTH: float = 8.0
+const THROW_PUSH_SMOOTH: float = 14.0
+
+var _throw_was_active: bool = false
+var _throw_left_smooth: Vector3 = Vector3.ZERO
+var _throw_right_smooth: Vector3 = Vector3.ZERO
+var _throw_left_pole_smooth: Vector3 = Vector3.ZERO
+var _throw_right_pole_smooth: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
     if is_active:
@@ -439,7 +447,7 @@ func _physics_process(_delta: float) -> void:
     ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_pole_anim_offset)
     ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_pole_anim_offset)
 
-    # ─── THROW ARM OVERRIDE ──────────────────────────────────────────────────────
+# ─── THROW ARM OVERRIDE ──────────────────────────────────────────────────────
 
     if throw_push_t > 0.0:
         throw_push_t = max(0.0, throw_push_t - _delta * THROW_PUSH_DECAY)
@@ -449,22 +457,56 @@ func _physics_process(_delta: float) -> void:
         var chest := custom_bones_util.chest
         var chest_tip := chest.global_position + chest.global_transform.basis.y * skel_sizes_util.chest_size.y
         var char_right := char_rigidbody.global_transform.basis.x
+        var char_up := char_rigidbody.global_transform.basis.y
         var hand_sep := skel_sizes_util.shoulders_width * 0.35
-        var extension: float
+        var left_shoulder_pos  := custom_bones_util.left_upper_arm.global_position
+        var right_shoulder_pos := custom_bones_util.right_upper_arm.global_position
+        var pitch := player_camera.rotation.x if (is_active and is_instance_valid(player_camera)) else 0.0
+        var pitch_norm : float = clamp(pitch / 1.2, -1.0, 1.0)
+
+        var left_world: Vector3
+        var right_world: Vector3
+        var left_pole_world: Vector3
+        var right_pole_world: Vector3
         var blend_t: float
+
         if throw_push_t > 0.0:
-            extension = arm_total * lerpf(0.85, throw_arm_push_factor, throw_push_t)
+            var extension := arm_total * throw_arm_push_factor
+            left_world  = left_shoulder_pos  + throw_world_dir * extension - char_right * hand_sep
+            right_world = right_shoulder_pos + throw_world_dir * extension + char_right * hand_sep
+            var elbow_drop := -char_up * arm_total * 0.4
+            left_pole_world  = left_world  + elbow_drop - throw_world_dir * arm_total * 0.3
+            right_pole_world = right_world + elbow_drop - throw_world_dir * arm_total * 0.3
             blend_t = throw_push_t
         else:
-            extension = arm_total * lerpf(0.85, throw_arm_charge_factor, throw_t)
+            var vertical_shift := pitch * skel_sizes_util.torso_height * 0.4
+            var side_ext := arm_total * throw_arm_charge_factor
+            var forward_pull := throw_world_dir * arm_total * lerpf(0.0, 0.15, throw_t)
+            left_world  = left_shoulder_pos  - char_right * side_ext + forward_pull + char_up * vertical_shift
+            right_world = right_shoulder_pos + char_right * side_ext + forward_pull + char_up * vertical_shift
+            var pole_spread : float = arm_total * (0.6 + abs(pitch_norm) * 0.4)
+            var elbow_back  := -throw_world_dir * arm_total * 0.4
+            var elbow_down  := -char_up * arm_total * 0.1
+            left_pole_world  = left_shoulder_pos  + elbow_back + elbow_down - char_right * pole_spread + char_up * vertical_shift
+            right_pole_world = right_shoulder_pos + elbow_back + elbow_down + char_right * pole_spread + char_up * vertical_shift
             blend_t = throw_t
-        var left_world  := chest_tip + throw_world_dir * extension - char_right * hand_sep
-        var right_world := chest_tip + throw_world_dir * extension + char_right * hand_sep
-        ik_util.left_arm_ik_target.global_position  = ik_util.left_arm_ik_target.global_position.lerp(left_world,  blend_t)
-        ik_util.right_arm_ik_target.global_position = ik_util.right_arm_ik_target.global_position.lerp(right_world, blend_t)
-        var elbow_drop := -char_rigidbody.global_transform.basis.y * arm_total * 0.4
-        ik_util.left_arm_pole.global_position  = ik_util.left_arm_pole.global_position.lerp(left_world  + elbow_drop, blend_t)
-        ik_util.right_arm_pole.global_position = ik_util.right_arm_pole.global_position.lerp(right_world + elbow_drop, blend_t)
+
+        var smooth_speed := THROW_PUSH_SMOOTH if throw_push_t > 0.0 else THROW_CHARGE_SMOOTH
+        var k : float = clamp(_delta * smooth_speed, 0.0, 1.0)
+        _throw_left_smooth       = _throw_left_smooth.lerp(left_world,        k)
+        _throw_right_smooth      = _throw_right_smooth.lerp(right_world,       k)
+        _throw_left_pole_smooth  = _throw_left_pole_smooth.lerp(left_pole_world,  k)
+        _throw_right_pole_smooth = _throw_right_pole_smooth.lerp(right_pole_world, k)
+
+        ik_util.left_arm_ik_target.global_position  = ik_util.left_arm_ik_target.global_position.lerp(_throw_left_smooth,       blend_t)
+        ik_util.right_arm_ik_target.global_position = ik_util.right_arm_ik_target.global_position.lerp(_throw_right_smooth,      blend_t)
+        ik_util.left_arm_pole.global_position       = ik_util.left_arm_pole.global_position.lerp(_throw_left_pole_smooth,  blend_t)
+        ik_util.right_arm_pole.global_position      = ik_util.right_arm_pole.global_position.lerp(_throw_right_pole_smooth, blend_t)
+    else:
+        _throw_left_smooth       = ik_util.left_arm_ik_target.global_position
+        _throw_right_smooth      = ik_util.right_arm_ik_target.global_position
+        _throw_left_pole_smooth  = ik_util.left_arm_pole.global_position
+        _throw_right_pole_smooth = ik_util.right_arm_pole.global_position
 
     # ────────────────────────────────────────────────────────────────────────────
 
