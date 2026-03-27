@@ -70,6 +70,8 @@ var throw_max_charge_time: float = 0.5
 var _is_charging_throw: bool = false
 var _throw_charge: float = 0.0
 
+var _grabbed_grab_point: Node3D = null
+
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
     char_rigidbody = rb
     player_camera = cam
@@ -412,33 +414,49 @@ func _toggle_ragdoll() -> void:
 
 
 func _start_grab() -> void:
+    var grabbable := _get_grabbable(_hovered_rb)
+    if not grabbable: return
     _grabbed = _hovered_rb
-    _grab_distance = clamp(
-        player_camera.global_position.distance_to(_grabbed.global_position),
-        grab_dist_min, grab_dist_max
-    )
+    var origin := _get_grab_origin()
+    _grabbed_grab_point = grabbable.get_nearest_grab_point(origin)
+    var grab_world := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
+    _grab_distance = clamp(origin.distance_to(grab_world), grab_dist_min, grab_dist_max)
     _grabbed.sleeping = false
     _grab_target_rotation = _grabbed.global_transform.basis.get_rotation_quaternion()
+
+    var bi := _get_bi()
+    if is_instance_valid(bi):
+        var left_h := grabbable.get_nearest_handle_point(bi.custom_bones_util.left_upper_arm.global_position)
+        var right_h := grabbable.get_nearest_handle_point(bi.custom_bones_util.right_upper_arm.global_position, left_h)
+        bi.set_grab_handles(left_h, right_h)
+        var tw := create_tween()
+        tw.tween_property(bi, "_grab_arm_blend", 1.0, 0.15)
 
 
 func _stop_grab() -> void:
     _grabbed = null
+    _grabbed_grab_point = null
     _is_rotating = false
     if is_instance_valid(_curve_mesh):
         _curve_mesh.queue_free()
         _curve_mesh = null
+    var bi := _get_bi()
+    if is_instance_valid(bi):
+        var tw := create_tween()
+        tw.tween_property(bi, "_grab_arm_blend", 0.0, 0.15)
+        tw.tween_callback(func(): bi.clear_grab_handles())
 
 
 func _apply_grab_force() -> void:
     if not is_instance_valid(_grabbed):
         _grabbed = null
         return
-    var target_pos := player_camera.global_position + (-player_camera.global_transform.basis.z) * _grab_distance
-    var force := (target_pos - _grabbed.global_position) * grab_stiffness \
-               - _grabbed.linear_velocity * grab_damping
+    var origin := _get_grab_origin()
+    var target_pos := origin + (-player_camera.global_transform.basis.z) * _grab_distance
+    var grab_world := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
+    var force := (target_pos - grab_world) * grab_stiffness - _grabbed.linear_velocity * grab_damping
     _grabbed.apply_central_force(force)
     _grabbed.sleeping = false
-
 
 func _apply_grab_torque() -> void:
     if not is_instance_valid(_grabbed):
@@ -550,13 +568,16 @@ func _process_grab_look() -> void:
         if hit_bi != null and hit_bi == own_bi:
             _clear_outline()
             return
-        # Comprobar rango de alcance desde la punta del chest
         if is_instance_valid(own_bi):
-            var chest := own_bi.custom_bones_util.chest
-            var chest_tip := chest.global_position + chest.global_transform.basis.y * own_bi.skel_sizes_util.chest_size.y
-            if hit["position"].distance_to(chest_tip) > _max_reach_distance:
+             var chest := own_bi.custom_bones_util.chest
+             var chest_tip := chest.global_position + chest.global_transform.basis.y * own_bi.skel_sizes_util.chest_size.y
+             if hit["position"].distance_to(chest_tip) > _max_reach_distance:
                 _clear_outline()
                 return
+          # solo objetos con Grabbable son agarrables
+        if not _get_grabbable(hit.collider as RigidBody3D):
+            _clear_outline()
+            return
         var parent: Node = hit.collider.get_parent()
         if parent != _hovered_parent:
             _clear_outline()
@@ -565,8 +586,7 @@ func _process_grab_look() -> void:
             _hovered_meshes = _collect_meshes(parent)
             _apply_outline()
     else:
-        _clear_outline()
-
+          _clear_outline()
 
 func _collect_meshes(node: Node) -> Array[MeshInstance3D]:
     var result: Array[MeshInstance3D] = []
@@ -609,7 +629,7 @@ func _update_curve() -> void:
     if not show_grab_curve:
         return
 
-    var p0   := player_camera.global_position
+    var p0 := _get_grab_origin() 
     var p2   := _grabbed.global_position
     var dist := p0.distance_to(p2)
     var p1   := (p0 + p2) * 0.5 + Vector3.UP * dist * grab_sag_factor
@@ -706,3 +726,15 @@ func _release_throw() -> void:
         bi.throw_push_t = 1.0
         bi.throw_world_dir = dir
     _throw_charge = 0.0
+
+func _get_grab_origin() -> Vector3:
+    var bi := _get_bi()
+    if not is_instance_valid(bi): return player_camera.global_position
+    var chest := bi.custom_bones_util.chest
+    return chest.global_position + chest.global_transform.basis.y * bi.skel_sizes_util.chest_size.y
+
+func _get_grabbable(rb: RigidBody3D) -> Grabbable:
+    for child in rb.get_children():
+        if child is Grabbable:
+            return child as Grabbable
+    return null

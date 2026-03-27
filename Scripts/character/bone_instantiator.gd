@@ -49,7 +49,7 @@ const ARM_BEND_SCALE:      float = 0.18
 var ARM_JUMP_EXTENSION_FACTOR: float = 0.35
 
 @export var throw_arm_charge_factor: float = 0.5  # qué tan doblados quedan los brazos al cargar completamente (proporción de arm_total)
-@export var throw_arm_push_factor: float = 1.0    # extensión al soltar (proporción de arm_total, no completamente extendido)
+@export var throw_arm_push_factor: float = 1.5    # extensión al soltar (proporción de arm_total, no completamente extendido)
 
 const THROW_CHARGE_TILT: float = 0.3  # cuánto se inclina la raíz hacia atrás al cargar
 const THROW_PUSH_TILT:   float = 0.48  # cuánto se inclina la raíz hacia adelante al soltar
@@ -62,6 +62,10 @@ var _throw_left_local: Vector3 = Vector3.ZERO
 var _throw_right_local: Vector3 = Vector3.ZERO
 var _throw_left_pole_local: Vector3 = Vector3.ZERO
 var _throw_right_pole_local: Vector3 = Vector3.ZERO
+
+var _grab_left_handle: Node3D = null
+var _grab_right_handle: Node3D = null
+var _grab_arm_blend: float = 0.0
 
 func _ready() -> void:
     if is_active:
@@ -82,6 +86,7 @@ func initialize_skeleton() -> void:
     char_rigidbody.fall_triggered.connect(_on_fall_triggered)
     char_rigidbody.add_child(custom_bones_util.lower_spine)
     add_child(char_rigidbody)
+    _setup_char_grabbable()
 
     local_targets.add_child(ik_util.left_leg_raycast)
     local_targets.add_child(ik_util.right_leg_raycast)
@@ -516,6 +521,11 @@ func _physics_process(_delta: float) -> void:
         _throw_right_pole_local = char_basis_inv * (ik_util.right_arm_pole.global_position      - right_shoulder_pos)
 
     # ────────────────────────────────────────────────────────────────────────────
+    if _grab_arm_blend > 0.0 and is_instance_valid(_grab_left_handle) and is_instance_valid(_grab_right_handle):
+        ik_util.left_arm_ik_target.global_position = ik_util.left_arm_ik_target.global_position.lerp(
+            _grab_left_handle.global_position, _grab_arm_blend)
+        ik_util.right_arm_ik_target.global_position = ik_util.right_arm_ik_target.global_position.lerp(
+            _grab_right_handle.global_position, _grab_arm_blend)
 
     ik_util.solve_two_bone_ik(custom_bones_util.left_upper_arm, custom_bones_util.left_lower_arm,
         ik_util.left_arm_ik_target.global_position, ik_util.left_arm_pole.global_position)
@@ -608,3 +618,25 @@ func set_first_person_visibility(first_person: bool) -> void:
         if not is_instance_valid(bone):
             continue
         bone.set_mesh_visible(first_person == false or visible_bones.has(bone))
+        
+func set_grab_handles(left: Node3D, right: Node3D) -> void:
+    _grab_left_handle = left
+    _grab_right_handle = right
+
+func clear_grab_handles() -> void:
+    _grab_left_handle = null
+    _grab_right_handle = null
+
+func _setup_char_grabbable() -> void:
+    var grabbable := Grabbable.new()
+    char_rigidbody.add_child(grabbable)
+
+    var full_height := skel_sizes_util.leg_height + skel_sizes_util.torso_height + skel_sizes_util.head_height
+    var ground_local_y := char_rigidbody._capsule_stand_y_offset - full_height * 0.5
+    var handle_y := ground_local_y + skel_sizes_util.leg_height \
+        + skel_sizes_util.lower_spine_size.y + skel_sizes_util.middle_spine_size.y
+    var handle_x := skel_sizes_util.shoulders_width * 0.5
+
+    grabbable.add_handle_point_local(Vector3(-handle_x, handle_y, 0.0))
+    grabbable.add_handle_point_local(Vector3( handle_x, handle_y, 0.0))
+    grabbable.add_grab_point_local(Vector3(0.0, char_rigidbody._capsule_stand_y_offset, 0.0))

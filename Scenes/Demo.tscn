@@ -1,10 +1,11 @@
-[gd_scene load_steps=28 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=29 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
 [ext_resource type="Material" uid="uid://da33e5tos7dp0" path="res://Materials/blue.tres" id="4_oilx1"]
 [ext_resource type="Material" uid="uid://dnj4yx07gux3o" path="res://Materials/green.tres" id="5_4i7ud"]
 [ext_resource type="PackedScene" uid="uid://beur8wp4bookx" path="res://Scenes/weighted_box.tscn" id="7_h3puh"]
+[ext_resource type="PackedScene" uid="uid://bchdbfnnxbtq2" path="res://Scenes/package.tscn" id="7_k27g2"]
 [ext_resource type="PackedScene" uid="uid://delu2qjrw6teu" path="res://addons/Mirror3D/Mirror3D.tscn" id="8_ecetj"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
 [ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
@@ -136,7 +137,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18, 0, -20.580421)
 
 [node name="OneKGBox" parent="world/DebugBoxes" instance=ExtResource("7_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.806255, 0.9564251, 6.700369)
-label_text = "1kg"
 
 [node name="FiveKGBox" parent="world/DebugBoxes" instance=ExtResource("7_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.8062549, 0.9564251, 6.700369)
@@ -145,17 +145,14 @@ mass = 5.0
 [node name="HundredKGBox" parent="world/DebugBoxes" instance=ExtResource("7_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.80625486, 0.9564251, 6.700369)
 mass = 10.0
-label_text = "10kg"
 
 [node name="ThousandKGBox" parent="world/DebugBoxes" instance=ExtResource("7_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1937451, 0.9564251, 6.700369)
 mass = 20.0
-label_text = "20kg"
 
 [node name="ThousandKGBox2" parent="world/DebugBoxes" instance=ExtResource("7_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.1937451, 0.9564251, 6.700369)
 mass = 100.0
-label_text = "100kg"
 
 [node name="StaticBody3D" type="StaticBody3D" parent="world"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -5.1605434)
@@ -192,6 +189,10 @@ mesh = SubResource("BoxMesh_k27g2")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D4"]
 shape = SubResource("BoxShape3D_6aqh6")
+
+[node name="new packages" type="Node3D" parent="world"]
+
+[node name="Node3D" parent="world/new packages" instance=ExtResource("7_k27g2")]
 
 [node name="chars" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)

@@ -11,7 +11,6 @@ material = SubResource("StandardMaterial3D_pwk8l")
 
 [node name="HeavyBox" type="RigidBody3D"]
 script = ExtResource("1_mnoes")
-label_text = "5kg"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_oilx1")
