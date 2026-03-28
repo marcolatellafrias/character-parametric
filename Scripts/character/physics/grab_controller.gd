@@ -50,6 +50,8 @@ var _show_cone: bool = true
 var _cone_mesh_instance: MeshInstance3D = null
 var _cone_immediate_mesh: ImmediateMesh = null
 
+var scroll_sensitivity: float = 0.15
+
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: AnimationModifiers, max_reach: float, inst: EntityInstantiation) -> void:
     char_rigidbody        = rb
     player_camera         = cam
@@ -94,10 +96,10 @@ func handle_input(event: InputEvent) -> void:
                 _is_rotating = event.pressed and is_instance_valid(_grabbed)
             MOUSE_BUTTON_WHEEL_UP:
                 if is_instance_valid(_grabbed):
-                    _grab_distance = clamp(_grab_distance - 0.3, grab_dist_min, grab_dist_max)
+                    _grab_distance = clamp(_grab_distance - scroll_sensitivity, grab_dist_min, grab_dist_max)
             MOUSE_BUTTON_WHEEL_DOWN:
                 if is_instance_valid(_grabbed):
-                    _grab_distance = clamp(_grab_distance + 0.3, grab_dist_min, grab_dist_max)
+                    _grab_distance = clamp(_grab_distance + scroll_sensitivity, grab_dist_min, grab_dist_max)
 
     if event is InputEventMouseMotion and _is_rotating and is_instance_valid(_grabbed):
         var delta_rot := Quaternion(player_camera.global_transform.basis.x, -event.relative.y * grab_rotation_sensitivity) \
@@ -198,10 +200,16 @@ func _apply_grab_torque() -> void:
 
 func _release_throw() -> void:
     var dir := -player_camera.global_transform.basis.z
-    if is_instance_valid(_hovered_rb):
-        var t      := _throw_charge / throw_max_charge_time
+    var t   := _throw_charge / throw_max_charge_time
+
+    if is_instance_valid(_grabbed):
+        # Objeto agarrado: impulso al centro de masa, sin offset
+        _grabbed.apply_central_impulse(dir * throw_strength * t)
+    elif is_instance_valid(_hovered_rb):
+        # Sin objeto agarrado: push con offset original
         var origin := _get_grab_origin()
         _hovered_rb.apply_impulse(dir * throw_strength * t, _hovered_rb.global_position - origin)
+
     if is_instance_valid(anim_mod):
         anim_mod.trigger_throw_push(dir)
     _is_charging_throw = false

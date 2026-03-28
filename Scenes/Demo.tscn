@@ -195,6 +195,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -16.150776)
 
 [node name="Node3D" parent="world/new packages" instance=ExtResource("7_k27g2")]
 cells_x = 6
+weight = 20.0
 
 [node name="chars" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
