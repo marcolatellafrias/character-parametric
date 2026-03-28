@@ -52,6 +52,15 @@ var _cone_immediate_mesh: ImmediateMesh = null
 
 var scroll_sensitivity: float = 0.15
 
+var effort_cone_fraction: float = 0.6
+var effort_time_threshold: float = 0.5
+
+var _effort_timer: float = 0.0
+var _is_high_effort: bool = false
+
+signal high_effort_started()
+signal high_effort_ended()
+
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: AnimationModifiers, max_reach: float, inst: EntityInstantiation) -> void:
     char_rigidbody        = rb
     player_camera         = cam
@@ -124,12 +133,14 @@ func update(delta: float) -> void:
 
     if not is_instance_valid(_grabbed):
         _process_hover()
+        _reset_effort()
     else:
         _apply_grab_force()
-        if not is_instance_valid(_grabbed):  # _stop_grab() pudo haberlo anulado
+        if not is_instance_valid(_grabbed):
             _update_cone_vis()
             return
         _apply_grab_torque()
+        _update_effort_zone(delta)
         if is_instance_valid(arms_controller):
             arms_controller.update_grab_handles(delta, _grabbed, _get_grabbable, _get_grab_origin(), _grabbed_grab_point)
         _update_curve()
@@ -153,6 +164,7 @@ func _start_grab() -> void:
         arms_controller.start_grab(_grabbed, _get_grabbable, _get_grab_origin(), _grabbed_grab_point, grab_dist_min, grab_dist_max)
 
 func _stop_grab() -> void:
+    _reset_effort()
     _grabbed            = null
     _grabbed_grab_point = null
     _is_rotating        = false
@@ -373,3 +385,27 @@ func _update_cone_vis() -> void:
     var fwd    := -player_camera.global_transform.basis.z
     _cone_mesh_instance.global_position = origin
     _cone_mesh_instance.global_transform.basis = Basis.looking_at(-fwd, Vector3.UP)
+
+func _update_effort_zone(delta: float) -> void:
+    var origin  := _get_grab_origin()
+    var cam_fwd := -player_camera.global_transform.basis.z
+    var grab_world := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
+    var to_grab := (grab_world - origin).normalized()
+
+    var easy_half_angle := grab_cone_half_angle * effort_cone_fraction
+    var cos_easy := cos(deg_to_rad(easy_half_angle))
+    var in_easy_cone := to_grab.dot(cam_fwd) >= cos_easy
+
+    if in_easy_cone:
+        _reset_effort()
+    else:
+        _effort_timer += delta
+        if not _is_high_effort and _effort_timer >= effort_time_threshold:
+            _is_high_effort = true
+            high_effort_started.emit()
+
+func _reset_effort() -> void:
+    _effort_timer = 0.0
+    if _is_high_effort:
+        _is_high_effort = false
+        high_effort_ended.emit()

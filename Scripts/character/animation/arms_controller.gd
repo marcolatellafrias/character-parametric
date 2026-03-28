@@ -69,20 +69,32 @@ func _weighted_dist(a: Vector3, b: Vector3) -> float:
     diff.y *= HANDLE_VERTICAL_WEIGHT
     return diff.length()
 
-func _best_handle(grabbable: Grabbable, shoulder: Vector3, exclude: Node3D, current: Node3D) -> Node3D:
+func _best_handle(grabbable: Grabbable, shoulder: Vector3, exclude: Node3D, current: Node3D, is_left: bool) -> Node3D:
+    var char_right  := bi.char_rigidbody.global_transform.basis.x
+    var obj_center  := grabbable.global_position
+    var correct_sign := -1.0 if is_left else 1.0  # izquierda quiere handles a la izquierda
+
     var best: Node3D = null
     var best_dist := INF
     for h in grabbable.handle_points:
         if h == exclude:
             continue
         var d := _weighted_dist(h.global_position, shoulder)
+        # Penalizar si el handle está en el lado equivocado
+        var lateral := (h.global_position - obj_center).dot(char_right) * correct_sign
+        if lateral < 0.0:
+            d -= lateral * 2.0  # penalización proporcional a cuánto está en el lado incorrecto
         if d < best_dist:
             best = h
             best_dist = d
+
     if not is_instance_valid(best):
         return current
     if is_instance_valid(current) and current != exclude:
         var current_dist := _weighted_dist(current.global_position, shoulder)
+        var current_lateral := (current.global_position - obj_center).dot(char_right) * correct_sign
+        if current_lateral < 0.0:
+            current_dist -= current_lateral * 2.0
         if best_dist >= current_dist / HANDLE_HYSTERESIS:
             return current
     return best
@@ -96,8 +108,8 @@ func update_grab_handles(delta: float, grabbed: RigidBody3D, get_grabbable: Call
     if not grabbable:
         return
     var cb      := bi.custom_bones_util
-    var left_h  := _best_handle(grabbable, cb.left_upper_arm.global_position,  null,   _grab_left_handle_node)
-    var right_h := _best_handle(grabbable, cb.right_upper_arm.global_position, left_h, _grab_right_handle_node)
+    var left_h  := _best_handle(grabbable, cb.left_upper_arm.global_position,  null,   _grab_left_handle_node,  true)
+    var right_h := _best_handle(grabbable, cb.right_upper_arm.global_position, left_h, _grab_right_handle_node, false)
 
     if left_h != _grab_left_handle_node:
         _grab_left_prev_world  = _grab_left_handle_world
@@ -126,8 +138,8 @@ func start_grab(grabbed: RigidBody3D, get_grabbable: Callable, chest_rest_world:
     if not grabbable:
         return
     var cb      := bi.custom_bones_util
-    var left_h  := _best_handle(grabbable, cb.left_upper_arm.global_position,  null,   null)
-    var right_h := _best_handle(grabbable, cb.right_upper_arm.global_position, left_h, null)
+    var left_h  := _best_handle(grabbable, cb.left_upper_arm.global_position,  null,   _grab_left_handle_node,  true)
+    var right_h := _best_handle(grabbable, cb.right_upper_arm.global_position, left_h, _grab_right_handle_node, false)
     _grab_left_handle_node  = left_h
     _grab_right_handle_node = right_h
     _grab_left_blend_t      = 1.0
