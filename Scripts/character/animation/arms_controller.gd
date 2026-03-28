@@ -15,16 +15,16 @@ const HANDLE_SWITCH_SPEED:     float = 8.0
 const ARM_JUMP_EXTENSION_FACTOR: float = 0.35
 const HANDLE_HYSTERESIS:       float = 1.5
 const HANDLE_VERTICAL_WEIGHT:  float = 0.3
-const GRAB_MIN_BEND_FACTOR:    float = 0.85
+const GRAB_MIN_BEND_FACTOR:    float = 0.97
 const GRAB_POLE_SMOOTH:        float = 10.0
 
 const GRAB_ROOT_TILT_BACK:     float = 0.28
 const GRAB_ROOT_TILT_FORWARD:  float = 0.18
 
-const GRAB_SHOULDER_Z_UP:      float = 0.25
-const GRAB_SHOULDER_Z_DOWN:    float = 0.12
-const GRAB_SHOULDER_Y_BACK:    float = 0.35
-const GRAB_SHOULDER_Y_FORWARD: float = 0.22
+const GRAB_SHOULDER_Z_UP:      float = 0.65
+const GRAB_SHOULDER_Z_DOWN:    float = 0.32
+const GRAB_SHOULDER_Y_BACK:    float = 0.65
+const GRAB_SHOULDER_Y_FORWARD: float = 0.55
 
 var _grab_arm_blend: float = 0.0
 var _grab_left_handle_world:  Vector3 = Vector3.ZERO
@@ -176,11 +176,17 @@ func _apply_grab_body_adjustments() -> void:
     var grab_y_rel := _grab_point_world.y - _grab_chest_rest_world.y
     var y_norm     : float = clamp(grab_y_rel / max(sizes.torso_height, 0.001), -1.0, 1.0)
     var shoulder_z := y_norm * (GRAB_SHOULDER_Z_UP if y_norm >= 0.0 else GRAB_SHOULDER_Z_DOWN)
-    var shoulder_y_l := lerpf(GRAB_SHOULDER_Y_BACK, -GRAB_SHOULDER_Y_FORWARD, t_l)
-    var shoulder_y_r := lerpf(GRAB_SHOULDER_Y_BACK, -GRAB_SHOULDER_Y_FORWARD, t_r)
+    var shoulder_y_l := _grab_shoulder_y(t_l)
+    var shoulder_y_r := _grab_shoulder_y(t_r)
 
     _apply_shoulder_rotation(cb.left_shoulder,  shoulder_y_l,  shoulder_z)
     _apply_shoulder_rotation(cb.right_shoulder, -shoulder_y_r, -shoulder_z)
+
+func _grab_shoulder_y(t: float) -> float:
+    if t < 0.5:
+        return lerpf(GRAB_SHOULDER_Y_BACK, 0.0, t * 2.0)
+    else:
+        return lerpf(0.0, -GRAB_SHOULDER_Y_FORWARD, (t - 0.5) * 2.0)
 
 func _apply_shoulder_rotation(shoulder: CustomBone, y_angle: float, z_angle: float) -> void:
     var local_basis    := shoulder.transform.basis

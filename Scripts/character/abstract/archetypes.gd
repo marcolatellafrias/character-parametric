@@ -232,7 +232,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.time_to_standup = 1.0
 	arch.throw_strenght = 0.4
 	arch.reach = 0.8
-	arch.reach_multiplier = 1.0
+	arch.reach_multiplier = 1.5
 	arch.jump_strenght = 0.25
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 1
