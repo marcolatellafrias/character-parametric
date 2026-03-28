@@ -101,7 +101,7 @@ func update(delta: float) -> void:
 		_apply_grab_force()
 		_apply_grab_torque()
 		if is_instance_valid(arms_controller):
-			arms_controller.update_grab_handles(delta, _grabbed, _get_grabbable)
+			arms_controller.update_grab_handles(delta, _grabbed, _get_grabbable, _get_grab_origin(), _grabbed_grab_point)
 		_update_curve()
 
 func _start_grab() -> void:
@@ -118,7 +118,7 @@ func _start_grab() -> void:
 	var player_rot          := Quaternion(char_rigidbody.global_transform.basis)
 	_grab_relative_rotation = player_rot.inverse() * _grab_target_rotation
 	if is_instance_valid(arms_controller):
-		arms_controller.start_grab(_grabbed, _get_grabbable)
+		arms_controller.start_grab(_grabbed, _get_grabbable, _get_grab_origin(), _grabbed_grab_point, grab_dist_min, grab_dist_max)
 
 func _stop_grab() -> void:
 	_grabbed            = null

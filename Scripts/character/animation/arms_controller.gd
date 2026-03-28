@@ -4,19 +4,27 @@ extends Node
 var bi: BoneInstantiator
 var anim_mod: AnimationModifiers
 
-const ARM_COMPRESS_CROUCH:    float = 1.35
-const ARM_COMPRESS_JUMP:      float = 0.45
-const ARM_COMPRESS_IMPACT:    float = 0.30
-const ARM_FORWARD_SCALE:      float = 0.25
-const ARM_BEND_SCALE:         float = 0.18
-const THROW_CHARGE_SMOOTH:    float = 8.0
-const THROW_PUSH_SMOOTH:      float = 14.0
-const HANDLE_SWITCH_SPEED:    float = 8.0
+const ARM_COMPRESS_CROUCH:     float = 1.35
+const ARM_COMPRESS_JUMP:       float = 0.45
+const ARM_COMPRESS_IMPACT:     float = 0.30
+const ARM_FORWARD_SCALE:       float = 0.25
+const ARM_BEND_SCALE:          float = 0.18
+const THROW_CHARGE_SMOOTH:     float = 8.0
+const THROW_PUSH_SMOOTH:       float = 14.0
+const HANDLE_SWITCH_SPEED:     float = 8.0
 const ARM_JUMP_EXTENSION_FACTOR: float = 0.35
-const HANDLE_HYSTERESIS:      float = 1.5
-const HANDLE_VERTICAL_WEIGHT: float = 0.3
-const GRAB_MIN_BEND_FACTOR:   float = 0.85
-const GRAB_POLE_SMOOTH:       float = 10.0
+const HANDLE_HYSTERESIS:       float = 1.5
+const HANDLE_VERTICAL_WEIGHT:  float = 0.3
+const GRAB_MIN_BEND_FACTOR:    float = 0.85
+const GRAB_POLE_SMOOTH:        float = 10.0
+
+const GRAB_ROOT_TILT_BACK:     float = 0.28
+const GRAB_ROOT_TILT_FORWARD:  float = 0.18
+
+const GRAB_SHOULDER_Z_UP:      float = 0.25
+const GRAB_SHOULDER_Z_DOWN:    float = 0.12
+const GRAB_SHOULDER_Y_BACK:    float = 0.35
+const GRAB_SHOULDER_Y_FORWARD: float = 0.22
 
 var _grab_arm_blend: float = 0.0
 var _grab_left_handle_world:  Vector3 = Vector3.ZERO
@@ -28,13 +36,15 @@ var _grab_right_blend_t: float = 1.0
 var _grab_left_prev_world:  Vector3 = Vector3.ZERO
 var _grab_right_prev_world: Vector3 = Vector3.ZERO
 
-var _grab_left_pole_local_upper:  Vector3 = Vector3.ZERO
-var _grab_right_pole_local_upper: Vector3 = Vector3.ZERO
-
 var _throw_left_local:       Vector3 = Vector3.ZERO
 var _throw_right_local:      Vector3 = Vector3.ZERO
 var _throw_left_pole_local:  Vector3 = Vector3.ZERO
 var _throw_right_pole_local: Vector3 = Vector3.ZERO
+
+var _grab_dist_min:        float   = 0.0
+var _grab_dist_max:        float   = 1.0
+var _grab_chest_rest_world: Vector3 = Vector3.ZERO
+var _grab_point_world:     Vector3 = Vector3.ZERO
 
 func setup(anim: AnimationModifiers) -> void:
     anim_mod = anim
@@ -75,7 +85,11 @@ func _best_handle(grabbable: Grabbable, shoulder: Vector3, exclude: Node3D, curr
             return current
     return best
 
-func update_grab_handles(delta: float, grabbed: RigidBody3D, get_grabbable: Callable) -> void:
+func update_grab_handles(delta: float, grabbed: RigidBody3D, get_grabbable: Callable, chest_rest_world: Vector3, grab_point: Node3D) -> void:
+    _grab_chest_rest_world = chest_rest_world
+    if is_instance_valid(grab_point):
+        _grab_point_world = grab_point.global_position
+
     var grabbable := get_grabbable.call(grabbed) as Grabbable
     if not grabbable:
         return
@@ -100,7 +114,12 @@ func update_grab_handles(delta: float, grabbed: RigidBody3D, get_grabbable: Call
     if is_instance_valid(right_h):
         _grab_right_handle_world = _grab_right_prev_world.lerp(right_h.global_position, _grab_right_blend_t)
 
-func start_grab(grabbed: RigidBody3D, get_grabbable: Callable) -> void:
+func start_grab(grabbed: RigidBody3D, get_grabbable: Callable, chest_rest_world: Vector3, grab_point: Node3D, dist_min: float, dist_max: float) -> void:
+    _grab_dist_min         = dist_min
+    _grab_dist_max         = dist_max
+    _grab_chest_rest_world = chest_rest_world
+    _grab_point_world      = grab_point.global_position if is_instance_valid(grab_point) else chest_rest_world
+
     var grabbable := get_grabbable.call(grabbed) as Grabbable
     if not grabbable:
         return
@@ -116,12 +135,6 @@ func start_grab(grabbed: RigidBody3D, get_grabbable: Callable) -> void:
     _grab_left_prev_world    = _grab_left_handle_world
     _grab_right_prev_world   = _grab_right_handle_world
 
-    # Inicializar pole locals en espacio local del upper arm (pre-IK, en rest)
-    var sizes := bi.skel_sizes_util
-    var nat_upper := sizes.upper_arm_size.y
-    _grab_left_pole_local_upper  = Vector3(0.0, nat_upper, 0.0) + Vector3(0.0, 0.0, nat_upper * 0.5)
-    _grab_right_pole_local_upper = Vector3(0.0, nat_upper, 0.0) + Vector3(0.0, 0.0, nat_upper * 0.5)
-
     var tw := bi.create_tween()
     tw.tween_property(self, "_grab_arm_blend", 1.0, 0.15)
 
@@ -132,11 +145,50 @@ func stop_grab() -> void:
     _grab_right_handle_node = null
 
 func _apply_grab_arms(delta: float) -> void:
+    _apply_grab_body_adjustments()
     var ik    := bi.ik_util
     var cb    := bi.custom_bones_util
     var sizes := bi.skel_sizes_util
     _apply_arm_grab(delta, cb.left_upper_arm,  cb.left_lower_arm,  ik.left_arm_ik_target,  ik.left_arm_pole,  _grab_left_handle_world,  sizes, true)
     _apply_arm_grab(delta, cb.right_upper_arm, cb.right_lower_arm, ik.right_arm_ik_target, ik.right_arm_pole, _grab_right_handle_world, sizes, false)
+
+func _apply_grab_body_adjustments() -> void:
+    if _grab_arm_blend <= 0.0:
+        return
+
+    var cb    := bi.custom_bones_util
+    var sizes := bi.skel_sizes_util
+
+    var dist_l     := cb.left_upper_arm.global_position.distance_to(_grab_left_handle_world)
+    var dist_r     := cb.right_upper_arm.global_position.distance_to(_grab_right_handle_world)
+    var dist_range : float = max(_grab_dist_max - _grab_dist_min, 0.001)
+    var t_l        : float = clamp((dist_l - _grab_dist_min) / dist_range, 0.0, 1.0)
+    var t_r        : float = clamp((dist_r - _grab_dist_min) / dist_range, 0.0, 1.0)
+    var t_avg      : float = (t_l + t_r) * 0.5
+
+    # Root tilt en world space → local de lower_spine
+    var root_tilt      := lerpf(-GRAB_ROOT_TILT_BACK, GRAB_ROOT_TILT_FORWARD, t_avg)
+    var spine          := cb.lower_spine
+    var world_right    := spine.get_global_transform().basis.inverse() * Vector3.RIGHT
+    spine.transform.basis *= Basis(world_right, -root_tilt * _grab_arm_blend)
+
+    # Shoulder Z y Y en world space → local de cada shoulder
+    var grab_y_rel := _grab_point_world.y - _grab_chest_rest_world.y
+    var y_norm     : float = clamp(grab_y_rel / max(sizes.torso_height, 0.001), -1.0, 1.0)
+    var shoulder_z := y_norm * (GRAB_SHOULDER_Z_UP if y_norm >= 0.0 else GRAB_SHOULDER_Z_DOWN)
+    var shoulder_y_l := lerpf(GRAB_SHOULDER_Y_BACK, -GRAB_SHOULDER_Y_FORWARD, t_l)
+    var shoulder_y_r := lerpf(GRAB_SHOULDER_Y_BACK, -GRAB_SHOULDER_Y_FORWARD, t_r)
+
+    _apply_shoulder_rotation(cb.left_shoulder,  shoulder_y_l,  shoulder_z)
+    _apply_shoulder_rotation(cb.right_shoulder, -shoulder_y_r, -shoulder_z)
+
+func _apply_shoulder_rotation(shoulder: CustomBone, y_angle: float, z_angle: float) -> void:
+    var local_basis    := shoulder.transform.basis
+    var parent_basis   := (shoulder.get_parent() as Node3D).global_transform.basis
+    var local_world_up      := local_basis.inverse() * parent_basis.inverse() * Vector3.UP
+    var local_world_forward := local_basis.inverse() * parent_basis.inverse() * (-bi.char_rigidbody.global_transform.basis.z)
+    shoulder.transform.basis *= Basis(local_world_up,      y_angle * _grab_arm_blend)
+    shoulder.transform.basis *= Basis(local_world_forward, z_angle * _grab_arm_blend)
 
 func _apply_arm_grab(delta: float, upper: CustomBone, lower: CustomBone, ik_target: Node3D, pole: Node3D, handle_world: Vector3, sizes: SkeletonSizesUtil, is_left: bool) -> void:
     var nat_upper := sizes.upper_arm_size.y
@@ -159,24 +211,19 @@ func _apply_arm_grab(delta: float, upper: CustomBone, lower: CustomBone, ik_targ
 
     ik_target.global_position = ik_target.global_position.lerp(handle_world, _grab_arm_blend)
 
-    # Calcular pole en world space directamente
     var char_basis   := bi.char_rigidbody.global_transform.basis
-    var char_forward := -char_basis.z  # forward del personaje
     var char_up      := char_basis.y
-
     var shoulder     := upper.global_position
-    var to_handle    := (handle_world - shoulder)
+    var to_handle    := handle_world - shoulder
     var arm_plane_n  := to_handle.cross(char_up)
-    
-    # La dirección del codo es perpendicular al brazo, apuntando hacia adelante del personaje
+
     var elbow_dir: Vector3
     if arm_plane_n.length_squared() > 1e-6:
         elbow_dir = to_handle.cross(arm_plane_n).normalized()
     else:
-        elbow_dir = char_forward
+        elbow_dir = -char_basis.z
 
-    var pole_world := shoulder + elbow_dir * new_upper_l * 1.5
-    pole.global_position = pole_world
+    pole.global_position = shoulder + elbow_dir * new_upper_l * 1.5
 
 func _apply_throw_arms(delta: float) -> void:
     if not is_instance_valid(anim_mod):
@@ -242,11 +289,10 @@ func _apply_throw_arms(delta: float) -> void:
     var left_pole_ws  := left_shoulder_pos  + char_basis * _throw_left_pole_local
     var right_pole_ws := right_shoulder_pos + char_basis * _throw_right_pole_local
 
-    var ik_l := bi.ik_util
-    ik_l.left_arm_ik_target.global_position  = ik_l.left_arm_ik_target.global_position.lerp(left_ws,       blend_t)
-    ik_l.right_arm_ik_target.global_position = ik_l.right_arm_ik_target.global_position.lerp(right_ws,     blend_t)
-    ik_l.left_arm_pole.global_position       = ik_l.left_arm_pole.global_position.lerp(left_pole_ws,       blend_t)
-    ik_l.right_arm_pole.global_position      = ik_l.right_arm_pole.global_position.lerp(right_pole_ws,     blend_t)
+    ik.left_arm_ik_target.global_position  = ik.left_arm_ik_target.global_position.lerp(left_ws,        blend_t)
+    ik.right_arm_ik_target.global_position = ik.right_arm_ik_target.global_position.lerp(right_ws,      blend_t)
+    ik.left_arm_pole.global_position       = ik.left_arm_pole.global_position.lerp(left_pole_ws,        blend_t)
+    ik.right_arm_pole.global_position      = ik.right_arm_pole.global_position.lerp(right_pole_ws,      blend_t)
 
 func _sync_throw_locals_to_current() -> void:
     var ik  := bi.ik_util
