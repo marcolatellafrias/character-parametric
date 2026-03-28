@@ -18,8 +18,8 @@ const HANDLE_VERTICAL_WEIGHT:  float = 0.3
 const GRAB_MIN_BEND_FACTOR:    float = 0.97
 const GRAB_POLE_SMOOTH:        float = 10.0
 
-const GRAB_ROOT_TILT_BACK:     float = 0.28
-const GRAB_ROOT_TILT_FORWARD:  float = 0.35
+const GRAB_ROOT_TILT_BACK:     float = 0.23
+const GRAB_ROOT_TILT_FORWARD:  float = 0.32
 
 const GRAB_SHOULDER_Z_UP:      float = 0.65
 const GRAB_SHOULDER_Z_DOWN:    float = 0.32

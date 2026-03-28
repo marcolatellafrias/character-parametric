@@ -48,12 +48,12 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
     Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
     var bi := _get_bi()
-    arms_controller = bi.arms_controller  # <-- referencia directa, sin crear uno nuevo
+    arms_controller = bi.arms_controller
 
     grab_controller = GrabController.new()
     add_child(grab_controller)
     var max_reach := inst.arch_final.reach * inst.arch_final.reach_multiplier
-    grab_controller.setup(char_rigidbody, player_camera, arms_controller, bi.anim_mod, max_reach)
+    grab_controller.setup(char_rigidbody, player_camera, arms_controller, bi.anim_mod, max_reach, inst)
 
     _hud = PlayerHUD.create(inst)
     char_rigidbody.add_child(_hud)
@@ -63,9 +63,7 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
     _debug_camera = Camera3D.new()
     _debug_camera.current = false
     add_child(_debug_camera)
-
     _set_debug_cam(0)
-
 
 func _get_bi() -> BoneInstantiator:
     return char_rigidbody.get_parent() as BoneInstantiator
@@ -357,11 +355,12 @@ func _switch_to(target: BoneInstantiator) -> void:
         grab_controller.char_rigidbody = char_rigidbody
         grab_controller.player_camera  = player_camera
         grab_controller.anim_mod       = target.anim_mod
+        grab_controller.set_entity_instantiation(target.entity_instantiation)
 
     arms_controller = target.arms_controller
     if is_instance_valid(grab_controller):
         grab_controller.arms_controller = arms_controller
-    
+
     player_camera.get_parent().remove_child(player_camera)
     char_rigidbody.add_child(player_camera)
     target.player_camera = player_camera
@@ -424,6 +423,7 @@ func _respawn() -> void:
         grab_controller.set_reach(max_reach)
         grab_controller.char_rigidbody = char_rigidbody
         grab_controller.anim_mod       = current_bi.anim_mod
+        grab_controller.set_entity_instantiation(current_bi.entity_instantiation)
     arms_controller = current_bi.arms_controller
     if is_instance_valid(grab_controller):
         grab_controller.arms_controller = arms_controller

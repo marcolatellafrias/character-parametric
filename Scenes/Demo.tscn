@@ -257,5 +257,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21.46107, 0.7125503, -1.51300
 
 [node name="Mirror3D" parent="." instance=ExtResource("8_ecetj")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 0.9999998, 13.763744, 0.52957535, -21.834743)
+visible = false
 size = Vector2(80, 20)
 color = Color(0.882948, 0.80127335, 0.73722345, 1)
