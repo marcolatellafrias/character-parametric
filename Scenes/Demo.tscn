@@ -201,6 +201,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
 
 [node name="fat" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.235, 0.3, -10.597)
+is_active = true
 
 [node name="AreaInstantiator" type="Node3D" parent="chars/fat" node_paths=PackedStringArray("cameras", "world")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.235, -0.3, 10.597)
@@ -222,7 +223,6 @@ master_seed = 4
 
 [node name="tall" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8281984, 0.5, -10.493808)
-is_active = true
 master_seed = 2
 
 [node name="kid" parent="chars" instance=ExtResource("11_ymvx6")]

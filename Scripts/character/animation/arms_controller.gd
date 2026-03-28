@@ -19,12 +19,12 @@ const GRAB_MIN_BEND_FACTOR:    float = 0.97
 const GRAB_POLE_SMOOTH:        float = 10.0
 
 const GRAB_ROOT_TILT_BACK:     float = 0.28
-const GRAB_ROOT_TILT_FORWARD:  float = 0.18
+const GRAB_ROOT_TILT_FORWARD:  float = 0.25
 
 const GRAB_SHOULDER_Z_UP:      float = 0.65
 const GRAB_SHOULDER_Z_DOWN:    float = 0.32
 const GRAB_SHOULDER_Y_BACK:    float = 0.65
-const GRAB_SHOULDER_Y_FORWARD: float = 0.55
+const GRAB_SHOULDER_Y_FORWARD: float = 0.75
 
 var _grab_arm_blend: float = 0.0
 var _grab_left_handle_world:  Vector3 = Vector3.ZERO
@@ -45,6 +45,8 @@ var _grab_dist_min:        float   = 0.0
 var _grab_dist_max:        float   = 1.0
 var _grab_chest_rest_world: Vector3 = Vector3.ZERO
 var _grab_point_world:     Vector3 = Vector3.ZERO
+
+const GRAB_POLE_SIDE_OFFSET: float = 3.0  # 1.0 = proporcional natural, subir para más offset
 
 func setup(anim: AnimationModifiers) -> void:
     anim_mod = anim
@@ -219,7 +221,8 @@ func _apply_arm_grab(delta: float, upper: CustomBone, lower: CustomBone, ik_targ
 
     var char_basis   := bi.char_rigidbody.global_transform.basis
     var char_up      := char_basis.y
-    var shoulder     := upper.global_position
+    var side_dir := char_basis.x * (-1.0 if is_left else 1.0)
+    var shoulder := upper.global_position + side_dir * bi.skel_sizes_util.upper_arm_size.x * GRAB_POLE_SIDE_OFFSET
     var to_handle    := handle_world - shoulder
     var arm_plane_n  := to_handle.cross(char_up)
 

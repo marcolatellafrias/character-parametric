@@ -1,10 +1,13 @@
 class_name Grabbable
 extends Node3D
 
+
 var grab_points: Array[Node3D] = []
 var handle_points: Array[Node3D] = []
 
 const CELL_SIZE := 0.15
+const GRAB_DENSITY := 6
+const HANDLE_DENSITY := 4
 
 func setup_from_cells(cells_x: int, cells_y: int, cells_z: int) -> void:
 	var sx := cells_x * CELL_SIZE
@@ -50,9 +53,9 @@ func get_nearest_handle_point(world_pos: Vector3, exclude: Node3D = null) -> Nod
 	return best
 
 func _generate_grab_points(cx: int, cy: int, cz: int, sx: float, sy: float, sz: float) -> void:
-	var nx := ceili(cx / 4.0)
-	var ny := ceili(cy / 4.0)
-	var nz := ceili(cz / 4.0)
+	var nx := ceili(cx / float(GRAB_DENSITY))
+	var ny := ceili(cy / float(GRAB_DENSITY))
+	var nz := ceili(cz / float(GRAB_DENSITY))
 	for ix in nx:
 		for iy in ny:
 			for iz in nz:
@@ -74,8 +77,8 @@ func _generate_handle_points(cx: int, cy: int, cz: int, sx: float, sy: float, sz
 	]
 	for face in faces:
 		var fc: float = face[0]
-		var na := ceili((face[1] as int) / 4.0)
-		var nb := ceili((face[2] as int) / 4.0)
+		var na := ceili((face[1] as int) / float(HANDLE_DENSITY))
+		var nb := ceili((face[2] as int) / float(HANDLE_DENSITY))
 		var sa: float = face[3]
 		var sb: float = face[4]
 		var axis: int = face[5]
