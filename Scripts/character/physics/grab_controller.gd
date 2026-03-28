@@ -46,10 +46,6 @@ var _max_reach_distance: float = 1.0
 
 var _entity_instantiation: EntityInstantiation = null
 
-var _show_cone: bool = true
-var _cone_mesh_instance: MeshInstance3D = null
-var _cone_immediate_mesh: ImmediateMesh = null
-
 var scroll_sensitivity: float = 0.15
 
 var effort_cone_fraction: float = 0.6
@@ -69,7 +65,6 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: 
     _entity_instantiation = inst
     set_reach(max_reach)
     _build_outline_material()
-    _build_cone_mesh()
     _update_grab_strength()
 
 func set_anim_mod(anim: AnimationModifiers) -> void:
@@ -122,8 +117,7 @@ func handle_input(event: InputEvent) -> void:
                 _throw_charge      = 0.0
             elif not event.pressed and _is_charging_throw:
                 _release_throw()
-        if event.keycode == KEY_V and event.pressed:
-            _toggle_cone_vis()
+
 
 func update(delta: float) -> void:
     if _is_charging_throw:
@@ -137,7 +131,6 @@ func update(delta: float) -> void:
     else:
         _apply_grab_force()
         if not is_instance_valid(_grabbed):
-            _update_cone_vis()
             return
         _apply_grab_torque()
         _update_effort_zone(delta)
@@ -145,7 +138,7 @@ func update(delta: float) -> void:
             arms_controller.update_grab_handles(delta, _grabbed, _get_grabbable, _get_grab_origin(), _grabbed_grab_point)
         _update_curve()
 
-    _update_cone_vis()
+
 
 func _start_grab() -> void:
     var grabbable := _get_grabbable(_hovered_rb)
@@ -367,25 +360,6 @@ func _update_curve() -> void:
 
 # ── Cone visualization ────────────────────────────────────────────────────────
 
-func _build_cone_mesh() -> void:
-    var length := grab_dist_max
-    var radius : float = length * abs(tan(deg_to_rad(grab_cone_half_angle)))
-    _cone_mesh_instance = DebugUtil.create_debug_cone(Color(0.2, 0.8, 1.0, 0.15), length, radius)
-    char_rigidbody.get_parent().add_child(_cone_mesh_instance)
-
-func _toggle_cone_vis() -> void:
-    _show_cone = not _show_cone
-    if is_instance_valid(_cone_mesh_instance):
-        _cone_mesh_instance.visible = _show_cone
-
-func _update_cone_vis() -> void:
-    if not _show_cone or not is_instance_valid(player_camera) or not is_instance_valid(_cone_mesh_instance):
-        return
-    var origin := _get_grab_origin()
-    var fwd    := -player_camera.global_transform.basis.z
-    _cone_mesh_instance.global_position = origin
-    _cone_mesh_instance.global_transform.basis = Basis.looking_at(-fwd, Vector3.UP)
-
 func _update_effort_zone(delta: float) -> void:
     var origin  := _get_grab_origin()
     var cam_fwd := -player_camera.global_transform.basis.z
@@ -409,3 +383,4 @@ func _reset_effort() -> void:
     if _is_high_effort:
         _is_high_effort = false
         high_effort_ended.emit()
+        

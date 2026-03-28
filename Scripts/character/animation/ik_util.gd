@@ -122,7 +122,7 @@ static func create_pole(left: bool, sizes: SkeletonSizesUtil, local_targets: Nod
 	var horizontal_offset: float = -sizes.hips_width if left else sizes.hips_width
 	var pole := Node3D.new()
 	local_targets.add_child(pole)
-	pole.global_position = local_targets.global_position + Vector3(horizontal_offset, 0, 0) + Vector3(0, 0, -1) * sizes.pole_distance
+	pole.position = Vector3(horizontal_offset, 0, -sizes.pole_distance)
 	pole.add_child(DebugUtil.create_debug_sphere(color))
 	return pole
 

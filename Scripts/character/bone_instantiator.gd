@@ -29,6 +29,10 @@ var player_controller: PlayerController
 var jump_squat_t: float = 0.0
 var crouch_t:     float = 0.0
 
+var grab_cone_mesh: MeshInstance3D = null
+var show_grab_cone: bool = true
+var grab_cone_half_angle: float = 40.0
+
 func _ready() -> void:
     if is_active:
         player_controller = PlayerController.new()
@@ -50,6 +54,12 @@ func initialize_skeleton() -> void:
     char_rigidbody.fall_triggered.connect(_on_fall_triggered)
     char_rigidbody.add_child(custom_bones_util.lower_spine)
     add_child(char_rigidbody)
+    
+    var cone_dist := entity_instantiation.arch_final.reach * entity_instantiation.arch_final.reach_multiplier
+    var cone_radius : float = cone_dist * abs(tan(deg_to_rad(grab_cone_half_angle)))
+    grab_cone_mesh = DebugUtil.create_debug_cone(Color(0.2, 0.8, 1.0, 0.15), cone_dist, cone_radius)
+    grab_cone_mesh.visible = false
+    char_rigidbody.add_child(grab_cone_mesh)
     _setup_char_grabbable()
 
     local_targets.add_child(ik_util.left_leg_raycast)
@@ -216,6 +226,8 @@ func _physics_process(delta: float) -> void:
 
     if is_instance_valid(ragdoll_util) and not ragdoll_util.is_recovering:
         ragdoll_util.sync_to_bones()
+        
+    _update_grab_cone()
 
 func _update_local_targets_positions() -> void:
     local_targets.global_position = char_rigidbody.global_position
@@ -272,3 +284,15 @@ func _setup_char_grabbable() -> void:
     grabbable.add_handle_point_local(Vector3(-handle_x, handle_y, 0.0))
     grabbable.add_handle_point_local(Vector3( handle_x, handle_y, 0.0))
     grabbable.add_grab_point_local(Vector3(0.0, char_rigidbody._capsule_stand_y_offset, 0.0))
+
+func _update_grab_cone() -> void:
+    if not is_instance_valid(grab_cone_mesh) or not is_instance_valid(player_camera):
+        return
+    grab_cone_mesh.visible = is_active and show_grab_cone
+    if not grab_cone_mesh.visible:
+        return
+    var chest := custom_bones_util.chest
+    var origin := chest.global_position + chest.global_transform.basis.y * skel_sizes_util.chest_size.y
+    var fwd := -player_camera.global_transform.basis.z
+    grab_cone_mesh.global_position = origin
+    grab_cone_mesh.global_transform.basis = Basis.looking_at(-fwd, Vector3.UP)
