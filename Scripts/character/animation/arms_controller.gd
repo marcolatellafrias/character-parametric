@@ -170,9 +170,11 @@ func _apply_grab_body_adjustments() -> void:
 
     # Root tilt en world space → local de lower_spine
     var root_tilt      := lerpf(-GRAB_ROOT_TILT_BACK, GRAB_ROOT_TILT_FORWARD, t_avg)
-    var spine          := cb.lower_spine
-    var world_right    := spine.get_global_transform().basis.inverse() * Vector3.RIGHT
-    spine.transform.basis *= Basis(world_right, -root_tilt * _grab_arm_blend)
+    var spine       := cb.lower_spine
+    var spine_basis := spine.transform.basis
+    var parent_basis := (spine.get_parent() as Node3D).global_transform.basis
+    var local_world_right := spine_basis.inverse() * parent_basis.inverse() * bi.char_rigidbody.global_transform.basis.x
+    spine.transform.basis *= Basis(local_world_right, -root_tilt * _grab_arm_blend)
 
     # Shoulder Z y Y en world space → local de cada shoulder
     var grab_y_rel := _grab_point_world.y - _grab_chest_rest_world.y
