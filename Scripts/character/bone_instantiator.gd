@@ -30,7 +30,7 @@ var jump_squat_t: float = 0.0
 var crouch_t:     float = 0.0
 
 var grab_cone_mesh: MeshInstance3D = null
-var show_grab_cone: bool = true
+var show_grab_cone: bool = false
 var grab_cone_half_angle: float = 40.0
 
 func _ready() -> void:
