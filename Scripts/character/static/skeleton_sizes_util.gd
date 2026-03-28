@@ -72,6 +72,8 @@ var right_arm_shoulder_rest_local: Vector3
 
 var step_duration_scale: float = 1.0
 
+var raycast_start_y_offset: float = 0.0
+
 static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var skelSizes = SkeletonSizesUtil.new()
 	var entityStats := inst.arch_final
@@ -167,6 +169,7 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.pole_distance = new_leg_height
 	skelSizes.step_duration_scale    = entityStats.step_duration_scale
 	skelSizes.raycast_max_offset     = new_leg_height * 0.20 * entityStats.step_duration_scale
+	skelSizes.raycast_start_y_offset = new_leg_height * 0.35
 
 	skelSizes.slouchiness_chest        = lerp_range(0.0, 0.6, entityStats.slouch)
 	skelSizes.slouchiness_center_spine = lerp_range(0.0, 0.6, entityStats.slouch)
