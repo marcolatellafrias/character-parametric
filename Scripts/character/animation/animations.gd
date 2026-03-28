@@ -208,15 +208,37 @@ func register_all() -> void:
 func _register_camera_pitch_animations() -> void:
 	if not bi.is_active or not is_instance_valid(bi.player_camera):
 		return
-	var pa     := bi.procedural_animator
-	var PA     := ProceduralBoneAnimator
+	var pa             := bi.procedural_animator
+	var PA             := ProceduralBoneAnimator
 	var pitch_callable := _make_pitch_callable()
+
+	# ─── HEAD / NECK / SPINE PITCH (ambas direcciones) ───────────────────────
 	pa.register_formula(bi.custom_bones_util.head,         PA.Axis.ROT_X, pitch_callable, 0.50)
 	if is_instance_valid(bi.custom_bones_util.neck):
 		pa.register_formula(bi.custom_bones_util.neck,     PA.Axis.ROT_X, pitch_callable, 0.25)
 	pa.register_formula(bi.custom_bones_util.chest,        PA.Axis.ROT_X, pitch_callable, 0.12)
 	pa.register_formula(bi.custom_bones_util.upper_spine,  PA.Axis.ROT_X, pitch_callable, 0.08)
 	pa.register_formula(bi.custom_bones_util.middle_spine, PA.Axis.ROT_X, pitch_callable, 0.05)
+
+	# ─── EXTRA SPINE BEND SOLO AL MIRAR ABAJO ────────────────────────────────
+	var look_down_extra := 0.12
+	var lower_spine     := bi.custom_bones_util.lower_spine
+	var middle_spine    := bi.custom_bones_util.middle_spine
+	var upper_spine     := bi.custom_bones_util.upper_spine
+	var chest           := bi.custom_bones_util.chest
+	var cam             := bi.player_camera
+	pa.register_formula(lower_spine,  PA.Axis.ROT_X,
+		func(): return -min(0.0, cam.rotation.x), -look_down_extra * 0.4)
+	pa.register_formula(middle_spine, PA.Axis.ROT_X,
+		func(): return -min(0.0, cam.rotation.x), -look_down_extra * 0.7)
+	pa.register_formula(upper_spine,  PA.Axis.ROT_X,
+		func(): return -min(0.0, cam.rotation.x), -look_down_extra * 1.0)
+	pa.register_formula(chest,        PA.Axis.ROT_X,
+		func(): return -min(0.0, cam.rotation.x), -look_down_extra * 0.5)
+	pa.register_formula(lower_spine,  PA.Axis.POS_Y,
+		func(): return -min(0.0, cam.rotation.x), -look_down_extra * 0.6)
+	pa.register_formula(lower_spine,  PA.Axis.POS_Z,
+		func(): return -min(0.0, cam.rotation.x),  look_down_extra * 0.4)
 
 
 func refresh_camera_animations() -> void:

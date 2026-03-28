@@ -19,12 +19,12 @@ const GRAB_MIN_BEND_FACTOR:    float = 0.97
 const GRAB_POLE_SMOOTH:        float = 10.0
 
 const GRAB_ROOT_TILT_BACK:     float = 0.28
-const GRAB_ROOT_TILT_FORWARD:  float = 0.25
+const GRAB_ROOT_TILT_FORWARD:  float = 0.35
 
 const GRAB_SHOULDER_Z_UP:      float = 0.65
 const GRAB_SHOULDER_Z_DOWN:    float = 0.32
 const GRAB_SHOULDER_Y_BACK:    float = 0.65
-const GRAB_SHOULDER_Y_FORWARD: float = 0.75
+const GRAB_SHOULDER_Y_FORWARD: float = 0.85
 
 var _grab_arm_blend: float = 0.0
 var _grab_left_handle_world:  Vector3 = Vector3.ZERO
