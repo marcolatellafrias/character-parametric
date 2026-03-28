@@ -4,7 +4,7 @@ extends Node3D
 var grab_points: Array[Node3D] = []
 var handle_points: Array[Node3D] = []
 
-const CELL_SIZE := 0.25
+const CELL_SIZE := 0.15
 
 func setup_from_cells(cells_x: int, cells_y: int, cells_z: int) -> void:
 	var sx := cells_x * CELL_SIZE

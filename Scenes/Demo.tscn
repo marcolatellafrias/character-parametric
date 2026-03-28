@@ -191,8 +191,10 @@ mesh = SubResource("BoxMesh_k27g2")
 shape = SubResource("BoxShape3D_6aqh6")
 
 [node name="new packages" type="Node3D" parent="world"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -16.150776)
 
 [node name="Node3D" parent="world/new packages" instance=ExtResource("7_k27g2")]
+cells_x = 6
 
 [node name="chars" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
