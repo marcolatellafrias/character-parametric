@@ -108,13 +108,15 @@ func _input(event: InputEvent) -> void:
 			player_camera.rotation.x = camera_pitch
 
 	if event is InputEventKey and not event.echo:
+		var bi := _get_bi()
+		var seated := is_instance_valid(bi) and bi.is_seated
 		if event.pressed:
 			match event.keycode:
 				KEY_SPACE:
-					if not _is_crouched and char_rigidbody.is_grounded:
+					if not _is_crouched and char_rigidbody.is_grounded and not seated:
 						_is_charging_jump = true
 				KEY_CTRL:
-					if not _is_crouched:
+					if not _is_crouched and not seated:
 						_start_crouch()
 				KEY_F:
 					var hovered := interaction_controller.get_hovered_rb() if interaction_controller else null

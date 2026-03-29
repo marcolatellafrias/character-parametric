@@ -188,7 +188,8 @@ func _physics_process(delta: float) -> void:
     ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
 
     if is_instance_valid(arms_controller):
-        arms_controller.update_arm_compress(jump_squat_t, crouch_t)
+        var effective_crouch_t := 1.0 if is_seated else crouch_t
+        arms_controller.update_arm_compress(jump_squat_t, effective_crouch_t)
 
     locomotion_signals.update(delta)
 
