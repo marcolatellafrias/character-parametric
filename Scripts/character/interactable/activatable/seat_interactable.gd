@@ -103,12 +103,13 @@ func _sit(bi: Node) -> void:
     char_rb.reset_impact_state()
     char_rb.collider.disabled  = true
     char_rb.axis_lock_linear_y = true
+    char_rb.is_active = false
 
     char_rb.global_position.x  = global_position.x
     char_rb.global_position.z  = global_position.z
     char_rb.global_rotation.y  = global_rotation.y
 
-    var pc : PlayerController = bi.get("player_controller")
+    var pc: PlayerController = bi.get("player_controller")
     if is_instance_valid(pc):
         pc.set("camera_yaw", global_rotation.y)
         pc.set("camera_pitch", 0.0)
@@ -122,10 +123,11 @@ func _sit(bi: Node) -> void:
         _borrowed_mesh.rotation        = Vector3.ZERO
 
     bi.set("is_seated", true)
-    var ic :InteractionController= bi.get("interaction_controller")
+    bi.set("current_seat", self)
+
+    var ic: InteractionController = bi.get("interaction_controller")
     if is_instance_valid(ic):
         ic.detector.force_clear()
-    bi.set("current_seat", self)
 
     var anim_mod: AnimationModifiers = bi.get("anim_mod")
     if is_instance_valid(anim_mod):
@@ -137,6 +139,11 @@ func _sit(bi: Node) -> void:
         var bu: CustomBonesUtil = bi.get("custom_bones_util")
         if is_instance_valid(bu):
             proc_anim.set("_seated_locked_bone", bu.lower_spine)
+
+    var ik: IkUtil = bi.get("ik_util")
+    if is_instance_valid(ik):
+        ik.seated_forward_offset = seat_area.z * 0.5
+        ik.reset_raycast_offset()
 
 func _stand_up() -> void:
     if not is_instance_valid(_seated_bi):
@@ -163,6 +170,10 @@ func _stand_up() -> void:
     if is_instance_valid(proc_anim):
         proc_anim.set("is_seated", false)
         proc_anim.set("_seated_locked_bone", null)
+
+    var ik: IkUtil = bi.get("ik_util")
+    if is_instance_valid(ik):
+        ik.seated_forward_offset = 0.0
 
     _seated_bi = null
 
