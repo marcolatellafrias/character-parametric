@@ -140,11 +140,6 @@ func _sit(bi: Node) -> void:
         if is_instance_valid(bu):
             proc_anim.set("_seated_locked_bone", bu.lower_spine)
 
-    var ik: IkUtil = bi.get("ik_util")
-    if is_instance_valid(ik):
-        ik.seated_forward_offset = seat_area.z * 0.5
-        ik.reset_raycast_offset()
-
 
 func _stand_up() -> void:
     if not is_instance_valid(_seated_bi):
@@ -171,10 +166,6 @@ func _stand_up() -> void:
     if is_instance_valid(proc_anim):
         proc_anim.set("is_seated", false)
         proc_anim.set("_seated_locked_bone", null)
-
-    var ik: IkUtil = bi.get("ik_util")
-    if is_instance_valid(ik):
-        ik.seated_forward_offset = 0.0
 
     var pc: PlayerController = bi.get("player_controller")
     if is_instance_valid(pc):

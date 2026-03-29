@@ -197,7 +197,7 @@ cells_x = 6
 weight = 20.0
 
 [node name="WorkingSeat" parent="world" instance=ExtResource("8_h3puh")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21.525, 0, -9.663)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.9383507, 0, -9.663)
 
 [node name="chars" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)

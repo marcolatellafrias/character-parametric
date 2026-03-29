@@ -68,8 +68,6 @@ var _last_step_leg_id: int = -1
 
 var recovery_targets_locked: bool = false
 
-var seated_forward_offset: float = 0.0
-
 func get_leg_data(left: bool) -> LegData:
     var d := LegData.new()
     d.raycast = left_leg_raycast if left else right_leg_raycast
@@ -466,7 +464,6 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
     target_off = Vector2(target_off.x * sizes.axis_weight_lateral, target_off.y * weight_z)
 
     var grounded_target := target_off if root_rigidbody.is_grounded else Vector2.ZERO
-    grounded_target.y -= seated_forward_offset
     var k: float = clamp(delta * sizes.raycast_smooth, 0.0, 1.0)
     raycast_offset = raycast_offset.lerp(grounded_target, k)
 

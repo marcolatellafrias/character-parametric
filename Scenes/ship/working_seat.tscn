@@ -5,6 +5,7 @@
 
 [node name="WorkingSeat" type="Node3D"]
 script = ExtResource("1_0iyhn")
+height = 0.7
 seat_area = Vector3(1, 1.6, 1)
 stand_up_location = Vector2(1, 0)
 seat_scene = ExtResource("2_ktc35")
