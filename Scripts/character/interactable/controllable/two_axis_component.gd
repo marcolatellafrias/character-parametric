@@ -45,3 +45,8 @@ func _create_debug_meshes(size: Vector3) -> void:
 		Vector3(0.0, t + stick_h * 0.5, 0.0)
 	)
 	add_child(stick)
+
+func _setup_handle_points(size: Vector3) -> void:
+	var t       := size.z * 0.5
+	var stick_h := size.y * 0.38
+	add_handle_point_local(Vector3(0.0, t + stick_h, 0.0))

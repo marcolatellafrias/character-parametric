@@ -126,6 +126,8 @@ func _place_at(cell: Vector2i) -> void:
 	if show_debug:
 		_add_area_mesh(body, ctrl_size)
 		interactable.build_debug_visuals(ctrl_size)
+	else:
+		interactable.build(ctrl_size)
 
 func _make_control(type_id: int) -> ControllableInteractable:
 	match type_id:

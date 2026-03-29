@@ -44,3 +44,6 @@ func _update_debug_color() -> void:
 	if _debug_primary_mat == null:
 		return
 	_debug_primary_mat.albedo_color = Color(0.9, 0.5, 0.15) if is_pressed else Color(0.35, 0.4, 0.65)
+
+func _setup_handle_points(size: Vector3) -> void:
+	add_handle_point_local(Vector3(0.0, 0.0, size.z * 0.25))

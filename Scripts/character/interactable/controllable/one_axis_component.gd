@@ -30,9 +30,9 @@ func _apply_visual() -> void:
 	rotation = rotation_axis_local * deg_to_rad(lerpf(-max_angle_degrees, max_angle_degrees, t))
 
 func _create_debug_meshes(size: Vector3) -> void:
-	var t      :float= min(size.x, size.y) * 0.15
+	var t      : float = min(size.x, size.y) * 0.15
 	var length := size.y * 0.55
-	var arm    := _make_debug_box(
+	var arm := _make_debug_box(
 		Vector3(t, length, t),
 		Color(0.45, 0.65, 1.0),
 		Vector3(0.0, length * 0.5, 0.0)
@@ -44,3 +44,7 @@ func _create_debug_meshes(size: Vector3) -> void:
 		Vector3(0.0, length, 0.0)
 	)
 	add_child(tip)
+	
+func _setup_handle_points(size: Vector3) -> void:
+	var length := size.y * 0.55
+	add_handle_point_local(Vector3(0.0, length, 0.0))
