@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3 uid="uid://2srvdmajgg7q"]
+
+[ext_resource type="Script" uid="uid://uqt12qrmb0i0" path="res://Scripts/character/interactable/activatable/seat_interactable.gd" id="1_0iyhn"]
+[ext_resource type="PackedScene" uid="uid://bwn806fxs4i4b" path="res://Scenes/ship/ship_seat.tscn" id="2_ktc35"]
+
+[node name="WorkingSeat" type="Node3D"]
+script = ExtResource("1_0iyhn")
+stand_up_location = Vector2(2, 2)
+seat_scene = ExtResource("2_ktc35")
+show_debug = true

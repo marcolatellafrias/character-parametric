@@ -19,6 +19,9 @@ var throw_t:         float = 0.0
 var throw_push_t:    float = 0.0
 var throw_world_dir: Vector3 = Vector3.FORWARD
 
+var is_seated: bool = false
+
+
 func _ready() -> void:
 	bi = get_parent() as BoneInstantiator
 
@@ -30,6 +33,8 @@ func apply(delta: float) -> void:
 	_apply_root_offsets()
 
 func _apply_root_offsets() -> void:
+	if is_seated:
+		return
 	var y          := JUMP_SQUAT_Y    * jump_squat_t + CROUCH_Y    * crouch_t
 	var z          := JUMP_SQUAT_Z    * jump_squat_t + CROUCH_Z    * crouch_t
 	var tilt       := JUMP_SQUAT_TILT * jump_squat_t + CROUCH_TILT * crouch_t

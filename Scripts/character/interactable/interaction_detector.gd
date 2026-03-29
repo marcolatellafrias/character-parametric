@@ -13,7 +13,6 @@ var _hovered_meshes:   Array[MeshInstance3D]  = []
 var _outline_material: ShaderMaterial         = null
 var _own_bi:           BoneInstantiator       = null
 
-# null when hover is lost
 signal hovered_changed(interactable: Interactable)
 
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, bi: BoneInstantiator) -> void:
@@ -86,7 +85,6 @@ func _get_chest_tip() -> Vector3:
 	var chest := _own_bi.custom_bones_util.chest
 	return chest.global_position + chest.global_transform.basis.y * _own_bi.skel_sizes_util.chest_size.y
 
-# Walks: hit node → its children → its parent → parent's children
 func _find_interactable(node: Node) -> Interactable:
 	if node is Interactable:
 		return node as Interactable
@@ -113,8 +111,9 @@ func _is_own_character(node: Node) -> bool:
 	return false
 
 func _apply_outline_to(interactable: Interactable) -> void:
-	var root := interactable.get_parent() if is_instance_valid(interactable.get_parent()) else interactable
-	_collect_meshes_recursive(root, _hovered_meshes)
+	_collect_meshes_recursive(interactable, _hovered_meshes)
+	if _hovered_meshes.is_empty() and is_instance_valid(interactable.get_parent()):
+		_collect_meshes_recursive(interactable.get_parent(), _hovered_meshes)
 	for mesh in _hovered_meshes:
 		if is_instance_valid(mesh):
 			for i in mesh.mesh.get_surface_count():
@@ -130,14 +129,14 @@ func _clear_outline() -> void:
 	_hovered_meshes.clear()
 
 func _collect_meshes_recursive(node: Node, result: Array[MeshInstance3D]) -> void:
-	if node is MeshInstance3D:
+	if node is MeshInstance3D and not node.has_meta("no_outline"):
 		result.append(node as MeshInstance3D)
 	for child in node.get_children():
 		_collect_meshes_recursive(child, result)
 
 func _build_outline_material() -> void:
-	var shader        := load("res://shaders/outline.gdshader") as Shader
-	_outline_material  = ShaderMaterial.new()
+	var shader         := load("res://shaders/outline.gdshader") as Shader
+	_outline_material   = ShaderMaterial.new()
 	_outline_material.shader = shader
 	_outline_material.set_shader_parameter("color",             outline_color)
 	_outline_material.set_shader_parameter("outline_thickness", outline_size)

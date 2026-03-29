@@ -6,5 +6,5 @@ signal activated()
 func get_prompt() -> String:
 	return "[E] to interact"
 
-func activate() -> void:
+func activate(actor: Node = null) -> void:
 	activated.emit()

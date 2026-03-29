@@ -33,6 +33,9 @@ var grab_cone_mesh: MeshInstance3D = null
 var show_grab_cone: bool = false
 var grab_cone_half_angle: float = 40.0
 
+var is_seated:    bool = false
+var current_seat: Node = null
+
 func _ready() -> void:
     if is_active:
         player_controller = PlayerController.new()
@@ -119,6 +122,8 @@ func initialize_skeleton() -> void:
     crouch_t     = 0.0
 
 func _on_fall_triggered(world_dir: Vector3) -> void:
+    if is_seated:
+        return
     if not is_instance_valid(ragdoll_util) or ragdoll_util.is_active:
         return
     char_rigidbody.is_snapshot_active = false
@@ -226,6 +231,17 @@ func _physics_process(delta: float) -> void:
 
     if is_instance_valid(ragdoll_util) and not ragdoll_util.is_recovering:
         ragdoll_util.sync_to_bones()
+        
+    if is_seated and is_instance_valid(current_seat):
+        current_seat.update_borrowed_mesh()
+        var seat_pos : Vector3 = current_seat.global_position
+        custom_bones_util.lower_spine.global_position = Vector3(
+            seat_pos.x,
+            seat_pos.y + current_seat.height,
+            seat_pos.z
+        )
+        char_rigidbody.global_position.x = seat_pos.x
+        char_rigidbody.global_position.z = seat_pos.z
         
     _update_grab_cone()
 

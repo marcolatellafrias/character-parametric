@@ -67,7 +67,6 @@ func set_entity_instantiation(inst: EntityInstantiation) -> void:
 	_entity_instantiation = inst
 	_update_grab_strength()
 
-# Returns a 0..1 factor; PlayerController multiplies mouse sensitivity by this
 func get_camera_sensitivity_factor() -> float:
 	if is_instance_valid(_controlled):
 		return _controlled.camera_sensitivity_factor
@@ -86,7 +85,18 @@ func is_charging_throw() -> bool:
 	return _is_charging_throw
 
 func handle_input(event: InputEvent) -> void:
+	var bi     := char_rigidbody.get_parent() as BoneInstantiator
+	var seated := is_instance_valid(bi) and bi.is_seated
+
 	if event is InputEventKey and not event.echo:
+		if event.keycode == KEY_E and event.pressed:
+			if seated and is_instance_valid(bi.current_seat):
+				bi.current_seat.activate(bi)
+			else:
+				var hovered := detector.get_hovered() if is_instance_valid(detector) else null
+				if hovered is ActivatableInteractable:
+					(hovered as ActivatableInteractable).activate(bi)
+
 		if event.keycode == KEY_R:
 			if event.pressed and not _is_charging_throw:
 				_is_charging_throw = true
@@ -148,8 +158,8 @@ func update(delta: float) -> void:
 		_update_effort_zone(delta)
 		if is_instance_valid(arms_controller):
 			arms_controller.update_grab_handles(delta, _grabbed, _get_grabbable, _get_grab_origin(), _grabbed_grab_point)
-		_update_curve()
-
+		_update_curve()  
+		
 func stop_all() -> void:
 	_stop_grab()
 	_stop_control()
@@ -174,7 +184,7 @@ func _stop_control() -> void:
 		_controlled.stop_control()
 	_controlled = null
 
-# ── Grab (identical to GrabController) ───────────────────────────────────────
+# ── Grab ──────────────────────────────────────────────────────────────────────
 
 func _start_grab(grabbable: GrabbableInteractable) -> void:
 	var rb := grabbable.get_parent() as RigidBody3D

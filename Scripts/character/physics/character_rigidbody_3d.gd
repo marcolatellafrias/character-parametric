@@ -287,3 +287,11 @@ func _apply_braking_force() -> void:
 		var brake_force := -horizontal_vel.normalized() * brake_blend
 		apply_central_force(brake_force)
 		_frame_force += brake_force
+		
+func reset_impact_state() -> void:
+	impact_xz        = Vector2.ZERO
+	_impact_xz_vel   = Vector2.ZERO
+	impact_y         = 0.0
+	_impact_y_vel    = 0.0
+	_prev_velocity   = linear_velocity
+	is_snapshot_active = false

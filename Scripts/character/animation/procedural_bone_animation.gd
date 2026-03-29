@@ -13,6 +13,9 @@ enum Axis {
 	ROT_X, ROT_Y, ROT_Z, POS_Y, POS_Z
 }
 
+var is_seated:            bool       = false
+var _seated_locked_bone:  CustomBone = null
+
 class BoneAnimEntry:
 	var bone: CustomBone
 	var axis: ProceduralBoneAnimator.Axis
@@ -78,18 +81,21 @@ func _register_node_internal(node: Node3D, direction: Vector3, driver_fn: Callab
 
 func update() -> void:
 	for entry in _entries:
-		entry.bone.position.y = entry.rest_local_position.y
-		entry.bone.position.z = entry.rest_local_position.z
-		entry.bone.transform.basis = entry.rest_local_basis
+		entry.bone.position.y       = entry.rest_local_position.y
+		entry.bone.position.z       = entry.rest_local_position.z
+		entry.bone.transform.basis  = entry.rest_local_basis
 	for entry in _entries:
-		var raw: float = entry.driver.call() - entry.rest_signal_value
+		if is_seated and entry.bone == _seated_locked_bone \
+				and (entry.axis == Axis.POS_Y or entry.axis == Axis.POS_Z):
+			continue
+		var raw:    float = entry.driver.call() - entry.rest_signal_value
 		var shaped: float = entry.curve.sample_baked(clamp(raw, 0.0, 1.0)) if entry.curve else raw
 		_apply(entry.bone, entry.axis, shaped * entry.weight, entry)
 
 	for entry in _node_entries:
 		entry.node.position = entry.rest_local_position
 	for entry in _node_entries:
-		var raw: float = entry.driver.call() - entry.rest_signal_value
+		var raw:    float = entry.driver.call() - entry.rest_signal_value
 		var shaped: float = entry.curve.sample_baked(clamp(raw, 0.0, 1.0)) if entry.curve else raw
 		entry.node.position += entry.direction * shaped * entry.weight
 
