@@ -1,3 +1,4 @@
+ProceduralDashboard
 Node3D
 CollisionShape3D
 MeshInstance3D
@@ -11,4 +12,3 @@ OmniLight3D
 WorldEnvironment
 CharacterBody3D
 GPUParticles3D
-CPUParticles3D

@@ -31,7 +31,7 @@ var crouch_t:     float = 0.0
 
 var grab_cone_mesh: MeshInstance3D = null
 var show_grab_cone: bool = false
-var grab_cone_half_angle: float = 40.0
+var grab_cone_half_angle: float = 120.0
 
 var is_seated:    bool = false
 var current_seat: Node = null

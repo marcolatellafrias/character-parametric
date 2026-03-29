@@ -1,4 +1,4 @@
-[gd_scene load_steps=28 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=30 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
@@ -8,10 +8,12 @@
 [ext_resource type="PackedScene" uid="uid://bchdbfnnxbtq2" path="res://Scenes/package.tscn" id="7_k27g2"]
 [ext_resource type="PackedScene" uid="uid://delu2qjrw6teu" path="res://addons/Mirror3D/Mirror3D.tscn" id="8_ecetj"]
 [ext_resource type="PackedScene" uid="uid://2srvdmajgg7q" path="res://Scenes/ship/working_seat.tscn" id="8_h3puh"]
+[ext_resource type="Script" uid="uid://pujfrya4mhf2" path="res://Scripts/character/interactable/controllable/procedural_dashboard.gd" id="9_k27g2"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
 [ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
+[ext_resource type="PackedScene" uid="uid://b1yokrcs5h8mg" path="res://Scripts/character/interactable/controllable/dashboard.tscn" id="13_h3puh"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
 albedo_texture = ExtResource("1_h3puh")
@@ -199,6 +201,11 @@ weight = 20.0
 [node name="WorkingSeat" parent="world" instance=ExtResource("8_h3puh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.9383507, 0, -9.663)
 
+[node name="ProceduralDashboard" type="Node3D" parent="world"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2886596, -11.972303)
+script = ExtResource("9_k27g2")
+metadata/_custom_type_script = "uid://pujfrya4mhf2"
+
 [node name="chars" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
 
@@ -250,3 +257,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 0.9999998, 13.763744, 0.52957535
 visible = false
 size = Vector2(80, 20)
 color = Color(0.882948, 0.80127335, 0.73722345, 1)
+
+[node name="Dashboard" parent="." instance=ExtResource("13_h3puh")]

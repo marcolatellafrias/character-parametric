@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://b1yokrcs5h8mg"]
+
+[ext_resource type="Script" uid="uid://pujfrya4mhf2" path="res://Scripts/character/interactable/controllable/procedural_dashboard.gd" id="1_ona1b"]
+
+[node name="Dashboard" type="Node3D"]
+script = ExtResource("1_ona1b")
+metadata/_custom_type_script = "uid://pujfrya4mhf2"

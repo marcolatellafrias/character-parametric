@@ -1,10 +1,6 @@
 class_name TwoAxisComponent
 extends ControllableInteractable
 
-# axis_value: Vector2 in (-1,-1)..(1,1), mapped to XZ tilt of this node
-# state_changed_2d is the signal to broadcast for multiplayer (not the float state_changed)
-# visual_value = axis_value.length() (magnitude, for base class compatibility)
-
 @export var sensitivity:       float = 0.005
 @export var max_angle_degrees: float = 30.0
 
@@ -29,7 +25,23 @@ func _do_auto_return(delta: float) -> void:
 
 func _apply_visual() -> void:
 	rotation = Vector3(
-		axis_value.y * deg_to_rad(max_angle_degrees),
+		axis_value.y  * deg_to_rad(max_angle_degrees),
 		0.0,
 		-axis_value.x * deg_to_rad(max_angle_degrees)
 	)
+
+func _create_debug_meshes(size: Vector3) -> void:
+	var t        := size.z * 0.5
+	var platform := _make_debug_box(
+		Vector3(size.x * 0.65, t, size.y * 0.65),
+		Color(0.4, 0.75, 0.55),
+		Vector3(0.0, t * 0.5, 0.0)
+	)
+	add_child(platform)
+	var stick_h := size.y * 0.38
+	var stick   := _make_debug_box(
+		Vector3(t * 0.45, stick_h, t * 0.45),
+		Color(0.85, 0.85, 0.3),
+		Vector3(0.0, t + stick_h * 0.5, 0.0)
+	)
+	add_child(stick)
