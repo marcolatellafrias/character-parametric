@@ -159,18 +159,7 @@ func _clear_prior_generations() -> void:
 
 func _physics_process(delta: float) -> void:
     _update_local_targets_positions()
-
-    if is_instance_valid(char_rigidbody) and is_instance_valid(ragdoll_util):
-        if ragdoll_util.is_active:
-            char_rigidbody._ext_ragdoll_state = 1
-        elif ragdoll_util.is_recovering:
-            char_rigidbody._ext_ragdoll_state = 2
-        else:
-            char_rigidbody._ext_ragdoll_state = 0
-
-    if not is_seated:
-        ik_util.update_leg_raycast_offsets(char_rigidbody, delta, true,  skel_sizes_util, entity_archetype)
-        ik_util.update_leg_raycast_offsets(char_rigidbody, delta, false, skel_sizes_util, entity_archetype)
+    _update_ragdoll_ext_state()
 
     if is_instance_valid(ragdoll_util):
         ragdoll_util.update(delta)
@@ -186,24 +175,46 @@ func _physics_process(delta: float) -> void:
 
     skel_sizes_util.update(delta, char_rigidbody, entity_instantiation, ik_util)
 
-    if not is_seated:
-        ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, char_rigidbody)
-        ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
-
     if is_instance_valid(arms_controller):
-        var effective_crouch_t := 1.0 if is_seated else crouch_t
-        arms_controller.update_arm_compress(jump_squat_t, effective_crouch_t)
+        arms_controller.update_arm_compress(jump_squat_t, 1.0 if is_seated else crouch_t)
 
     locomotion_signals.update(delta)
 
     ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
     ik_util.right_arm_ik_target.position = skel_sizes_util.right_arm_tip_rest_local
 
+    if is_seated and is_instance_valid(current_seat):
+        _solve_seated_frame(delta)
+    else:
+        _solve_standing_frame(delta)
+
+    _update_grab_cone()
+
+
+func _update_ragdoll_ext_state() -> void:
+    if not is_instance_valid(char_rigidbody) or not is_instance_valid(ragdoll_util):
+        return
+    if ragdoll_util.is_active:
+        char_rigidbody._ext_ragdoll_state = 1
+    elif ragdoll_util.is_recovering:
+        char_rigidbody._ext_ragdoll_state = 2
+    else:
+        char_rigidbody._ext_ragdoll_state = 0
+
+
+func _solve_standing_frame(delta: float) -> void:
+    ik_util.update_leg_raycast_offsets(char_rigidbody, delta, true,  skel_sizes_util, entity_archetype)
+    ik_util.update_leg_raycast_offsets(char_rigidbody, delta, false, skel_sizes_util, entity_archetype)
+
+    ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, char_rigidbody)
+    ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
+
+    # procedural primero, anim_mod encima — mismo orden que antes
     procedural_animator.update()
 
     if is_instance_valid(anim_mod):
         anim_mod.jump_squat_t = jump_squat_t
-        anim_mod.crouch_t = crouch_t
+        anim_mod.crouch_t     = crouch_t
         anim_mod.apply(delta)
 
     var rb_basis := custom_bones_util.lower_spine.global_transform.basis
@@ -230,41 +241,78 @@ func _physics_process(delta: float) -> void:
     if is_instance_valid(ragdoll_util) and not ragdoll_util.is_recovering:
         ragdoll_util.sync_to_bones()
 
-    if is_seated and is_instance_valid(current_seat):
-        current_seat.update_borrowed_mesh()
-        var seat_pos : Vector3 = current_seat.global_position
-        var backward  := char_rigidbody.global_transform.basis.z
-        var z_offset  :float= skel_sizes_util.upper_leg_size.y - current_seat.seat_area.z * 0.5
-        custom_bones_util.lower_spine.global_position = Vector3(
-            seat_pos.x,
-            seat_pos.y + current_seat.height,
-            seat_pos.z
-        ) + backward * z_offset
-        char_rigidbody.global_position.x = seat_pos.x
-        char_rigidbody.global_position.z = seat_pos.z
 
-        var forward := -char_rigidbody.global_transform.basis.z
-        forward.y = 0.0
-        forward = forward.normalized()
+func _solve_seated_frame(delta: float) -> void:
+    current_seat.update_borrowed_mesh()
 
-        var left_hip_tip  := custom_bones_util.left_hip.global_position  + custom_bones_util.left_hip.global_transform.basis.y  * custom_bones_util.left_hip.capsule_dimensions.y
-        var right_hip_tip := custom_bones_util.right_hip.global_position + custom_bones_util.right_hip.global_transform.basis.y * custom_bones_util.right_hip.capsule_dimensions.y
+    # 1. Fijar spine
+    var seat_pos : Vector3 = current_seat.global_position
+    var backward  := char_rigidbody.global_transform.basis.z
+    var z_offset  : float  = skel_sizes_util.upper_leg_size.y - current_seat.seat_area.z * 0.5
+    var spine_target := Vector3(seat_pos.x, seat_pos.y + current_seat.height, seat_pos.z) + backward * z_offset
+    custom_bones_util.lower_spine.global_position = spine_target
+    char_rigidbody.global_position.x = seat_pos.x
+    char_rigidbody.global_position.z = seat_pos.z
 
-        var left_knee  := left_hip_tip  + forward * skel_sizes_util.upper_leg_size.y
-        var right_knee := right_hip_tip + forward * skel_sizes_util.upper_leg_size.y
+    # 2. Procedural animator para cuello/cabeza (look up/down), anim_mod is_seated=true
+    #    así que _apply_root_offsets no mueve el spine
+    procedural_animator.update()
+    if is_instance_valid(anim_mod):
+        anim_mod.jump_squat_t = jump_squat_t
+        anim_mod.crouch_t     = crouch_t
+        anim_mod.apply(delta)
 
-        var tuck   := forward * -skel_sizes_util.lower_leg_size.y * 0.2
-        var left_foot  := left_knee  + Vector3.DOWN * skel_sizes_util.lower_leg_size.y * 0.85 + tuck
-        var right_foot := right_knee + Vector3.DOWN * skel_sizes_util.lower_leg_size.y * 0.85 + tuck
+    # 3. Re-fijar spine por si procedural_animator lo movió
+    custom_bones_util.lower_spine.global_position = spine_target
 
-        var pole := forward
-        ik_util.solve_two_bone_ik(custom_bones_util.left_upper_leg,  custom_bones_util.left_lower_leg,  left_foot,  left_knee  + pole)
-        ik_util.solve_two_bone_ik(custom_bones_util.right_upper_leg, custom_bones_util.right_lower_leg, right_foot, right_knee + pole)
+    # 4. Calcular y fijar piernas
+    var forward := -char_rigidbody.global_transform.basis.z
+    forward.y = 0.0
+    forward = forward.normalized()
 
-        ik_util.left_leg_current_target.global_position  = left_foot
-        ik_util.right_leg_current_target.global_position = right_foot
+    var left_hip_tip  := custom_bones_util.left_hip.global_position  + custom_bones_util.left_hip.global_transform.basis.y  * custom_bones_util.left_hip.capsule_dimensions.y
+    var right_hip_tip := custom_bones_util.right_hip.global_position + custom_bones_util.right_hip.global_transform.basis.y * custom_bones_util.right_hip.capsule_dimensions.y
 
-    _update_grab_cone()
+    var left_knee  := left_hip_tip  + forward * skel_sizes_util.upper_leg_size.y
+    var right_knee := right_hip_tip + forward * skel_sizes_util.upper_leg_size.y
+
+    var tuck       := forward * -skel_sizes_util.lower_leg_size.y * 0.2
+    var left_foot  := left_knee  + Vector3.DOWN * skel_sizes_util.lower_leg_size.y * 0.85 + tuck
+    var right_foot := right_knee + Vector3.DOWN * skel_sizes_util.lower_leg_size.y * 0.85 + tuck
+    var pole       := forward
+
+    ik_util.solve_two_bone_ik(custom_bones_util.left_upper_leg,  custom_bones_util.left_lower_leg,  left_foot,  left_knee  + pole)
+    ik_util.solve_two_bone_ik(custom_bones_util.right_upper_leg, custom_bones_util.right_lower_leg, right_foot, right_knee + pole)
+    ik_util.left_leg_current_target.global_position  = left_foot
+    ik_util.right_leg_current_target.global_position = right_foot
+
+    # 5. Recalcular targets de brazos desde spine ya fijado
+    var rb_basis := custom_bones_util.lower_spine.global_transform.basis
+    var left_anim_offset:  Vector3 = ik_util.left_arm_ik_target.position  - skel_sizes_util.left_arm_tip_rest_local
+    var right_anim_offset: Vector3 = ik_util.right_arm_ik_target.position - skel_sizes_util.right_arm_tip_rest_local
+
+    ik_util.left_arm_ik_target.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_tip_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_anim_offset)
+    ik_util.right_arm_ik_target.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_tip_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_anim_offset)
+
+    var left_pole_anim_offset:  Vector3 = ik_util.left_arm_pole.position  - skel_sizes_util.left_arm_pole_rest_local
+    var right_pole_anim_offset: Vector3 = ik_util.right_arm_pole.position - skel_sizes_util.right_arm_pole_rest_local
+
+    ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_pole_anim_offset)
+    ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_pole_anim_offset)
+
+    # 6. World overrides de brazos (pitch de cámara)
+    if is_instance_valid(arms_controller):
+        arms_controller.apply_world_overrides(delta)
+
+    # 7. IK de brazos
+    ik_util.solve_two_bone_ik(custom_bones_util.left_upper_arm,  custom_bones_util.left_lower_arm,
+        ik_util.left_arm_ik_target.global_position, ik_util.left_arm_pole.global_position)
+    ik_util.solve_two_bone_ik(custom_bones_util.right_upper_arm, custom_bones_util.right_lower_arm,
+        ik_util.right_arm_ik_target.global_position, ik_util.right_arm_pole.global_position)
+
+    # 8. Re-fijar piernas por si world_overrides movió el spine
+    ik_util.solve_two_bone_ik(custom_bones_util.left_upper_leg,  custom_bones_util.left_lower_leg,  left_foot,  left_knee  + pole)
+    ik_util.solve_two_bone_ik(custom_bones_util.right_upper_leg, custom_bones_util.right_lower_leg, right_foot, right_knee + pole)
 
 func _update_local_targets_positions() -> void:
     local_targets.global_position = char_rigidbody.global_position
