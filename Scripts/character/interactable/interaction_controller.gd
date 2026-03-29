@@ -41,7 +41,8 @@ var _entity_instantiation: EntityInstantiation      = null
 
 var detector: InteractionDetector = null
 
-var interact_dist_max: float = 0.0  # grab_dist_max * 0.8, se setea en set_reach
+var interact_dist_max: float = 0.0
+var grip_dist_max:     float = 0.0
 
 signal high_effort_started()
 signal high_effort_ended()
@@ -62,12 +63,12 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: 
 
 # En InteractionController.set_reach()
 func set_reach(max_reach: float) -> void:
-    grab_dist_max     = max_reach
+    interact_dist_max = max_reach * 0.85   # interactability — el menor
+    grab_dist_max     = max_reach * 0.9   # extension arms
     grab_dist_min     = max_reach * 0.1
-    interact_dist_max = max_reach * 0.8
+    grip_dist_max     = max_reach * 1.0   # grip loss — el mayor
     if is_instance_valid(detector):
         detector.set_reach(interact_dist_max)
-    print("[IC] set_reach: grab_dist_max=%.3f interact_dist_max=%.3f" % [grab_dist_max, interact_dist_max])
 
 func set_entity_instantiation(inst: EntityInstantiation) -> void:
     _entity_instantiation = inst
@@ -89,60 +90,6 @@ func get_throw_charge_normalized() -> float:
 
 func is_charging_throw() -> bool:
     return _is_charging_throw
-
-func handle_input(event: InputEvent) -> void:
-    var bi     := char_rigidbody.get_parent() as BoneInstantiator
-    var seated := is_instance_valid(bi) and bi.is_seated
-
-    if event is InputEventKey and not event.echo:
-        if event.keycode == KEY_E and event.pressed:
-            if seated and is_instance_valid(bi.current_seat):
-                bi.current_seat.activate(bi)
-            else:
-                var hovered := detector.get_hovered() if is_instance_valid(detector) else null
-                if hovered is ActivatableInteractable:
-                    (hovered as ActivatableInteractable).activate(bi)
-
-        if event.keycode == KEY_R:
-            if event.pressed and not _is_charging_throw:
-                _is_charging_throw = true
-                _throw_charge      = 0.0
-            elif not event.pressed and _is_charging_throw:
-                _release_throw()
-
-    if event is InputEventMouseButton:
-        match event.button_index:
-            MOUSE_BUTTON_LEFT:
-                if event.pressed:
-                    var hovered := detector.get_hovered() if is_instance_valid(detector) else null
-                    if is_instance_valid(hovered):
-                        if hovered is GrabbableInteractable:
-                            _start_grab(hovered as GrabbableInteractable)
-                        elif hovered is ControllableInteractable:
-                            _start_control(hovered as ControllableInteractable)
-                else:
-                    _stop_grab()
-                    _stop_control()
-            MOUSE_BUTTON_RIGHT:
-                _is_rotating = event.pressed and is_instance_valid(_grabbed)
-            MOUSE_BUTTON_WHEEL_UP:
-                if is_instance_valid(_grabbed):
-                    _grab_distance = clamp(_grab_distance - scroll_sensitivity, grab_dist_min, grab_dist_max)
-                elif is_instance_valid(_controlled):
-                    _controlled.handle_scroll(-1.0)
-            MOUSE_BUTTON_WHEEL_DOWN:
-                if is_instance_valid(_grabbed):
-                    _grab_distance = clamp(_grab_distance + scroll_sensitivity, grab_dist_min, grab_dist_max)
-                elif is_instance_valid(_controlled):
-                    _controlled.handle_scroll(1.0)
-
-    if event is InputEventMouseMotion:
-        if _is_rotating and is_instance_valid(_grabbed):
-            var delta_rot := Quaternion(player_camera.global_transform.basis.x, -event.relative.y * grab_rotation_sensitivity) \
-                          * Quaternion(player_camera.global_transform.basis.y, -event.relative.x * grab_rotation_sensitivity)
-            _grab_target_rotation = delta_rot * _grab_target_rotation
-        if is_instance_valid(_controlled):
-            _controlled.handle_mouse_motion(event.relative)
 
 func update(delta: float) -> void:
     if is_instance_valid(detector):
@@ -197,9 +144,14 @@ func cancel_throw() -> void:
 func _start_control(ctrl: ControllableInteractable) -> void:
     _controlled = ctrl
     _controlled.start_control()
+    var origin     := _get_interaction_origin()
+    var handle     := ctrl.get_nearest_handle_point(origin)
+    var ctrl_world := handle.global_position if is_instance_valid(handle) else ctrl.global_position
+    print("[START_CONTROL] origin dist to handle=%.3f grip_dist_max=%.3f" % [
+        origin.distance_to(ctrl_world), grip_dist_max])
     if is_instance_valid(arms_controller):
-        var grab_point := ctrl.get_nearest_handle_point(_get_interaction_origin())
-        arms_controller.start_grab(ctrl, _get_interaction_origin(), grab_point, grab_dist_min, grab_dist_max)
+        arms_controller.start_grab(ctrl, origin, handle, grab_dist_min, grab_dist_max)
+
 
 func _stop_control() -> void:
     if is_instance_valid(_controlled):
@@ -215,10 +167,12 @@ func _start_grab(grabbable: GrabbableInteractable) -> void:
     if not is_instance_valid(rb):
         return
     _grabbed = rb
-    var origin             := _get_interaction_origin()
-    _grabbed_grab_point    = grabbable.get_nearest_grab_point(origin)
-    var grab_world         := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
-    _grab_distance         = clamp(origin.distance_to(grab_world), grab_dist_min, grab_dist_max)
+    var origin          := _get_interaction_origin()
+    _grabbed_grab_point  = grabbable.get_nearest_grab_point(origin)
+    var grab_world      := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
+    _grab_distance       = clamp(origin.distance_to(grab_world), grab_dist_min, grab_dist_max)
+    print("[START_GRAB] origin=%.3f grab_world dist=%.3f grip_dist_max=%.3f grab_dist_max=%.3f" % [
+        0.0, origin.distance_to(grab_world), grip_dist_max, grab_dist_max])
     _grabbed.sleeping      = false
     _grab_target_rotation  = _grabbed.global_transform.basis.get_rotation_quaternion()
     var player_rot         := Quaternion(char_rigidbody.global_transform.basis)
@@ -353,17 +307,67 @@ func _is_out_of_reach(world_pos: Vector3) -> bool:
     var origin := _get_interaction_origin()
     var to_pos := world_pos - origin
     var dist   := to_pos.length()
-    print("[OUT_OF_REACH] dist=%.3f grab_dist_max=%.3f interact_dist_max=%.3f" % [dist, grab_dist_max, interact_dist_max])
-    if dist > grab_dist_max:
-        print("[OUT_OF_REACH] LOST — too far (%.3f > %.3f)" % [dist, grab_dist_max])
+    print("[OUT_OF_REACH] dist=%.3f grip_dist_max=%.3f interact_dist_max=%.3f" % [dist, grip_dist_max, interact_dist_max])
+    if dist > grip_dist_max:
+        print("[OUT_OF_REACH] LOST — too far (%.3f > %.3f)" % [dist, grip_dist_max])
         return true
     if dist <= 0.001:
         return false
     var cam_fwd := -player_camera.global_transform.basis.z
     var dot     := to_pos.normalized().dot(cam_fwd)
     var cone    := cos(deg_to_rad(grab_cone_half_angle))
-    print("[OUT_OF_REACH] dot=%.3f cone_threshold=%.3f" % [dot, cone])
     if dot < cone:
-        print("[OUT_OF_REACH] LOST — outside cone")
+        print("[OUT_OF_REACH] LOST — outside cone (dot=%.3f < cone=%.3f)" % [dot, cone])
         return true
     return false
+
+# Reemplaza handle_input() — eliminar ese método entero
+
+func try_interact() -> void:
+    var hovered := detector.get_hovered() if is_instance_valid(detector) else null
+    if not is_instance_valid(hovered): return
+    if hovered is GrabbableInteractable:
+        _start_grab(hovered as GrabbableInteractable)
+    elif hovered is ControllableInteractable:
+        _start_control(hovered as ControllableInteractable)
+
+func release_interact() -> void:
+    _stop_grab()
+    _stop_control()
+
+func set_rotating(value: bool) -> void:
+    _is_rotating = value and is_instance_valid(_grabbed)
+
+func apply_grab_rotation(relative: Vector2) -> void:
+    if not _is_rotating or not is_instance_valid(_grabbed): return
+    var delta_rot := Quaternion(player_camera.global_transform.basis.x, -relative.y * grab_rotation_sensitivity) \
+                  * Quaternion(player_camera.global_transform.basis.y, -relative.x * grab_rotation_sensitivity)
+    _grab_target_rotation = delta_rot * _grab_target_rotation
+
+func apply_controlled_motion(relative: Vector2) -> void:
+    if is_instance_valid(_controlled):
+        _controlled.handle_mouse_motion(relative)
+
+func adjust_distance(dir: float) -> void:
+    if is_instance_valid(_grabbed):
+        _grab_distance = clamp(_grab_distance + dir * scroll_sensitivity, grab_dist_min, grab_dist_max)
+    elif is_instance_valid(_controlled):
+        _controlled.handle_scroll(dir)
+
+func try_activate(bi: Node) -> void:
+    var seated : bool = is_instance_valid(bi) and bi.is_seated
+    if seated and is_instance_valid(bi.current_seat):
+        bi.current_seat.activate(bi)
+        return
+    var hovered := detector.get_hovered() if is_instance_valid(detector) else null
+    if hovered is ActivatableInteractable:
+        (hovered as ActivatableInteractable).activate(bi)
+
+func start_throw_charge() -> void:
+    if _is_charging_throw: return
+    _is_charging_throw = true
+    _throw_charge = 0.0
+
+func release_throw() -> void:
+    if _is_charging_throw:
+        _release_throw()

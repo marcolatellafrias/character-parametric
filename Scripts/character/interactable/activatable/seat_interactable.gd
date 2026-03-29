@@ -52,6 +52,7 @@ func _build_collider() -> void:
 		_body.add_child(dbg_mesh)
 
 	add_child(_body)
+	add_handle_point_local(Vector3(0.0, height + seat_area.y * 0.5, 0.0))
 
 func _build_spawn_point() -> void:
 	_spawn_point = Node3D.new()

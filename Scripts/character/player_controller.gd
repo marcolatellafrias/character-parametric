@@ -97,41 +97,64 @@ func _input(event: InputEvent) -> void:
 	if not is_ready:
 		return
 
-	if is_instance_valid(interaction_controller):
-		interaction_controller.handle_input(event)
+	var ic     := interaction_controller if is_instance_valid(interaction_controller) else null
+	var bi     := _get_bi()
+	var seated := is_instance_valid(bi) and bi.is_seated
 
-	if event is InputEventMouseMotion and not _is_ragdoll_active():
-		var sens := interaction_controller.get_camera_sensitivity_factor() if is_instance_valid(interaction_controller) else 1.0
-		if not (interaction_controller and interaction_controller._is_rotating):
-			apply_camera_pitch(clamp(camera_pitch - event.relative.y * 0.002 * sens, -1.2, 1.2))
-			camera_yaw  -= event.relative.x * 0.002 * sens
+	# ── Mouse motion ─────────────────────────────────────────────────────────
+	if event is InputEventMouseMotion:
+		if not _is_ragdoll_active():
+			var sens := ic.get_camera_sensitivity_factor() if ic else 1.0
+			if not (ic and ic._is_rotating):
+				apply_camera_pitch(clamp(camera_pitch - event.relative.y * 0.002 * sens, -1.2, 1.2))
+				camera_yaw -= event.relative.x * 0.002 * sens
+		if ic:
+			ic.apply_grab_rotation(event.relative)
+			ic.apply_controlled_motion(event.relative)
 
-	if event is InputEventKey and not event.echo:
-		var bi := _get_bi()
-		var seated := is_instance_valid(bi) and bi.is_seated
+	# ── Mouse buttons ─────────────────────────────────────────────────────────
+	elif event is InputEventMouseButton:
+		match event.button_index:
+			MOUSE_BUTTON_LEFT:
+				if event.pressed: ic.try_interact()
+				else:             ic.release_interact()
+			MOUSE_BUTTON_RIGHT:
+				if ic: ic.set_rotating(event.pressed)
+			MOUSE_BUTTON_WHEEL_UP:
+				if ic: ic.adjust_distance(-1.0)
+			MOUSE_BUTTON_WHEEL_DOWN:
+				if ic: ic.adjust_distance(1.0)
+
+	# ── Keyboard ──────────────────────────────────────────────────────────────
+	elif event is InputEventKey and not event.echo:
 		if event.pressed:
 			match event.keycode:
+				# Movimiento
 				KEY_SPACE:
 					if not _is_crouched and char_rigidbody.is_grounded and not seated:
 						_is_charging_jump = true
 				KEY_CTRL:
 					if not _is_crouched and not seated:
 						_start_crouch()
-				KEY_F:
-					var hovered := interaction_controller.get_hovered_rb() if interaction_controller else null
-					if is_instance_valid(hovered):
-						var target_bi := _find_bone_instantiator(hovered)
-						if target_bi and target_bi != _get_bi():
-							_switch_to(target_bi)
+
+				# Interacción
 				KEY_E:
-					if not _is_ragdoll_active():
-						var hovered := interaction_controller.detector.get_hovered() if is_instance_valid(interaction_controller) else null
-						if hovered is ActivatableInteractable:
-							(hovered as ActivatableInteractable).activate()
-				KEY_G:
-					_toggle_ragdoll()
-				KEY_P:
-					_respawn()
+					if ic: ic.try_activate(bi)
+				KEY_R:
+					if ic: ic.start_throw_charge()
+				KEY_F:
+					if not seated:
+						var hovered := ic.get_hovered_rb() if ic else null
+						if is_instance_valid(hovered):
+							var target_bi := _find_bone_instantiator(hovered)
+							if target_bi and target_bi != bi:
+								_switch_to(target_bi)
+
+				# Físicas / debug
+				KEY_G: _toggle_ragdoll()
+				KEY_P: _respawn()
+
+				# Cámaras de debug
 				KEY_KP_5: _set_debug_cam(0)
 				KEY_KP_1: _set_debug_cam(1)
 				KEY_KP_2: _set_debug_cam(2)
@@ -141,7 +164,8 @@ func _input(event: InputEvent) -> void:
 				KEY_KP_7: _set_debug_cam(7)
 				KEY_KP_8: _set_debug_cam(8)
 				KEY_KP_9: _set_debug_cam(9)
-		else:
+
+		else: # released
 			match event.keycode:
 				KEY_SPACE:
 					if _is_charging_jump:
@@ -150,7 +174,8 @@ func _input(event: InputEvent) -> void:
 				KEY_CTRL:
 					if _is_crouched:
 						_stop_crouch()
-	
+				KEY_R:
+					if ic: ic.release_throw()
 
 
 func _physics_process(delta: float) -> void:

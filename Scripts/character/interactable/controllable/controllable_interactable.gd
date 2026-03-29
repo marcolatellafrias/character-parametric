@@ -115,12 +115,6 @@ func _set_debug_emit(active: bool) -> void:
             mat.emission                   = Color(0.05, 0.45, 0.1)
             mat.emission_energy_multiplier = 1.2
 
-func _clear_handle_points() -> void:
-    for pt in handle_points:
-        if is_instance_valid(pt):
-            pt.queue_free()
-    handle_points.clear()
-
 func _clear_debug_meshes() -> void:
     for m in _debug_meshes:
         if is_instance_valid(m):

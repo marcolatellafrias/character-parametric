@@ -149,8 +149,11 @@ func _get_nearest_interactable_point(interactable: Interactable) -> Vector3:
     if interactable is GrabbableInteractable:
         var grab := (interactable as GrabbableInteractable).get_nearest_grab_point(origin)
         if is_instance_valid(grab):
+            print("[DETECTOR] using grab_point at %.3f from chest" % grab.global_position.distance_to(origin))
             return grab.global_position
     var handle := interactable.get_nearest_handle_point(origin)
     if is_instance_valid(handle):
+        print("[DETECTOR] using handle_point at %.3f from chest" % handle.global_position.distance_to(origin))
         return handle.global_position
+    print("[DETECTOR] WARNING — no points found, using interactable.global_position")
     return interactable.global_position
