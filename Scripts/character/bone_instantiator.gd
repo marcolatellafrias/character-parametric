@@ -272,7 +272,7 @@ func set_first_person_visibility(first_person: bool) -> void:
         bone.set_mesh_visible(first_person == false or visible_bones.has(bone))
 
 func _setup_char_grabbable() -> void:
-    var grabbable  := Grabbable.new()
+    var grabbable := GrabbableInteractable.new()
     char_rigidbody.add_child(grabbable)
 
     var full_height    := skel_sizes_util.leg_height + skel_sizes_util.torso_height + skel_sizes_util.head_height

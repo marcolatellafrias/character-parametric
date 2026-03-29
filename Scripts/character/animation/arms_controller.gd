@@ -69,7 +69,7 @@ func _weighted_dist(a: Vector3, b: Vector3) -> float:
     diff.y *= HANDLE_VERTICAL_WEIGHT
     return diff.length()
 
-func _best_handle(grabbable: Grabbable, shoulder: Vector3, exclude: Node3D, current: Node3D, is_left: bool) -> Node3D:
+func _best_handle(grabbable: GrabbableInteractable, shoulder: Vector3, exclude: Node3D, current: Node3D, is_left: bool) -> Node3D:
     var char_right  := bi.char_rigidbody.global_transform.basis.x
     var obj_center  := grabbable.global_position
     var correct_sign := -1.0 if is_left else 1.0  # izquierda quiere handles a la izquierda
@@ -104,7 +104,7 @@ func update_grab_handles(delta: float, grabbed: RigidBody3D, get_grabbable: Call
     if is_instance_valid(grab_point):
         _grab_point_world = grab_point.global_position
 
-    var grabbable := get_grabbable.call(grabbed) as Grabbable
+    var grabbable := get_grabbable.call(grabbed) as GrabbableInteractable
     if not grabbable:
         return
     var cb      := bi.custom_bones_util
@@ -134,7 +134,7 @@ func start_grab(grabbed: RigidBody3D, get_grabbable: Callable, chest_rest_world:
     _grab_chest_rest_world = chest_rest_world
     _grab_point_world      = grab_point.global_position if is_instance_valid(grab_point) else chest_rest_world
 
-    var grabbable := get_grabbable.call(grabbed) as Grabbable
+    var grabbable := get_grabbable.call(grabbed) as GrabbableInteractable
     if not grabbable:
         return
     var cb      := bi.custom_bones_util

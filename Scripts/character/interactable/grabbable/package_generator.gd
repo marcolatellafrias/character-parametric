@@ -23,7 +23,7 @@ static func create(cells_x: int, cells_y: int, cells_z: int, weight: float = 1.0
 	col.shape = box_shape
 	rb.add_child(col)
 
-	var grabbable := Grabbable.new()
+	var grabbable := GrabbableInteractable.new()
 	rb.add_child(grabbable)
 	grabbable.setup_from_cells(cells_x, cells_y, cells_z)
 

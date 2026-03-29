@@ -35,7 +35,7 @@ var _hud: PlayerHUD = null
 var _impact_debug_hud: ImpactDebugHUD = null
 var _prev_fall_rb: CharacterRigidBody3D = null
 
-var grab_controller: GrabController = null
+var interaction_controller: InteractionController = null
 var arms_controller: ArmsController = null
 
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
@@ -50,10 +50,10 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
     var bi := _get_bi()
     arms_controller = bi.arms_controller
 
-    grab_controller = GrabController.new()
-    add_child(grab_controller)
+    interaction_controller = InteractionController.new()
+    add_child(interaction_controller)
     var max_reach := inst.arch_final.reach * inst.arch_final.reach_multiplier
-    grab_controller.setup(char_rigidbody, player_camera, arms_controller, bi.anim_mod, max_reach, inst)
+    interaction_controller.setup(char_rigidbody, player_camera, arms_controller, bi.anim_mod, max_reach, inst)
 
     _hud = PlayerHUD.create(inst)
     char_rigidbody.add_child(_hud)
@@ -97,13 +97,14 @@ func _input(event: InputEvent) -> void:
     if not is_ready:
         return
 
-    if is_instance_valid(grab_controller):
-        grab_controller.handle_input(event)
+    if is_instance_valid(interaction_controller):
+        interaction_controller.handle_input(event)
 
     if event is InputEventMouseMotion and not _is_ragdoll_active():
-        if not (grab_controller and grab_controller._is_rotating):
-            camera_pitch = clamp(camera_pitch - event.relative.y * 0.002, -1.2, 1.2)
-            camera_yaw  -= event.relative.x * 0.002
+        var sens := interaction_controller.get_camera_sensitivity_factor() if is_instance_valid(interaction_controller) else 1.0
+        if not (interaction_controller and interaction_controller._is_rotating):
+            camera_pitch = clamp(camera_pitch - event.relative.y * 0.002 * sens, -1.2, 1.2)
+            camera_yaw  -= event.relative.x * 0.002 * sens
             player_camera.rotation.x = camera_pitch
 
     if event is InputEventKey and not event.echo:
@@ -116,11 +117,16 @@ func _input(event: InputEvent) -> void:
                     if not _is_crouched:
                         _start_crouch()
                 KEY_F:
-                    var hovered := grab_controller.get_hovered_rb() if grab_controller else null
+                    var hovered := interaction_controller.get_hovered_rb() if interaction_controller else null
                     if is_instance_valid(hovered):
                         var target_bi := _find_bone_instantiator(hovered)
                         if target_bi and target_bi != _get_bi():
                             _switch_to(target_bi)
+                KEY_E:
+                    if not _is_ragdoll_active():
+                        var hovered := interaction_controller.detector.get_hovered() if is_instance_valid(interaction_controller) else null
+                        if hovered is ActivatableInteractable:
+                            (hovered as ActivatableInteractable).activate()
                 KEY_G:
                     _toggle_ragdoll()
                 KEY_P:
@@ -143,6 +149,7 @@ func _input(event: InputEvent) -> void:
                 KEY_CTRL:
                     if _is_crouched:
                         _stop_crouch()
+    
 
 
 func _physics_process(delta: float) -> void:
@@ -152,8 +159,8 @@ func _physics_process(delta: float) -> void:
     var ragdoll_active := _is_ragdoll_active()
 
     if ragdoll_active and not _was_ragdoll_active:
-        if is_instance_valid(grab_controller):
-            grab_controller.stop_all()
+        if is_instance_valid(interaction_controller):
+            interaction_controller.stop_all()
     _was_ragdoll_active = ragdoll_active
 
     _update_hud(delta)
@@ -181,8 +188,8 @@ func _physics_process(delta: float) -> void:
         else:
             _cancel_jump_charge()
 
-    if is_instance_valid(grab_controller):
-        grab_controller.update(delta)
+    if is_instance_valid(interaction_controller):
+        interaction_controller.update(delta)
 
     _update_hud_throw_jump()
 
@@ -221,7 +228,7 @@ func _update_hud_throw_jump() -> void:
         return
     var arch     := _get_arch()
     var jump_max := arch.time_to_max_jump if arch else 1.0
-    var throw_t  := grab_controller.get_throw_charge_normalized() if is_instance_valid(grab_controller) else 0.0
+    var throw_t  := interaction_controller.get_throw_charge_normalized() if is_instance_valid(interaction_controller) else 0.0
     _hud.update_throw(throw_t)
     _hud.update_jump(_jump_charge / jump_max)
 
@@ -350,16 +357,16 @@ func _switch_to(target: BoneInstantiator) -> void:
     head_size      = target.skel_sizes_util.head_size
 
     var max_reach := target.entity_instantiation.arch_final.reach * target.entity_instantiation.arch_final.reach_multiplier
-    if is_instance_valid(grab_controller):
-        grab_controller.set_reach(max_reach)
-        grab_controller.char_rigidbody = char_rigidbody
-        grab_controller.player_camera  = player_camera
-        grab_controller.anim_mod       = target.anim_mod
-        grab_controller.set_entity_instantiation(target.entity_instantiation)
+    if is_instance_valid(interaction_controller):
+        interaction_controller.set_reach(max_reach)
+        interaction_controller.char_rigidbody = char_rigidbody
+        interaction_controller.player_camera  = player_camera
+        interaction_controller.anim_mod       = target.anim_mod
+        interaction_controller.set_entity_instantiation(target.entity_instantiation)
 
     arms_controller = target.arms_controller
-    if is_instance_valid(grab_controller):
-        grab_controller.arms_controller = arms_controller
+    if is_instance_valid(interaction_controller):
+        interaction_controller.arms_controller = arms_controller
 
     player_camera.get_parent().remove_child(player_camera)
     char_rigidbody.add_child(player_camera)
@@ -399,8 +406,8 @@ func _switch_to(target: BoneInstantiator) -> void:
     _connect_fall_signal(char_rigidbody)
     _set_debug_cam(_debug_cam_mode)
 
-    if is_instance_valid(grab_controller):
-        grab_controller.stop_all()
+    if is_instance_valid(interaction_controller):
+        interaction_controller.stop_all()
 
 
 func _respawn() -> void:
@@ -419,14 +426,14 @@ func _respawn() -> void:
     head_size      = current_bi.skel_sizes_util.head_size
 
     var max_reach := current_bi.entity_instantiation.arch_final.reach * current_bi.entity_instantiation.arch_final.reach_multiplier
-    if is_instance_valid(grab_controller):
-        grab_controller.set_reach(max_reach)
-        grab_controller.char_rigidbody = char_rigidbody
-        grab_controller.anim_mod       = current_bi.anim_mod
-        grab_controller.set_entity_instantiation(current_bi.entity_instantiation)
+    if is_instance_valid(interaction_controller):
+        interaction_controller.set_reach(max_reach)
+        interaction_controller.char_rigidbody = char_rigidbody
+        interaction_controller.anim_mod       = current_bi.anim_mod
+        interaction_controller.set_entity_instantiation(current_bi.entity_instantiation)
     arms_controller = current_bi.arms_controller
-    if is_instance_valid(grab_controller):
-        grab_controller.arms_controller = arms_controller
+    if is_instance_valid(interaction_controller):
+        interaction_controller.arms_controller = arms_controller
 
     char_rigidbody.global_position = prev_pos
     char_rigidbody.rotation.y = camera_yaw
@@ -452,8 +459,8 @@ func _respawn() -> void:
     char_rigidbody.add_child(_hud)
 
     _connect_fall_signal(char_rigidbody)
-    if is_instance_valid(grab_controller):
-        grab_controller.stop_all()
+    if is_instance_valid(interaction_controller):
+        interaction_controller.stop_all()
 
 
 func _process_stamina(delta: float) -> void:
