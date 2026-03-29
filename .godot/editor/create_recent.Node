@@ -1,7 +1,7 @@
-CollisionShape3D
-StaticBody3D
 Node3D
+CollisionShape3D
 MeshInstance3D
+StaticBody3D
 RigidBody3D
 Marker3D
 Area3D

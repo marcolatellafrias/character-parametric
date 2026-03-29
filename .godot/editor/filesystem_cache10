@@ -1,5 +1,5 @@
 63f7b34db8d8cdea90c76aacccf841ec
-::res://::1774736298
+::res://::1774647856
 dledtk_8x8_fo.png::CompressedTexture2D::9182871763473998172::1773172499::1773172500::1::::<><><>0<>0<>82367680f8fa88a990d0bd0c5b821044<>res://.godot/imported/dledtk_8x8_fo.png-c44b05e89ae9a7f92c245da178500be9.ctex::
 export_presets.cfg::TextFile::-1::1771210500::0::1::::<><><>0<>0<><>::
 LICENSE.md::TextFile::-1::1761072817::0::1::::<><><>0<>0<><>::
@@ -35,9 +35,9 @@ green.tres::StandardMaterial3D::8092101318124136034::1761072817::0::1::::<><><>0
 red.tres::StandardMaterial3D::1329789553095403771::1761072817::0::1::::<><><>0<>0<><>::
 Shapes.tres::StandardMaterial3D::3572604480624761035::1761072817::0::1::::<><><>0<>0<><>::
 templategrid_albedo.png::CompressedTexture2D::1416096460625069073::1761072817::1761072817::1::::<><><>0<>0<>e6acb3a0bfdf540a92cc74409ad6c09b<>res://.godot/imported/templategrid_albedo.png-3a74868f1c9a55fae4e22c6a7ef39c90.s3tc.ctex::
-::res://Models/::1774733930
+::res://Models/::1771448318
 bone.glb::PackedScene::8636746699221246796::1761428970::1771448318::1::::<><><>0<>0<>64fc8baa339fe0085a778b56c6e491c3<>res://.godot/imported/bone.glb-d5ff80e9c6e8695890421bbdabdb7892.scn::
-::res://Models/auto/::1774734218
+::res://Models/auto/::1771448322
 barqueted3.blend::PackedScene::5755755497885793414::1762693804::1771448322::1::::<><><>0<>0<>39bdbc9ff2ee9abe1301ad2afc88d02d<>res://.godot/imported/barqueted3.blend-14b7fd821ab9c3ec6b04b7b5ef347664.scn::
 barquetenew.blend::PackedScene::8264070244376422602::1762713902::1771448322::1::::<><><>0<>0<>e690c95606180fe662948c94ee07dde5<>res://.godot/imported/barquetenew.blend-8df0d6180aa1d534931e2d48f8051e1d.scn::
 cable.tres::ShaderMaterial::514491050059419741::1762721574::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
@@ -46,30 +46,27 @@ chasis.tres::ShaderMaterial::1306124917497588985::1762801263::0::1::::<><><>0<>0
 cuero.tres::ShaderMaterial::7895335456339432846::1761963587::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
 luces.tres::ShaderMaterial::899122424226256135::1762721351::0::1::::<><><>0<>0<><>::uid://ck1wlyrl0637d::::res://Models/auto/luces_emitivas.gdshader
 luces_emitivas.gdshader::Shader::5529760330302424667::1771353688::0::1::::<><><>0<>0<><>::
-metal oscuro.tres::ShaderMaterial::8625974659678430727::1774734218::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
+metal oscuro.tres::ShaderMaterial::8625974659678430727::1761963116::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
 metal.tres::ShaderMaterial::3091749159269672371::1762720530::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader<>uid://c7qbnsaief52r::::res://Scenes/textures/chasis textura.png
 nave.blend::PackedScene::7371879372590930695::1762631474::1771448320::1::::<><><>0<>0<>942ea1a5afeb3bc2aea4535ad2382ba9<>res://.godot/imported/nave.blend-6e6c8e129aec4d5c6dd7809771e29279.scn::
 sirenas.tres::ShaderMaterial::7029403985058593299::1762721173::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
 tanque.tres::ShaderMaterial::591564902935369541::1762720686::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader<>uid://cbd6vu1ivw2i1::::res://Scenes/textures/garrafa textura.png
 ventanas.tres::ShaderMaterial::2518200112153308807::1762705985::0::1::::<><><>0<>0<><>::uid://cmagxfh8gxprr::::res://addons/flexible_toon_shader/flexible_toon.gdshader
 vidriov2.tres::StandardMaterial3D::2582558305666477124::1762721266::0::1::::<><><>0<>0<><>::
-::res://Models/interactables/::1774741442
-asiento.blend::PackedScene::4475071672734055295::1774741442::1774741447::1::::<><><>0<>0<>58ff867f26057128004955e98a62b9c5<>res://.godot/imported/asiento.blend-6da0c4cdd92fbb7f672542349d5dd11c.scn::
-ship_seat.tscn::PackedScene::4210322251340836486::1774736886::0::1::::<><><>0<>0<><>::uid://b4001n12w51db::::res://Models/interactables/asiento.blend<>uid://du5qso8qhjk0v::::res://Models/auto/metal oscuro.tres<>uid://bb43ngplsfis2::::res://Models/auto/ventanas.tres
-::res://Scenes/::1774736886
+::res://Scenes/::1774647792
 auto_uwrapeado.tscn::PackedScene::1560697273719487759::1762726465::0::1::::<><><>0<>0<><>::uid://bc2amf27w1l6k::::res://Models/auto/vidriov2.tres<>uid://suxxlwyeavv2::::res://Models/auto/chasis.tres<>uid://bb43ngplsfis2::::res://Models/auto/ventanas.tres<>uid://bkbwwloqshhjn::::res://Models/auto/metal.tres<>uid://dkqtay12afnj7::::res://Models/auto/cuero.tres<>uid://du5qso8qhjk0v::::res://Models/auto/metal oscuro.tres<>uid://m2sodxy1bcep::::res://Models/auto/luces.tres
 barquetenew.tscn::PackedScene::1343632861069545948::1762726465::0::1::::<><><>0<>0<><>::uid://dp0gbaeu2p8ty::::res://Models/auto/barquetenew.blend<>uid://bb43ngplsfis2::::res://Models/auto/ventanas.tres<>uid://suxxlwyeavv2::::res://Models/auto/chasis.tres<>uid://m2sodxy1bcep::::res://Models/auto/luces.tres<>uid://du5qso8qhjk0v::::res://Models/auto/metal oscuro.tres<>uid://bkbwwloqshhjn::::res://Models/auto/metal.tres<>uid://dkqtay12afnj7::::res://Models/auto/cuero.tres<>uid://bc2amf27w1l6k::::res://Models/auto/vidriov2.tres
 barquetesimple2.blend::PackedScene::7646464420941210421::1762725931::1771448318::1::::<><><>0<>0<>2b2ee5db42e6e57a5658b3e871b2a0b8<>res://.godot/imported/barquetesimple2.blend-a6e51f4a7717c1f1f7ef31955d98ed60.scn::uid://c7qbnsaief52r::::res://Scenes/textures/chasis textura.png<>uid://dnmxb2rwhps::::res://Scenes/textures/base textura.png<>uid://b1r06xhpfqjh5::::res://Scenes/textures/base chasis texture.png<>uid://cbd6vu1ivw2i1::::res://Scenes/textures/garrafa textura.png<>uid://b78ffs2id7is3::::res://Scenes/textures/marco textura.png<>uid://chbqrwq15vnyn::::res://Scenes/textures/luz textura.png
 barquetesimple3.blend::PackedScene::1125437901378968582::1764884755::1771448320::1::::<><><>0<>0<>79f952da43e33f46e7b6c5e9d747511e<>res://.godot/imported/barquetesimple3.blend-bb18ae218258a3e41a95ff204941a8a0.scn::uid://c7qbnsaief52r::::res://Scenes/textures/chasis textura.png<>uid://dnmxb2rwhps::::res://Scenes/textures/base textura.png<>uid://b1r06xhpfqjh5::::res://Scenes/textures/base chasis texture.png<>uid://cbd6vu1ivw2i1::::res://Scenes/textures/garrafa textura.png<>uid://b78ffs2id7is3::::res://Scenes/textures/marco textura.png<>uid://chbqrwq15vnyn::::res://Scenes/textures/luz textura.png
 barquetesimple_2.tscn::PackedScene::7641638224346534015::1771448212::0::1::::<><><>0<>0<><>::uid://npa52w18g2el::::res://Scenes/barquetesimple2.blend<>uid://suxxlwyeavv2::::res://Models/auto/chasis.tres<>uid://dh6alal3pae1n::::res://Models/auto/cama.tres<>uid://ios8ttubqev2::::res://Models/auto/tanque.tres<>uid://bb43ngplsfis2::::res://Models/auto/ventanas.tres<>uid://bc2amf27w1l6k::::res://Models/auto/vidriov2.tres<>uid://c7fdiywnobhhb::::res://Models/auto/sirenas.tres<>uid://du5qso8qhjk0v::::res://Models/auto/metal oscuro.tres<>uid://hlhue3yyp6on::::res://Models/auto/cable.tres<>uid://6c81l8o24bc7::::res://Scripts/vehicle/lever_control.gd<>uid://bdadqlexcvt4t::::res://Scripts/vehicle/steering_wheel.gd<>uid://cqkfvrs4svyg::::res://Scenes/Glow_Shader.gdshader<>uid://8kbdxfg185r5::::res://Scripts/vehicle/pilot_seat.gd
 bone.tscn::PackedScene::8708324344674556264::1761963721::0::1::::<><><>0<>0<><>::uid://dvbx7rqdampcm::::res://Models/bone.glb
-bone_instantiator.tscn::PackedScene::8724258772597005664::1774657493::0::1::::<><><>0<>0<><>::uid://rp6tci1gjxpq::::res://Scripts/character/bone_instantiator.gd
+bone_instantiator.tscn::PackedScene::8724258772597005664::1773814261::0::1::::<><><>0<>0<><>::uid://rp6tci1gjxpq::::res://Scripts/character/bone_instantiator.gd
 car.tscn::PackedScene::7471490315938047607::1770872724::0::1::::<><><>0<>0<><>::uid://xaap58qp57ub::::res://Scripts/common/simple.gd<>uid://dg4wwu387wi12::::res://Scenes/barquetesimple_2.tscn
 character.tscn::PackedScene::2112007048381938646::1773155775::0::1::::<><><>0<>0<><>::uid://cq25yhl2dfmgv::::res://Scripts/common/deprecated.gd
-custom_bone.tscn::PackedScene::610371420497144079::1774648443::0::1::::<><><>0<>0<><>::uid://dcb7s64cnh8gt::::res://Scripts/character/static/custom_bone.gd
-Demo.tscn::PackedScene::1102047196677309766::1774736886::0::1::::<><><>0<>0<><>::uid://dri6aufdetmtv::::res://Materials/dledtk_8x8_cr.png<>uid://s7fo7igsctb4::::res://Materials/red.tres<>uid://da33e5tos7dp0::::res://Materials/blue.tres<>uid://dnj4yx07gux3o::::res://Materials/green.tres<>uid://beur8wp4bookx::::res://Scenes/weighted_box.tscn<>uid://bchdbfnnxbtq2::::res://Scenes/package.tscn<>uid://lyiigvh7gusj::::res://Scripts/character/interactable/seat/seat.tscn<>uid://delu2qjrw6teu::::res://addons/Mirror3D/Mirror3D.tscn<>uid://ckrqq415fubai::::res://Scenes/test_slab.tscn<>uid://dvbx7rqdampcm::::res://Models/bone.glb<>uid://k543h15j5sew::::res://Scenes/player.tscn<>uid://depimbd5eofjb::::res://Scenes/car.tscn<>uid://btuoiwrmahgt4::::res://Scripts/city/entities/area_instantiator.gd<>uid://qbf2ejaplhko::::res://Scenes/barquetesimple3.blend<>uid://b08rnlsxfdmly::::res://Models/interactables/ship_seat.tscn
+custom_bone.tscn::PackedScene::610371420497144079::1774647792::0::1::::<><><>0<>0<><>::uid://dcb7s64cnh8gt::::res://Scripts/character/custom_bone.gd
+Demo.tscn::PackedScene::1102047196677309766::1774628978::0::1::::<><><>0<>0<><>::uid://dri6aufdetmtv::::res://Materials/dledtk_8x8_cr.png<>uid://s7fo7igsctb4::::res://Materials/red.tres<>uid://da33e5tos7dp0::::res://Materials/blue.tres<>uid://dnj4yx07gux3o::::res://Materials/green.tres<>uid://beur8wp4bookx::::res://Scenes/weighted_box.tscn<>uid://bchdbfnnxbtq2::::res://Scenes/package.tscn<>uid://delu2qjrw6teu::::res://addons/Mirror3D/Mirror3D.tscn<>uid://ckrqq415fubai::::res://Scenes/test_slab.tscn<>uid://dvbx7rqdampcm::::res://Models/bone.glb<>uid://k543h15j5sew::::res://Scenes/player.tscn<>uid://depimbd5eofjb::::res://Scenes/car.tscn<>uid://btuoiwrmahgt4::::res://Scripts/city/entities/area_instantiator.gd<>uid://qbf2ejaplhko::::res://Scenes/barquetesimple3.blend
 Glow_Shader.gdshader::Shader::174024960347562346::1774558285::0::1::::<><><>0<>0<><>::
-package.tscn::PackedScene::2541433235340454751::1774736284::0::1::::<><><>0<>0<><>::uid://3hgit47my7i7::::res://Scripts/character/interactable/package/package_spawner.gd
+package.tscn::PackedScene::2541433235340454751::1774647886::0::1::::<><><>0<>0<><>::uid://3hgit47my7i7::::res://Scripts/character/packages/package_spawner.gd
 player.tscn::PackedScene::765630973226337318::1767573746::0::1::::<><><>0<>0<><>::uid://rp6tci1gjxpq::::res://Scripts/character/bone_instantiator.gd
 testttttttt.tscn::PackedScene::5724835780795847803::1764883568::0::1::::<><><>0<>0<><>::uid://coaepmwjjqvww::::res://Models/auto/barqueted3.blend<>uid://suxxlwyeavv2::::res://Models/auto/chasis.tres<>uid://m2sodxy1bcep::::res://Models/auto/luces.tres<>uid://bb43ngplsfis2::::res://Models/auto/ventanas.tres<>uid://bkbwwloqshhjn::::res://Models/auto/metal.tres<>uid://du5qso8qhjk0v::::res://Models/auto/metal oscuro.tres
 test_slab.tscn::PackedScene::5510825834884884540::1761072817::0::1::::<><><>0<>0<><>::
@@ -90,41 +87,35 @@ garrafa textura.png::CompressedTexture2D::461081472227717547::1762725894::177144
 luz textura.png::CompressedTexture2D::6805572233174648799::1762725894::1771448310::1::::<><><>0<>0<>0f3169eb8756f134879737925f8e474e<>res://.godot/imported/luz textura.png-2095f43252374ee62891d932323d5e47.s3tc.ctex::
 marco textura.png::CompressedTexture2D::4521124324136316203::1762725894::1771448310::1::::<><><>0<>0<>11432400c400efbc1bd85e8e222073f8<>res://.godot/imported/marco textura.png-a8d6d54c180bd6055d5d46e758bde3cd.s3tc.ctex::
 ::res://Scripts/::1773936067
-::res://Scripts/character/::1774740716
-bone_instantiator.gd::GDScript::1226092283612256082::1774740716::0::1::::BoneInstantiator<>Node3D<><>0<>0<><>::
-player_controller.gd::GDScript::435046117816229089::1774736777::0::1::::PlayerController<>Node<><>0<>0<><>::
-::res://Scripts/character/abstract/::1774674237
-archetypes.gd::GDScript::8027365844528752703::1774674237::0::1::::EntityArchetype<>RefCounted<><>0<>0<><>::
+::res://Scripts/character/::1774647856
+bone_instantiator.gd::GDScript::1226092283612256082::1774645922::0::1::::BoneInstantiator<>Node3D<><>0<>0<><>::
+player_controller.gd::GDScript::435046117816229089::1774647792::0::1::::PlayerController<>Node<><>0<>0<><>::
+::res://Scripts/character/abstract/::1774644847
+archetypes.gd::GDScript::8027365844528752703::1774644847::0::1::::EntityArchetype<>RefCounted<><>0<>0<><>::
 entity_instantiation.gd::GDScript::6817974987898998302::1773751546::0::1::::EntityInstantiation<>RefCounted<><>0<>0<><>::
 species.gd::GDScript::345204219848979680::1773694567::0::1::::EntitySpecie<>RefCounted<><>0<>0<><>::
-::res://Scripts/character/animation/::1774740716
-animations.gd::GDScript::567133455242391327::1774661926::0::1::::BoneAnimations<>Node<><>0<>0<><>::
-animation_modifiers.gd::GDScript::2735904420846953449::1774737927::0::1::::AnimationModifiers<>Node<><>0<>0<><>::
-arms_controller.gd::GDScript::5294022276116184382::1774670864::0::1::::ArmsController<>Node<><>0<>0<><>::
-ik_util.gd::GDScript::4007581012796352977::1774740716::0::1::::IkUtil<>RefCounted<><>0<>0<><>::
+::res://Scripts/character/animation/::1774647811
+animation_modifiers.gd::GDScript::2735904420846953449::1774647792::0::1::::AnimationModifiers<>Node<><>0<>0<><>::
+arms_controller.gd::GDScript::5294022276116184382::1774647792::0::1::::ArmsController<>Node<><>0<>0<><>::
+ik_util.gd::GDScript::4007581012796352977::1774535558::0::1::::IkUtil<>RefCounted<><>0<>0<><>::
 locomotion_signals.gd::GDScript::8138627130483821961::1774556743::0::1::::LocomotionSignals<>RefCounted<><>0<>0<><>::
-procedural_bone_animation.gd::GDScript::939499812986483018::1774737937::0::1::::ProceduralBoneAnimator<>RefCounted<><>0<>0<><>::
+procedural_bone_animation.gd::GDScript::939499812986483018::1774552489::0::1::::ProceduralBoneAnimator<>RefCounted<><>0<>0<><>::
 ragdoll_util.gd::GDScript::4917027309412070728::1774559190::0::1::::RagdollUtil<>RefCounted<><>0<>0<><>::
 ::res://Scripts/character/hud/::1774647856
 impact_debug.gd::GDScript::5598155494036319537::1774015683::0::1::::ImpactDebugHUD<>Control<><>0<>0<><>::
 player_HUD.gd::GDScript::2239889982950050570::1774549954::0::1::::PlayerHUD<>CanvasLayer<><>0<>0<><>::
 stability_hud.gd::GDScript::4076658641964936561::1773928258::0::1::::StabilityHUD<>Control<><>0<>0<><>::
-::res://Scripts/character/interactable/::1774736294
-::res://Scripts/character/interactable/package/::1774736298
-grabbable.gd::GDScript::3870999644949676289::1774661228::0::1::::Grabbable<>Node3D<><>0<>0<><>::
-package_generator.gd::GDScript::1100707448426043496::1774662882::0::1::::PackageGenerator<>RefCounted<><>0<>0<><>::
-package_spawner.gd::GDScript::1980117898665094128::1774662617::0::1::::PackageSpawner<>Node3D<><>0<>0<><>::
-::res://Scripts/character/interactable/seat/::1774740716
-seat.tscn::PackedScene::822122716351225613::1774736886::0::1::::<><><>0<>0<><>::uid://bty1jt5r2ar41::::res://Scripts/character/interactable/seat/seat.gd<>uid://b08rnlsxfdmly::::res://Models/interactables/ship_seat.tscn
-seat.gd::GDScript::3771149537966512264::1774740716::0::1::::Seat<>StaticBody3D<><>0<>0<><>::
-seat_controller.gd::GDScript::2789682361254471174::1774740716::0::1::::SeatController<>Node<><>0<>0<><>::
-::res://Scripts/character/physics/::1774737030
-character_rigidbody_3d.gd::GDScript::4124879486145027151::1774737030::0::1::::CharacterRigidBody3D<>RigidBody3D<><>0<>0<><>::
-grab_controller.gd::GDScript::7116697915251191822::1774721909::0::1::::GrabController<>Node<><>0<>0<><>::
-::res://Scripts/character/static/::1774674325
-custom_bone.gd::GDScript::7303680877299981931::1774654882::0::1::::CustomBone<>Node3D<><>0<>0<><>::
+::res://Scripts/character/packages/::1774633693
+grabbable.gd::GDScript::3870999644949676289::1774627753::0::1::::Grabbable<>Node3D<><>0<>0<><>::
+package_generator.gd::GDScript::1100707448426043496::1774633693::0::1::::PackageGenerator<>RefCounted<><>0<>0<><>::
+package_spawner.gd::GDScript::1980117898665094128::1774629061::0::1::::PackageSpawner<>Node3D<><>0<>0<><>::
+::res://Scripts/character/physics/::1774647792
+character_rigidbody_3d.gd::GDScript::4124879486145027151::1774560792::0::1::::CharacterRigidBody3D<>RigidBody3D<><>0<>0<><>::
+grab_controller.gd::GDScript::7116697915251191822::1774647792::0::1::::GrabController<>Node<><>0<>0<><>::
+::res://Scripts/character/static/::1774647816
+custom_bone.gd::GDScript::7303680877299981931::1774560740::0::1::::CustomBone<>Node3D<><>0<>0<><>::
 custom_bones_util.gd::GDScript::7938771750587122071::1774038960::0::1::::CustomBonesUtil<>RefCounted<><>0<>0<><>::
-skeleton_sizes_util.gd::GDScript::8137534484398750668::1774674325::0::1::::SkeletonSizesUtil<>RefCounted<><>0<>0<><>::
+skeleton_sizes_util.gd::GDScript::8137534484398750668::1774541896::0::1::::SkeletonSizesUtil<>RefCounted<><>0<>0<><>::
 ::res://Scripts/city/::1769987205
 ::res://Scripts/city/block/::1773096059
 block_generator.gd::GDScript::7432849795240157090::1773096059::0::1::::BlockGenerator<>RefCounted<><>0<>0<><>::
@@ -158,8 +149,8 @@ flying_car.gd::GDScript::8238447524207520012::1771447314::0::1::::FlyingCar<>Nod
 path_follower.gd::GDScript::1117882128423434556::1768702844::0::1::::PathController<>Node<><>0<>0<><>::
 ::res://Scripts/city/neighborhood/::1771462877
 neighborhood_types.gd::GDScript::4542700076244010305::1771462877::0::1::::NeighborhoodTypes<>RefCounted<><>0<>0<><>::
-::res://Scripts/common/::1774667927
-debug_util.gd::GDScript::854740124712231484::1774667927::0::1::::DebugUtil<>RefCounted<><>0<>0<><>::
+::res://Scripts/common/::1773354662
+debug_util.gd::GDScript::854740124712231484::1771447314::0::1::::DebugUtil<>RefCounted<><>0<>0<><>::
 deprecated.gd::GDScript::5953465819678321289::1761101390::0::1::::<>RigidBody3D<><>0<>0<><>::
 interactable.gd::GDScript::6324357357761622268::1771448212::0::1::::Interactable<>StaticBody3D<><>0<>0<><>::
 labelable.gd::GDScript::6852293299424480382::1773354662::0::1::::<>Node3D<><>0<>1<><>::

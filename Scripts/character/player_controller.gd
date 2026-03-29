@@ -38,8 +38,6 @@ var _prev_fall_rb: CharacterRigidBody3D = null
 var grab_controller: GrabController = null
 var arms_controller: ArmsController = null
 
-var seat_controller: SeatController = null
-
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
     char_rigidbody = rb
     player_camera  = cam
@@ -66,9 +64,6 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
     _debug_camera.current = false
     add_child(_debug_camera)
     _set_debug_cam(0)
-    seat_controller = SeatController.new()
-    add_child(seat_controller)
-    seat_controller.setup(char_rigidbody, player_camera, self)
 
 func _get_bi() -> BoneInstantiator:
     return char_rigidbody.get_parent() as BoneInstantiator
@@ -102,8 +97,6 @@ func _input(event: InputEvent) -> void:
     if not is_ready:
         return
 
-    if is_instance_valid(seat_controller):
-        seat_controller.handle_input(event)
     if is_instance_valid(grab_controller):
         grab_controller.handle_input(event)
 
@@ -170,22 +163,15 @@ func _physics_process(delta: float) -> void:
         _update_ragdoll_camera(delta)
         return
 
-    if is_instance_valid(seat_controller):
-        seat_controller.update(delta)
+    char_rigidbody.rotation.y = camera_yaw
 
-    var seated := is_instance_valid(seat_controller) and seat_controller.is_seated
-
-    if not seated:
-        char_rigidbody.rotation.y = camera_yaw
-
-    if _debug_cam_mode == 0 and not seated:
+    if _debug_cam_mode == 0:
         var target_y := head_bone.global_position.y + head_size.y * 0.5
         camera_y_smooth = lerp(camera_y_smooth, target_y, clamp(delta * CAMERA_Y_SMOOTH, 0.0, 1.0))
         player_camera.global_position.y = camera_y_smooth
         player_camera.rotation.x = camera_pitch
 
-    if not seated:
-        _process_stamina(delta)
+    _process_stamina(delta)
 
     if _is_charging_jump:
         if char_rigidbody.is_grounded and not _is_crouched:
@@ -353,8 +339,6 @@ func _find_bone_instantiator(node: Node) -> BoneInstantiator:
 
 
 func _switch_to(target: BoneInstantiator) -> void:
-    if is_instance_valid(seat_controller) and seat_controller.is_seated:
-        seat_controller.stand_up()
     var current_bi := _get_bi()
     if not (is_instance_valid(current_bi.ragdoll_util) and current_bi.ragdoll_util.is_active):
         current_bi.char_rigidbody.is_active = false
@@ -415,16 +399,11 @@ func _switch_to(target: BoneInstantiator) -> void:
     _connect_fall_signal(char_rigidbody)
     _set_debug_cam(_debug_cam_mode)
 
-    if is_instance_valid(seat_controller):
-        seat_controller.update_references(char_rigidbody, player_camera)
-        
     if is_instance_valid(grab_controller):
         grab_controller.stop_all()
 
 
 func _respawn() -> void:
-    if is_instance_valid(seat_controller) and seat_controller.is_seated:
-        seat_controller.stand_up()
     var current_bi := _get_bi()
     if not current_bi:
         return
@@ -473,9 +452,6 @@ func _respawn() -> void:
     char_rigidbody.add_child(_hud)
 
     _connect_fall_signal(char_rigidbody)
-    
-    if is_instance_valid(seat_controller):
-        seat_controller.update_references(char_rigidbody, player_camera)
     if is_instance_valid(grab_controller):
         grab_controller.stop_all()
 

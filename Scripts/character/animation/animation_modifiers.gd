@@ -30,8 +30,6 @@ func apply(delta: float) -> void:
 	_apply_root_offsets()
 
 func _apply_root_offsets() -> void:
-	if is_instance_valid(bi) and bi.is_seated:
-		return
 	var y          := JUMP_SQUAT_Y    * jump_squat_t + CROUCH_Y    * crouch_t
 	var z          := JUMP_SQUAT_Z    * jump_squat_t + CROUCH_Z    * crouch_t
 	var tilt       := JUMP_SQUAT_TILT * jump_squat_t + CROUCH_TILT * crouch_t
