@@ -258,7 +258,8 @@ func _apply_arm_grab(delta: float, upper: CustomBone, lower: CustomBone, ik_targ
 	else:
 		elbow_dir = -char_basis.z
 
-	pole.global_position = shoulder + elbow_dir * new_upper_l * 1.5
+	var grab_pole_world := shoulder + elbow_dir * new_upper_l * 1.5
+	pole.global_position = pole.global_position.lerp(grab_pole_world, blend)
 
 func _apply_throw_arms(delta: float) -> void:
 	if not is_instance_valid(anim_mod):
