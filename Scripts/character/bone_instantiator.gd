@@ -233,11 +233,13 @@ func _physics_process(delta: float) -> void:
     if is_seated and is_instance_valid(current_seat):
         current_seat.update_borrowed_mesh()
         var seat_pos : Vector3 = current_seat.global_position
+        var backward  := char_rigidbody.global_transform.basis.z
+        var z_offset  :float= skel_sizes_util.upper_leg_size.y - current_seat.seat_area.z * 0.5
         custom_bones_util.lower_spine.global_position = Vector3(
             seat_pos.x,
             seat_pos.y + current_seat.height,
             seat_pos.z
-        )
+        ) + backward * z_offset
         char_rigidbody.global_position.x = seat_pos.x
         char_rigidbody.global_position.z = seat_pos.z
 
