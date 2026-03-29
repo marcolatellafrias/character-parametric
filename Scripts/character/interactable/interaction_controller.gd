@@ -8,14 +8,10 @@ var anim_mod: AnimationModifiers
 
 var grab_stiffness:           float = 150.0
 var grab_damping:             float = 15.0
-var grab_dist_min:            float = 0.5
-var grab_dist_max:            float = 5.0
 var grab_rotation_sensitivity: float = 0.005
 var grab_rotation_stiffness:  float = 50.0
 var grab_rotation_damping:    float = 8.0
-var grab_sag_factor:          float = 0.3
 var show_grab_curve:          bool  = true
-var grab_curve_color:         Color = Color(1, 1, 1)
 var grab_cone_half_angle:     float = 120.0
 var throw_strength:           float = 500.0
 var throw_max_charge_time:    float = 0.5
@@ -30,7 +26,7 @@ var _is_rotating:           bool        = false
 var _grab_target_rotation:  Quaternion  = Quaternion.IDENTITY
 var _grab_relative_rotation: Quaternion = Quaternion.IDENTITY
 
-var _curve_mesh:        MeshInstance3D = null
+var _line_mesh:         MeshInstance3D = null
 var _is_charging_throw: bool           = false
 var _throw_charge:      float          = 0.0
 var _effort_timer:      float          = 0.0
@@ -42,7 +38,9 @@ var _entity_instantiation: EntityInstantiation      = null
 var detector: InteractionDetector = null
 
 var interact_dist_max: float = 0.0
+var grab_dist_max:     float = 0.0
 var grip_dist_max:     float = 0.0
+var grab_dist_min:            float = 0.5
 
 signal high_effort_started()
 signal high_effort_ended()
@@ -59,14 +57,13 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: 
     add_child(detector)
     detector.setup(rb, cam, rb.get_parent() as BoneInstantiator)
 
-    set_reach(max_reach)  # ahora detector ya existe
+    set_reach(max_reach)
 
-# En InteractionController.set_reach()
 func set_reach(max_reach: float) -> void:
-    interact_dist_max = max_reach * 0.85   # interactability — el menor
-    grab_dist_max     = max_reach * 0.9   # extension arms
+    interact_dist_max = max_reach * 0.85
+    grab_dist_max     = max_reach * 0.9
     grab_dist_min     = max_reach * 0.1
-    grip_dist_max     = max_reach * 1.0   # grip loss — el mayor
+    grip_dist_max     = max_reach * 1.0
     if is_instance_valid(detector):
         detector.set_reach(interact_dist_max)
 
@@ -109,6 +106,7 @@ func update(delta: float) -> void:
             return
         if is_instance_valid(arms_controller):
             arms_controller.update_grab_handles(delta, _controlled, _get_interaction_origin(), handle)
+        _update_debug_line()
         return
 
     if not is_instance_valid(_grabbed):
@@ -124,8 +122,8 @@ func update(delta: float) -> void:
         var grabbable := _get_grabbable(_grabbed)
         if is_instance_valid(grabbable):
             arms_controller.update_grab_handles(delta, grabbable, _get_interaction_origin(), _grabbed_grab_point)
-    _update_curve()
-        
+    _update_debug_line()
+
 func stop_all() -> void:
     _stop_grab()
     _stop_control()
@@ -152,11 +150,13 @@ func _start_control(ctrl: ControllableInteractable) -> void:
     if is_instance_valid(arms_controller):
         arms_controller.start_grab(ctrl, origin, handle, grab_dist_min, grab_dist_max)
 
-
 func _stop_control() -> void:
     if is_instance_valid(_controlled):
         _controlled.stop_control()
     _controlled = null
+    if is_instance_valid(_line_mesh):
+        _line_mesh.queue_free()
+        _line_mesh = null
     if is_instance_valid(arms_controller):
         arms_controller.stop_grab()
 
@@ -185,9 +185,9 @@ func _stop_grab() -> void:
     _grabbed            = null
     _grabbed_grab_point = null
     _is_rotating        = false
-    if is_instance_valid(_curve_mesh):
-        _curve_mesh.queue_free()
-        _curve_mesh = null
+    if is_instance_valid(_line_mesh):
+        _line_mesh.queue_free()
+        _line_mesh = null
     if is_instance_valid(arms_controller):
         arms_controller.stop_grab()
 
@@ -244,30 +244,43 @@ func _get_interaction_origin() -> Vector3:
         return player_camera.global_position
     return bi.get_interaction_origin()
 
-
 func _get_grabbable(rb: RigidBody3D) -> GrabbableInteractable:
     for child in rb.get_children():
         if child is GrabbableInteractable:
             return child as GrabbableInteractable
     return null
 
-func _update_curve() -> void:
-    if is_instance_valid(_curve_mesh):
-        _curve_mesh.queue_free()
-        _curve_mesh = null
+# ── Debug line ────────────────────────────────────────────────────────────────
+
+func _get_reach_color(dist: float) -> Color:
+    if dist <= interact_dist_max: return Color(0.0, 1.0, 0.0)
+    if dist <= grab_dist_max:     return Color(1.0, 1.0, 0.0)
+    if dist <= grip_dist_max:     return Color(1.0, 0.5, 0.0)
+    return Color(1.0, 0.0, 0.0)
+
+func _update_debug_line() -> void:
+    if is_instance_valid(_line_mesh):
+        _line_mesh.queue_free()
+        _line_mesh = null
     if not show_grab_curve:
         return
-    var p0   := _get_interaction_origin()
-    var p2   := _grabbed.global_position
-    var dist := p0.distance_to(p2)
-    var p1   := (p0 + p2) * 0.5 + Vector3.UP * dist * grab_sag_factor
-    var cp0  := p0 + (p1 - p0) * (2.0 / 3.0)
-    var cp1  := p2 + (p1 - p2) * (2.0 / 3.0)
-    _curve_mesh = DebugUtil.create_debug_path3d([
-        { "pos": p0, "in": Vector3.ZERO, "out": cp0 - p0 },
-        { "pos": p2, "in": cp1 - p2,     "out": Vector3.ZERO }
-    ], 16, grab_curve_color, 0.01)
-    get_tree().current_scene.add_child(_curve_mesh)
+    var origin := _get_interaction_origin()
+    var target := Vector3.ZERO
+    if is_instance_valid(_grabbed):
+        target = _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
+    elif is_instance_valid(_controlled):
+        var handle := _controlled.get_nearest_handle_point(origin)
+        target = handle.global_position if is_instance_valid(handle) else _controlled.global_position
+    else:
+        return
+    var color := _get_reach_color(origin.distance_to(target))
+    _line_mesh = DebugUtil.create_debug_path3d([
+        { "pos": origin, "in": Vector3.ZERO, "out": Vector3.ZERO },
+        { "pos": target, "in": Vector3.ZERO, "out": Vector3.ZERO }
+    ], 2, color, 0.01)
+    get_tree().current_scene.add_child(_line_mesh)
+
+# ── Effort ────────────────────────────────────────────────────────────────────
 
 func _update_effort_zone(delta: float) -> void:
     var origin     := _get_interaction_origin()
@@ -321,7 +334,7 @@ func _is_out_of_reach(world_pos: Vector3) -> bool:
         return true
     return false
 
-# Reemplaza handle_input() — eliminar ese método entero
+# ── Input API ─────────────────────────────────────────────────────────────────
 
 func try_interact() -> void:
     var hovered := detector.get_hovered() if is_instance_valid(detector) else null
