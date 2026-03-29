@@ -333,3 +333,25 @@ func _update_grab_cone() -> void:
     var fwd := -player_camera.global_transform.basis.z
     grab_cone_mesh.global_position = origin
     grab_cone_mesh.global_transform.basis = Basis.looking_at(-fwd, Vector3.UP)
+
+func get_interaction_origin() -> Vector3:
+    var sizes       := skel_sizes_util
+    var full_height := sizes.leg_height + sizes.torso_height + sizes.head_height
+    var ground_y    := char_rigidbody.global_position.y + (char_rigidbody._capsule_stand_y_offset - full_height * 0.5)
+
+    if is_seated and is_instance_valid(current_seat):
+        var seat_pos    : Vector3 = current_seat.global_position
+        var backward    := char_rigidbody.global_transform.basis.z
+        var z_offset    : float = sizes.upper_leg_size.y - current_seat.seat_area.z * 0.5
+        var spine_world := Vector3(seat_pos.x, seat_pos.y + current_seat.height, seat_pos.z) + backward * z_offset
+        return spine_world + Vector3(0.0,
+            sizes.lower_spine_size.y + sizes.middle_spine_size.y + sizes.upper_spine_size.y + sizes.chest_size.y,
+            0.0)
+
+    var chest_tip_y := ground_y + sizes.leg_height \
+        + sizes.lower_spine_size.y + sizes.middle_spine_size.y \
+        + sizes.upper_spine_size.y + sizes.chest_size.y
+
+    chest_tip_y -= sizes.leg_height * 0.35 * crouch_t
+
+    return Vector3(char_rigidbody.global_position.x, chest_tip_y, char_rigidbody.global_position.z)

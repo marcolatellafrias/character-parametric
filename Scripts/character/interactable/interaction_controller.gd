@@ -41,6 +41,8 @@ var _entity_instantiation: EntityInstantiation      = null
 
 var detector: InteractionDetector = null
 
+var interact_dist_max: float = 0.0  # grab_dist_max * 0.8, se setea en set_reach
+
 signal high_effort_started()
 signal high_effort_ended()
 
@@ -50,18 +52,22 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: 
     arms_controller       = arms
     anim_mod              = anim
     _entity_instantiation = inst
-    set_reach(max_reach)
     _update_grab_strength()
 
     detector = InteractionDetector.new()
     add_child(detector)
     detector.setup(rb, cam, rb.get_parent() as BoneInstantiator)
 
+    set_reach(max_reach)  # ahora detector ya existe
+
+# En InteractionController.set_reach()
 func set_reach(max_reach: float) -> void:
-    grab_dist_max = max_reach
-    grab_dist_min = max_reach * 0.1
+    grab_dist_max     = max_reach
+    grab_dist_min     = max_reach * 0.1
+    interact_dist_max = max_reach * 0.8
     if is_instance_valid(detector):
-        detector.set_reach(max_reach)
+        detector.set_reach(interact_dist_max)
+    print("[IC] set_reach: grab_dist_max=%.3f interact_dist_max=%.3f" % [grab_dist_max, interact_dist_max])
 
 func set_entity_instantiation(inst: EntityInstantiation) -> void:
     _entity_instantiation = inst
@@ -148,36 +154,30 @@ func update(delta: float) -> void:
         if is_instance_valid(anim_mod):
             anim_mod.set_throw_charge(_throw_charge / throw_max_charge_time, -player_camera.global_transform.basis.z)
 
+    if is_instance_valid(_controlled):
+        var handle     := _controlled.get_nearest_handle_point(_get_interaction_origin())
+        var ctrl_world := handle.global_position if is_instance_valid(handle) else _controlled.global_position
+        if _is_out_of_reach(ctrl_world):
+            _stop_control()
+            return
+        if is_instance_valid(arms_controller):
+            arms_controller.update_grab_handles(delta, _controlled, _get_interaction_origin(), handle)
+        return
+
     if not is_instance_valid(_grabbed):
         _reset_effort()
-    else:
-        _apply_grab_force()
-        if not is_instance_valid(_grabbed):
-            return
-        _apply_grab_torque()
-        _update_effort_zone(delta)
-        if is_instance_valid(arms_controller):
-            var grabbable := _get_grabbable(_grabbed)
-            if is_instance_valid(grabbable):
-                arms_controller.update_grab_handles(delta, grabbable, _get_grab_origin(), _grabbed_grab_point)
-        _update_curve()
+        return
 
-    if is_instance_valid(_controlled) and is_instance_valid(arms_controller):
-        var grab_point := _controlled.get_nearest_handle_point(_get_grab_origin())
-        
-        # Cone check — misma logica que _apply_grab_force
-        var origin  := _get_grab_origin()
-        var cam_fwd := -player_camera.global_transform.basis.z
-        var ctrl_world := grab_point.global_position if is_instance_valid(grab_point) else _controlled.global_position
-        var to_ctrl := ctrl_world - origin
-        if to_ctrl.length() > 0.001:
-            if to_ctrl.normalized().dot(cam_fwd) < cos(deg_to_rad(grab_cone_half_angle)):
-                _stop_control()
-                if is_instance_valid(arms_controller):
-                    arms_controller.stop_grab()
-                return
-        
-        arms_controller.update_grab_handles(delta, _controlled, _get_grab_origin(), grab_point)
+    _apply_grab_force()
+    if not is_instance_valid(_grabbed):
+        return
+    _apply_grab_torque()
+    _update_effort_zone(delta)
+    if is_instance_valid(arms_controller):
+        var grabbable := _get_grabbable(_grabbed)
+        if is_instance_valid(grabbable):
+            arms_controller.update_grab_handles(delta, grabbable, _get_interaction_origin(), _grabbed_grab_point)
+    _update_curve()
         
 func stop_all() -> void:
     _stop_grab()
@@ -198,8 +198,8 @@ func _start_control(ctrl: ControllableInteractable) -> void:
     _controlled = ctrl
     _controlled.start_control()
     if is_instance_valid(arms_controller):
-        var grab_point := ctrl.get_nearest_handle_point(_get_grab_origin())
-        arms_controller.start_grab(ctrl, _get_grab_origin(), grab_point, grab_dist_min, grab_dist_max)
+        var grab_point := ctrl.get_nearest_handle_point(_get_interaction_origin())
+        arms_controller.start_grab(ctrl, _get_interaction_origin(), grab_point, grab_dist_min, grab_dist_max)
 
 func _stop_control() -> void:
     if is_instance_valid(_controlled):
@@ -215,7 +215,7 @@ func _start_grab(grabbable: GrabbableInteractable) -> void:
     if not is_instance_valid(rb):
         return
     _grabbed = rb
-    var origin             := _get_grab_origin()
+    var origin             := _get_interaction_origin()
     _grabbed_grab_point    = grabbable.get_nearest_grab_point(origin)
     var grab_world         := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
     _grab_distance         = clamp(origin.distance_to(grab_world), grab_dist_min, grab_dist_max)
@@ -224,7 +224,7 @@ func _start_grab(grabbable: GrabbableInteractable) -> void:
     var player_rot         := Quaternion(char_rigidbody.global_transform.basis)
     _grab_relative_rotation = player_rot.inverse() * _grab_target_rotation
     if is_instance_valid(arms_controller):
-        arms_controller.start_grab(grabbable, _get_grab_origin(), _grabbed_grab_point, grab_dist_min, grab_dist_max)
+        arms_controller.start_grab(grabbable, _get_interaction_origin(), _grabbed_grab_point, grab_dist_min, grab_dist_max)
 
 func _stop_grab() -> void:
     _reset_effort()
@@ -241,15 +241,13 @@ func _apply_grab_force() -> void:
     if not is_instance_valid(_grabbed):
         _grabbed = null
         return
-    var origin     := _get_grab_origin()
+    var origin     := _get_interaction_origin()
     var cam_fwd    := -player_camera.global_transform.basis.z
     var target_pos := origin + cam_fwd * _grab_distance
     var grab_world := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
-    var to_grab    := grab_world - origin
-    if to_grab.length() > 0.001:
-        if to_grab.normalized().dot(cam_fwd) < cos(deg_to_rad(grab_cone_half_angle)):
-            _stop_grab()
-            return
+    if _is_out_of_reach(grab_world):
+        _stop_grab()
+        return
     var force := (target_pos - grab_world) * grab_stiffness - _grabbed.linear_velocity * grab_damping
     _grabbed.apply_central_force(force)
     _grabbed.sleeping = false
@@ -279,19 +277,19 @@ func _release_throw() -> void:
         if h is GrabbableInteractable:
             var rb := h.get_parent() as RigidBody3D
             if is_instance_valid(rb):
-                rb.apply_impulse(dir * throw_strength * t, rb.global_position - _get_grab_origin())
+                rb.apply_impulse(dir * throw_strength * t, rb.global_position - _get_interaction_origin())
     if is_instance_valid(anim_mod):
         anim_mod.trigger_throw_push(dir)
     _is_charging_throw = false
     _throw_charge      = 0.0
     _stop_grab()
 
-func _get_grab_origin() -> Vector3:
+func _get_interaction_origin() -> Vector3:
     var bi := char_rigidbody.get_parent() as BoneInstantiator
     if not is_instance_valid(bi):
         return player_camera.global_position
-    var chest := bi.custom_bones_util.chest
-    return chest.global_position + chest.global_transform.basis.y * bi.skel_sizes_util.chest_size.y
+    return bi.get_interaction_origin()
+
 
 func _get_grabbable(rb: RigidBody3D) -> GrabbableInteractable:
     for child in rb.get_children():
@@ -305,7 +303,7 @@ func _update_curve() -> void:
         _curve_mesh = null
     if not show_grab_curve:
         return
-    var p0   := _get_grab_origin()
+    var p0   := _get_interaction_origin()
     var p2   := _grabbed.global_position
     var dist := p0.distance_to(p2)
     var p1   := (p0 + p2) * 0.5 + Vector3.UP * dist * grab_sag_factor
@@ -318,7 +316,7 @@ func _update_curve() -> void:
     get_tree().current_scene.add_child(_curve_mesh)
 
 func _update_effort_zone(delta: float) -> void:
-    var origin     := _get_grab_origin()
+    var origin     := _get_interaction_origin()
     var cam_fwd    := -player_camera.global_transform.basis.z
     var grab_world := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
     var to_grab    := (grab_world - origin).normalized()
@@ -342,3 +340,30 @@ func _update_grab_strength() -> void:
     var arch       := _entity_instantiation.arch_final
     grab_stiffness = arch.strenght * arch.weight * 9.8
     grab_damping   = grab_stiffness * 0.1
+
+func _is_outside_cone(world_pos: Vector3) -> bool:
+    var origin  := _get_interaction_origin()
+    var cam_fwd := -player_camera.global_transform.basis.z
+    var to_pos  := world_pos - origin
+    if to_pos.length() <= 0.001:
+        return false
+    return to_pos.normalized().dot(cam_fwd) < cos(deg_to_rad(grab_cone_half_angle))
+
+func _is_out_of_reach(world_pos: Vector3) -> bool:
+    var origin := _get_interaction_origin()
+    var to_pos := world_pos - origin
+    var dist   := to_pos.length()
+    print("[OUT_OF_REACH] dist=%.3f grab_dist_max=%.3f interact_dist_max=%.3f" % [dist, grab_dist_max, interact_dist_max])
+    if dist > grab_dist_max:
+        print("[OUT_OF_REACH] LOST — too far (%.3f > %.3f)" % [dist, grab_dist_max])
+        return true
+    if dist <= 0.001:
+        return false
+    var cam_fwd := -player_camera.global_transform.basis.z
+    var dot     := to_pos.normalized().dot(cam_fwd)
+    var cone    := cos(deg_to_rad(grab_cone_half_angle))
+    print("[OUT_OF_REACH] dot=%.3f cone_threshold=%.3f" % [dot, cone])
+    if dot < cone:
+        print("[OUT_OF_REACH] LOST — outside cone")
+        return true
+    return false

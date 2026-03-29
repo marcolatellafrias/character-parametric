@@ -202,7 +202,7 @@ weight = 20.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.9383507, 0, -9.663)
 
 [node name="ProceduralDashboard" type="Node3D" parent="world"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.502787, 1.5893722, -10.480343)
+transform = Transform3D(1, 0, 0, 0, 0.8165509, 0.5772734, 0, -0.5772734, 0.8165509, -8.502787, 1.441052, -10.752689)
 script = ExtResource("9_k27g2")
 seed_value = 2
 metadata/_custom_type_script = "uid://pujfrya4mhf2"
