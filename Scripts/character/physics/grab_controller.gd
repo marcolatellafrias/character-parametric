@@ -20,7 +20,7 @@ var outline_color: Color = Color(1, 1, 0, 1)
 var outline_size: float = 0.01
 var show_grab_curve: bool = true
 var grab_curve_color: Color = Color(1, 1, 1)
-var grab_cone_half_angle: float = 40.0
+var grab_cone_half_angle: float = 120.0
 
 var throw_strength: float = 500.0
 var throw_max_charge_time: float = 0.5

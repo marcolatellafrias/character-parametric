@@ -5,13 +5,13 @@
 [resource]
 render_priority = 0
 shader = ExtResource("1_god0a")
-shader_parameter/albedo = Color(0.4469843, 0.35739264, 0.38957265, 1)
+shader_parameter/albedo = Color(0.576535, 0.47338498, 0.50895494, 1)
 shader_parameter/clamp_diffuse_to_max = false
 shader_parameter/cuts = 2
 shader_parameter/wrap = 0.0
 shader_parameter/steepness = 1.0
 shader_parameter/use_attenuation = true
-shader_parameter/use_specular = true
+shader_parameter/use_specular = false
 shader_parameter/specular_strength = 1.0
 shader_parameter/specular_shininess = 16.0
 shader_parameter/use_rim = false

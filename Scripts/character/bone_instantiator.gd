@@ -31,7 +31,10 @@ var crouch_t:     float = 0.0
 
 var grab_cone_mesh: MeshInstance3D = null
 var show_grab_cone: bool = false
-var grab_cone_half_angle: float = 40.0
+var grab_cone_half_angle: float = 120.0
+
+var is_seated: bool = false
+var current_seat: Seat = null
 
 func _ready() -> void:
     if is_active:
@@ -163,8 +166,9 @@ func _physics_process(delta: float) -> void:
         else:
             char_rigidbody._ext_ragdoll_state = 0
 
-    ik_util.update_leg_raycast_offsets(char_rigidbody, delta, true,  skel_sizes_util, entity_archetype)
-    ik_util.update_leg_raycast_offsets(char_rigidbody, delta, false, skel_sizes_util, entity_archetype)
+    if not is_seated:
+        ik_util.update_leg_raycast_offsets(char_rigidbody, delta, true,  skel_sizes_util, entity_archetype)
+        ik_util.update_leg_raycast_offsets(char_rigidbody, delta, false, skel_sizes_util, entity_archetype)
 
     if is_instance_valid(ragdoll_util):
         ragdoll_util.update(delta)
@@ -179,28 +183,28 @@ func _physics_process(delta: float) -> void:
             char_rigidbody.is_snapshot_active = true
 
     skel_sizes_util.update(delta, char_rigidbody, entity_instantiation, ik_util)
-    ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, char_rigidbody)
-    ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
+
+    if is_seated and is_instance_valid(current_seat):
+        _apply_seated_leg_pose()
+    else:
+        ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, char_rigidbody)
+        ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
 
     if is_instance_valid(arms_controller):
         arms_controller.update_arm_compress(jump_squat_t, crouch_t)
 
     locomotion_signals.update(delta)
 
-    # 1. Reset arm targets a rest
     ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
     ik_util.right_arm_ik_target.position = skel_sizes_util.right_arm_tip_rest_local
 
-    # 2. Procedural animator acumula offsets sobre rest
     procedural_animator.update()
 
-    # 3. AnimationModifiers aplica root offsets (crouch, jump squat, throw tilt)
     if is_instance_valid(anim_mod):
         anim_mod.jump_squat_t = jump_squat_t
         anim_mod.crouch_t = crouch_t
         anim_mod.apply(delta)
 
-    # 4. Convertir posiciones locales a globales
     var rb_basis := custom_bones_util.lower_spine.global_transform.basis
     var left_anim_offset:  Vector3 = ik_util.left_arm_ik_target.position  - skel_sizes_util.left_arm_tip_rest_local
     var right_anim_offset: Vector3 = ik_util.right_arm_ik_target.position - skel_sizes_util.right_arm_tip_rest_local
@@ -214,11 +218,9 @@ func _physics_process(delta: float) -> void:
     ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_pole_anim_offset)
     ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_pole_anim_offset)
 
-    # 5. ArmsController aplica throw visual y grab visual sobre posiciones globales
     if is_instance_valid(arms_controller):
         arms_controller.apply_world_overrides(delta)
 
-    # 6. Solve IK final
     ik_util.solve_two_bone_ik(custom_bones_util.left_upper_arm, custom_bones_util.left_lower_arm,
         ik_util.left_arm_ik_target.global_position, ik_util.left_arm_pole.global_position)
     ik_util.solve_two_bone_ik(custom_bones_util.right_upper_arm, custom_bones_util.right_lower_arm,
@@ -226,9 +228,9 @@ func _physics_process(delta: float) -> void:
 
     if is_instance_valid(ragdoll_util) and not ragdoll_util.is_recovering:
         ragdoll_util.sync_to_bones()
-        
-    _update_grab_cone()
 
+    _update_grab_cone()
+    
 func _update_local_targets_positions() -> void:
     local_targets.global_position = char_rigidbody.global_position
     local_targets.global_rotation = Vector3(0, char_rigidbody.global_rotation.y, 0)
@@ -296,3 +298,22 @@ func _update_grab_cone() -> void:
     var fwd := -player_camera.global_transform.basis.z
     grab_cone_mesh.global_position = origin
     grab_cone_mesh.global_transform.basis = Basis.looking_at(-fwd, Vector3.UP)
+    
+func _apply_seated_leg_pose() -> void:
+    var fwd   := -char_rigidbody.global_transform.basis.z
+    var up    := Vector3.UP
+    var right := char_rigidbody.global_transform.basis.x
+
+    for is_left in [true, false]:
+        var upper_leg := custom_bones_util.left_upper_leg  if is_left else custom_bones_util.right_upper_leg
+        var lower_leg := custom_bones_util.left_lower_leg  if is_left else custom_bones_util.right_lower_leg
+
+        # Muslo horizontal hacia adelante
+        var upper_dir := fwd
+        upper_leg.global_transform.basis = upper_leg.pose_from_rest_to(upper_dir, up)
+
+        # Espinilla hacia abajo desde la rodilla
+        var knee_world := upper_leg.global_position + fwd * upper_leg.length
+        var lower_dir  := -up
+        lower_leg.global_transform.basis = upper_leg.pose_from_rest_to(lower_dir, fwd)
+        lower_leg.global_position = knee_world

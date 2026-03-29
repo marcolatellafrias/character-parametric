@@ -71,6 +71,10 @@ var crouch_speed_factor: float = 1.0
 
 var impact_y_signed: float = 0.0
 
+var movement_enabled: bool = true
+
+var impact_detection_enabled: bool = true
+
 func get_ground_collision_point() -> Vector3:
 	return _ground_ray.get_collision_point()
 
@@ -92,9 +96,10 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	_frame_force = Vector3.ZERO
 
-	if is_active:
+	if is_active and movement_enabled:     
 		_apply_movement_force()
-	_apply_braking_force()
+	if movement_enabled:                 
+		_apply_braking_force()
 
 	_update_velocity_indicator()
 	_detect_external_impact(delta)
@@ -108,6 +113,9 @@ func _physics_process(delta: float) -> void:
 	_prev_velocity = linear_velocity
 	
 func _detect_external_impact(delta: float) -> void:
+	if not impact_detection_enabled:
+		_prev_velocity = linear_velocity  # evita acumular delta mientras está desactivado
+		return
 	var gravity := get_gravity()
 	var expected_dv := (_frame_force / mass + gravity) * delta
 	var actual_dv   := linear_velocity - _prev_velocity
@@ -287,3 +295,10 @@ func _apply_braking_force() -> void:
 		var brake_force := -horizontal_vel.normalized() * brake_blend
 		apply_central_force(brake_force)
 		_frame_force += brake_force
+
+func reset_impact_state() -> void:
+	impact_xz        = Vector2.ZERO
+	impact_y         = 0.0
+	_impact_xz_vel   = Vector2.ZERO
+	_impact_y_vel    = 0.0
+	_prev_velocity   = Vector3.ZERO

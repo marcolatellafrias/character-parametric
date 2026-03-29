@@ -35,11 +35,19 @@ class NodeAnimEntry:
 var locomotion_signals: LocomotionSignals
 var _entries: Array = []
 var _node_entries: Array = []
+var _position_locked_bones: Array[Node] = []
 
 static func create(signals: LocomotionSignals) -> ProceduralBoneAnimator:
 	var a := ProceduralBoneAnimator.new()
 	a.locomotion_signals = signals
 	return a
+
+func lock_bone_position(bone: Node) -> void:
+	if not _position_locked_bones.has(bone):
+		_position_locked_bones.append(bone)
+
+func unlock_bone_position(bone: Node) -> void:
+	_position_locked_bones.erase(bone)
 
 func register(bone: CustomBone, axis: Axis, driver: SignalType, weight: float, curve: Curve = null) -> void:
 	_register_internal(bone, axis, func(): return _get_signal_value(driver), weight, curve)
@@ -82,6 +90,9 @@ func update() -> void:
 		entry.bone.position.z = entry.rest_local_position.z
 		entry.bone.transform.basis = entry.rest_local_basis
 	for entry in _entries:
+		var is_pos_axis : float = entry.axis == Axis.POS_Y or entry.axis == Axis.POS_Z
+		if is_pos_axis and _position_locked_bones.has(entry.bone):
+			continue
 		var raw: float = entry.driver.call() - entry.rest_signal_value
 		var shaped: float = entry.curve.sample_baked(clamp(raw, 0.0, 1.0)) if entry.curve else raw
 		_apply(entry.bone, entry.axis, shaped * entry.weight, entry)
@@ -137,6 +148,6 @@ func _apply(bone: CustomBone, axis: Axis, value: float, _entry: BoneAnimEntry) -
 			bone.position.y += value
 		Axis.POS_Z:
 			bone.position.z += value
-			
+
 func unregister_bone(bone: CustomBone) -> void:
 	_entries = _entries.filter(func(e): return e.bone != bone)
