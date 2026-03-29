@@ -108,9 +108,9 @@ func update_grab_handles(delta: float, interactable: Interactable, chest_rest_wo
 	if is_instance_valid(grab_point):
 		_grab_point_world = grab_point.global_position
 
-	var cb      := bi.custom_bones_util
-	var left_h  := _best_handle(interactable, cb.left_upper_arm.global_position,  null,   _grab_left_handle_node,  true)
-	var right_h := _best_handle(interactable, cb.right_upper_arm.global_position, left_h, _grab_right_handle_node, false)
+	var handles := _assign_handles(interactable)
+	var left_h  := handles[0]
+	var right_h := handles[1]
 
 	_grab_left_blend_target  = 1.0 if is_instance_valid(left_h)  else 0.0
 	_grab_right_blend_target = 1.0 if is_instance_valid(right_h) else 0.0
@@ -143,8 +143,9 @@ func start_grab(interactable: Interactable, chest_rest_world: Vector3, grab_poin
 	_grab_point_world      = grab_point.global_position if is_instance_valid(grab_point) else chest_rest_world
 
 	var cb      := bi.custom_bones_util
-	var left_h  := _best_handle(interactable, cb.left_upper_arm.global_position,  null,   _grab_left_handle_node,  true)
-	var right_h := _best_handle(interactable, cb.right_upper_arm.global_position, left_h, _grab_right_handle_node, false)
+	var handles := _assign_handles(interactable)
+	var left_h  := handles[0]
+	var right_h := handles[1]
 
 	_grab_left_handle_node  = left_h
 	_grab_right_handle_node = right_h
@@ -338,3 +339,17 @@ func _sync_throw_locals_to_current() -> void:
 	_throw_right_local      = inv * (ik.right_arm_ik_target.global_position - cb.right_upper_arm.global_position)
 	_throw_left_pole_local  = inv * (ik.left_arm_pole.global_position       - cb.left_upper_arm.global_position)
 	_throw_right_pole_local = inv * (ik.right_arm_pole.global_position      - cb.right_upper_arm.global_position)
+
+func _assign_handles(interactable: Interactable) -> Array[Node3D]:
+	var cb := bi.custom_bones_util
+	if interactable.handle_points.size() == 1:
+		var h := interactable.handle_points[0]
+		var dist_l := cb.left_upper_arm.global_position.distance_to(h.global_position)
+		var dist_r := cb.right_upper_arm.global_position.distance_to(h.global_position)
+		if dist_l <= dist_r:
+			return [h, null]
+		else:
+			return [null, h]
+	var left_h  := _best_handle(interactable, cb.left_upper_arm.global_position,  null,   _grab_left_handle_node,  true)
+	var right_h := _best_handle(interactable, cb.right_upper_arm.global_position, left_h, _grab_right_handle_node, false)
+	return [left_h, right_h]
