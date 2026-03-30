@@ -108,9 +108,9 @@ func _preset_steering_wheel() -> DashboardPreset:
 	lever_def.type                = ControlDefinition.ControlType.ONE_AXIS
 	lever_def.grid_size           = Vector2i(1, 2)
 	lever_def.rotation_axis_local = Vector3.RIGHT
-	lever_def.sensitivity         = 0.001
+	lever_def.sensitivity         = 0.005
 	lever_def.max_angle_degrees   = 180.0
-	lever_def.auto_return         = true
+	lever_def.auto_return         = false
 
 	var lever_slot      := DashboardSlot.new()
 	lever_slot.cell      = Vector2i(3, 1)

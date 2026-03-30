@@ -45,9 +45,7 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 	head_size      = h_size
 	is_ready       = true
 	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
-
-	if is_instance_valid(player_camera):
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 	var bi := _get_bi()
 	arms_controller = bi.arms_controller
@@ -59,13 +57,10 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 
 	_hud = PlayerHUD.create(inst)
 	char_rigidbody.add_child(_hud)
-	_hud.visible = is_instance_valid(player_camera)
-
 	_impact_debug_hud = ImpactDebugHUD.create()
 	_connect_fall_signal(char_rigidbody)
 
 	_debug_camera = Camera3D.new()
-	_debug_camera.name = "DebugCamera"
 	_debug_camera.current = false
 	add_child(_debug_camera)
 	_set_debug_cam(0)
@@ -73,9 +68,11 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 func _get_bi() -> BoneInstantiator:
 	return char_rigidbody.get_parent() as BoneInstantiator
 
+
 func _get_arch() -> EntityArchetype:
 	var bi := _get_bi()
 	return bi.entity_instantiation.arch_final if is_instance_valid(bi) else null
+
 
 func _connect_fall_signal(rb: CharacterRigidBody3D) -> void:
 	if is_instance_valid(_prev_fall_rb) and is_instance_valid(_impact_debug_hud):
@@ -85,13 +82,16 @@ func _connect_fall_signal(rb: CharacterRigidBody3D) -> void:
 	if is_instance_valid(_impact_debug_hud):
 		rb.fall_triggered.connect(func(_d): _impact_debug_hud.notify_fall_triggered())
 
+
 func _get_ragdoll() -> RagdollUtil:
 	var bi := _get_bi()
 	return bi.ragdoll_util if is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) else null
 
+
 func _is_ragdoll_active() -> bool:
 	var rd := _get_ragdoll()
 	return rd != null and (rd.is_active or rd.is_recovering)
+
 
 func _input(event: InputEvent) -> void:
 	if not is_ready:
@@ -101,6 +101,7 @@ func _input(event: InputEvent) -> void:
 	var bi     := _get_bi()
 	var seated := is_instance_valid(bi) and bi.is_seated
 
+	# ── Mouse motion ─────────────────────────────────────────────────────────
 	if event is InputEventMouseMotion:
 		if not _is_ragdoll_active():
 			var sens := ic.get_camera_sensitivity_factor() if ic else 1.0
@@ -111,6 +112,7 @@ func _input(event: InputEvent) -> void:
 			ic.apply_grab_rotation(event.relative)
 			ic.apply_controlled_motion(event.relative)
 
+	# ── Mouse buttons ─────────────────────────────────────────────────────────
 	elif event is InputEventMouseButton:
 		match event.button_index:
 			MOUSE_BUTTON_LEFT:
@@ -123,39 +125,47 @@ func _input(event: InputEvent) -> void:
 			MOUSE_BUTTON_WHEEL_DOWN:
 				if ic: ic.adjust_distance(1.0)
 
-	elif event is InputEventKey and event.pressed and not event.echo:
-		match event.keycode:
-			KEY_SPACE:
-				if not _is_crouched and char_rigidbody.is_grounded and not seated:
-					_is_charging_jump = true
-			KEY_CTRL:
-				if not _is_crouched and not seated:
-					_start_crouch()
-			KEY_E:
-				if ic: ic.try_activate(bi)
-			KEY_R:
-				if ic: ic.start_throw_charge()
-			KEY_F:
-				if not seated:
-					var hovered := ic.get_hovered_rb() if ic else null
-					if is_instance_valid(hovered):
-						var target_bi := _find_bone_instantiator(hovered)
-						if target_bi and target_bi != bi:
-							_switch_to(target_bi)
-			KEY_G: _toggle_ragdoll()
-			KEY_P: _respawn()
-			KEY_KP_5: _set_debug_cam(0)
-			KEY_KP_1: _set_debug_cam(1)
-			KEY_KP_2: _set_debug_cam(2)
-			KEY_KP_3: _set_debug_cam(3)
-			KEY_KP_4: _set_debug_cam(4)
-			KEY_KP_6: _set_debug_cam(6)
-			KEY_KP_7: _set_debug_cam(7)
-			KEY_KP_8: _set_debug_cam(8)
-			KEY_KP_9: _set_debug_cam(9)
+	# ── Keyboard ──────────────────────────────────────────────────────────────
+	elif event is InputEventKey and not event.echo:
+		if event.pressed:
+			match event.keycode:
+				# Movimiento
+				KEY_SPACE:
+					if not _is_crouched and char_rigidbody.is_grounded and not seated:
+						_is_charging_jump = true
+				KEY_CTRL:
+					if not _is_crouched and not seated:
+						_start_crouch()
 
-	else:
-		if event is InputEventKey and not event.echo:
+				# Interacción
+				KEY_E:
+					if ic: ic.try_activate(bi)
+				KEY_R:
+					if ic: ic.start_throw_charge()
+				KEY_F:
+					if not seated:
+						var hovered := ic.get_hovered_rb() if ic else null
+						if is_instance_valid(hovered):
+							var target_bi := _find_bone_instantiator(hovered)
+							if target_bi and target_bi != bi:
+								_switch_to(target_bi)
+
+				# Físicas / debug
+				KEY_G: _toggle_ragdoll()
+				KEY_P: _respawn()
+
+				# Cámaras de debug
+				KEY_KP_5: _set_debug_cam(0)
+				KEY_KP_1: _set_debug_cam(1)
+				KEY_KP_2: _set_debug_cam(2)
+				KEY_KP_3: _set_debug_cam(3)
+				KEY_KP_4: _set_debug_cam(4)
+				KEY_KP_6: _set_debug_cam(6)
+				KEY_KP_7: _set_debug_cam(7)
+				KEY_KP_8: _set_debug_cam(8)
+				KEY_KP_9: _set_debug_cam(9)
+
+		else: # released
 			match event.keycode:
 				KEY_SPACE:
 					if _is_charging_jump:
@@ -167,13 +177,13 @@ func _input(event: InputEvent) -> void:
 				KEY_R:
 					if ic: ic.release_throw()
 
+
 func _physics_process(delta: float) -> void:
 	if not is_ready:
 		return
 
-	_gather_inputs()
-
 	var ragdoll_active := _is_ragdoll_active()
+
 	if ragdoll_active and not _was_ragdoll_active:
 		if is_instance_valid(interaction_controller):
 			interaction_controller.stop_all()
@@ -188,7 +198,7 @@ func _physics_process(delta: float) -> void:
 
 	char_rigidbody.rotation.y = camera_yaw
 
-	if _debug_cam_mode == 0 and is_instance_valid(player_camera):
+	if _debug_cam_mode == 0:
 		var target_y := head_bone.global_position.y + head_size.y * 0.5
 		camera_y_smooth = lerp(camera_y_smooth, target_y, clamp(delta * CAMERA_Y_SMOOTH, 0.0, 1.0))
 		player_camera.global_position.y = camera_y_smooth
@@ -208,6 +218,7 @@ func _physics_process(delta: float) -> void:
 		interaction_controller.update(delta)
 
 	_update_hud_throw_jump()
+
 
 func _update_hud(delta: float) -> void:
 	if not is_instance_valid(_hud):
@@ -237,6 +248,7 @@ func _update_hud(delta: float) -> void:
 			char_rigidbody._snapshot_acc_after
 		)
 
+
 func _update_hud_throw_jump() -> void:
 	if not is_instance_valid(_hud):
 		return
@@ -246,32 +258,31 @@ func _update_hud_throw_jump() -> void:
 	_hud.update_throw(throw_t)
 	_hud.update_jump(_jump_charge / jump_max)
 
+
 func _update_ragdoll_camera(_delta: float) -> void:
 	var rd := _get_ragdoll()
-	if _debug_cam_mode == 0 and is_instance_valid(player_camera):
+	if _debug_cam_mode == 0:
 		if rd != null and is_instance_valid(rd.head_body):
 			player_camera.global_position = rd.head_body.global_position
 		player_camera.global_rotation = Vector3(camera_pitch, camera_yaw, 0.0)
 	if rd != null and rd.is_recovering:
 		char_rigidbody.rotation.y = camera_yaw
 
+
 func _set_debug_cam(mode: int) -> void:
 	_debug_cam_mode = mode
 	var bi := _get_bi()
 	if mode == 0:
-		if is_instance_valid(player_camera):
-			player_camera.current = true
-		if is_instance_valid(_debug_camera):
-			_debug_camera.current = false
+		player_camera.current = true
+		_debug_camera.current = false
 		if is_instance_valid(bi):
 			bi.set_first_person_visibility(true)
 	else:
-		if is_instance_valid(_debug_camera):
-			_debug_camera.current = true
-		if is_instance_valid(player_camera):
-			player_camera.current = false
+		_debug_camera.current = true
+		player_camera.current = false
 		if is_instance_valid(bi):
 			bi.set_first_person_visibility(false)
+
 
 func _update_debug_camera() -> void:
 	if _debug_cam_mode == 0 or not is_instance_valid(_debug_camera):
@@ -293,15 +304,17 @@ func _update_debug_camera() -> void:
 	_debug_camera.global_position = look_target + Vector3(flat_offset.x, 0.0, flat_offset.z)
 	_debug_camera.look_at(look_target, Vector3.UP)
 
+
 func _release_jump() -> void:
 	var arch := _get_arch()
 	if arch == null or not char_rigidbody.is_grounded:
 		_cancel_jump_charge()
 		return
-	var t           := _jump_charge / arch.time_to_max_jump
+	var t          := _jump_charge / arch.time_to_max_jump
 	var max_impulse := arch.jump_strenght * char_rigidbody.mass * CharacterRigidBody3D.JUMP_SCALE
 	char_rigidbody.jump(lerpf(max_impulse * 0.3, max_impulse, t))
 	_cancel_jump_charge()
+
 
 func _cancel_jump_charge() -> void:
 	_jump_charge = 0.0
@@ -309,6 +322,7 @@ func _cancel_jump_charge() -> void:
 	if is_instance_valid(bi):
 		var tw := create_tween()
 		tw.tween_property(bi, "jump_squat_t", 0.0, 0.08)
+
 
 func _start_crouch() -> void:
 	var bi := _get_bi()
@@ -323,6 +337,7 @@ func _start_crouch() -> void:
 	tw.tween_callback(func(): char_rigidbody.set_crouched(true))
 	char_rigidbody.crouch_speed_factor = 0.6
 
+
 func _stop_crouch() -> void:
 	var bi := _get_bi()
 	if not is_instance_valid(bi):
@@ -332,6 +347,7 @@ func _stop_crouch() -> void:
 	var tw := create_tween()
 	tw.tween_property(bi, "crouch_t", 0.0, 0.12)
 	char_rigidbody.crouch_speed_factor = 1.0
+
 
 func _toggle_ragdoll() -> void:
 	var bi := _get_bi()
@@ -345,6 +361,7 @@ func _toggle_ragdoll() -> void:
 		char_rigidbody.is_snapshot_active = false
 		bi.ragdoll_util.activate(char_rigidbody, bi.custom_bones_util.lower_spine)
 
+
 func _find_bone_instantiator(node: Node) -> BoneInstantiator:
 	var current := node.get_parent()
 	while current:
@@ -352,6 +369,7 @@ func _find_bone_instantiator(node: Node) -> BoneInstantiator:
 			return current
 		current = current.get_parent()
 	return null
+
 
 func _switch_to(target: BoneInstantiator) -> void:
 	var current_bi := _get_bi()
@@ -376,15 +394,12 @@ func _switch_to(target: BoneInstantiator) -> void:
 	if is_instance_valid(interaction_controller):
 		interaction_controller.arms_controller = arms_controller
 
-	if is_instance_valid(player_camera):
-		if player_camera.get_parent():
-			player_camera.get_parent().remove_child(player_camera)
-		char_rigidbody.add_child(player_camera)
-		player_camera.current = _debug_cam_mode == 0
-		player_camera.position = Vector3.ZERO
-		player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
-
+	player_camera.get_parent().remove_child(player_camera)
+	char_rigidbody.add_child(player_camera)
 	target.player_camera = player_camera
+	player_camera.current = _debug_cam_mode == 0
+	player_camera.position = Vector3.ZERO
+	player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
 	char_rigidbody.is_active = true
 	char_rigidbody.rotation.y = camera_yaw
 	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
@@ -419,6 +434,7 @@ func _switch_to(target: BoneInstantiator) -> void:
 
 	if is_instance_valid(interaction_controller):
 		interaction_controller.stop_all()
+
 
 func _respawn() -> void:
 	var current_bi := _get_bi()
@@ -457,13 +473,11 @@ func _respawn() -> void:
 	_jump_charge = 0.0
 	char_rigidbody.crouch_speed_factor = 1.0
 
-	if is_instance_valid(player_camera):
-		if player_camera.get_parent():
-			player_camera.get_parent().remove_child(player_camera)
-		char_rigidbody.add_child(player_camera)
-		player_camera.current = _debug_cam_mode == 0
-		player_camera.position = Vector3.ZERO
-		player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
+	player_camera.get_parent().remove_child(player_camera)
+	char_rigidbody.add_child(player_camera)
+	player_camera.current = _debug_cam_mode == 0
+	player_camera.position = Vector3.ZERO
+	player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
 
 	if is_instance_valid(_hud):
 		_hud.queue_free()
@@ -474,9 +488,10 @@ func _respawn() -> void:
 	if is_instance_valid(interaction_controller):
 		interaction_controller.stop_all()
 
+
 func _process_stamina(delta: float) -> void:
-	var is_sprinting := char_rigidbody.sprint_input \
-		and char_rigidbody.move_input.y < 0.0 \
+	var is_sprinting := Input.is_action_pressed("sprint") \
+		and Input.get_axis("move_forward", "move_backward") < 0.0 \
 		and char_rigidbody.can_sprint
 
 	if is_sprinting:
@@ -497,19 +512,8 @@ func _process_stamina(delta: float) -> void:
 
 	if is_instance_valid(_hud):
 		_hud.update_stamina(_stamina / stamina_max)
-
+		
 func apply_camera_pitch(pitch: float) -> void:
 	camera_pitch = pitch
 	if is_instance_valid(player_camera):
 		player_camera.rotation.x = camera_pitch
-
-func _gather_inputs() -> void:
-	var m_input := Vector2(
-		Input.get_axis("move_left", "move_right"),
-		Input.get_axis("move_forward", "move_backward")
-	)
-	var sprint := Input.is_action_pressed("sprint")
-	if not is_instance_valid(char_rigidbody):
-		return
-	char_rigidbody.move_input  = m_input
-	char_rigidbody.sprint_input = sprint

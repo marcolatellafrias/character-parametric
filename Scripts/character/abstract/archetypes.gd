@@ -167,7 +167,7 @@ static func kid_arch() -> EntityArchetype:
 	arch.time_to_standup = 1.0
 	arch.throw_strenght = 0.2
 	arch.reach = 0.38
-	arch.reach_multiplier = 2.0
+	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.3
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 1
@@ -285,7 +285,7 @@ static func giga_arch() -> EntityArchetype:
 	arch.time_to_standup = 1.0
 	arch.throw_strenght = 0.8
 	arch.reach = 0.75
-	arch.reach_multiplier = 2.0
+	arch.reach_multiplier = 1.0
 	arch.jump_strenght = 0.2
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 20

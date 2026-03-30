@@ -5,10 +5,6 @@ var _last_impact_world_dir: Vector3 = Vector3.ZERO
 
 var can_sprint: bool = true
 
-# --- NETWORK INPUTS ---
-var move_input: Vector2 = Vector2.ZERO
-var sprint_input: bool = false
-
 const SPEED_SCALE := 10.0
 const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
@@ -140,7 +136,7 @@ func _detect_external_impact(delta: float) -> void:
 			_impact_xz_vel = Vector2.ZERO
 
 	if abs(local_impact.y) > impact_y_threshold:
-		impact_y_signed = local_impact.y
+		impact_y_signed = local_impact.y  # agregá esta línea
 		impact_y = clamp(impact_y + local_impact.y * impact_y_scale, -1.0, 1.0)
 		_impact_y_vel = 0.0
 
@@ -161,7 +157,10 @@ func _update_impact_pd(delta: float) -> void:
 func _apply_movement_force() -> void:
 	var horizontal_vel := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
 
-	var input := move_input
+	var input := Vector2(
+		Input.get_axis("move_left", "move_right"),
+		Input.get_axis("move_forward", "move_backward")
+	)
 
 	if input == Vector2.ZERO:
 		return
@@ -175,7 +174,7 @@ func _apply_movement_force() -> void:
 
 	var forward_component: float = input.y
 	var side_component: float = input.x
-	var is_sprinting := sprint_input and forward_component < 0.0 and can_sprint
+	var is_sprinting := Input.is_action_pressed("sprint") and forward_component < 0.0 and can_sprint
 
 	var abs_fwd: float = abs(forward_component)
 	var abs_side: float = abs(side_component)

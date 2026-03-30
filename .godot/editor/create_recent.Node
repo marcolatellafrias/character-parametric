@@ -1,6 +1,3 @@
-SpawnPoint
-Button
-Control
 ProceduralDashboard
 Node3D
 CollisionShape3D
@@ -13,3 +10,5 @@ Camera3D
 AreaInstantiator
 OmniLight3D
 WorldEnvironment
+CharacterBody3D
+GPUParticles3D
