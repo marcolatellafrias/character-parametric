@@ -40,7 +40,7 @@ var detector: InteractionDetector = null
 var interact_dist_max: float = 0.0
 var grab_dist_max:     float = 0.0
 var grip_dist_max:     float = 0.0
-var grab_dist_min:            float = 0.5
+var grab_dist_min:     float = 0.0
 
 signal high_effort_started()
 signal high_effort_ended()

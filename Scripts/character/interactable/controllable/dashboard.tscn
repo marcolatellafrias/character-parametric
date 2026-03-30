@@ -4,4 +4,10 @@
 
 [node name="Dashboard" type="Node3D"]
 script = ExtResource("1_ona1b")
+grid_columns = null
+grid_rows = null
+cell_size = null
+cell_gap = null
+seed_value = null
+show_debug = null
 metadata/_custom_type_script = "uid://pujfrya4mhf2"

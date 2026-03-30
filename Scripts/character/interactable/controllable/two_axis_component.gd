@@ -23,30 +23,35 @@ func _do_auto_return(delta: float) -> void:
 	state_changed_2d.emit(axis_value)
 	_apply_visual()
 
+# Stick protrudes along local +Z (toward player).
+# Mouse up   → axis_value.y negative → positive X rotation → stick leans "forward".
+# Mouse right → axis_value.x positive → negative Y rotation → stick leans "right".
 func _apply_visual() -> void:
-	rotation = Vector3(
-		axis_value.y  * deg_to_rad(max_angle_degrees),
-		0.0,
-		-axis_value.x * deg_to_rad(max_angle_degrees)
+	rotation = _rest_rot() + Vector3(
+		-axis_value.y * deg_to_rad(max_angle_degrees),
+		-axis_value.x * deg_to_rad(max_angle_degrees),
+		0.0
 	)
-
-func _create_debug_meshes(size: Vector3) -> void:
-	var t        := size.z * 0.5
-	var platform := _make_debug_box(
-		Vector3(size.x * 0.65, t, size.y * 0.65),
-		Color(0.4, 0.75, 0.55),
-		Vector3(0.0, t * 0.5, 0.0)
-	)
-	add_child(platform)
-	var stick_h := size.y * 0.38
-	var stick   := _make_debug_box(
-		Vector3(t * 0.45, stick_h, t * 0.45),
-		Color(0.85, 0.85, 0.3),
-		Vector3(0.0, t + stick_h * 0.5, 0.0)
-	)
-	add_child(stick)
 
 func _setup_handle_points(size: Vector3) -> void:
 	var t       := size.z * 0.5
-	var stick_h := size.y * 0.38
-	add_handle_point_local(Vector3(0.0, t + stick_h, 0.0))
+	var stick_h : float = min(size.x, size.y) * 0.55
+	add_handle_point_local(Vector3(0.0, 0.0, t + stick_h))
+
+func _create_debug_meshes(size: Vector3) -> void:
+	var t        := size.z * 0.5
+	var stick_h  : float = min(size.x, size.y) * 0.55
+	# Flat platform sitting on the dashboard surface
+	var platform := _make_debug_box(
+		Vector3(size.x * 0.65, size.y * 0.65, t),
+		Color(0.4, 0.75, 0.55),
+		Vector3(0.0, 0.0, t * 0.5)
+	)
+	add_child(platform)
+	# Stick protruding in +Z
+	var stick := _make_debug_box(
+		Vector3(t * 0.45, t * 0.45, stick_h),
+		Color(0.85, 0.85, 0.3),
+		Vector3(0.0, 0.0, t + stick_h * 0.5)
+	)
+	add_child(stick)

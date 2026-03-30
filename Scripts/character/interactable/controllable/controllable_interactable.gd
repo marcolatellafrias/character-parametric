@@ -8,6 +8,13 @@ extends Interactable
 @export var snap_lerp_speed:           float        = 8.0
 @export var return_speed:              float        = 3.0
 
+# Applied as a constant offset in every _apply_visual call.
+# Lets you set the resting orientation of any control at instantiation time.
+@export var rest_rotation_deg: Vector3 = Vector3.ZERO
+
+# When set, replaces the debug geometry with this mesh (positioned at _get_mesh_offset).
+@export var custom_mesh: Mesh = null
+
 var grid_size:            Vector2i              = Vector2i(1, 1)
 var visual_value:         float                 = 0.0
 var _network_state:       float                 = 0.0
@@ -17,9 +24,24 @@ var _debug_primary_mat:   StandardMaterial3D    = null
 
 signal state_changed(value: float)
 
+# ── Build ─────────────────────────────────────────────────────────────────────
+
 func build(control_size: Vector3) -> void:
     _clear_handle_points()
     _setup_handle_points(control_size)
+    _apply_custom_mesh()
+
+func build_debug_visuals(control_size: Vector3) -> void:
+    _clear_handle_points()
+    _clear_debug_meshes()
+    _setup_handle_points(control_size)
+    if is_instance_valid(custom_mesh):
+        _apply_custom_mesh()
+    else:
+        _create_debug_meshes(control_size)
+    _visualize_handle_points()
+
+# ── Physics ───────────────────────────────────────────────────────────────────
 
 func _physics_process(delta: float) -> void:
     if _is_being_controlled:
@@ -29,6 +51,8 @@ func _physics_process(delta: float) -> void:
     elif positions.size() > 0:
         visual_value = lerp(visual_value, _network_state, clamp(delta * snap_lerp_speed, 0.0, 1.0))
         _apply_visual()
+
+# ── API ───────────────────────────────────────────────────────────────────────
 
 func get_network_state() -> float:
     return _network_state
@@ -51,6 +75,8 @@ func handle_mouse_motion(_delta: Vector2) -> void:
 
 func handle_scroll(_delta: float) -> void:
     pass
+
+# ── Internals ─────────────────────────────────────────────────────────────────
 
 func _do_auto_return(delta: float) -> void:
     visual_value = move_toward(visual_value, default_value, return_speed * delta)
@@ -77,14 +103,29 @@ func _emit_if_changed(new_state: float) -> void:
 func _apply_visual() -> void:
     pass
 
-# ── Debug ─────────────────────────────────────────────────────────────────────
+# ── Helpers for subclasses ────────────────────────────────────────────────────
 
-func build_debug_visuals(control_size: Vector3) -> void:
-    _clear_handle_points()
-    _clear_debug_meshes()
-    _setup_handle_points(control_size)
-    _create_debug_meshes(control_size)
-    _visualize_handle_points()
+# Returns rest_rotation_deg converted to radians as a Vector3, for use in _apply_visual.
+func _rest_rot() -> Vector3:
+    return Vector3(
+        deg_to_rad(rest_rotation_deg.x),
+        deg_to_rad(rest_rotation_deg.y),
+        deg_to_rad(rest_rotation_deg.z)
+    )
+
+# Override in subclasses that need the mesh offset from origin (e.g. RotatingComponent).
+func _get_mesh_offset() -> Vector3:
+    return Vector3.ZERO
+
+func _apply_custom_mesh() -> void:
+    if not is_instance_valid(custom_mesh):
+        return
+    var mi      := MeshInstance3D.new()
+    mi.mesh      = custom_mesh
+    mi.position  = _get_mesh_offset()
+    add_child(mi)
+
+# ── Debug ─────────────────────────────────────────────────────────────────────
 
 func _create_debug_meshes(_control_size: Vector3) -> void:
     pass
@@ -100,6 +141,24 @@ func _make_debug_box(size: Vector3, color: Color, offset: Vector3 = Vector3.ZERO
         mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
     mi.material_override = mat
     mi.position = offset
+    _debug_meshes.append(mi)
+    return mi
+
+func _make_debug_cylinder(radius: float, height: float, color: Color, offset: Vector3 = Vector3.ZERO, euler_rot: Vector3 = Vector3.ZERO) -> MeshInstance3D:
+    var mi  := MeshInstance3D.new()
+    var cyl := CylinderMesh.new()
+    cyl.top_radius      = radius
+    cyl.bottom_radius   = radius
+    cyl.height          = height
+    cyl.radial_segments = 16
+    mi.mesh             = cyl
+    var mat := StandardMaterial3D.new()
+    mat.albedo_color = color
+    if color.a < 1.0:
+        mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+    mi.material_override = mat
+    mi.position = offset
+    mi.rotation = euler_rot
     _debug_meshes.append(mi)
     return mi
 
@@ -121,7 +180,7 @@ func _clear_debug_meshes() -> void:
             m.queue_free()
     _debug_meshes.clear()
     _debug_primary_mat = null
-    
+
 func _setup_handle_points(_control_size: Vector3) -> void:
     pass
 
@@ -130,21 +189,3 @@ func _visualize_handle_points() -> void:
         if not is_instance_valid(pt):
             continue
         pt.add_child(DebugUtil.create_debug_sphere(Color(1.0, 0.75, 0.0), 0.035, true))
-
-func _make_debug_cylinder(radius: float, height: float, color: Color, offset: Vector3 = Vector3.ZERO, euler_rot: Vector3 = Vector3.ZERO) -> MeshInstance3D:
-    var mi  := MeshInstance3D.new()
-    var cyl := CylinderMesh.new()
-    cyl.top_radius      = radius
-    cyl.bottom_radius   = radius
-    cyl.height          = height
-    cyl.radial_segments = 16
-    mi.mesh             = cyl
-    var mat := StandardMaterial3D.new()
-    mat.albedo_color = color
-    if color.a < 1.0:
-        mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-    mi.material_override = mat
-    mi.position = offset
-    mi.rotation = euler_rot
-    _debug_meshes.append(mi)
-    return mi
