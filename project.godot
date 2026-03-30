@@ -17,10 +17,8 @@ config/features=PackedStringArray("4.5")
 [autoload]
 
 DebugController="*res://Scripts/city/entities/car/debug_scroll.gd"
-
-[display]
-
-window/size/mode=2
+MouseModeManager="*res://Scripts/multiplayer/mouse_mode_manager.gd"
+NetworkManager="*res://Scripts/multiplayer/network_manager.gd"
 
 [file_customization]
 
