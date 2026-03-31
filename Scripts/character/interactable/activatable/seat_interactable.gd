@@ -1,3 +1,4 @@
+@tool
 class_name SeatInteractable
 extends ActivatableInteractable
 
@@ -14,6 +15,9 @@ var _seated_bi:     Node        = null
 var _borrowed_mesh: Node3D      = null
 
 func _ready() -> void:
+	if Engine.is_editor_hint():
+		_build_visual()
+		return
 	_build_visual()
 	_build_collider()
 	_build_spawn_point()

@@ -1,0 +1,5 @@
+[gd_scene load_steps=2 format=3 uid="uid://h7b2788enkb5"]
+
+[ext_resource type="PackedScene" uid="uid://jm52bg0ngwhs" path="res://Scenes/ship/ship.blend" id="1_c5ike"]
+
+[node name="ship" instance=ExtResource("1_c5ike")]

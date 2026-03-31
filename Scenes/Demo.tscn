@@ -1,4 +1,4 @@
-[gd_scene load_steps=29 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=30 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
@@ -10,9 +10,10 @@
 [ext_resource type="PackedScene" uid="uid://2srvdmajgg7q" path="res://Scenes/ship/working_seat.tscn" id="8_h3puh"]
 [ext_resource type="Script" uid="uid://pujfrya4mhf2" path="res://Scripts/character/interactable/controllable/procedural_dashboard.gd" id="9_k27g2"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
-[ext_resource type="PackedScene" uid="uid://dvbx7rqdampcm" path="res://Models/bone.glb" id="11_v3boh"]
+[ext_resource type="PackedScene" uid="uid://chw0r0kp750pi" path="res://Scenes/ship/asiento.blend" id="11_k27g2"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
+[ext_resource type="PackedScene" uid="uid://jm52bg0ngwhs" path="res://Scenes/ship/ship.blend" id="13_h3puh"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
 albedo_texture = ExtResource("1_h3puh")
@@ -155,7 +156,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.1937451, 0.9564251, 6.70036
 mass = 100.0
 
 [node name="StaticBody3D" type="StaticBody3D" parent="world"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -5.1605434)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4.0152493)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="world/StaticBody3D"]
 mesh = SubResource("BoxMesh_v3boh")
@@ -172,15 +173,6 @@ mesh = SubResource("BoxMesh_h3puh")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D2"]
 shape = SubResource("BoxShape3D_k27g2")
 
-[node name="StaticBody3D3" type="StaticBody3D" parent="world"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.182003, -0.24486446, -11.101721)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="world/StaticBody3D3"]
-mesh = SubResource("BoxMesh_k27g2")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="world/StaticBody3D3"]
-shape = SubResource("BoxShape3D_6aqh6")
-
 [node name="StaticBody3D4" type="StaticBody3D" parent="world"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.4067078, -0.24486446, -11.101721)
 
@@ -195,17 +187,43 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -16.150776)
 
 [node name="Node3D" parent="world/new packages" instance=ExtResource("7_k27g2")]
 cells_x = 6
-weight = 20.0
+weight = 40.0
 
-[node name="WorkingSeat" parent="world" instance=ExtResource("8_h3puh")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.9383507, 0, -9.663)
+[node name="ship" parent="world" instance=ExtResource("13_h3puh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5942063, 1.0474467, -8.756634)
 
-[node name="ProceduralDashboard" type="Node3D" parent="world"]
-transform = Transform3D(1, 0, 0, 0, 0.8165509, 0.5772734, 0, -0.5772734, 0.8165509, -8.502787, 1.441052, -10.92087)
+[node name="WorkingSeat" parent="world/ship" instance=ExtResource("8_h3puh")]
+transform = Transform3D(-1, 2.3283064e-10, 4.4703484e-08, 4.48199e-08, 1, 7.450581e-09, -8.940697e-08, 5.5879354e-09, -0.99999964, 1.2103677, -0.9751992, 1.0045166)
+show_debug = true
+
+[node name="WorkingSeat2" parent="world/ship" instance=ExtResource("8_h3puh")]
+transform = Transform3D(-1, 2.3283064e-10, 4.4703484e-08, 4.48199e-08, 1, 7.450581e-09, -8.940697e-08, 5.5879354e-09, -0.99999964, -1.2609015, -1.015, 1.0050001)
+show_debug = true
+
+[node name="WorkingSeat3" parent="world/ship" instance=ExtResource("8_h3puh")]
+transform = Transform3D(-2.9802322e-08, 2.3283064e-10, -1, -1.8626451e-09, 1, 4.4354238e-08, 1, 5.5879354e-09, -4.4703484e-08, 1.2104373, -0.9750719, -1.0369663)
+show_debug = true
+
+[node name="WorkingSeat4" parent="world/ship" instance=ExtResource("8_h3puh")]
+transform = Transform3D(-4.4703484e-08, 2.3283064e-10, 1, 5.5879354e-09, 1, -3.585592e-08, -0.99999994, 5.5879354e-09, -4.4703484e-08, -1.2609015, -1.015, -1.0369997)
+show_debug = true
+
+[node name="ProceduralDashboard" type="Node3D" parent="world/ship"]
+transform = Transform3D(-1.0000001, -4.3181767e-08, -7.6013656e-08, -8.393578e-08, 0.71736056, 0.6967018, 2.4444386e-08, 0.6967018, -0.71736056, 1.8645396, 0.42503023, 2.4398432)
 script = ExtResource("9_k27g2")
+grid_columns = 6
 seed_value = 6
 preset_type = 1
 metadata/_custom_type_script = "uid://pujfrya4mhf2"
+
+[node name="ProceduralDashboard2" type="Node3D" parent="world/ship"]
+transform = Transform3D(-1.0000004, -8.742275e-08, 3.8213697e-15, 0, -4.3711374e-08, -0.99999964, 8.7422805e-08, -0.99999964, 4.3711374e-08, 2.0588126, 1.1116676, 1.3728714)
+script = ExtResource("9_k27g2")
+seed_value = 8
+metadata/_custom_type_script = "uid://pujfrya4mhf2"
+
+[node name="asiento" parent="world/ship" instance=ExtResource("11_k27g2")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.0478086, -1.0178721, 6.3207936)
 
 [node name="chars" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
@@ -214,11 +232,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.235, 0.3, -10.597)
 is_active = true
 
-[node name="AreaInstantiator" type="Node3D" parent="chars/fat" node_paths=PackedStringArray("cameras", "world")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.235, -0.3, 10.597)
+[node name="AreaInstantiator" type="Node3D" parent="chars/fat"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 37.15596, 14.783778, 45.908176)
 script = ExtResource("12_k27g2")
-cameras = [null]
-world = NodePath("../../../world")
+outer_radius = 1000.0
 metadata/_custom_type_script = "uid://btuoiwrmahgt4"
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="chars/fat"]
@@ -243,15 +260,6 @@ master_seed = 1
 [node name="normal" parent="chars" instance=ExtResource("11_ymvx6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.446537, 0.29999995, -10.347981)
 master_seed = 10
-
-[node name="bone" parent="chars" instance=ExtResource("11_v3boh")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.0371246, 0.47957346, -19.87078)
-
-[node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 4.595005, 8.0720005, 4.616742)
-current = true
-
-[node name="city" type="Node3D" parent="."]
 
 [node name="Mirror3D" parent="." instance=ExtResource("8_ecetj")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 0.9999998, 13.763744, 0.52957535, -21.834743)

@@ -1,0 +1,5 @@
+[gd_scene load_steps=2 format=3 uid="uid://bpxdinpui6tv0"]
+
+[ext_resource type="PackedScene" uid="uid://chw0r0kp750pi" path="res://Scenes/ship/asiento.blend" id="1_20lyq"]
+
+[node name="asiento" instance=ExtResource("1_20lyq")]

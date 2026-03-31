@@ -1,13 +1,5 @@
-[gd_scene load_steps=4 format=3 uid="uid://bwn806fxs4i4b"]
+[gd_scene load_steps=2 format=3 uid="uid://d3v8fwt5bmq48"]
 
 [ext_resource type="PackedScene" uid="uid://chw0r0kp750pi" path="res://Scenes/ship/asiento.blend" id="1_qcfdm"]
-[ext_resource type="Material" uid="uid://du5qso8qhjk0v" path="res://Models/auto/metal oscuro.tres" id="2_qcfdm"]
-[ext_resource type="Material" uid="uid://bb43ngplsfis2" path="res://Models/auto/ventanas.tres" id="3_qcfdm"]
 
 [node name="asiento" instance=ExtResource("1_qcfdm")]
-
-[node name="Cube" parent="." index="0"]
-surface_material_override/0 = ExtResource("2_qcfdm")
-
-[node name="Cylinder_001" parent="." index="1"]
-surface_material_override/0 = ExtResource("3_qcfdm")

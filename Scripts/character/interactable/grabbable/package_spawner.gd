@@ -37,5 +37,6 @@ static func _create(cx: int, cy: int, cz: int, weight: float) -> RigidBody3D:
 	var grabbable := GrabbableInteractable.new()
 	rb.add_child(grabbable)
 	grabbable.setup_from_cells(cx, cy, cz)
+	grabbable.show_debug_points()
 
 	return rb

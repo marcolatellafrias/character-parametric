@@ -5,7 +5,7 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(800, 800)
+@export var region_size: Vector2 = Vector2(800/2, 800/2)
 @export var min_distance: float = 180.5*1.3
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
@@ -90,8 +90,8 @@ extends Node3D
 @export_group("Buildings")
 @export var show_buildings: bool = true
 @export var show_building_colliders: bool = true
-@export var alternate_floor_shading: bool = true
-@export var alternate_module_shading: bool = true
+@export var alternate_floor_shading: bool = false
+@export var alternate_module_shading: bool = false
 @export_range(0.1, 0.9) var floor_shade_factor: float = 0.85
 
 @export_group("Planos de Pisos")

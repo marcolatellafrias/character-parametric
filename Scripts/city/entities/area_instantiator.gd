@@ -29,6 +29,7 @@ class_name AreaInstantiator
 @export var spawn_interval: float = 0.1
 @export var spawn_safety_margin: float = 3.0
 @export var max_cars_per_cylinder: int = 50
+@export var require_offscreen_spawn: bool = false
 
 var generator: GraphCityGenerator = null
 var debug_cylinder_meshes: Array[MeshInstance3D] = []
@@ -265,17 +266,28 @@ func _create_grid_points_for_volume(vol: LaneVolume, color: Color) -> void:
 func _try_spawn_car() -> void:
 	var spawn_candidates: Array[Dictionary] = []
 	
+	print("DEBUG: cylinder_lane_volumes count: ", cylinder_lane_volumes.size())
+	
 	for cyl_vol in cylinder_lane_volumes:
-		if _has_continuation_in_cylinder(cyl_vol) and not _is_lane_volume_visible(cyl_vol):
+		var has_cont = _has_continuation_in_cylinder(cyl_vol)
+		var is_visible = _is_lane_volume_visible(cyl_vol)
+		print("DEBUG: vol ", cyl_vol.get_id(), " | has_continuation: ", has_cont, " | is_visible: ", is_visible, " | require_offscreen: ", require_offscreen_spawn)
+		
+		if _has_continuation_in_cylinder(cyl_vol) and (not require_offscreen_spawn or not _is_lane_volume_visible(cyl_vol)):
 			var vol_id = cyl_vol.get_id()
 			if volume_area_refs.has(vol_id):
 				for cylinder_idx in volume_area_refs[vol_id]:
+					print("DEBUG: cylinder_idx: ", cylinder_idx, " | car_count: ", cylinder_car_counts[cylinder_idx], " | max: ", max_cars_per_cylinder)
 					if cylinder_car_counts[cylinder_idx] < max_cars_per_cylinder:
 						spawn_candidates.append({
 							"volume": cyl_vol,
 							"cylinder_index": cylinder_idx
 						})
 						break
+			else:
+				print("DEBUG: vol_id ", vol_id, " no está en volume_area_refs")
+	
+	print("DEBUG: spawn_candidates: ", spawn_candidates.size())
 	
 	if spawn_candidates.is_empty():
 		return
@@ -294,6 +306,7 @@ func _try_spawn_car() -> void:
 		temp_car.initialize_from_seed(car_seed, custom_weights)
 		
 		if not _can_spawn_car_type(volume_id, cylinder_idx, temp_car.car_archetype):
+			print("DEBUG: _can_spawn_car_type falló para tipo ", temp_car.car_archetype, " en vol ", volume_id)
 			temp_car.free()
 			spawn_candidates.erase(selected)
 			continue
@@ -313,20 +326,24 @@ func _try_spawn_car() -> void:
 			var validation = selected_vol.validate_face_projection(front_face, random_u, random_v)
 			
 			if not validation["valid"]:
+				print("DEBUG: attempt ", attempt, " | validate_face_projection falló")
 				continue
 			
 			var direction = (end_pos - spawn_pos).normalized()
 			if _check_spawn_collision(spawn_pos, direction, temp_car.width, temp_car.height, temp_car.depth):
+				print("DEBUG: attempt ", attempt, " | colisión detectada en spawn")
 				continue
 			
 			temp_car.free()
 			_spawn_car_at_volume(selected_vol, random_u, random_v, car_seed, custom_weights, cylinder_idx)
+			print("DEBUG: ¡Auto spawneado en vol ", volume_id, "!")
 			spawned = true
 			break
 		
 		if spawned:
 			return
 		
+		print("DEBUG: todos los intentos fallaron para vol ", volume_id)
 		temp_car.free()
 		spawn_candidates.erase(selected)
 

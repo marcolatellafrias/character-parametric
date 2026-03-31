@@ -1,3 +1,4 @@
+@tool
 class_name ProceduralDashboard
 extends Node3D
 
@@ -27,6 +28,9 @@ var _grid: Array                 = []
 var _rng:  RandomNumberGenerator = null
 
 func _ready() -> void:
+	if Engine.is_editor_hint():
+		generate()
+		return
 	generate()
 
 func generate() -> void:

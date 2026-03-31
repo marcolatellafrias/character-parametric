@@ -74,3 +74,32 @@ func _generate_handle_points(cx: int, cy: int, cz: int, sx: float, sy: float, sz
 					1: pos = Vector3(pa, fc, pb)
 					2: pos = Vector3(pa, pb, fc)
 				add_handle_point_local(pos)
+
+func show_debug_points() -> void:
+	for pt in grab_points:
+		if not is_instance_valid(pt):
+			continue
+		var mi := MeshInstance3D.new()
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.03
+		sphere.height = 0.06
+		mi.mesh = sphere
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color.CYAN
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mi.material_override = mat
+		pt.add_child(mi)
+
+	for pt in handle_points:
+		if not is_instance_valid(pt):
+			continue
+		var mi := MeshInstance3D.new()
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.03
+		sphere.height = 0.06
+		mi.mesh = sphere
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color.YELLOW
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mi.material_override = mat
+		pt.add_child(mi)
