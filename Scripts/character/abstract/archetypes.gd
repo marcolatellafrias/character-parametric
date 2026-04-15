@@ -145,7 +145,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.hips_width_proportion = 0.09
 	arch.shoulder_width_proportion = 0.13
 	arch.distance_from_ground_factor = 0.05
-	arch.head_neck_ratio = 0.45
+	arch.head_neck_ratio = 0.3
 	arch.stance_width = 1.4
 	arch.step_duration_scale = 1.3
 	return arch

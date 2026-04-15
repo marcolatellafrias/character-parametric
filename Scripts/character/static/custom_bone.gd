@@ -44,20 +44,19 @@ func set_rigidbody(rigid_body: RigidBody3D) -> void:
 	rigid_body.add_child(mesh_instance3d)
 	rigid_body.camera.position = Vector3(0, 1.7, 2.7)
 
-static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, new_color: Color, offsets: Vector3, father_bone: CustomBone=null, use_father_end: bool= true) -> CustomBone:
+static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, new_color: Color, offsets: Vector3, father_bone: CustomBone=null, use_father_end: bool=true, use_cube: bool=false) -> CustomBone:
 	var bone := preload("res://Scenes/custom_bone.tscn").instantiate() as CustomBone
 	bone.capsule_dimensions = new_capsule_dimensions
 	bone.rest_rotation = new_rest_rotation
 	bone.visual_offsets = Vector2(offsets.x, offsets.y)
 
-	var bone_mesh_instance := get_bone_mesh(bone.capsule_dimensions, offsets)
+	var bone_mesh_instance := get_sphere_mesh(bone.capsule_dimensions, offsets) if use_cube else get_bone_mesh(bone.capsule_dimensions, offsets)
 	var bone_material := StandardMaterial3D.new()
-	#bone_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	bone_material.albedo_color = Color(new_color.r, new_color.g, new_color.b, 1.0)
 	bone_mesh_instance.material_override = bone_material
 	bone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	var min_side : float = min(bone.capsule_dimensions.x, bone.capsule_dimensions.z)
-	bone_mesh_instance.position = Vector3(0.0, 0.0, min_side * (offsets.z / 2))
+	bone_mesh_instance.position.z = min_side * (offsets.z / 2)
 
 	bone_mesh_instance.owner = null
 	bone.add_child(bone_mesh_instance)
@@ -90,44 +89,55 @@ func set_length(new_y: float) -> void:
 			break
 	if not is_instance_valid(mesh_instance):
 		return
-	var max_top_offset    := 0.4 * capsule_dimensions.x
-	var max_bottom_offset := 0.4 * capsule_dimensions.z
-	var top_offset        := max_top_offset    * visual_offsets.x
-	var bottom_offset     := max_bottom_offset * visual_offsets.y
-	var final_height      := (new_y - bottom_offset - top_offset) / 2.0
-	var height_index      := mesh_instance.find_blend_shape_by_name("height")
-	mesh_instance.set_blend_shape_value(height_index, final_height)
-	mesh_instance.position.y = bottom_offset
+	if mesh_instance.mesh is BoxMesh and mesh_instance.get_blend_shape_count() == 0:
+		var box_mesh := mesh_instance.mesh as BoxMesh
+		var max_top_offset    := 0.4 * capsule_dimensions.x
+		var max_bottom_offset := 0.4 * capsule_dimensions.z
+		var top_offset    := max_top_offset    * visual_offsets.x
+		var bottom_offset := max_bottom_offset * visual_offsets.y
+		var cylinder_height := new_y - bottom_offset - top_offset
+		var total_height := capsule_dimensions.z + cylinder_height + capsule_dimensions.x
+		box_mesh.size.y = total_height
+		mesh_instance.position.y = bottom_offset + total_height * 0.5
+	else:
+		var max_top_offset    := 0.4 * capsule_dimensions.x
+		var max_bottom_offset := 0.4 * capsule_dimensions.z
+		var top_offset        := max_top_offset    * visual_offsets.x
+		var bottom_offset     := max_bottom_offset * visual_offsets.y
+		var final_height      := (new_y - bottom_offset - top_offset) / 2.0
+		var height_index      := mesh_instance.find_blend_shape_by_name("height")
+		mesh_instance.set_blend_shape_value(height_index, final_height)
+		mesh_instance.position.y = bottom_offset
 
-static func createFromToLeft(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector3, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
+static func createFromToLeft(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector3, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool, use_cube: bool=false) -> CustomBone:
 	var base_rotation := Vector3(0, 0, deg_to_rad(90))
 	var offset_rotation := Vector3(0.0, y_offset_rotation, z_offset_rotation)
 	var final_rest_rotation := base_rotation + offset_rotation
-	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot)
+	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot, use_cube)
 
-static func createFromToRight(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector3, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
+static func createFromToRight(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector3, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool, use_cube: bool=false) -> CustomBone:
 	var base_rotation := Vector3(0, 0, deg_to_rad(-90))
 	var offset_rotation := Vector3(0.0, y_offset_rotation, z_offset_rotation)
 	var final_rest_rotation := base_rotation + offset_rotation
-	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot)
+	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot, use_cube)
 
-static func createFromToDown(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector3, z_offset_rotation: float, x_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
+static func createFromToDown(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector3, z_offset_rotation: float, x_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool, use_cube: bool=false) -> CustomBone:
 	var base_rotation := Vector3(deg_to_rad(180), 0, 0)
 	var offset_rotation := Vector3(x_offset_rotation, 0.0, z_offset_rotation)
 	var final_rest_rotation :=  base_rotation + offset_rotation
-	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot)
+	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot, use_cube)
 
-static func createFromToUp(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector3, z_offset_rotation: float, x_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
+static func createFromToUp(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector3, z_offset_rotation: float, x_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool, use_cube: bool=false) -> CustomBone:
 	var base_rotation := Vector3(0, 0, 0)
 	var offset_rotation := Vector3(x_offset_rotation, 0.0, z_offset_rotation)
 	var final_rest_rotation := base_rotation + offset_rotation
-	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot)
+	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot, use_cube)
 
-static func createFromToForward(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector3, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool) -> CustomBone:
+static func createFromToForward(new_parent: CustomBone, new_capsule_dimensions: Vector3, offsets: Vector3, y_offset_rotation: float, z_offset_rotation: float, new_color: Color, use_parent_end_as_pivot: bool, use_cube: bool=false) -> CustomBone:
 	var base_rotation := Vector3(-deg_to_rad(90), 0, 0)
 	var offset_rotation := Vector3(0.0, y_offset_rotation, z_offset_rotation)
 	var final_rest_rotation := base_rotation + offset_rotation
-	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot)
+	return create(new_capsule_dimensions, final_rest_rotation, new_color, offsets, new_parent, use_parent_end_as_pivot, use_cube)
 
 func pose_from_rest_to(dir: Vector3, pole: Vector3) -> Basis:
 	var rest_basis := Basis.from_euler(rest_rotation)
@@ -186,6 +196,20 @@ static func get_bone_mesh(size: Vector3, offset: Vector3) -> MeshInstance3D:
 	root.remove_child(mesh_instance)
 	return mesh_instance
 
+static func get_cube_mesh(size: Vector3, offset: Vector3) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var box_mesh := BoxMesh.new()
+	var max_top_offset    := 0.4 * size.x
+	var max_bottom_offset := 0.4 * size.z
+	var top_offset    := max_top_offset    * offset.x
+	var bottom_offset := max_bottom_offset * offset.y
+	var cylinder_height := size.y - bottom_offset - top_offset
+	var total_height := size.z + cylinder_height + size.x
+	box_mesh.size = Vector3(size.x * 2.0, total_height, size.z * 2.0)
+	mesh_instance.mesh = box_mesh
+	mesh_instance.position = Vector3(0.0, bottom_offset + total_height * 0.5, 0.0)
+	return mesh_instance
+
 static func _get_accumulated_rotation(bone: CustomBone) -> Basis:
 	var accumulated = Basis.from_euler(bone.rotation)
 	var current = bone.get_parent()
@@ -199,3 +223,14 @@ func set_mesh_visible(value: bool) -> void:
 		if child is MeshInstance3D:
 			child.visible = value
 			return
+
+static func get_sphere_mesh(size: Vector3, offset: Vector3) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var sphere_mesh := SphereMesh.new()
+	var max_bottom_offset := 0.4 * size.z
+	var bottom_offset     := max_bottom_offset * offset.y
+	sphere_mesh.radius = 0.5*0.2
+	sphere_mesh.height = 1*0.2
+	mesh_instance.mesh = sphere_mesh
+	mesh_instance.position = Vector3(0.0, bottom_offset + sphere_mesh.radius, 0.0)
+	return mesh_instance

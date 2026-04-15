@@ -3,3 +3,4 @@
 [ext_resource type="PackedScene" uid="uid://chw0r0kp750pi" path="res://Scenes/ship/asiento.blend" id="1_20lyq"]
 
 [node name="asiento" instance=ExtResource("1_20lyq")]
+transform = Transform3D(0.31, 0, 0, 0, 0.31, 0, 0, 0, 0.31, 0, 0, 0)

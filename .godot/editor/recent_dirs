@@ -1,3 +1,4 @@
+res://Models/auto
 res://Scenes/ship
 res://Models/interactables
 res://Scenes
@@ -5,7 +6,6 @@ res://shaders
 C:/hola
 C:/
 res://Scripts/city/entities/car
-res://Models/auto
 res://addons/flexible_toon_shader
 D:/Godot/character-parametric
 res://scripts

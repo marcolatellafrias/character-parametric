@@ -31,7 +31,7 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		generate()
 		return
-	generate()
+	generate() 
 
 func generate() -> void:
 	for child in get_children():

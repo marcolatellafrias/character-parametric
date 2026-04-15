@@ -41,7 +41,7 @@ static func create(sizes: SkeletonSizesUtil, inst: EntityInstantiation) -> Custo
 
 	if entity_stats.has_neck:
 		bones_util.neck = CustomBone.createFromToUp(bones_util.chest, sizes.neck_size, sizes.neck_offset, 0.0, -sizes.slouchiness_neck, Color.CORAL, true)
-	bones_util.head = CustomBone.createFromToUp(bones_util.neck if bones_util.neck else bones_util.chest, sizes.head_size, sizes.head_offset, 0.0, 0.0, Color.DEEP_PINK, true)
+	bones_util.head = CustomBone.createFromToUp(bones_util.neck if bones_util.neck else bones_util.chest, sizes.head_size, sizes.head_offset, 0.0, 0.0, Color.DEEP_PINK, true,false)
 
 	bones_util.left_shoulder  = CustomBone.createFromToLeft(bones_util.chest, sizes.shoulder_width, sizes.shoulder_offset, sizes.shoulder_back, -sizes.shoulder_height, Color.CHOCOLATE, true)
 	bones_util.right_shoulder = CustomBone.createFromToRight(bones_util.chest, sizes.shoulder_width, sizes.shoulder_offset, -sizes.shoulder_back, sizes.shoulder_height, Color.ROYAL_BLUE, true)

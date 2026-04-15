@@ -1,4 +1,4 @@
-[gd_scene load_steps=30 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=36 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
@@ -10,10 +10,14 @@
 [ext_resource type="PackedScene" uid="uid://2srvdmajgg7q" path="res://Scenes/ship/working_seat.tscn" id="8_h3puh"]
 [ext_resource type="Script" uid="uid://pujfrya4mhf2" path="res://Scripts/character/interactable/controllable/procedural_dashboard.gd" id="9_k27g2"]
 [ext_resource type="PackedScene" uid="uid://ckrqq415fubai" path="res://Scenes/test_slab.tscn" id="9_oilx1"]
-[ext_resource type="PackedScene" uid="uid://chw0r0kp750pi" path="res://Scenes/ship/asiento.blend" id="11_k27g2"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
 [ext_resource type="PackedScene" uid="uid://jm52bg0ngwhs" path="res://Scenes/ship/ship.blend" id="13_h3puh"]
+[ext_resource type="PackedScene" uid="uid://coaepmwjjqvww" path="res://Models/auto/barqueted3.blend" id="14_k27g2"]
+[ext_resource type="PackedScene" uid="uid://dp0gbaeu2p8ty" path="res://Models/auto/barquetenew.blend" id="15_6aqh6"]
+[ext_resource type="PackedScene" uid="uid://ddy65nu5p7bhu" path="res://Models/ship cc.blend" id="17_shrlo"]
+[ext_resource type="PackedScene" uid="uid://b25pal3k2xquv" path="res://Models/ship safe3.blend" id="18_3gsi8"]
+[ext_resource type="PackedScene" uid="uid://ft7nsxskb4sv" path="res://Models/ship safe5.blend" id="18_k83kh"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
 albedo_texture = ExtResource("1_h3puh")
@@ -57,6 +61,9 @@ size = Vector3(0.25, 0.25, 50)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_6aqh6"]
 
+[sub_resource type="BoxShape3D" id="BoxShape3D_oxmns"]
+size = Vector3(4.1071777, 0.15042496, 8.688293)
+
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_2rq0j"]
 ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
 
@@ -78,6 +85,9 @@ volumetric_fog_albedo = Color(0.9072337, 0.6909475, 0.34785485, 1)
 volumetric_fog_emission = Color(0.80489886, 0.5607987, 0.35002738, 1)
 volumetric_fog_sky_affect = 0.35
 adjustment_enabled = true
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_shrlo"]
+size = Vector3(1.7911205, 0.4583936, 4.511009)
 
 [node name="Demo" type="Node3D"]
 
@@ -190,26 +200,26 @@ cells_x = 6
 weight = 40.0
 
 [node name="ship" parent="world" instance=ExtResource("13_h3puh")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5942063, 1.0474467, -8.756634)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5942063, 1.4817767, -8.756634)
 
 [node name="WorkingSeat" parent="world/ship" instance=ExtResource("8_h3puh")]
-transform = Transform3D(-1, 2.3283064e-10, 4.4703484e-08, 4.48199e-08, 1, 7.450581e-09, -8.940697e-08, 5.5879354e-09, -0.99999964, 1.2103677, -0.9751992, 1.0045166)
+transform = Transform3D(-1, 2.3283064e-10, 4.4703484e-08, 4.48199e-08, 1, 7.450581e-09, -8.940697e-08, 5.5879354e-09, -0.99999964, 0.8488574, -0.9751992, 1.0045166)
 show_debug = true
 
 [node name="WorkingSeat2" parent="world/ship" instance=ExtResource("8_h3puh")]
-transform = Transform3D(-1, 2.3283064e-10, 4.4703484e-08, 4.48199e-08, 1, 7.450581e-09, -8.940697e-08, 5.5879354e-09, -0.99999964, -1.2609015, -1.015, 1.0050001)
+transform = Transform3D(-1, 2.3283064e-10, 4.4703484e-08, 4.48199e-08, 1, 7.450581e-09, -8.940697e-08, 5.5879354e-09, -0.99999964, -0.9151206, -1.015, 1.0050001)
 show_debug = true
 
 [node name="WorkingSeat3" parent="world/ship" instance=ExtResource("8_h3puh")]
-transform = Transform3D(-2.9802322e-08, 2.3283064e-10, -1, -1.8626451e-09, 1, 4.4354238e-08, 1, 5.5879354e-09, -4.4703484e-08, 1.2104373, -0.9750719, -1.0369663)
+transform = Transform3D(-2.9802322e-08, 2.3283064e-10, -1, -1.8626451e-09, 1, 4.4354238e-08, 1, 5.5879354e-09, -4.4703484e-08, 0.848927, -0.9750719, -1.0369663)
 show_debug = true
 
 [node name="WorkingSeat4" parent="world/ship" instance=ExtResource("8_h3puh")]
-transform = Transform3D(-4.4703484e-08, 2.3283064e-10, 1, 5.5879354e-09, 1, -3.585592e-08, -0.99999994, 5.5879354e-09, -4.4703484e-08, -1.2609015, -1.015, -1.0369997)
+transform = Transform3D(-4.4703484e-08, 2.3283064e-10, 1, 5.5879354e-09, 1, -3.585592e-08, -0.99999994, 5.5879354e-09, -4.4703484e-08, -0.9151206, -1.015, -1.0369997)
 show_debug = true
 
 [node name="ProceduralDashboard" type="Node3D" parent="world/ship"]
-transform = Transform3D(-1.0000001, -4.3181767e-08, -7.6013656e-08, -8.393578e-08, 0.71736056, 0.6967018, 2.4444386e-08, 0.6967018, -0.71736056, 1.8645396, 0.42503023, 2.4398432)
+transform = Transform3D(-1.0000001, -4.3181767e-08, -7.6013656e-08, -8.393578e-08, 0.71736056, 0.6967018, 2.4444386e-08, 0.6967018, -0.71736056, 1.4654689, 0.42503023, 2.4398432)
 script = ExtResource("9_k27g2")
 grid_columns = 6
 seed_value = 6
@@ -217,13 +227,16 @@ preset_type = 1
 metadata/_custom_type_script = "uid://pujfrya4mhf2"
 
 [node name="ProceduralDashboard2" type="Node3D" parent="world/ship"]
-transform = Transform3D(-1.0000004, -8.742275e-08, 3.8213697e-15, 0, -4.3711374e-08, -0.99999964, 8.7422805e-08, -0.99999964, 4.3711374e-08, 2.0588126, 1.1116676, 1.3728714)
+transform = Transform3D(-1.0000004, -8.742275e-08, 3.8213697e-15, 0, -4.3711374e-08, -0.99999964, 8.7422805e-08, -0.99999964, 4.3711374e-08, 1.6597419, 1.1116676, 1.3728714)
 script = ExtResource("9_k27g2")
 seed_value = 8
 metadata/_custom_type_script = "uid://pujfrya4mhf2"
 
-[node name="asiento" parent="world/ship" instance=ExtResource("11_k27g2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.0478086, -1.0178721, 6.3207936)
+[node name="StaticBody3D" type="StaticBody3D" parent="world/ship"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="world/ship/StaticBody3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.007446289, -0.9699764, -1.9705505)
+shape = SubResource("BoxShape3D_oxmns")
 
 [node name="chars" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
@@ -266,3 +279,42 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 0.9999998, 13.763744, 0.52957535
 visible = false
 size = Vector2(80, 20)
 color = Color(0.882948, 0.80127335, 0.73722345, 1)
+
+[node name="barqueted3" parent="." instance=ExtResource("14_k27g2")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.720753, 0.9904018, -16.925919)
+
+[node name="barquetenew" parent="." instance=ExtResource("15_6aqh6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.216436, 0.71254843, -30.254478)
+
+[node name="ship cc" parent="." instance=ExtResource("17_shrlo")]
+transform = Transform3D(0.9826128, 0.18566662, 0, -0.18534556, 0.9809136, 0.058783688, 0.010914168, -0.057761602, 0.99827075, -5.8108845, 2.356718, -42.110256)
+visible = false
+
+[node name="ship safe3" parent="." instance=ExtResource("18_3gsi8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.275836, 0.032823563, -27.710728)
+
+[node name="StaticBody3D" type="StaticBody3D" parent="ship safe3"]
+transform = Transform3D(3.4000006, 0, 0, 0, 3.4000006, 0, 0, 0, 3.4000006, -32.373047, 0.02156043, 19.429909)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ship safe3/StaticBody3D"]
+transform = Transform3D(1.0000002, 0, 0, 0, 1.0000002, 0, 0, 0, 1.0000002, 9.51502, 0.20087653, -5.6697283)
+shape = SubResource("BoxShape3D_shrlo")
+
+[node name="WorkingSeat3" parent="ship safe3" instance=ExtResource("8_h3puh")]
+transform = Transform3D(2.4041636, 0, -2.4041636, 0, 3.4000006, 0, 2.4041636, 0, 2.4041636, -31.129713, 1.249383, 46.512417)
+seat_area = Vector3(0.3, 0.6, 0.3)
+
+[node name="WorkingSeat4" parent="ship safe3" instance=ExtResource("8_h3puh")]
+transform = Transform3D(2.4041636, 0, 2.4041636, 0, 3.4000006, 0, -2.4041636, 0, 2.4041636, -33.716934, 1.249383, 46.534035)
+seat_area = Vector3(0.3, 0.6, 0.3)
+
+[node name="WorkingSeat5" parent="ship safe3" instance=ExtResource("8_h3puh")]
+transform = Transform3D(-1.4861874e-07, 0, -3.4000006, 0, 3.4000006, 0, 3.4000006, 0, -1.4861874e-07, -31.129717, 1.249383, 49.035683)
+seat_area = Vector3(0.3, 0.6, 0.3)
+
+[node name="WorkingSeat6" parent="ship safe3" instance=ExtResource("8_h3puh")]
+transform = Transform3D(-1.4861874e-07, 0, 3.4000006, 0, 3.4000006, 0, -3.4000006, 0, -1.4861874e-07, -33.716934, 1.249383, 49.057297)
+seat_area = Vector3(0.3, 0.6, 0.3)
+
+[node name="ship safe5" parent="." instance=ExtResource("18_k83kh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -43.589478, 0.032824993, -28.506002)

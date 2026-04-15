@@ -1,7 +1,7 @@
 [gd_resource type="ShaderMaterial" load_steps=3 format=3 uid="uid://bkbwwloqshhjn"]
 
 [ext_resource type="Shader" uid="uid://cmagxfh8gxprr" path="res://addons/flexible_toon_shader/flexible_toon.gdshader" id="1_ws5wq"]
-[ext_resource type="Texture2D" uid="uid://c7qbnsaief52r" path="res://Scenes/textures/chasis textura.png" id="2_2xhl1"]
+[ext_resource type="Texture2D" uid="uid://cg5r00tml6v52" path="res://Models/auto/outer_shell_texture2.png" id="2_2xhl1"]
 
 [resource]
 render_priority = 0
@@ -9,15 +9,15 @@ shader = ExtResource("1_ws5wq")
 shader_parameter/albedo = Color(1, 1, 1, 1)
 shader_parameter/albedo_texture = ExtResource("2_2xhl1")
 shader_parameter/clamp_diffuse_to_max = false
-shader_parameter/cuts = 2
+shader_parameter/cuts = 8
 shader_parameter/wrap = 0.0
-shader_parameter/steepness = 1.0
+shader_parameter/steepness = 1.7590000360525
 shader_parameter/use_attenuation = true
-shader_parameter/use_specular = true
-shader_parameter/specular_strength = 1.0
-shader_parameter/specular_shininess = 27.1390012891025
-shader_parameter/use_rim = true
-shader_parameter/rim_width = 8.0
+shader_parameter/use_specular = false
+shader_parameter/specular_strength = 0.3350000159125
+shader_parameter/specular_shininess = 7.2490003443275
+shader_parameter/use_rim = false
+shader_parameter/rim_width = 6.458000306755
 shader_parameter/rim_color = Color(1, 1, 1, 1)
 shader_parameter/use_ramp = false
 shader_parameter/use_borders = false

@@ -5,7 +5,7 @@
 [resource]
 render_priority = 0
 shader = ExtResource("1_god0a")
-shader_parameter/albedo = Color(0.6292945, 0.5247584, 0.56060797, 1)
+shader_parameter/albedo = Color(0.4469983, 0.3932644, 0.39973134, 1)
 shader_parameter/clamp_diffuse_to_max = false
 shader_parameter/cuts = 2
 shader_parameter/wrap = 0.0

@@ -1,4 +1,7 @@
-[gd_resource type="StandardMaterial3D" format=3 uid="uid://dnj4yx07gux3o"]
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3 uid="uid://dnj4yx07gux3o"]
+
+[ext_resource type="Texture2D" uid="uid://cg5r00tml6v52" path="res://Models/auto/outer_shell_texture2.png" id="1_trhud"]
 
 [resource]
 albedo_color = Color(0.101960786, 0.72156864, 0.14509805, 1)
+albedo_texture = ExtResource("1_trhud")
