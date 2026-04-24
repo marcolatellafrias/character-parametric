@@ -1,4 +1,4 @@
-[gd_scene load_steps=36 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=41 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
@@ -18,6 +18,10 @@
 [ext_resource type="PackedScene" uid="uid://ddy65nu5p7bhu" path="res://Models/ship cc.blend" id="17_shrlo"]
 [ext_resource type="PackedScene" uid="uid://b25pal3k2xquv" path="res://Models/ship safe3.blend" id="18_3gsi8"]
 [ext_resource type="PackedScene" uid="uid://ft7nsxskb4sv" path="res://Models/ship safe5.blend" id="18_k83kh"]
+[ext_resource type="PackedScene" uid="uid://dxucy0dqp1qht" path="res://Models/ship_circular.blend" id="19_3gsi8"]
+[ext_resource type="PackedScene" uid="uid://irkmpde4vt7r" path="res://Models/cilindro.blend" id="20_m01cq"]
+[ext_resource type="PackedScene" uid="uid://ddk23xlnj1dth" path="res://Models/cilindro2.blend" id="21_vxpmw"]
+[ext_resource type="PackedScene" uid="uid://6dscl02wpcql" path="res://Scenes/cilindro_2.tscn" id="22_oolyx"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
 albedo_texture = ExtResource("1_h3puh")
@@ -88,6 +92,10 @@ adjustment_enabled = true
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_shrlo"]
 size = Vector3(1.7911205, 0.4583936, 4.511009)
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_3gsi8"]
+height = 0.2225647
+radius = 1.0
 
 [node name="Demo" type="Node3D"]
 
@@ -284,7 +292,7 @@ color = Color(0.882948, 0.80127335, 0.73722345, 1)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.720753, 0.9904018, -16.925919)
 
 [node name="barquetenew" parent="." instance=ExtResource("15_6aqh6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.216436, 0.71254843, -30.254478)
+transform = Transform3D(3, 0, 0, 0, 3, 0, 0, 0, 3, -41.506073, 2.1183531, -41.33844)
 
 [node name="ship cc" parent="." instance=ExtResource("17_shrlo")]
 transform = Transform3D(0.9826128, 0.18566662, 0, -0.18534556, 0.9809136, 0.058783688, 0.010914168, -0.057761602, 0.99827075, -5.8108845, 2.356718, -42.110256)
@@ -317,4 +325,22 @@ transform = Transform3D(-1.4861874e-07, 0, 3.4000006, 0, 3.4000006, 0, -3.400000
 seat_area = Vector3(0.3, 0.6, 0.3)
 
 [node name="ship safe5" parent="." instance=ExtResource("18_k83kh")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -43.589478, 0.032824993, -28.506002)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -66.70711, 0.032824993, 10.348574)
+
+[node name="ship_circular" parent="." instance=ExtResource("19_3gsi8")]
+transform = Transform3D(6.5, 0, 0, 0, 6.5, 0, 0, 0, 6.5, -18.93515, 1.2825446, -45.116158)
+
+[node name="StaticBody3D" type="StaticBody3D" parent="ship_circular"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ship_circular/StaticBody3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1000824, 0)
+shape = SubResource("CylinderShape3D_3gsi8")
+
+[node name="cilindro" parent="." instance=ExtResource("20_m01cq")]
+transform = Transform3D(6.7434835, 0, 1.8776137, 0, 7, 0, -1.8776137, 0, 6.7434835, -37.043938, 1.6404233, -20.549854)
+
+[node name="cilindro2" parent="." instance=ExtResource("21_vxpmw")]
+transform = Transform3D(4.999999, 0, 0, 0, 4.999999, 0, 0, 0, 4.999999, 4.6102467, 1.1996098, -47.549633)
+
+[node name="cilindro3" parent="." instance=ExtResource("22_oolyx")]
+transform = Transform3D(5, 0, 0, 0, 5, 0, 0, 0, 5, 39.68111, 1.0795732, -49.4348)

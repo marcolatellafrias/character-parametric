@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3 uid="uid://6dscl02wpcql"]
+
+[ext_resource type="PackedScene" uid="uid://ddk23xlnj1dth" path="res://Models/cilindro2.blend" id="1_q780p"]
+[ext_resource type="Material" uid="uid://d0k8a0v4fg3bw" path="res://addons/flexible_toon_shader/FlexibleToonMaterial2.tres" id="2_6e1ac"]
+
+[node name="cilindro2" instance=ExtResource("1_q780p")]
+
+[node name="Cylinder" parent="." index="1"]
+surface_material_override/0 = ExtResource("2_6e1ac")
