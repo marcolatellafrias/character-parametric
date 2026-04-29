@@ -1,4 +1,4 @@
-[gd_scene load_steps=46 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=47 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
@@ -103,8 +103,11 @@ height = 0.24154836
 radius = 1.003418
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_emj36"]
-height = 0.22927856
+height = 0.20798111
 radius = 0.9941406
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_d03iv"]
+size = Vector3(0.5611801, 0.015686035, 0.4486084)
 
 [node name="Demo" type="Node3D"]
 
@@ -156,7 +159,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8390794, -7.2039795)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8081498, -7.2051997)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="world"]
-transform = Transform3D(-0.86602354, -0.43301606, 0.25000072, 0, 0.49999818, 0.86602646, -0.5000033, 0.7499993, -0.4330102, 0, 0, 0)
+transform = Transform3D(0.37347364, -0.59760225, 0.7094993, -0.85659415, 0.07138467, 0.5110293, -0.35603964, -0.7986088, -0.48524222, 0, 13.165634, 0)
 shadow_enabled = true
 directional_shadow_max_distance = 250.0
 
@@ -349,7 +352,7 @@ transform = Transform3D(6.7434835, 0, 1.8776137, 0, 7, 0, -1.8776137, 0, 6.74348
 visible = false
 
 [node name="cilindro3" parent="." instance=ExtResource("21_vxpmw")]
-transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 28.64753, 0.48974228, -15.406458)
+transform = Transform3D(-0.8552919, 0, -0.5181465, 0, 1, 0, 0.5181465, 0, -0.8552919, 12.347605, 0.24105477, -1.5913897)
 
 [node name="StaticBody3D" type="StaticBody3D" parent="cilindro3"]
 transform = Transform3D(0.4727968, 0, -0.88117135, 0, 0.9999999, 0, 0.88117135, 0, 0.4727968, 0.0038819313, 0.10151088, 0.005556822)
@@ -384,7 +387,7 @@ seat_area = Vector3(0.3, 0.6, 0.3)
 show_debug = true
 
 [node name="cilindro8" parent="." instance=ExtResource("25_d03iv")]
-transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 29.218079, 0.48136187, -2.7180767)
+transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, -2.4757938, 0.3314817, 17.257587)
 
 [node name="StaticBody3D" type="StaticBody3D" parent="cilindro8"]
 
@@ -403,12 +406,12 @@ seat_area = Vector3(0.3, 0.6, 0.3)
 show_debug = true
 
 [node name="cilindro9" parent="." instance=ExtResource("26_d03iv")]
-transform = Transform3D(1.9742503, -0.3199002, 0, 0.3199002, 1.9742503, 0, 0, 0, 2, 28.285236, 1.7903359, -9.120405)
+transform = Transform3D(6, 0, 0, 0, 6, 0, 0, 0, 6, -6.689171, 1.1160536, 7.363018)
 
 [node name="StaticBody3D" type="StaticBody3D" parent="cilindro9"]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="cilindro9/StaticBody3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.103012055, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.10009572, 0)
 shape = SubResource("CylinderShape3D_emj36")
 
 [node name="WorkingSeat" parent="cilindro9" instance=ExtResource("8_h3puh")]
@@ -420,3 +423,9 @@ show_debug = true
 transform = Transform3D(-0.095010445, 0, 0.4908901, 0, 0.5, 0, -0.49089003, 0, -0.09501044, -0.73330474, 0.018793479, 0.17708278)
 seat_area = Vector3(0.3, 0.6, 0.3)
 show_debug = true
+
+[node name="StaticBody3D2" type="StaticBody3D" parent="cilindro9"]
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="cilindro9/StaticBody3D2"]
+transform = Transform3D(0.9250905, 0.37974688, 0, -0.37974688, 0.9250905, 0, 0, 0, 1, 1.2321724, -0.108576454, 0.0054545403)
+shape = SubResource("BoxShape3D_d03iv")
