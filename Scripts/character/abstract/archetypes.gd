@@ -108,7 +108,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.throw_strenght = 0.35
 	arch.reach = 0.65
 	arch.reach_multiplier = 2.3
-	arch.jump_strenght = 0.2
+	arch.jump_strenght = 0.5
 	arch.time_to_max_jump = 0.3
 	arch.min_age = 1
 	arch.max_age = 99
@@ -131,21 +131,21 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.step_radius_max = 1.2
 	arch.leg_cripple_chance = 0.1
 	arch.slouch = 0.0
-	arch.shoulders_height = 0.8
-	arch.shoulders_back = 0.7
+	arch.shoulders_height = 0.15
+	arch.shoulders_back = 0.15
 	arch.arm_openness = 0.58
 	arch.arm_bentness = 0.18
 	arch.arm_elbow_openness = 0.8
 	arch.fatness = 1.0
-	arch.muscularity = 0.7
+	arch.muscularity = 0.9
 	arch.has_neck = true
 	arch.height = 1.85
 	arch.chest_to_low_spine_proportion = 0.28
 	arch.legs_to_feet_proportion = 0.42
-	arch.hips_width_proportion = 0.09
+	arch.hips_width_proportion = 0.08
 	arch.shoulder_width_proportion = 0.13
 	arch.distance_from_ground_factor = 0.05
-	arch.head_neck_ratio = 0.3
+	arch.head_neck_ratio = 0.4
 	arch.stance_width = 1.4
 	arch.step_duration_scale = 1.3
 	return arch
@@ -205,7 +205,7 @@ static func kid_arch() -> EntityArchetype:
 	arch.hips_width_proportion = 0.07
 	arch.shoulder_width_proportion = 0.15
 	arch.distance_from_ground_factor = 0.06
-	arch.head_neck_ratio = 0.4
+	arch.head_neck_ratio = 0.25
 	arch.stance_width = 1.4
 	return arch
 
@@ -309,8 +309,8 @@ static func giga_arch() -> EntityArchetype:
 	arch.step_radius_max = 1.0
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.0
-	arch.shoulders_height = 1.0
-	arch.shoulders_back = 1.0
+	arch.shoulders_height = 0.25
+	arch.shoulders_back = 0.5
 	arch.arm_openness = 0.4
 	arch.arm_bentness = 0.18
 	arch.arm_elbow_openness = 0.7
@@ -321,7 +321,7 @@ static func giga_arch() -> EntityArchetype:
 	arch.chest_to_low_spine_proportion = 0.3
 	arch.legs_to_feet_proportion = 0.47
 	arch.hips_width_proportion = 0.07
-	arch.shoulder_width_proportion = 0.19
+	arch.shoulder_width_proportion = 0.14
 	arch.distance_from_ground_factor = 0.03
 	arch.head_neck_ratio = 0.5
 	arch.stance_width = 1.3

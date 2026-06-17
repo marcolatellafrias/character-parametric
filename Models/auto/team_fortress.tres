@@ -1,6 +1,6 @@
 [gd_resource type="ShaderMaterial" load_steps=2 format=3 uid="uid://eruomc7ebjoq"]
 
-[ext_resource type="Shader" uid="uid://cmd3amtmek0uh" path="res://shaders/team_fortress.gdshader" id="1_fwf0n"]
+[ext_resource type="Shader" uid="uid://cmd3amtmek0uh" path="res://Shaders/team_fortress.gdshader" id="1_fwf0n"]
 
 [resource]
 render_priority = 0

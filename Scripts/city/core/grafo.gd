@@ -11,6 +11,8 @@ var smoothing_steps: int = 0
 var original_inscribed_sizes: Dictionary = {}
 var node_types: Dictionary = {}
 var boundary_edges: Dictionary = {}
+var node_to_faces: Dictionary = {}   # node_idx -> Array of face indices
+var edge_to_faces: Dictionary = {}   # edge_key -> Array of face indices
 
 
 # ============================================
@@ -36,6 +38,8 @@ func generate_graph(
 	original_inscribed_sizes.clear()
 	node_types.clear()
 	boundary_edges.clear()
+	node_to_faces.clear()
+	edge_to_faces.clear()
 	
 	var edges_dict: Dictionary = {}
 	
@@ -67,7 +71,9 @@ func generate_graph(
 		edges.append(edge)
 	
 	_calculate_original_inscribed_sizes()
-	
+
+	_build_adjacency_maps()
+
 	for i in range(smooth_steps):
 		smooth_graph()
 
@@ -489,12 +495,29 @@ static func _get_or_create_midpoint(
 # ============================================
 # CONSULTAS DEL GRAFO
 # ============================================
+
+func _build_adjacency_maps() -> void:
+	node_to_faces.clear()
+	edge_to_faces.clear()
+	for face_idx in range(faces.size()):
+		var face = faces[face_idx]
+		for i in range(face.size()):
+			var node_idx: int = face[i]
+			if node_idx not in node_to_faces:
+				node_to_faces[node_idx] = []
+			node_to_faces[node_idx].append(face_idx)
+			var next_i: int = (i + 1) % face.size()
+			var key: String = _get_edge_key(face[i], face[next_i])
+			if key not in edge_to_faces:
+				edge_to_faces[key] = []
+			edge_to_faces[key].append(face_idx)
+
+
 func get_quads_for_node(node_idx: int) -> Array[int]:
-	var connected_quads: Array[int] = []
-	for i in range(faces.size()):
-		if node_idx in faces[i]:
-			connected_quads.append(i)
-	return connected_quads
+	var result: Array[int] = []
+	for face_idx in node_to_faces.get(node_idx, []):
+		result.append(face_idx)
+	return result
 
 
 # ============================================
@@ -632,25 +655,20 @@ func smooth_graph() -> void:
 
 func get_adjacent_faces(face_idx: int) -> Array[int]:
 	var adjacent: Array[int] = []
-	
+
 	if face_idx < 0 or face_idx >= faces.size():
 		return adjacent
-	
+
 	var face = faces[face_idx]
-	var face_edges: Dictionary = {}
+	var seen: Dictionary = {}
+
 	for i in range(face.size()):
-		face_edges[_get_edge_key(face[i], face[(i + 1) % face.size()])] = true
-	
-	for other_face_idx in range(faces.size()):
-		if other_face_idx == face_idx:
-			continue
-		
-		var other_face = faces[other_face_idx]
-		for i in range(other_face.size()):
-			if _get_edge_key(other_face[i], other_face[(i + 1) % other_face.size()]) in face_edges:
+		var key: String = _get_edge_key(face[i], face[(i + 1) % face.size()])
+		for other_face_idx in edge_to_faces.get(key, []):
+			if other_face_idx != face_idx and other_face_idx not in seen:
+				seen[other_face_idx] = true
 				adjacent.append(other_face_idx)
-				break
-	
+
 	return adjacent
 
 func get_edges_for_node(node_idx: int) -> Array:

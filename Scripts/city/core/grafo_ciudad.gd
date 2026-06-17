@@ -554,14 +554,15 @@ func _generate_block_grids(
 		
 		block_grids[face_idx] = block
 	
-	# Poblar building_grid_helpers una vez que todos los bloques están construidos
-	for face_idx in block_grids:
-		building_grid_helpers[face_idx] = BuildingGridHelper.new(block_grids[face_idx])
-	
-	print("[GraphCityGenerator] BuildingGridHelpers generados: %d" % building_grid_helpers.size())
+	print("[GraphCityGenerator] Block grids generados: %d (BuildingGridHelpers se crean bajo demanda)" % block_grids.size())
 
 func get_building_grid_helper(face_idx: int) -> BuildingGridHelper:
-	return building_grid_helpers.get(face_idx, null)
+	if face_idx not in building_grid_helpers:
+		var block = block_grids.get(face_idx, null)
+		if block == null:
+			return null
+		building_grid_helpers[face_idx] = BuildingGridHelper.new(block)
+	return building_grid_helpers[face_idx]
 
 func _is_face_clockwise(vertices: Array[Vector2]) -> bool:
 	var area = 0.0
@@ -600,15 +601,11 @@ func get_max_building_height_global() -> float:
 # ============================================
 
 func _find_faces_sharing_edge(node1_idx: int, node2_idx: int) -> Array[int]:
-	var sharing_faces: Array[int] = []
-	
-	for face_idx in range(plain_graph.faces.size()):
-		var face = plain_graph.faces[face_idx]
-		
-		if node1_idx in face and node2_idx in face:
-			sharing_faces.append(face_idx)
-	
-	return sharing_faces
+	var edge_key: String = GraphGenerator._get_edge_key(node1_idx, node2_idx)
+	var result: Array[int] = []
+	for face_idx in plain_graph.edge_to_faces.get(edge_key, []):
+		result.append(face_idx)
+	return result
 
 # ============================================
 # GESTIÓN DE LANE LINES
@@ -727,46 +724,41 @@ func _line_intersection_2d(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2) -
 func _calculate_traffic_indices() -> Dictionary:
 	var indices: Dictionary = {}
 	var total_assigned = 0
-	
-	for node_idx in range(plain_graph.points.size()):
-		var volumes_at_node = _get_lane_volume_ids_ending_at_node(node_idx)
-		
-		if volumes_at_node.is_empty():
-			continue
-		
-		_assign_indices_for_node_volumes(volumes_at_node, node_idx, indices)
-		total_assigned += volumes_at_node.size()
-	
-	print("[GraphCityGenerator] Índices de tráfico calculados: %d lane volumes" % total_assigned)
-	return indices
 
-func _get_lane_volume_ids_ending_at_node(node_idx: int) -> Array:
-	var volume_ids = []
-	
+	# Build node → volumes map in a single O(F) pass instead of O(N × F)
+	var node_to_volumes: Dictionary = {}
+
 	for face_idx in block_grids:
 		var block: BlockGenerator = block_grids[face_idx]
 		var face = plain_graph.faces[face_idx]
-		
+
 		for edge_idx in range(4):
 			var volume_data = block.get_edge_lane_volume(edge_idx)
-			
 			if volume_data.is_empty():
 				continue
-			
-			var end_node = _get_lane_end_node(face_idx, edge_idx, face, block)
-			
-			if end_node == node_idx:
-				volume_ids.append({
-					"face_idx": face_idx,
-					"edge_idx": edge_idx,
-					"flow_direction": _calculate_flow_direction_for_lane(face_idx, edge_idx)
-				})
-	
-	return volume_ids
 
-func _get_lane_end_node(face_idx: int, edge_idx: int, face: Array, block: BlockGenerator) -> int:
-	var node1_idx = face[edge_idx]
-	return node1_idx
+			var start_verts = volume_data["start_plane_vertices"]
+			var end_verts   = volume_data["end_plane_vertices"]
+			var center_start = (start_verts[0] + start_verts[1] + start_verts[2] + start_verts[3]) / 4.0
+			var center_end   = (end_verts[0]   + end_verts[1]   + end_verts[2]   + end_verts[3])   / 4.0
+			var flow_dir = (center_end - center_start).normalized()
+
+			var end_node: int = face[edge_idx]
+			if end_node not in node_to_volumes:
+				node_to_volumes[end_node] = []
+			node_to_volumes[end_node].append({
+				"face_idx": face_idx,
+				"edge_idx": edge_idx,
+				"flow_direction": flow_dir
+			})
+
+	for node_idx in node_to_volumes:
+		var volumes_at_node = node_to_volumes[node_idx]
+		_assign_indices_for_node_volumes(volumes_at_node, node_idx, indices)
+		total_assigned += volumes_at_node.size()
+
+	print("[GraphCityGenerator] Índices de tráfico calculados: %d lane volumes" % total_assigned)
+	return indices
 
 func _calculate_flow_direction_for_lane(face_idx: int, edge_idx: int) -> Vector3:
 	var block: BlockGenerator = block_grids[face_idx]
@@ -975,12 +967,10 @@ func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVo
 	
 	var end_node_idx: int = original_node1
 	
-	for other_face_idx in block_grids:
-		var other_face = plain_graph.faces[other_face_idx]
-		
-		if end_node_idx not in other_face:
+	for other_face_idx in plain_graph.node_to_faces.get(end_node_idx, []):
+		if other_face_idx not in block_grids:
 			continue
-		
+		var other_face = plain_graph.faces[other_face_idx]
 		var other_block: BlockGenerator = block_grids[other_face_idx]
 		if other_block == null:
 			continue

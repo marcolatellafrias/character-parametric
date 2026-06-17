@@ -107,7 +107,7 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.head_offset = Vector3(0.8, 1.0, -0.8)
 
 	var chest_u_radius : float = lerp_range(0.16, 0.45, entityStats.muscularity)
-	var chest_l_radius : float = lerp_range(0.16, 0.4, entityStats.muscularity)
+	var chest_l_radius : float = lerp_range(0.16, 0.45, entityStats.muscularity)
 	var chest_new_offset : float = lerp_range(0.0, -0.35, entityStats.muscularity)
 	skelSizes.chest_offset = Vector3(0.4, 0.4, chest_new_offset)
 	skelSizes.chest_size = Vector3(chest_u_radius, new_torso_height * 0.3, chest_l_radius)
@@ -118,14 +118,14 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.upper_spine_size = Vector3(upper_spine_u_radius, new_torso_height * 0.25, upper_spine_l_radius)
 	skelSizes.upper_spine_offset = Vector3(0.0, 0.0, upper_spine_new_offset)
 
-	var middle_spine_u_radius : float = lerp_range(0.1, 0.45, entityStats.fatness)
-	var middle_spine_l_radius : float = lerp_range(0.1, 0.45, entityStats.fatness)
-	var middle_spine_new_offset : float = lerp_range(0.0, -0.55, entityStats.fatness)
+	var middle_spine_u_radius : float = lerp_range(0.1, 0.55, entityStats.fatness)
+	var middle_spine_l_radius : float = lerp_range(0.1, 0.5, entityStats.fatness)
+	var middle_spine_new_offset : float = lerp_range(0.0, -0.35, entityStats.fatness)
 	skelSizes.middle_spine_size = Vector3(middle_spine_u_radius, new_torso_height * 0.25, middle_spine_l_radius)
 	skelSizes.middle_spine_offset = Vector3(0.0, 0.0, middle_spine_new_offset)
 
-	var lower_spine_u_radius : float = lerp_range(0.1, 0.1, entityStats.fatness)
-	var lower_spine_l_radius : float = lerp_range(0.1, 0.1, entityStats.fatness)
+	var lower_spine_u_radius : float = lerp_range(0.1, 0.35, entityStats.fatness)
+	var lower_spine_l_radius : float = lerp_range(0.1, 0.35, entityStats.fatness)
 	var lower_spine_new_offset : float = lerp_range(0.0, -0.1, entityStats.fatness)
 	skelSizes.lower_spine_size = Vector3(lower_spine_u_radius, new_torso_height * 0.2, lower_spine_l_radius)
 	skelSizes.lower_spine_offset = Vector3(0.0, 0.0, lower_spine_new_offset)

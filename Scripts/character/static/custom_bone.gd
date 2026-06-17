@@ -49,15 +49,29 @@ static func create(new_capsule_dimensions: Vector3, new_rest_rotation: Vector3, 
 	bone.capsule_dimensions = new_capsule_dimensions
 	bone.rest_rotation = new_rest_rotation
 	bone.visual_offsets = Vector2(offsets.x, offsets.y)
-
 	var bone_mesh_instance := get_sphere_mesh(bone.capsule_dimensions, offsets) if use_cube else get_bone_mesh(bone.capsule_dimensions, offsets)
-	var bone_material := StandardMaterial3D.new()
-	bone_material.albedo_color = Color(new_color.r, new_color.g, new_color.b, 1.0)
+	
+	var bone_material := ShaderMaterial.new()
+	bone_material.shader = preload("res://Shaders/toon_ramp.gdshader")
+	bone_material.set_shader_parameter("albedo", Color.LIGHT_PINK)
+	
+	# Build the gradient (equivalent to Blender's Color Ramp)
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(0.25, 0.25, 0.35))  # shadow color (left stop)
+	gradient.set_color(1, Color(1.0, 1.0, 1.0))     # light color (right stop)
+	# For hard cel-shading bands use:
+	# gradient.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_CONSTANT
+	# To add a midtone stop:
+	# gradient.add_point(0.5, Color(0.7, 0.7, 0.7))
+	
+	var gradient_texture := GradientTexture1D.new()
+	gradient_texture.gradient = gradient
+	bone_material.set_shader_parameter("color_ramp", gradient_texture)
+	
 	bone_mesh_instance.material_override = bone_material
-	bone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	
 	var min_side : float = min(bone.capsule_dimensions.x, bone.capsule_dimensions.z)
 	bone_mesh_instance.position.z = min_side * (offsets.z / 2)
-
 	bone_mesh_instance.owner = null
 	bone.add_child(bone_mesh_instance)
 

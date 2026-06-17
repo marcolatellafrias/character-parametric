@@ -342,10 +342,10 @@ func _subdivide_section_into_clusters(section: Array, rng: RandomNumberGenerator
 		_grow_cluster(cluster, start_cell, unassigned_cells, target_size, rng)
 		
 		building_clusters.append(cluster)
-		
+
 		for cell in cluster.cells:
-			cell_to_cluster["%d_%d" % [cell.x, cell.y]] = cluster.id
-		
+			cell_to_cluster["%d_%d" % [cell.x, cell.y]] = cluster
+
 		clusters_created += 1
 	
 	return clusters_created
@@ -388,17 +388,7 @@ func _get_unassigned_neighbors(cell: Vector2i, unassigned: Array) -> Array[Vecto
 	return neighbors
 
 func get_cluster_for_cell(x: int, z: int) -> BuildingCluster:
-	var key = "%d_%d" % [x, z]
-	var cluster_id = cell_to_cluster.get(key, -1)
-	
-	if cluster_id == -1:
-		return null
-	
-	for cluster in building_clusters:
-		if cluster.id == cluster_id:
-			return cluster
-	
-	return null
+	return cell_to_cluster.get("%d_%d" % [x, z], null)
 
 func get_all_clusters() -> Array[BuildingCluster]:
 	return building_clusters

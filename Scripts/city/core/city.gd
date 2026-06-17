@@ -16,7 +16,7 @@ extends Node3D
 @export_range(0.1, 5.0) var neighborhood_height_falloff: float = 0.3
 
 @export_group("Suavizado")
-@export var smoothing_steps: int = 50
+@export var smoothing_steps: int = 40
 
 @export_group("Visualización General")
 @export var show_streets: bool = false
