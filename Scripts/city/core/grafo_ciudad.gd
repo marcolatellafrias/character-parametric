@@ -10,6 +10,7 @@ var region_size: Vector2 = Vector2.ZERO
 var lane_volume_areas: Dictionary = {}
 var traffic_indices: Dictionary = {}
 var building_grid_helpers: Dictionary = {}  # face_idx -> BuildingGridHelper
+var bridges: Dictionary = {}               # edge_key -> Array[Dictionary]
 
 var neighborhood_height_falloff: float = 1.0
 
@@ -62,8 +63,8 @@ func generate_city_graph(
 	p_big_alleyways_count: int = 1,
 	p_min_steps_before_turn: int = 2,
 	p_grid_seed: int = -1,
-	p_building_grid_rows: int = 10,
-	p_building_grid_columns: int = 10,
+	p_building_grid_rows: int = 80,
+	p_building_grid_columns: int = 80,
 	p_block_cell_height: float = 0.01,
 	p_building_cell_height: float = 0.005,
 	p_neighborhood_height_falloff: float = 1.0,
@@ -140,6 +141,9 @@ func generate_city_graph(
 	
 	# Crear lane volumes con índices ya asignados
 	_generate_lane_volume_areas()
+
+	# Puentes entre edificios (necesita block grids ya generados)
+	_create_bridges(grid_seed)
 
 
 func _calculate_min_edge_length() -> float:
@@ -1016,9 +1020,305 @@ func get_neighborhood_type_for_edge(node1_idx: int, node2_idx: int) -> Neighborh
 
 func get_faces_of_type(neighborhood_type: NeighborhoodTypes.Type) -> Array[int]:
 	var faces: Array[int] = []
-	
+
 	for face_idx in face_to_type:
 		if face_to_type[face_idx] == neighborhood_type:
 			faces.append(face_idx)
-	
+
 	return faces
+
+
+# ============================================
+# GENERACIÓN DE PUENTES
+# ============================================
+
+func _create_bridges(seed: int) -> void:
+	bridges.clear()
+
+	var rng = RandomNumberGenerator.new()
+	rng.seed = hash(str(seed) + "bridges")
+
+	var total_placed = 0
+
+	for edge in plain_graph.edges:
+		var node1: int = edge[0]
+		var node2: int = edge[1]
+
+		var edge_key = GraphGenerator._get_edge_key(node1, node2)
+		if street_types.get(edge_key, 1) == -1:
+			continue
+
+		var adjacent_faces = _find_faces_sharing_edge(node1, node2)
+		if adjacent_faces.size() < 2:
+			continue
+
+		var face_a: int = adjacent_faces[0]
+		var face_b: int = adjacent_faces[1]
+
+		var block_a: BlockGenerator = block_grids.get(face_a, null)
+		var block_b: BlockGenerator = block_grids.get(face_b, null)
+		if block_a == null or block_b == null:
+			continue
+
+		var edge_idx_a = _find_edge_index_in_face(face_a, node1, node2)
+		var edge_idx_b = _find_edge_index_in_face(face_b, node1, node2)
+		if edge_idx_a == -1 or edge_idx_b == -1:
+			continue
+
+		var face_nodes_a = plain_graph.faces[face_a]
+		var face_nodes_b = plain_graph.faces[face_b]
+		var reversed_a = (face_nodes_a[edge_idx_a] != node1)
+		var reversed_b = (face_nodes_b[edge_idx_b] != node1)
+		var cells_a = _get_facade_cells(block_a.get_distorted_grid(), edge_idx_a, reversed_a)
+		var cells_b = _get_facade_cells(block_b.get_distorted_grid(), edge_idx_b, reversed_b)
+
+		var bridge_count = _get_bridge_count(node1, node2, street_types.get(edge_key, 1), rng)
+		if bridge_count == 0:
+			continue
+
+		var c_a1 = get_block_corner_with_offset(node1, edge, face_a)
+		var c_a2 = get_block_corner_with_offset(node2, edge, face_a)
+		var c_b1 = get_block_corner_with_offset(node1, edge, face_b)
+		var c_b2 = get_block_corner_with_offset(node2, edge, face_b)
+
+		if c_a1 == Vector2.ZERO or c_a2 == Vector2.ZERO or c_b1 == Vector2.ZERO or c_b2 == Vector2.ZERO:
+			continue
+
+		var max_h_a = block_a.get_max_building_height()
+		var max_h_b = block_b.get_max_building_height()
+		var max_height = min(max_h_a, max_h_b)
+		if max_height <= 0.0:
+			continue
+
+		var cell_height = block_a.get_building_cell_height()
+		var floor_height = block_a.get_cells_per_floor() * cell_height
+		var facade_building_cells = cells_a.size() * block_a.get_building_columns()
+
+		var mask_a = _build_facade_mask(block_a, cells_a, edge_idx_a)
+		var mask_b = _build_facade_mask(block_b, cells_b, edge_idx_b)
+
+		var mid_a = c_a1.lerp(c_a2, 0.5)
+		var mid_b = c_b1.lerp(c_b2, 0.5)
+		var bridge_length_cells = mid_a.distance_to(mid_b) / cell_height
+
+		var placed: Array = []
+		var occupied: Array = []
+		var used_floors: Dictionary = {}
+		var used_t_ranges: Array = []
+
+		for _i in range(bridge_count):
+			for _attempt in range(20):
+				var max_floor = max(1, int(max_height / floor_height) - 1)
+				var floor_idx = 1 + int(pow(rng.randf(), 0.6) * (max_floor - 1))
+
+				if floor_idx in used_floors:
+					continue
+
+				var context = {"floor_idx": floor_idx, "bridge_length_cells": bridge_length_cells}
+				var archetype_key = Bridge.select_archetype(rng, context)
+				var bridge = Bridge.new(archetype_key)
+
+				var t_half = _bridge_t_half(bridge, facade_building_cells)
+				var t_margin = t_half + 0.01
+				if t_margin * 2.0 >= 1.0:
+					continue
+				var t_center = rng.randf_range(t_margin, 1.0 - t_margin)
+				var t_start = t_center - t_half
+				var t_end = t_center + t_half
+
+				var h_base = floor_idx * floor_height - bridge.base_height * cell_height
+				var bridge_h = (bridge.base_height + bridge.pathway_height + bridge.railing_height) * cell_height
+				var h_top = h_base + bridge_h
+
+				if h_top > max_height:
+					continue
+
+				if not _facade_mask_supports(mask_a, t_start, t_end, h_top):
+					continue
+				if not _facade_mask_supports(mask_b, t_start, t_end, h_top):
+					continue
+
+				# El slot incluye el arco que cuelga por debajo
+				var h_arc_bottom = h_base - bridge.arc_height * cell_height
+				var slot = {
+					"t_start": t_start, "t_end": t_end,
+					"h_start": h_arc_bottom, "h_end": h_top
+				}
+
+				if _slot_overlaps(slot, occupied):
+					continue
+
+				if _t_range_overlaps(t_start, t_end, used_t_ranges):
+					continue
+
+				occupied.append(slot)
+				used_t_ranges.append(Vector2(t_start - 0.06, t_end + 0.06))
+				used_floors[floor_idx] = true
+				placed.append({
+					"bridge": bridge,
+					"t_start": t_start,
+					"t_end": t_end,
+					"h_start": h_base,
+					"cell_height": cell_height,
+					"c_a1": c_a1, "c_a2": c_a2,
+					"c_b1": c_b1, "c_b2": c_b2,
+					"face_a": face_a, "face_b": face_b,
+				})
+				break
+
+		if not placed.is_empty():
+			bridges[edge_key] = placed
+			total_placed += placed.size()
+
+	print("[GraphCityGenerator] Puentes generados: %d en %d edges" % [total_placed, bridges.size()])
+
+
+func _get_bridge_count(_node1: int, _node2: int, street_type: int, rng: RandomNumberGenerator) -> int:
+	match street_type:
+		0:  return rng.randi_range(0, 1)
+		1:  return rng.randi_range(1, 2)
+		2:  return rng.randi_range(2, 3)
+	return 0
+
+
+static func _t_range_overlaps(t_start: float, t_end: float, ranges: Array) -> bool:
+	for r in ranges:
+		if t_end > r.x and t_start < r.y:
+			return true
+	return false
+
+
+static func _bridge_t_half(bridge: Bridge, facade_building_cells: int) -> float:
+	if facade_building_cells <= 0:
+		return 0.05
+	return float(bridge.total_width) / (2.0 * facade_building_cells)
+
+
+static func _slot_overlaps(slot: Dictionary, occupied: Array) -> bool:
+	for other in occupied:
+		var t_ok = slot["t_start"] < other["t_end"] and slot["t_end"] > other["t_start"]
+		var h_ok = slot["h_start"] < other["h_end"] and slot["h_end"] > other["h_start"]
+		if t_ok and h_ok:
+			return true
+	return false
+
+
+func _find_edge_index_in_face(face_idx: int, node1: int, node2: int) -> int:
+	var face = plain_graph.faces[face_idx]
+	for i in range(face.size()):
+		if (face[i] == node1 and face[(i + 1) % face.size()] == node2) or \
+		   (face[i] == node2 and face[(i + 1) % face.size()] == node1):
+			return i
+	return -1
+
+
+static func _get_facade_cells(grid: DistortedGrid, edge_idx: int, reversed: bool) -> Array:
+	var cells: Array = []
+	match edge_idx:
+		0:
+			for x in range(grid.columns):
+				cells.append(Vector2i(x, 0))
+		1:
+			for z in range(grid.rows):
+				cells.append(Vector2i(grid.columns - 1, z))
+		2:
+			for x in range(grid.columns - 1, -1, -1):
+				cells.append(Vector2i(x, grid.rows - 1))
+		3:
+			for z in range(grid.rows - 1, -1, -1):
+				cells.append(Vector2i(0, z))
+	if reversed:
+		cells.reverse()
+	return cells
+
+
+# Builds a height array at the building-cell level for one facade edge.
+# Each entry = building height at that position (0.0 if no wall: outside core, in chamfer, no cluster).
+# Computed once per edge, reused for all bridge attempts with different height thresholds.
+static func _build_facade_mask(block: BlockGenerator, cells: Array, edge_idx: int) -> Array:
+	var building_dim: int
+	match edge_idx:
+		0, 2:
+			building_dim = block.get_building_columns()
+		_:
+			building_dim = block.get_building_rows()
+
+	var total = cells.size() * building_dim
+	var mask: Array = []
+	mask.resize(total)
+	for i in range(total):
+		mask[i] = 0.0
+
+	var cpf = block.get_cells_per_floor()
+	var bch = block.get_building_cell_height()
+
+	for ci in range(cells.size()):
+		var coord = cells[ci]
+		var cluster = block.get_cluster_for_cell(coord.x, coord.y)
+		if cluster == null or cluster.floor_count == 0:
+			continue
+		var cluster_height = cluster.floor_count * cpf * bch
+
+		var module: BuildingModule = block.get_building_module(coord.x, coord.y, 0)
+		if module == null:
+			continue
+
+		var core = module.get_core_info()
+		var chamfer_rects = BuildingGridHelper._get_chamfer_rects_static(module)
+
+		var along_min: int
+		var along_max: int
+		var depth_pos: int
+		match edge_idx:
+			0:
+				along_min = core["min_x"]; along_max = core["max_x"]
+				depth_pos = core["min_z"]
+			1:
+				along_min = core["min_z"]; along_max = core["max_z"]
+				depth_pos = core["max_x"]
+			2:
+				along_min = core["min_x"]; along_max = core["max_x"]
+				depth_pos = core["max_z"]
+			3:
+				along_min = core["min_z"]; along_max = core["max_z"]
+				depth_pos = core["min_x"]
+
+		for local_b in range(along_min, along_max + 1):
+			var bx: int
+			var bz: int
+			match edge_idx:
+				0, 2:
+					bx = local_b; bz = depth_pos
+				_:
+					bx = depth_pos; bz = local_b
+
+			if BuildingGridHelper._is_cell_in_chamfer_static(bx, bz, chamfer_rects):
+				continue
+
+			var global_idx: int
+			match edge_idx:
+				0, 1:
+					global_idx = ci * building_dim + local_b
+				2:
+					global_idx = ci * building_dim + (building_dim - 1 - local_b)
+				3:
+					global_idx = ci * building_dim + (building_dim - 1 - local_b)
+
+			if global_idx >= 0 and global_idx < total:
+				mask[global_idx] = cluster_height
+
+	return mask
+
+
+static func _facade_mask_supports(mask: Array, t_start: float, t_end: float, required_height: float) -> bool:
+	var n = mask.size()
+	if n == 0:
+		return false
+	var i_start = int(t_start * n)
+	var i_end = int(ceil(t_end * n)) - 1
+	i_start = clampi(i_start, 0, n - 1)
+	i_end = clampi(i_end, 0, n - 1)
+	for i in range(i_start, i_end + 1):
+		if mask[i] < required_height:
+			return false
+	return i_start <= i_end

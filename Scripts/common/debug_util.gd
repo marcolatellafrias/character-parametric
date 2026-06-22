@@ -1,6 +1,8 @@
 # res://utils/debug_utils.gd
 class_name DebugUtil
 
+const WORLD_MESH_VISIBILITY_RANGE: float = 200.0
+
 static func create_debug_cone(color: Color, length: float, radius: float, segments: int = 32) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var st := SurfaceTool.new()
@@ -260,8 +262,9 @@ static func create_debug_line_to_from(from: Vector3, to: Vector3, color: Color, 
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.albedo_color = color
-	
+
 	mesh_instance.material_override = material
+	mesh_instance.visibility_range_end = WORLD_MESH_VISIBILITY_RANGE
 	return mesh_instance
 
 static func create_debug_polygon(points: PackedVector3Array, color: Color) -> MeshInstance3D:
@@ -392,9 +395,9 @@ static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vect
 		material.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
 	
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Visible desde ambos lados
-	
+
 	mesh_instance.material_override = material
-	
+	mesh_instance.visibility_range_end = WORLD_MESH_VISIBILITY_RANGE
 	return mesh_instance
 
 static func create_skewed_cube(base_vertices: Array, height: float, color: Color, use_transparency: bool = false) -> MeshInstance3D:
@@ -483,7 +486,7 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 	
 	mesh_instance.mesh = st.commit()
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	
+	mesh_instance.visibility_range_end = WORLD_MESH_VISIBILITY_RANGE
 	return mesh_instance
 
 # Crea un cubo skewed con chamfers en sus edges verticales, especificados en unidades reales.
@@ -619,7 +622,7 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 	
 	mesh_instance.mesh = st.commit()
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	
+	mesh_instance.visibility_range_end = WORLD_MESH_VISIBILITY_RANGE
 	return mesh_instance
 
 # Crea un cubo skewed con chamfers en sus edges verticales, especificados en unidades de grid.
@@ -1236,40 +1239,32 @@ static func _add_quad(
 	a: Vector3, b: Vector3, c: Vector3, d: Vector3,
 	mesh_center: Vector3
 ) -> void:
+	var n = (b - a).cross(c - a)
+	var face_center = (a + b + c + d) * 0.25
+	if n.dot(face_center - mesh_center) > 0.0:
+		var tmp = b; b = d; d = tmp
 	_add_quad_to_arrays(verts, indices, a, b, c, d)
 	_add_quad_normals(normals, a, b, c, d, mesh_center)
 
-# create_skewed_cube_from_planes
-# Construye un cubo deformado a partir de dos quads paralelos (plano frontal y trasero).
+# Construye un cubo deformado a partir de dos quads (plano frontal y trasero).
 #
-# Orden de vértices esperado para cada plano (vista desde el exterior):
+# Orden de vértices esperado para cada plano:
 #
 #   [3] top-left ---- [2] top-right
 #        |                  |
 #   [0] bot-left ---- [1] bot-right
 #
-# Si is_inverted = true, el eje horizontal está invertido (edges 2 y 3 de fachada):
-#
-#   [2] top-left ---- [3] top-right
-#        |                  |
-#   [1] bot-left ---- [0] bot-right
-#
-# is_inverted remapea los índices antes de construir las caras, de modo que
-# el winding order resultante siempre sea correcto visto desde afuera.
-#
-# Las 6 caras del cubo son: frontal, trasera, bottom, top, left, right.
-# Las normales se calculan automáticamente apuntando hacia afuera del mesh_center.
+# El winding y las normales se auto-corrigen contra el centroide del mesh,
+# por lo que el orden de vértices puede ser CW o CCW — no importa.
 static func create_skewed_cube_from_planes(
 	plane1_vertices: Array,
 	plane2_vertices: Array,
 	color: Color,
-	alpha: float,
-	is_inverted: bool = false
+	alpha: float
 ) -> MeshInstance3D:
 	if plane1_vertices.size() != 4 or plane2_vertices.size() != 4:
 		push_error("create_skewed_cube_from_planes requiere 4 vértices por plano")
 		return null
-	var idx := [0, 1, 2, 3] if not is_inverted else [1, 0, 3, 2]
 	var p1 := plane1_vertices
 	var p2 := plane2_vertices
 	var mesh_center = Vector3.ZERO
@@ -1285,22 +1280,22 @@ static func create_skewed_cube_from_planes(
 	var mesh_indices  = PackedInt32Array()
 	# Plane 1 (cara frontal)
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p1[idx[0]], p1[idx[1]], p1[idx[2]], p1[idx[3]], mesh_center)
+		p1[0], p1[1], p1[2], p1[3], mesh_center)
 	# Plane 2 (cara trasera)
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p2[idx[3]], p2[idx[2]], p2[idx[1]], p2[idx[0]], mesh_center)
+		p2[3], p2[2], p2[1], p2[0], mesh_center)
 	# Bottom face
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p1[idx[0]], p2[idx[0]], p2[idx[1]], p1[idx[1]], mesh_center)
+		p1[0], p2[0], p2[1], p1[1], mesh_center)
 	# Top face
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p1[idx[3]], p1[idx[2]], p2[idx[2]], p2[idx[3]], mesh_center)
+		p1[3], p1[2], p2[2], p2[3], mesh_center)
 	# Left face
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p1[idx[0]], p1[idx[3]], p2[idx[3]], p2[idx[0]], mesh_center)
+		p1[0], p1[3], p2[3], p2[0], mesh_center)
 	# Right face
 	_add_quad(mesh_vertices, mesh_indices, mesh_normals,
-		p1[idx[1]], p2[idx[1]], p2[idx[2]], p1[idx[2]], mesh_center)
+		p1[1], p2[1], p2[2], p1[2], mesh_center)
 	arrays[Mesh.ARRAY_VERTEX] = mesh_vertices
 	arrays[Mesh.ARRAY_NORMAL] = mesh_normals
 	arrays[Mesh.ARRAY_INDEX]  = mesh_indices
@@ -1312,6 +1307,7 @@ static func create_skewed_cube_from_planes(
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_instance.material_override = material
+	mesh_instance.visibility_range_end = WORLD_MESH_VISIBILITY_RANGE
 	return mesh_instance
 
 # Función helper para agregar un quad a los arrays de mesh

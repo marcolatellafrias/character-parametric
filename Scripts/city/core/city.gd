@@ -19,7 +19,7 @@ extends Node3D
 @export var smoothing_steps: int = 40
 
 @export_group("Visualización General")
-@export var show_streets: bool = false
+@export var show_streets: bool = true
 @export var show_nodes: bool = false
 @export var node_radius: float = 0.08
 @export var normal_node_color: Color = Color.CHARTREUSE
@@ -31,15 +31,15 @@ extends Node3D
 @export var num_small_streets: int = 10
 
 @export_subgroup("Calles Pequeñas (Tipo 0)")
-@export var small_street_color: Color = Color.DEEP_PINK
+@export var small_street_color: Color = Color.WHITE
 @export var small_street_width: float = 0.01
 
 @export_subgroup("Calles Medianas (Tipo 1)")
-@export var medium_street_color: Color = Color.WHITE
+@export var medium_street_color: Color = Color.CYAN
 @export var medium_street_width: float = 0.02
 
 @export_subgroup("Calles Grandes (Tipo 2)")
-@export var large_street_color: Color = Color.PURPLE
+@export var large_street_color: Color = Color.MAGENTA
 @export var large_street_width: float = 0.04
 
 @export_subgroup("Calles Límite (Tipo -1)")
@@ -49,7 +49,7 @@ extends Node3D
 @export_group("Grillas de Manzanas")
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
-@export var block_cells_per_floor: int = 8
+@export var block_cells_per_floor: int = 32
 
 @export_group("Grilla Distorsionada")
 @export var distorted_grid_rows: int = 6
@@ -69,8 +69,8 @@ extends Node3D
 @export var grid_seed: int = -1
 
 @export_group("Grilla de Buildings")
-@export var building_grid_rows: int = 20
-@export var building_grid_columns: int = 20
+@export var building_grid_rows: int = 80
+@export var building_grid_columns: int = 80
 
 @export_subgroup("Visualización de Grilla Distorsionada")
 @export var show_distorted_grid: bool = true
@@ -89,9 +89,9 @@ extends Node3D
 
 @export_group("Buildings")
 @export var show_buildings: bool = true
-@export var show_building_colliders: bool = true
-@export var alternate_floor_shading: bool = false
-@export var alternate_module_shading: bool = false
+@export var enable_building_colliders: bool = true
+@export var alternate_floor_shading: bool = true
+@export var alternate_module_shading: bool = true
 @export_range(0.1, 0.9) var floor_shade_factor: float = 0.85
 
 @export_group("Planos de Pisos")
@@ -119,6 +119,14 @@ extends Node3D
 @export var traffic_light_cycle_duration: float = 5.0
 
 @export var show_building_grid_helpers: bool = false
+
+@export_group("Puentes")
+@export var show_bridges: bool = true
+@export var enable_bridge_colliders: bool = true
+@export var bridge_arc_color: Color = Color(0.8, 0.2, 0.2)
+@export var bridge_base_color: Color = Color(0.55, 0.55, 0.55)
+@export var bridge_pathway_color: Color = Color(0.9, 0.8, 0.2)
+@export var bridge_railing_color: Color = Color(0.2, 0.75, 0.9)
 
 # ============================================
 # DATOS DEL GRAFO
@@ -246,7 +254,7 @@ func visualize_graph() -> void:
 	if show_buildings:
 		_visualize_buildings()
 
-	if show_building_colliders:
+	if enable_building_colliders:
 		_visualize_building_colliders()
 
 	if show_distorted_grid:
@@ -266,6 +274,9 @@ func visualize_graph() -> void:
 		
 	if show_building_grid_helpers:
 		_visualize_building_grid_helpers()
+
+	if show_bridges:
+		_visualize_bridges()
 
 # LaneVolume es Node3D y necesita estar en el árbol para funcionar.
 # Si en el futuro se convierte a RefCounted, este método desaparece.
@@ -770,8 +781,12 @@ func _visualize_building_grid_helpers() -> void:
 
 			for cell_key in cell_matrix["cells"]:
 				var cell = cell_matrix["cells"][cell_key]
-				var is_available: bool = cell["availability"]
-				var color = Color(0, 1, 0, 0.5) if is_available else Color(1, 0, 0, 0.5)
+				var cell_state: int = cell["state"]
+				var color: Color
+				match cell_state:
+					BuildingGridHelper.CellState.AVAILABLE:   color = Color(0.0, 1.0, 0.0, 0.5)
+					BuildingGridHelper.CellState.ROOF_ONLY:   color = Color(0.0, 0.5, 1.0, 0.5)
+					_:                                        color = Color(1.0, 0.0, 0.0, 0.5)
 
 				var bottom_vertices = base_module.get_cell_vertices(cell["bx"], cell["bz"], cell["height_index"])
 				if bottom_vertices.size() != 4:
@@ -780,9 +795,113 @@ func _visualize_building_grid_helpers() -> void:
 				add_child(DebugUtil.create_skewed_cube(bottom_vertices, building_cell_height, color, true))
 
 				total_cells += 1
-				if is_available:
+				if cell_state == BuildingGridHelper.CellState.AVAILABLE:
 					available_cells += 1
 
 	print("[Visualizer] Building grid cells: %d total (%d available, %d unavailable)" % [
 		total_cells, available_cells, total_cells - available_cells
 	])
+
+
+# ============================================
+# VISUALIZACIÓN DE PUENTES
+# ============================================
+
+func _visualize_bridges() -> void:
+	var total = 0
+	for edge_key in generator.bridges:
+		for placed in generator.bridges[edge_key]:
+			_draw_bridge(placed)
+			total += 1
+	print("[Visualizer] Puentes: %d" % total)
+
+
+func _draw_bridge(placed: Dictionary) -> void:
+	var bridge: Bridge     = placed["bridge"]
+	var c_a1: Vector2      = placed["c_a1"]
+	var c_a2: Vector2      = placed["c_a2"]
+	var c_b1: Vector2      = placed["c_b1"]
+	var c_b2: Vector2      = placed["c_b2"]
+	var t_start: float     = placed["t_start"]
+	var t_end: float       = placed["t_end"]
+	var h0: float          = placed["h_start"]
+	var ch: float          = placed["cell_height"]
+
+	var h_base_top  = h0 + bridge.base_height * ch
+	var h_path_top  = h_base_top + bridge.pathway_height * ch
+	var h_rail_top  = h_path_top + bridge.railing_height * ch
+	var t_one_cell  = (t_end - t_start) / bridge.total_width
+
+	var static_body: StaticBody3D = null
+	if enable_bridge_colliders:
+		static_body = StaticBody3D.new()
+
+	# Base (ancho y alto completos)
+	var pa_base = _bridge_plane(c_a1, c_a2, t_start, t_end, h0, h_base_top)
+	var pb_base = _bridge_plane(c_b1, c_b2, t_start, t_end, h0, h_base_top)
+	add_child(DebugUtil.create_skewed_cube_from_planes(pa_base, pb_base, bridge_base_color, 1.0))
+	if static_body:
+		static_body.add_child(DebugUtil.create_collision_shape_from_planes(pa_base, pb_base))
+
+	# Pathway (mismo ancho que base, 1 celda de altura, arriba de la base)
+	var pa_path = _bridge_plane(c_a1, c_a2, t_start, t_end, h_base_top, h_path_top)
+	var pb_path = _bridge_plane(c_b1, c_b2, t_start, t_end, h_base_top, h_path_top)
+	add_child(DebugUtil.create_skewed_cube_from_planes(pa_path, pb_path, bridge_pathway_color, 1.0))
+	if static_body:
+		static_body.add_child(DebugUtil.create_collision_shape_from_planes(pa_path, pb_path))
+
+	# Railings (1 celda de ancho, en las dos celdas exteriores del pathway)
+	if bridge.railing_height > 0:
+		var pa_rl = _bridge_plane(c_a1, c_a2, t_start, t_start + t_one_cell, h_path_top, h_rail_top)
+		var pb_rl = _bridge_plane(c_b1, c_b2, t_start, t_start + t_one_cell, h_path_top, h_rail_top)
+		add_child(DebugUtil.create_skewed_cube_from_planes(pa_rl, pb_rl, bridge_railing_color, 1.0))
+		if static_body:
+			static_body.add_child(DebugUtil.create_collision_shape_from_planes(pa_rl, pb_rl))
+
+		var pa_rr = _bridge_plane(c_a1, c_a2, t_end - t_one_cell, t_end, h_path_top, h_rail_top)
+		var pb_rr = _bridge_plane(c_b1, c_b2, t_end - t_one_cell, t_end, h_path_top, h_rail_top)
+		add_child(DebugUtil.create_skewed_cube_from_planes(pa_rr, pb_rr, bridge_railing_color, 1.0))
+		if static_body:
+			static_body.add_child(DebugUtil.create_collision_shape_from_planes(pa_rr, pb_rr))
+
+	# Arcos (dos, uno en cada extremo del puente, mismo ancho que base, tamaño fijo)
+	if bridge.arc_height > 0 and bridge.arc_length > 0:
+		var h_arc_bot = h0 - bridge.arc_height * ch
+		var pa_arc = _bridge_plane(c_a1, c_a2, t_start, t_end, h_arc_bot, h0)
+		var pb_arc = _bridge_plane(c_b1, c_b2, t_start, t_end, h_arc_bot, h0)
+
+		var bridge_depth = pa_arc[0].distance_to(pb_arc[0])
+		var arc_world_depth = bridge.arc_length * ch
+		var arc_frac = clampf(arc_world_depth / bridge_depth, 0.0, 0.45) if bridge_depth > 0.0 else 0.0
+
+		var pb_near: Array[Vector3] = []
+		for i in range(4):
+			pb_near.append(pa_arc[i].lerp(pb_arc[i], arc_frac))
+		add_child(DebugUtil.create_skewed_cube_from_planes(pa_arc, pb_near, bridge_arc_color, 1.0))
+		if static_body:
+			static_body.add_child(DebugUtil.create_collision_shape_from_planes(pa_arc, pb_near))
+
+		var pa_far: Array[Vector3] = []
+		for i in range(4):
+			pa_far.append(pa_arc[i].lerp(pb_arc[i], 1.0 - arc_frac))
+		add_child(DebugUtil.create_skewed_cube_from_planes(pa_far, pb_arc, bridge_arc_color, 1.0))
+		if static_body:
+			static_body.add_child(DebugUtil.create_collision_shape_from_planes(pa_far, pb_arc))
+
+	if static_body:
+		add_child(static_body)
+
+
+# Devuelve los 4 vértices 3D del plano de fachada de un puente en un rango de altura dado.
+# c1/c2: esquinas 2D (X,Z) de la fachada. t_start/t_end: posición paramétrica a lo largo de la fachada.
+static func _bridge_plane(c1: Vector2, c2: Vector2, t_start: float, t_end: float,
+		h_bottom: float, h_top: float) -> Array[Vector3]:
+	var p_s = c1.lerp(c2, t_start)
+	var p_e = c1.lerp(c2, t_end)
+	var result: Array[Vector3] = [
+		Vector3(p_s.x, h_bottom, p_s.y),
+		Vector3(p_e.x, h_bottom, p_e.y),
+		Vector3(p_e.x, h_top,    p_e.y),
+		Vector3(p_s.x, h_top,    p_s.y),
+	]
+	return result

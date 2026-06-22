@@ -49,7 +49,7 @@ extends Node3D
 @export_group("Grillas de Manzanas")
 @export var block_grid_rows: int = 100
 @export var block_grid_columns: int = 100
-@export var block_cells_per_floor: int = 8
+@export var block_cells_per_floor: int = 32
 
 @export_group("Grilla Distorsionada")
 @export var distorted_grid_rows: int = 6
@@ -69,8 +69,8 @@ extends Node3D
 @export var grid_seed: int = -1
 
 @export_group("Grilla de Buildings")
-@export var building_grid_rows: int = 20
-@export var building_grid_columns: int = 20
+@export var building_grid_rows: int = 80
+@export var building_grid_columns: int = 80
 
 @export_subgroup("Visualización de Grilla Distorsionada")
 @export var show_distorted_grid: bool = true

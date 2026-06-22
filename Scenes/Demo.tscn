@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=26 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" uid="uid://bchdbfnnxbtq2" path="res://Scenes/package.tscn" id="7_k27g2"]
 [ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/core/city.gd" id="9_oilx1"]
 [ext_resource type="Script" uid="uid://bl2t0acm7uwql" path="res://Scripts/character_test.gd" id="10_4i7ud"]
+[ext_resource type="Script" uid="uid://bby2e141ke1uw" path="res://Scripts/common/fps_graph.gd" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
 
@@ -207,6 +208,11 @@ fly_sprint_speed = 40.0
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CharacterBody3D"]
 shape = SubResource("CapsuleShape3D_4i7ud")
 
-[node name="area_instantiator" type="Node3D" parent="."]
+[node name="area_instantiator" type="Node3D" parent="." node_paths=PackedStringArray("cameras", "world")]
 script = ExtResource("12_k27g2")
 show_debug_cylinder = true
+cameras = [NodePath("../CharacterBody3D/Camera3D")]
+world = NodePath("..")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+script = ExtResource("11_v3boh")
