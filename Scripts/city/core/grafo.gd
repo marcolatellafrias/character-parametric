@@ -478,10 +478,8 @@ static func _get_or_create_midpoint(
 	points.append(midpoint)
 	
 	var is_boundary_edge = boundary_edges.get(key, false)
-	var type1 = node_types.get(idx1, 0)
-	var type2 = node_types.get(idx2, 0)
-	
-	if is_boundary_edge or (type1 == 1 and type2 == 1):
+
+	if is_boundary_edge:
 		node_types[new_idx] = 1
 		boundary_edges[_get_edge_key(idx1, new_idx)] = true
 		boundary_edges[_get_edge_key(new_idx, idx2)] = true

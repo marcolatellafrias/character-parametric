@@ -174,14 +174,9 @@ func _initialize_street_types() -> void:
 
 func _mark_boundary_streets() -> void:
 	for edge in plain_graph.edges:
-		var node1_idx = edge[0]
-		var node2_idx = edge[1]
-		
-		var node1_type = plain_graph.node_types.get(node1_idx, 0)
-		var node2_type = plain_graph.node_types.get(node2_idx, 0)
-		
-		if node1_type == 1 and node2_type == 1:
-			var edge_key = GraphGenerator._get_edge_key(node1_idx, node2_idx)
+		var edge_key = GraphGenerator._get_edge_key(edge[0], edge[1])
+		var faces_for_edge = plain_graph.edge_to_faces.get(edge_key, [])
+		if faces_for_edge.size() < 2:
 			street_types[edge_key] = -1
 
 func _generate_large_streets(num_large_streets: int) -> void:
