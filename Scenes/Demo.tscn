@@ -1,6 +1,5 @@
 [gd_scene load_steps=26 format=3 uid="uid://px3s6dr8xxni"]
 
-[ext_resource type="Texture2D" uid="uid://dri6aufdetmtv" path="res://Materials/dledtk_8x8_cr.png" id="1_h3puh"]
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
 [ext_resource type="Material" uid="uid://da33e5tos7dp0" path="res://Materials/blue.tres" id="4_oilx1"]
 [ext_resource type="Material" uid="uid://dnj4yx07gux3o" path="res://Materials/green.tres" id="5_4i7ud"]
@@ -8,17 +7,18 @@
 [ext_resource type="PackedScene" uid="uid://bchdbfnnxbtq2" path="res://Scenes/package.tscn" id="7_k27g2"]
 [ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/core/city.gd" id="9_oilx1"]
 [ext_resource type="Script" uid="uid://bl2t0acm7uwql" path="res://Scripts/character_test.gd" id="10_4i7ud"]
+[ext_resource type="Shader" uid="uid://cwp4o1qsu4vtg" path="res://Shaders/radial_fog.gdshader" id="11_h3puh"]
 [ext_resource type="Script" uid="uid://bby2e141ke1uw" path="res://Scripts/common/fps_graph.gd" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
-albedo_texture = ExtResource("1_h3puh")
+albedo_color = Color(0.28412804, 0.16505393, 0.15014252, 1)
 uv1_scale = Vector3(1000, 750, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_hfvyn"]
 material = SubResource("StandardMaterial3D_k27g2")
-size = Vector3(1000, 0.01, 1000)
+size = Vector3(3000, -0.06, 3000)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_fnnck"]
 size = Vector3(1000, 1, 1000)
@@ -195,8 +195,10 @@ master_seed = 10
 
 [node name="city" type="Node3D" parent="."]
 script = ExtResource("9_oilx1")
-region_size = Vector2(600, 600)
+region_size = Vector2(800, 800)
 min_distance = 117.325
+generation_seed = 1234567
+show_buildings = true
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8859253, 0)
@@ -210,9 +212,12 @@ shape = SubResource("CapsuleShape3D_4i7ud")
 
 [node name="area_instantiator" type="Node3D" parent="." node_paths=PackedStringArray("cameras", "world")]
 script = ExtResource("12_k27g2")
-show_debug_cylinder = true
+outer_radius = 200.0
+spawn_radius = 250.0
 cameras = [NodePath("../CharacterBody3D/Camera3D")]
 world = NodePath("..")
+fog_color = Color(0.9309718, 0.5619476, 0.4062535, 1)
+fog_shader = ExtResource("11_h3puh")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 script = ExtResource("11_v3boh")

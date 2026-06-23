@@ -991,6 +991,44 @@ func get_lane_volume_continuations(face_idx: int, edge_idx: int) -> Array[LaneVo
 	
 	return continuations
 
+func get_lane_volume_predecessors(face_idx: int, edge_idx: int) -> Array[LaneVolume]:
+	var predecessors: Array[LaneVolume] = []
+
+	var block: BlockGenerator = block_grids.get(face_idx, null)
+	if block == null:
+		return predecessors
+
+	var face = plain_graph.faces[face_idx]
+	var original_node1 = face[edge_idx]
+	var original_node2 = face[(edge_idx + 1) % face.size()]
+
+	var start_node_idx: int = original_node2
+
+	for other_face_idx in plain_graph.node_to_faces.get(start_node_idx, []):
+		if other_face_idx not in block_grids:
+			continue
+		var other_face = plain_graph.faces[other_face_idx]
+		var other_block: BlockGenerator = block_grids[other_face_idx]
+		if other_block == null:
+			continue
+
+		for other_edge_idx in range(other_face.size()):
+			var other_node1 = other_face[other_edge_idx]
+			var other_node2 = other_face[(other_edge_idx + 1) % other_face.size()]
+
+			if (other_node1 == original_node1 and other_node2 == original_node2) or \
+			   (other_node1 == original_node2 and other_node2 == original_node1):
+				continue
+
+			var end_node_of_other: int = other_node1
+
+			if end_node_of_other == start_node_idx:
+				var key = "%d_%d" % [other_face_idx, other_edge_idx]
+				if key in lane_volume_areas:
+					predecessors.append(lane_volume_areas[key])
+
+	return predecessors
+
 # ============================================
 # GETTERS DE BARRIOS
 # ============================================

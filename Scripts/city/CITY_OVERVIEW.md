@@ -110,6 +110,83 @@ Enter volume (u,v) → build Curve3D path → follow path
 → check traffic light → pick next volume → repeat
 ```
 
+### Car archetypes
+
+9 types defined in `CarArchetypes`. Each has dimensions, speed range, spawn weight, per-volume cap, and global cap. Neighborhood-specific weight tables in `NeighborhoodTypes.CAR_WEIGHTS` override default weights at spawn time.
+
+| Type | Weight | Per-volume | Global max |
+|---|---|---|---|
+| Poor Car | 0.30 | 30 | 150 |
+| Motorcycle | 0.20 | 10 | 30 |
+| Rich Car | 0.15 | 30 | 100 |
+| Police Car | 0.10 | 10 | 15 |
+| Utility Truck | 0.08 | 1 | 1 |
+| Taxi | 0.05 | 15 | 20 |
+| Vending Truck | 0.05 | 1 | 1 |
+| Garbage Truck | 0.04 | 1 | 1 |
+| Ad Truck | 0.03 | 1 | 1 |
+
+Both per-volume and global limits are enforced at spawn time. Per-volume counts are tracked via `volume_type_counts` (nested dict: `vol_id → {car_type → count}`), updated on spawn, volume transitions, and despawn.
+
+### Neighborhood affinity (routing)
+
+Each car type has an affinity value per neighborhood type (defined in `CarArchetypes.NEIGHBORHOOD_AFFINITY`). When choosing a continuation at an intersection, two factors are weighted:
+
+| Factor | Weight | Source |
+|---|---|---|
+| Angle (prefer straight) | 60% | `(PI - angle_diff) / PI`, normalized to 0–1 |
+| Neighborhood affinity | 40% | `CarArchetypes.get_neighborhood_affinity()` |
+
+### Fog and zone radii (`AreaInstantiator`)
+
+Three concentric cylindrical zones (XZ distance from camera):
+
+| Zone | Radius | Purpose |
+|---|---|---|
+| Inner (clear) | `0 → inner_radius` | No fog |
+| Fade ring | `inner_radius → outer_radius` | Fog 0% → 100% |
+| Outer | `outer_radius → spawn_radius` | Full fog; safe for spawning |
+
+A single cylindrical `Area3D` per camera at `spawn_radius` (mask = layer 4) tracks which `LaneVolume`s are in range (`all_lane_volumes`).
+
+### Radial fog
+
+A fullscreen spatial shader (`radial_fog.gdshader`) on a `MeshInstance3D` quad reads the depth buffer, reconstructs world position, and computes XZ distance from the player. Fog is `smoothstep(inner_radius, outer_radius)` — completely clear inside the inner zone, fully opaque at the outer boundary. The sky (depth = 1.0) is discarded so it's never fogged.
+
+### Spawning — demand-pull system
+
+Instead of spawning cars at edges and hoping they drive into view, the system is **demand-pull**: each volume has a target occupancy and the system fills it to target.
+
+**Target occupancy** per volume: `int(traffic_density × path_length / car_spacing)`. Big downtown streets want 3–4 cars; small alleys want 0.
+
+**Three mechanisms fill volumes:**
+
+1. **Bootstrap** (first `bootstrap_duration` seconds): `_topup_volumes()` runs every `spawn_interval` (0.15s), spawning up to `bootstrap_batch_size` (30) cars per tick with no frustum safety check. Populates the entire scene before the player notices.
+2. **On-enter seeding**: after bootstrap, when a new `LaneVolume` enters the cylinder (`area_entered`), it is immediately seeded to target — but only if safe (out of frustum or beyond `outer_radius`, where fog hides pop-in).
+3. **Periodic top-up**: every `spawn_interval`, `_topup_volumes()` iterates active volumes and spawns up to `max_topup_per_tick` (5) cars in underpopulated volumes that pass the safety check.
+
+**Mid-volume placement**: seeded cars are placed at random positions along the volume's length (`start.lerp(end, along_t)` with `along_t ∈ [0, 1)`), so they appear mid-drive rather than at volume edges.
+
+**Pop-in mitigation** (`_is_safe_to_seed`): cars only materialize where the player can't see them — either out of camera frustum or beyond `outer_radius` (fully fogged). The 50-unit buffer between `outer_radius` and `spawn_radius` gives cars time to settle before the fog clears.
+
+**Archetype selection**: weighted random from neighborhood-specific car weights (`NeighborhoodTypes.CAR_WEIGHTS`). Checked against both global type caps and per-volume type caps. Big vehicles have `min_spawn_v > 0` so they don't appear at ground level.
+
+### Despawning
+
+Pure distance check: each frame, if the car's XZ distance to the nearest camera exceeds `spawn_radius`, it's `queue_free()`d. No volume-based or frustum-based despawn logic. Cars drive freely through the graph and die only when they leave the outermost ring (fully hidden by fog).
+
+### Collision avoidance
+
+Ghost-based forward scanning. Each frame, `CollisionAvoidance` places shape queries ("ghosts") along the car's future path. If a ghost overlaps another car's detection area or broadcast area, the car smoothly decelerates (quadratic ease). If the obstacle is within `min_safe_distance`, speed drops to 0.
+
+**Broadcast ghosts**: a moving car also places collision shapes ahead of itself on its broadcast area (monitorable but not monitoring). Other cars' detection ghosts can detect these, allowing early braking before the actual car body is reached.
+
+**Timeout system**: if two cars are mutually blocking and neither moves for `timeout_duration` seconds, one ignores the other and drives through. Ignored cars are un-ignored once their ghosts no longer detect them. A traffic-light chain check (up to 20 cars deep) prevents the timeout from firing when the chain is legitimately waiting for a red light.
+
+### Online sync design note
+
+The car system is designed for deterministic prediction in online multiplayer. Given a car's seed, spawn volume, and grid position `(u, v)`, its archetype, speed, and path are fully determined. Continuation selection uses a seeded RNG. This means a remote client can reconstruct any car's trajectory without continuous position updates — only the initial spawn event needs to be synchronized.
+
 ---
 
 ## Mesh generation — normals & winding

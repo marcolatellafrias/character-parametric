@@ -88,7 +88,7 @@ extends Node3D
 @export var distorted_grid_height_offset: float = 0.1
 
 @export_group("Buildings")
-@export var show_buildings: bool = true
+@export var show_buildings: bool = false
 @export var enable_building_colliders: bool = true
 @export var alternate_floor_shading: bool = true
 @export var alternate_module_shading: bool = true

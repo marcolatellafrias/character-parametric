@@ -4,8 +4,8 @@ class_name LaneVolume
 
 const STREET_TYPE_TRAFFIC_DENSITY = {
 	-1: 0.0,
-	0: 0.4,
-	1: 0.7,
+	0: 0.2,
+	1: 0.525,
 	2: 1.0
 }
 

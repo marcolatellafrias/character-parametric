@@ -85,7 +85,8 @@ class Archetype:
 	var weight: float
 	var max_per_volume: int
 	var max_global: int
-	
+	var min_spawn_v: float
+
 	func _init(
 		p_name: String,
 		p_width: float,
@@ -96,7 +97,8 @@ class Archetype:
 		p_color: Color,
 		p_weight: float = 1.0,
 		p_max_per_volume: int = -1,
-		p_max_global: int = -1
+		p_max_global: int = -1,
+		p_min_spawn_v: float = 0.0
 	):
 		name = p_name
 		width = p_width
@@ -108,6 +110,7 @@ class Archetype:
 		weight = p_weight
 		max_per_volume = p_max_per_volume
 		max_global = p_max_global
+		min_spawn_v = p_min_spawn_v
 	
 	func get_random_dimensions() -> Dictionary:
 		return {
@@ -133,7 +136,8 @@ static func _static_init() -> void:
 		Color(0.9, 0.5, 0.1),
 		0.05,
 		1,
-		3
+		1,
+		0.15
 	)
 	
 	archetypes[Type.RICH_CAR] = Archetype.new(
@@ -185,7 +189,8 @@ static func _static_init() -> void:
 		Color(0.9, 0.8, 0.1),
 		0.08,
 		1,
-		2
+		1,
+		0.1
 	)
 	
 	archetypes[Type.ADVERTISEMENT_TRUCK] = Archetype.new(
@@ -198,7 +203,8 @@ static func _static_init() -> void:
 		Color(0.9, 0.1, 0.9),
 		0.03,
 		1,
-		3
+		1,
+		0.2
 	)
 	
 	archetypes[Type.GARBAGE_TRUCK] = Archetype.new(
@@ -211,7 +217,8 @@ static func _static_init() -> void:
 		Color(0.2, 0.6, 0.2),
 		0.04,
 		1,
-		4
+		1,
+		0.15
 	)
 	
 	archetypes[Type.POLICE_CAR] = Archetype.new(

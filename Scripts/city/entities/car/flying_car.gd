@@ -42,9 +42,6 @@ signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: in
 @export var show_broadcast_debug: bool = false
 @export var broadcast_debug_color: Color = Color(0.0, 0.5, 1.0, 0.3)
 
-@export_group("Despawn Debug")
-@export var take_frustum_into_account_when_despawning: bool = true
-
 @export_group("Debug Info")
 @export var show_debug_label: bool = false
 @export var debug_label_offset: Vector3 = Vector3(0, 2, 0)
@@ -141,7 +138,13 @@ func _process(delta: float) -> void:
 	var transform = path_controller.get_current_transform()
 	global_position = transform.origin
 	global_rotation = transform.basis.get_euler()
-	
+
+	if area_instantiator:
+		var dist = area_instantiator.get_min_camera_distance_xz(global_position)
+		if dist > area_instantiator.spawn_radius:
+			queue_free()
+			return
+
 	if show_debug_label and debug_label:
 		_update_debug_label()
 
@@ -324,40 +327,36 @@ func _select_archetype_from_seed(rng: RandomNumberGenerator, custom_weights: Dic
 func _calculate_next_segment(current_end: Vector3, volume: Dictionary) -> Dictionary:
 	if not generator or not volume.has("face_idx") or not volume.has("edge_idx"):
 		return {}
-	
+
 	var continuations = generator.get_lane_volume_continuations(volume["face_idx"], volume["edge_idx"])
-	
-	if area_instantiator and continuations.is_empty():
-		if not _should_continue_path():
-			return {}
-	
+
 	if continuations.is_empty():
 		return {}
-	
+
 	var current_direction = Vector3.FORWARD
 	if path_controller.path_3d and path_controller.path_3d.curve:
 		current_direction = (current_end - path_controller.path_3d.curve.get_point_position(0)).normalized()
-	
+
 	var valid_continuations = []
-	
+
 	for cont_vol in continuations:
 		var result = _get_validated_continuation_path(cont_vol, current_cell_x, current_cell_y)
-		
+
 		if result != null and result.has("start") and result.has("end"):
 			var cont_direction = (result["end"] - result["start"]).normalized()
 			var angle_diff = abs(current_direction.angle_to(cont_direction))
-			
+
 			valid_continuations.append({
 				"volume": cont_vol,
 				"path": result,
 				"angle_diff": angle_diff
 			})
-	
+
 	if valid_continuations.is_empty():
 		return {}
-	
+
 	var selected = _select_continuation_by_angle(valid_continuations)
-	
+
 	if selected:
 		return {
 			"path": selected["path"],
@@ -370,34 +369,8 @@ func _calculate_next_segment(current_end: Vector3, volume: Dictionary) -> Dictio
 				"height_cells": selected["volume"].height_cells
 			}
 		}
-	
-	return {}
 
-func _should_continue_path() -> bool:
-	var car_inside_cylinder = false
-	for camera in area_instantiator.cameras:
-		if not camera or not is_instance_valid(camera):
-			continue
-		
-		var distance_xz = Vector2(
-			global_position.x - camera.global_position.x,
-			global_position.z - camera.global_position.z
-		).length()
-		
-		if distance_xz <= area_instantiator.outer_radius:
-			car_inside_cylinder = true
-			break
-	
-	if not take_frustum_into_account_when_despawning:
-		return car_inside_cylinder
-	
-	for camera in area_instantiator.cameras:
-		if not camera or not is_instance_valid(camera):
-			continue
-		if camera.is_position_in_frustum(global_position):
-			return true
-	
-	return car_inside_cylinder
+	return {}
 
 func _get_validated_continuation_path(lane_vol: LaneVolume, target_cell_x: int, target_cell_y: int) -> Variant:
 	var cont_width_cells = lane_vol.width_cells
@@ -459,14 +432,13 @@ func _move_away_from_plane(plane_name: String, current_x: int, current_y: int,
 func _select_continuation_by_angle(continuations: Array) -> Dictionary:
 	var total_weight = 0.0
 	var weighted_continuations = []
-	
+
 	for cont in continuations:
 		var lane_vol = cont["volume"]
-		var angle_weight = PI - cont["angle_diff"]
-		var traffic_weight = lane_vol.get_traffic_density()
+		var angle_weight = (PI - cont["angle_diff"]) / PI
 		var affinity_weight = _get_neighborhood_affinity(lane_vol)
-		
-		var combined_weight = (angle_weight * 0.3) + (traffic_weight * 0.35) + (affinity_weight * 0.35)
+
+		var combined_weight = (angle_weight * 0.6) + (affinity_weight * 0.4)
 		total_weight += combined_weight
 		weighted_continuations.append({"continuation": cont, "weight": combined_weight})
 	

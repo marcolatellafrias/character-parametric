@@ -2,14 +2,18 @@
 extends Node3D
 class_name AreaInstantiator
 
-@export var outer_radius: float = 400.0
+@export_group("Zone Radii")
+@export var inner_radius: float = 100.0
+@export var outer_radius: float = 150.0
+@export var spawn_radius: float = 200.0
 @export var height: float = 50.5
 @export var segments: int = 16
+
+@export_group("Debug")
 @export var debug_cylinder_color: Color = Color(0.0, 1.0, 0.0, 0.15)
 @export var show_debug_cylinder: bool = false
 
 @export var cameras: Array[Camera3D] = []
-
 @export var world: Node3D
 
 @export_group("Lane Volume Visualization")
@@ -26,10 +30,18 @@ class_name AreaInstantiator
 
 @export_group("Car Spawning")
 @export var enable_car_spawning: bool = true
-@export var spawn_interval: float = 0.1
+@export var spawn_interval: float = 0.15
 @export var spawn_safety_margin: float = 3.0
-@export var max_cars_per_cylinder: int = 50
-@export var require_offscreen_spawn: bool = false
+@export var max_cars: int = 100
+@export var car_spacing: float = 12.5
+@export var max_topup_per_tick: int = 5
+@export var bootstrap_duration: float = 2.0
+@export var bootstrap_batch_size: int = 30
+
+@export_group("Fog")
+@export var enable_fog: bool = true
+@export var fog_color: Color = Color(0.5, 0.55, 0.6)
+@export var fog_shader: Shader
 
 var generator: GraphCityGenerator = null
 var debug_cylinder_meshes: Array[MeshInstance3D] = []
@@ -37,59 +49,94 @@ var lane_volumes_container: Node3D
 var grid_points_container: Node3D
 
 var cylinder_areas: Array[Area3D] = []
-var cylinder_lane_volumes: Array[LaneVolume] = []
+var all_lane_volumes: Array[LaneVolume] = []
 var volume_area_refs: Dictionary = {}
 
 var spawn_timer: float = 0.0
-var volume_car_counts: Dictionary = {}
-var cylinder_car_counts: Array[int] = []
+var car_count: int = 0
 var global_type_counts: Dictionary = {}
+var volume_car_counts: Dictionary = {}
+var volume_type_counts: Dictionary = {}
+var car_volume_map: Dictionary = {}
+var time_alive: float = 0.0
+
+var fog_quad: MeshInstance3D = null
+var fog_material: ShaderMaterial = null
 
 func _ready() -> void:
 	var city_visualizer = get_tree().get_first_node_in_group("city_generator")
 	if city_visualizer:
 		generator = city_visualizer.get_generator()
-	
+
 	_create_cylinder_areas()
 	_setup_visualization_containers()
-	
-	cylinder_car_counts.resize(cameras.size())
-	for i in range(cylinder_car_counts.size()):
-		cylinder_car_counts[i] = 0
-	
+	_setup_fog()
+
 	if show_debug_cylinder:
 		_create_debug_cylinders()
 
 func _process(delta: float) -> void:
 	_update_cylinder_positions()
-	
-	if not enable_car_spawning:
+	_update_fog_position()
+
+	if not enable_car_spawning or not world or not generator:
 		return
-	
-	if not world:
-		print("ERROR: No hay world node")
-		return
-	
-	if not generator:
-		#print("ERROR: No hay generator")
-		return
-	
+
+	time_alive += delta
 	spawn_timer += delta
 	if spawn_timer >= spawn_interval:
 		spawn_timer = 0.0
-		_try_spawn_car()
+		_topup_volumes()
 
 func _exit_tree() -> void:
 	_cleanup_containers()
+	if fog_quad and is_instance_valid(fog_quad):
+		fog_quad.queue_free()
+
+# ============================================================================
+# FOG
+# ============================================================================
+
+func _setup_fog() -> void:
+	if not enable_fog or not fog_shader:
+		return
+
+	fog_material = ShaderMaterial.new()
+	fog_material.shader = fog_shader
+	fog_material.set_shader_parameter("inner_radius", inner_radius)
+	fog_material.set_shader_parameter("outer_radius", outer_radius)
+	fog_material.set_shader_parameter("fog_color", fog_color)
+	fog_material.set_shader_parameter("player_pos", Vector3.ZERO)
+
+	fog_quad = MeshInstance3D.new()
+	fog_quad.name = "RadialFogQuad"
+	var quad_mesh = QuadMesh.new()
+	quad_mesh.size = Vector2(2.0, 2.0)
+	fog_quad.mesh = quad_mesh
+	fog_quad.material_override = fog_material
+	fog_quad.custom_aabb = AABB(Vector3(-1e6, -1e6, -1e6), Vector3(2e6, 2e6, 2e6))
+	add_child(fog_quad)
+
+func _update_fog_position() -> void:
+	if not fog_material:
+		return
+	for camera in cameras:
+		if camera and is_instance_valid(camera):
+			fog_material.set_shader_parameter("player_pos", camera.global_position)
+			return
+
+# ============================================================================
+# SETUP & CLEANUP
+# ============================================================================
 
 func _setup_visualization_containers() -> void:
 	if not world:
 		return
-	
+
 	lane_volumes_container = Node3D.new()
 	lane_volumes_container.name = "LaneVolumesDebug_" + str(get_instance_id())
 	world.add_child(lane_volumes_container)
-	
+
 	grid_points_container = Node3D.new()
 	grid_points_container.name = "GridPointsDebug_" + str(get_instance_id())
 	world.add_child(grid_points_container)
@@ -99,16 +146,20 @@ func _cleanup_containers() -> void:
 		lane_volumes_container.queue_free()
 	if grid_points_container and is_instance_valid(grid_points_container):
 		grid_points_container.queue_free()
-	
+
 	for area in cylinder_areas:
 		if area and is_instance_valid(area):
 			area.queue_free()
 	cylinder_areas.clear()
-	
+
 	for mesh in debug_cylinder_meshes:
 		if mesh and is_instance_valid(mesh):
 			mesh.queue_free()
 	debug_cylinder_meshes.clear()
+
+# ============================================================================
+# CYLINDER TRACKING
+# ============================================================================
 
 func _create_cylinder_areas() -> void:
 	for i in range(cameras.size()):
@@ -118,15 +169,15 @@ func _create_cylinder_areas() -> void:
 		cylinder_area.collision_mask = 4
 		cylinder_area.monitoring = true
 		cylinder_area.monitorable = false
-		
-		var colliders = DebugUtil.create_cylinder_colliders(outer_radius, height, segments)
+
+		var colliders = DebugUtil.create_cylinder_colliders(spawn_radius, height, segments)
 		for collider in colliders:
 			cylinder_area.add_child(collider)
-		
+
 		var area_index = i
 		cylinder_area.area_entered.connect(func(area): _on_cylinder_area_entered(area, area_index))
 		cylinder_area.area_exited.connect(func(area): _on_cylinder_area_exited(area, area_index))
-		
+
 		add_child(cylinder_area)
 		cylinder_areas.append(cylinder_area)
 
@@ -134,98 +185,359 @@ func _update_cylinder_positions() -> void:
 	for i in range(min(cameras.size(), cylinder_areas.size())):
 		var camera = cameras[i]
 		var area = cylinder_areas[i]
-		
+
 		if camera and is_instance_valid(camera):
 			area.global_position.x = camera.global_position.x
 			area.global_position.z = camera.global_position.z
 			area.global_position.y = 0
-	
+
 	if show_debug_cylinder:
-		for i in range(min(cameras.size(), debug_cylinder_meshes.size())):
+		for i in range(cameras.size()):
 			var camera = cameras[i]
-			var mesh = debug_cylinder_meshes[i]
-			
-			if camera and is_instance_valid(camera) and mesh and is_instance_valid(mesh):
-				mesh.global_position.x = camera.global_position.x
-				mesh.global_position.z = camera.global_position.z
-				mesh.global_position.y = 0
+			if not camera or not is_instance_valid(camera):
+				continue
+			for j in range(3):
+				var mesh_idx = i * 3 + j
+				if mesh_idx < debug_cylinder_meshes.size():
+					var mesh = debug_cylinder_meshes[mesh_idx]
+					if mesh and is_instance_valid(mesh):
+						mesh.global_position.x = camera.global_position.x
+						mesh.global_position.z = camera.global_position.z
+						mesh.global_position.y = 0
 
 func _on_cylinder_area_entered(area: Area3D, area_index: int) -> void:
 	if area is LaneVolume:
 		var vol_id = area.get_id()
-		
+
 		if not volume_area_refs.has(vol_id):
 			volume_area_refs[vol_id] = []
-		
+
 		if not volume_area_refs[vol_id].has(area_index):
 			volume_area_refs[vol_id].append(area_index)
-		
-		if not cylinder_lane_volumes.has(area):
-			cylinder_lane_volumes.append(area)
-			print("Lane volume entró a área ", area_index, ": ", vol_id)
+
+		if not all_lane_volumes.has(area):
+			all_lane_volumes.append(area)
 			_update_visualization()
+			if time_alive > bootstrap_duration and _is_safe_to_seed(area):
+				_seed_volume(area)
 
 func _on_cylinder_area_exited(area: Area3D, area_index: int) -> void:
 	if area is LaneVolume:
 		var vol_id = area.get_id()
-		
+
 		if volume_area_refs.has(vol_id):
 			var idx = volume_area_refs[vol_id].find(area_index)
 			if idx != -1:
 				volume_area_refs[vol_id].remove_at(idx)
-			
+
 			if volume_area_refs[vol_id].is_empty():
 				volume_area_refs.erase(vol_id)
-				
-				var vol_idx = cylinder_lane_volumes.find(area)
+
+				var vol_idx = all_lane_volumes.find(area)
 				if vol_idx != -1:
-					cylinder_lane_volumes.remove_at(vol_idx)
-					print("Lane volume salió de todas las áreas: ", vol_id)
+					all_lane_volumes.remove_at(vol_idx)
 					_update_visualization()
+
+# ============================================================================
+# DISTANCE HELPERS
+# ============================================================================
+
+func get_min_camera_distance_xz(pos: Vector3) -> float:
+	var min_dist = INF
+	for camera in cameras:
+		if not camera or not is_instance_valid(camera):
+			continue
+		var dist = Vector2(pos.x - camera.global_position.x, pos.z - camera.global_position.z).length()
+		min_dist = min(min_dist, dist)
+	return min_dist
+
+# ============================================================================
+# SPAWNING
+# ============================================================================
+
+func _is_position_in_frustum(pos: Vector3) -> bool:
+	for camera in cameras:
+		if not camera or not is_instance_valid(camera):
+			continue
+		if camera.is_position_in_frustum(pos):
+			return true
+	return false
+
+func _is_safe_to_seed(vol: LaneVolume) -> bool:
+	var center = vol.get_center()
+	var dist = get_min_camera_distance_xz(center)
+	if dist > outer_radius:
+		return true
+	return not _is_position_in_frustum(center)
+
+func _get_target_occupancy(vol: LaneVolume) -> int:
+	var density = vol.get_traffic_density()
+	var path_length = vol.get_path_length()
+	return int(density * path_length / car_spacing)
+
+func _seed_volume(vol: LaneVolume) -> void:
+	if car_count >= max_cars:
+		return
+	var target = _get_target_occupancy(vol)
+	var vol_id = vol.get_id()
+	var current = volume_car_counts.get(vol_id, 0)
+	for i in range(target - current):
+		if car_count >= max_cars:
+			return
+		_try_spawn_in_volume(vol, randf())
+
+func _topup_volumes() -> void:
+	if car_count >= max_cars:
+		return
+	var is_bootstrap = time_alive < bootstrap_duration
+	var batch_limit = bootstrap_batch_size if is_bootstrap else max_topup_per_tick
+	var spawned = 0
+	for vol in all_lane_volumes:
+		if spawned >= batch_limit or car_count >= max_cars:
+			break
+		if not is_bootstrap and not _is_safe_to_seed(vol):
+			continue
+		var target = _get_target_occupancy(vol)
+		var vol_id = vol.get_id()
+		var current = volume_car_counts.get(vol_id, 0)
+		if current >= target:
+			continue
+		if _try_spawn_in_volume(vol, randf()):
+			spawned += 1
+
+func _try_spawn_in_volume(vol: LaneVolume, along_t: float) -> bool:
+	var neighborhood_type = vol.get_neighborhood_type()
+	var custom_weights = NeighborhoodTypes.get_car_weights(neighborhood_type)
+	var car_seed = randi()
+
+	var temp_car = FlyingCar.new()
+	temp_car.initialize_from_seed(car_seed, custom_weights)
+
+	var archetype = CarArchetypes.get_archetype(temp_car.car_archetype)
+	if archetype.max_global != -1:
+		var global_count = global_type_counts.get(temp_car.car_archetype, 0)
+		if global_count >= archetype.max_global:
+			temp_car.free()
+			return false
+
+	if archetype.max_per_volume != -1:
+		var vol_type_count = _get_volume_type_count(vol.get_id(), temp_car.car_archetype)
+		if vol_type_count >= archetype.max_per_volume:
+			temp_car.free()
+			return false
+
+	var v_max = vol.get_max_spawn_v()
+	var v_min = archetype.min_spawn_v
+
+	for attempt in range(5):
+		var random_u = randf()
+		var random_v = v_min + randf() * (v_max - v_min) if v_max > v_min else v_max
+
+		var start_pos = vol.get_point_at_grid(random_u, random_v, true)
+		var end_pos = vol.get_point_at_grid(random_u, random_v, false)
+		var spawn_pos = start_pos.lerp(end_pos, along_t)
+
+		var front_face = temp_car.get_front_face_at_segment(spawn_pos, end_pos)
+		var validation = vol.validate_face_projection(front_face, random_u, random_v)
+
+		if not validation["valid"]:
+			continue
+
+		var direction = (end_pos - spawn_pos).normalized()
+		if _check_spawn_collision(spawn_pos, direction, temp_car.width, temp_car.height, temp_car.depth):
+			continue
+
+		temp_car.free()
+		_spawn_car(vol, random_u, random_v, along_t, car_seed, custom_weights)
+		return true
+
+	temp_car.free()
+	return false
+
+func _spawn_car(vol: LaneVolume, grid_u: float, grid_v: float,
+				along_t: float, car_seed: int, custom_weights: Dictionary) -> void:
+	var start_pos = vol.get_point_at_grid(grid_u, grid_v, true)
+	var end_pos = vol.get_point_at_grid(grid_u, grid_v, false)
+	var spawn_pos = start_pos.lerp(end_pos, along_t)
+
+	var car = FlyingCar.new()
+	car.world_node = world
+	car.generator = generator
+	car.area_instantiator = self
+	car.spawn_time = Time.get_ticks_msec() / 1000.0
+
+	car.initialize_from_seed(car_seed, custom_weights)
+
+	world.add_child(car)
+
+	car_count += 1
+	_add_global_type(car.car_archetype)
+
+	var vol_id = vol.get_id()
+	var car_type = car.car_archetype
+	_increment_volume_count(vol_id, car_type)
+	car_volume_map[car.get_instance_id()] = vol_id
+
+	car.volume_changed.connect(func(old_id: String, new_id: String, type: int):
+		_decrement_volume_count(old_id, type)
+		_increment_volume_count(new_id, type)
+		car_volume_map[car.get_instance_id()] = new_id
+	)
+
+	car.tree_exited.connect(func():
+		car_count -= 1
+		_remove_global_type(car.car_archetype)
+		var last_vol_id = car_volume_map.get(car.get_instance_id(), "")
+		if last_vol_id != "":
+			_decrement_volume_count(last_vol_id, car.car_archetype)
+		car_volume_map.erase(car.get_instance_id())
+	)
+
+	car.set_path(
+		spawn_pos,
+		end_pos,
+		0.0,
+		grid_u,
+		grid_v,
+		vol.get_raw_data(),
+		vol.width_cells,
+		vol.height_cells
+	)
+
+func _check_spawn_collision(spawn_pos: Vector3, direction: Vector3,
+							car_width: float, car_height: float, car_depth: float) -> bool:
+	if not world:
+		return false
+
+	var half_width = car_width * 0.5
+	var half_height = car_height * 0.5
+	var half_depth = car_depth * 0.5
+	var total_depth = half_depth + spawn_safety_margin
+
+	for child in world.get_children():
+		if not child is FlyingCar:
+			continue
+
+		var other_car = child as FlyingCar
+		var to_other = other_car.global_position - spawn_pos
+		var distance = to_other.length()
+
+		var max_check_distance = (car_depth + other_car.depth) * 0.5 + spawn_safety_margin * 2
+		if distance > max_check_distance:
+			continue
+
+		var projection = to_other.dot(direction)
+
+		if abs(projection) < total_depth + (other_car.depth * 0.5):
+			var lateral_offset = to_other - (direction * projection)
+			var lateral_distance = lateral_offset.length()
+
+			if lateral_distance < (half_width + other_car.width * 0.5):
+				var height_diff = abs(spawn_pos.y - other_car.global_position.y)
+				if height_diff < (half_height + other_car.height * 0.5):
+					return true
+
+	return false
+
+# ============================================================================
+# BOOKKEEPING
+# ============================================================================
+
+func _add_global_type(car_type: int) -> void:
+	var current = global_type_counts.get(car_type, 0)
+	global_type_counts[car_type] = current + 1
+
+func _remove_global_type(car_type: int) -> void:
+	var current = global_type_counts.get(car_type, 0)
+	if current > 0:
+		global_type_counts[car_type] = current - 1
+
+func _increment_volume_count(vol_id: String, car_type: int = -1) -> void:
+	volume_car_counts[vol_id] = volume_car_counts.get(vol_id, 0) + 1
+	if car_type >= 0:
+		if not volume_type_counts.has(vol_id):
+			volume_type_counts[vol_id] = {}
+		var type_counts = volume_type_counts[vol_id]
+		type_counts[car_type] = type_counts.get(car_type, 0) + 1
+
+func _decrement_volume_count(vol_id: String, car_type: int = -1) -> void:
+	var current = volume_car_counts.get(vol_id, 0)
+	if current > 1:
+		volume_car_counts[vol_id] = current - 1
+	else:
+		volume_car_counts.erase(vol_id)
+	if car_type >= 0 and volume_type_counts.has(vol_id):
+		var type_counts = volume_type_counts[vol_id]
+		var type_current = type_counts.get(car_type, 0)
+		if type_current > 1:
+			type_counts[car_type] = type_current - 1
+		else:
+			type_counts.erase(car_type)
+		if type_counts.is_empty():
+			volume_type_counts.erase(vol_id)
+
+func _get_volume_type_count(vol_id: String, car_type: int) -> int:
+	if not volume_type_counts.has(vol_id):
+		return 0
+	return volume_type_counts[vol_id].get(car_type, 0)
+
+# ============================================================================
+# VISUALIZATION
+# ============================================================================
 
 func _create_debug_cylinders() -> void:
 	for mesh in debug_cylinder_meshes:
 		if mesh and is_instance_valid(mesh):
 			mesh.queue_free()
 	debug_cylinder_meshes.clear()
-	
+
 	for i in range(cameras.size()):
-		var debug_mesh = DebugUtil.create_debug_cylinder(debug_cylinder_color, outer_radius, height, segments)
-		debug_mesh.name = "DebugCylinder_" + str(i)
-		add_child(debug_mesh)
-		debug_cylinder_meshes.append(debug_mesh)
+		var inner_mesh = DebugUtil.create_debug_cylinder(Color(0.0, 1.0, 0.0, 0.1), inner_radius, height, segments)
+		inner_mesh.name = "DebugCylinder_Inner_" + str(i)
+		add_child(inner_mesh)
+		debug_cylinder_meshes.append(inner_mesh)
+
+		var outer_mesh = DebugUtil.create_debug_cylinder(Color(1.0, 1.0, 0.0, 0.1), outer_radius, height, segments)
+		outer_mesh.name = "DebugCylinder_Outer_" + str(i)
+		add_child(outer_mesh)
+		debug_cylinder_meshes.append(outer_mesh)
+
+		var spawn_mesh = DebugUtil.create_debug_cylinder(Color(1.0, 0.0, 0.0, 0.1), spawn_radius, height, segments)
+		spawn_mesh.name = "DebugCylinder_Spawn_" + str(i)
+		add_child(spawn_mesh)
+		debug_cylinder_meshes.append(spawn_mesh)
 
 func _update_visualization() -> void:
 	if not lane_volumes_container or not grid_points_container:
 		return
-	
+
 	for child in lane_volumes_container.get_children():
 		child.queue_free()
 	for child in grid_points_container.get_children():
 		child.queue_free()
-	
+
 	var continuation_volumes: Array[LaneVolume] = []
 	if show_continuations and generator:
-		for vol in cylinder_lane_volumes:
+		for vol in all_lane_volumes:
 			var continuations = generator.get_lane_volume_continuations(vol.face_idx, vol.edge_idx)
 			for cont in continuations:
-				if not _volume_exists_in_array(cont, cylinder_lane_volumes):
+				if not _volume_exists_in_array(cont, all_lane_volumes):
 					continuation_volumes.append(cont)
-	
+
 	if show_lane_volumes:
-		for vol in cylinder_lane_volumes:
+		for vol in all_lane_volumes:
 			var mesh = _create_volume_mesh(vol, lane_volume_color, lane_volume_transparency)
 			if mesh:
 				lane_volumes_container.add_child(mesh)
-	
+
 	if show_continuations:
 		for cont_vol in continuation_volumes:
 			var mesh = _create_volume_mesh(cont_vol, continuation_color, continuation_transparency)
 			if mesh:
 				lane_volumes_container.add_child(mesh)
-	
+
 	if show_grid_points:
-		for vol in cylinder_lane_volumes:
+		for vol in all_lane_volumes:
 			_create_grid_points_for_volume(vol, grid_point_color)
 		if show_continuations:
 			for cont_vol in continuation_volumes:
@@ -249,292 +561,16 @@ func _create_volume_mesh(vol: LaneVolume, color: Color, transparency: float) -> 
 func _create_grid_points_for_volume(vol: LaneVolume, color: Color) -> void:
 	var width_steps = vol.width_cells * granularity
 	var height_steps = vol.height_cells * granularity
-	
+
 	for i in range(width_steps + 1):
 		for j in range(height_steps + 1):
 			var u = float(i) / float(width_steps) if width_steps > 0 else 0.0
 			var v = float(j) / float(height_steps) if height_steps > 0 else 0.0
-			
+
 			var sphere_start = DebugUtil.create_debug_sphere_2dprint(Vector2i(i, j), color, grid_point_size)
 			grid_points_container.add_child(sphere_start)
 			sphere_start.global_position = vol.get_point_at_grid(u, v, true)
-			
+
 			var sphere_end = DebugUtil.create_debug_sphere_2dprint(Vector2i(i, j), color, grid_point_size)
 			grid_points_container.add_child(sphere_end)
 			sphere_end.global_position = vol.get_point_at_grid(u, v, false)
-
-func _try_spawn_car() -> void:
-	var spawn_candidates: Array[Dictionary] = []
-	
-	print("DEBUG: cylinder_lane_volumes count: ", cylinder_lane_volumes.size())
-	
-	for cyl_vol in cylinder_lane_volumes:
-		var has_cont = _has_continuation_in_cylinder(cyl_vol)
-		var is_visible = _is_lane_volume_visible(cyl_vol)
-		print("DEBUG: vol ", cyl_vol.get_id(), " | has_continuation: ", has_cont, " | is_visible: ", is_visible, " | require_offscreen: ", require_offscreen_spawn)
-		
-		if _has_continuation_in_cylinder(cyl_vol) and (not require_offscreen_spawn or not _is_lane_volume_visible(cyl_vol)):
-			var vol_id = cyl_vol.get_id()
-			if volume_area_refs.has(vol_id):
-				for cylinder_idx in volume_area_refs[vol_id]:
-					print("DEBUG: cylinder_idx: ", cylinder_idx, " | car_count: ", cylinder_car_counts[cylinder_idx], " | max: ", max_cars_per_cylinder)
-					if cylinder_car_counts[cylinder_idx] < max_cars_per_cylinder:
-						spawn_candidates.append({
-							"volume": cyl_vol,
-							"cylinder_index": cylinder_idx
-						})
-						break
-			else:
-				print("DEBUG: vol_id ", vol_id, " no está en volume_area_refs")
-	
-	print("DEBUG: spawn_candidates: ", spawn_candidates.size())
-	
-	if spawn_candidates.is_empty():
-		return
-	
-	while not spawn_candidates.is_empty():
-		var selected = spawn_candidates[randi() % spawn_candidates.size()]
-		var selected_vol = selected["volume"]
-		var cylinder_idx = selected["cylinder_index"]
-		var volume_id = str(selected_vol.face_idx) + "_" + str(selected_vol.edge_idx)
-		
-		var car_seed = randi()
-		var neighborhood_type = selected_vol.get_neighborhood_type()
-		var custom_weights = NeighborhoodTypes.get_car_weights(neighborhood_type)
-		
-		var temp_car = FlyingCar.new()
-		temp_car.initialize_from_seed(car_seed, custom_weights)
-		
-		if not _can_spawn_car_type(volume_id, cylinder_idx, temp_car.car_archetype):
-			print("DEBUG: _can_spawn_car_type falló para tipo ", temp_car.car_archetype, " en vol ", volume_id)
-			temp_car.free()
-			spawn_candidates.erase(selected)
-			continue
-		
-		var v_max = selected_vol.get_max_spawn_v()
-		var max_attempts = 10
-		var spawned = false
-		
-		for attempt in range(max_attempts):
-			var random_u = randf()
-			var random_v = randf() * v_max
-			
-			var spawn_pos = selected_vol.get_point_at_grid(random_u, random_v, true)
-			var end_pos = selected_vol.get_point_at_grid(random_u, random_v, false)
-			
-			var front_face = temp_car.get_front_face_at_segment(spawn_pos, end_pos)
-			var validation = selected_vol.validate_face_projection(front_face, random_u, random_v)
-			
-			if not validation["valid"]:
-				print("DEBUG: attempt ", attempt, " | validate_face_projection falló")
-				continue
-			
-			var direction = (end_pos - spawn_pos).normalized()
-			if _check_spawn_collision(spawn_pos, direction, temp_car.width, temp_car.height, temp_car.depth):
-				print("DEBUG: attempt ", attempt, " | colisión detectada en spawn")
-				continue
-			
-			temp_car.free()
-			_spawn_car_at_volume(selected_vol, random_u, random_v, car_seed, custom_weights, cylinder_idx)
-			print("DEBUG: ¡Auto spawneado en vol ", volume_id, "!")
-			spawned = true
-			break
-		
-		if spawned:
-			return
-		
-		print("DEBUG: todos los intentos fallaron para vol ", volume_id)
-		temp_car.free()
-		spawn_candidates.erase(selected)
-
-func _check_spawn_collision(spawn_pos: Vector3, direction: Vector3,
-							car_width: float, car_height: float, car_depth: float) -> bool:
-	if not world:
-		return false
-	
-	var half_width = car_width * 0.5
-	var half_height = car_height * 0.5
-	var half_depth = car_depth * 0.5
-	var total_depth = half_depth + spawn_safety_margin
-	
-	for child in world.get_children():
-		if not child is FlyingCar:
-			continue
-		
-		var other_car = child as FlyingCar
-		var to_other = other_car.global_position - spawn_pos
-		var distance = to_other.length()
-		
-		var max_check_distance = (car_depth + other_car.depth) * 0.5 + spawn_safety_margin * 2
-		if distance > max_check_distance:
-			continue
-		
-		var projection = to_other.dot(direction)
-		
-		if abs(projection) < total_depth + (other_car.depth * 0.5):
-			var lateral_offset = to_other - (direction * projection)
-			var lateral_distance = lateral_offset.length()
-			
-			if lateral_distance < (half_width + other_car.width * 0.5):
-				var height_diff = abs(spawn_pos.y - other_car.global_position.y)
-				if height_diff < (half_height + other_car.height * 0.5):
-					return true
-	
-	return false
-
-func _is_lane_volume_visible(lane_vol: LaneVolume) -> bool:
-	var vertices = []
-	vertices.append_array(lane_vol.start_plane_vertices)
-	vertices.append_array(lane_vol.end_plane_vertices)
-	
-	for camera in cameras:
-		if not camera or not is_instance_valid(camera):
-			continue
-		for vertex in vertices:
-			if camera.is_position_in_frustum(vertex):
-				return true
-	
-	return false
-
-func is_position_visible(position: Vector3) -> bool:
-	for camera in cameras:
-		if not camera or not is_instance_valid(camera):
-			continue
-		if camera.is_position_in_frustum(position):
-			return true
-	return false
-
-func _has_continuation_in_cylinder(vol: LaneVolume) -> bool:
-	if not generator:
-		return false
-	
-	var continuations = generator.get_lane_volume_continuations(vol.face_idx, vol.edge_idx)
-	for cont in continuations:
-		for cyl_vol in cylinder_lane_volumes:
-			if cont.get_id() == cyl_vol.get_id():
-				return true
-	
-	return false
-
-func is_lane_volume_inside(lane_vol: LaneVolume) -> bool:
-	for cyl_vol in cylinder_lane_volumes:
-		if cyl_vol.get_id() == lane_vol.get_id():
-			return true
-	return false
-
-func is_volume_inside_by_indices(face_idx: int, edge_idx: int) -> bool:
-	for vol in cylinder_lane_volumes:
-		if vol.face_idx == face_idx and vol.edge_idx == edge_idx:
-			return true
-	return false
-
-func is_lane_volume_inside_by_calculation(lane_vol: LaneVolume) -> bool:
-	var center = Vector3.ZERO
-	for vertex in lane_vol.start_plane_vertices:
-		center += vertex
-	for vertex in lane_vol.end_plane_vertices:
-		center += vertex
-	center /= 8.0
-	
-	for camera in cameras:
-		if not camera or not is_instance_valid(camera):
-			continue
-		var distance_xz = Vector2(
-			center.x - camera.global_position.x,
-			center.z - camera.global_position.z
-		).length()
-		if distance_xz <= outer_radius:
-			return true
-	
-	return false
-
-func _spawn_car_at_volume(vol: LaneVolume, grid_u: float, grid_v: float,
-						  car_seed: int, custom_weights: Dictionary, cylinder_idx: int) -> void:
-	var path_segment = vol.get_path_segment_at_grid(grid_u, grid_v)
-	
-	var car = FlyingCar.new()
-	car.world_node = world
-	car.generator = generator
-	car.area_instantiator = self
-	car.spawn_time = Time.get_ticks_msec() / 1000.0
-	
-	car.initialize_from_seed(car_seed, custom_weights)
-	
-	var volume_id = str(vol.face_idx) + "_" + str(vol.edge_idx)
-	
-	world.add_child(car)
-	
-	_add_car_to_volume(volume_id, car.car_archetype)
-	_add_car_to_cylinder(cylinder_idx)
-	_add_car_to_global_type(car.car_archetype)
-	
-	car.volume_changed.connect(_on_car_volume_changed)
-	car.tree_exited.connect(func():
-		_remove_car_from_volume(volume_id, car.car_archetype)
-		_remove_car_from_cylinder(cylinder_idx)
-		_remove_car_from_global_type(car.car_archetype)
-	)
-	
-	car.set_path(
-		path_segment["start"],
-		path_segment["end"],
-		0.0,
-		grid_u,
-		grid_v,
-		vol.get_raw_data(),
-		vol.width_cells,
-		vol.height_cells
-	)
-
-func _can_spawn_car_type(volume_id: String, cylinder_idx: int, car_type: int) -> bool:
-	var archetype = CarArchetypes.get_archetype(car_type)
-	
-	if archetype.max_per_volume != -1:
-		if volume_car_counts.has(volume_id):
-			var type_count = volume_car_counts[volume_id].get(car_type, 0)
-			if type_count >= archetype.max_per_volume:
-				return false
-	
-	if archetype.max_global != -1:
-		var global_count = global_type_counts.get(car_type, 0)
-		if global_count >= archetype.max_global:
-			return false
-	
-	if cylinder_car_counts[cylinder_idx] >= max_cars_per_cylinder:
-		return false
-	
-	return true
-
-func _add_car_to_volume(volume_id: String, car_type: int) -> void:
-	if not volume_car_counts.has(volume_id):
-		volume_car_counts[volume_id] = {}
-	var current = volume_car_counts[volume_id].get(car_type, 0)
-	volume_car_counts[volume_id][car_type] = current + 1
-
-func _remove_car_from_volume(volume_id: String, car_type: int) -> void:
-	if not volume_car_counts.has(volume_id):
-		return
-	var current = volume_car_counts[volume_id].get(car_type, 0)
-	if current > 0:
-		volume_car_counts[volume_id][car_type] = current - 1
-
-func _add_car_to_cylinder(cylinder_idx: int) -> void:
-	cylinder_car_counts[cylinder_idx] += 1
-
-func _remove_car_from_cylinder(cylinder_idx: int) -> void:
-	cylinder_car_counts[cylinder_idx] -= 1
-
-func _add_car_to_global_type(car_type: int) -> void:
-	var current = global_type_counts.get(car_type, 0)
-	global_type_counts[car_type] = current + 1
-
-func _remove_car_from_global_type(car_type: int) -> void:
-	var current = global_type_counts.get(car_type, 0)
-	if current > 0:
-		global_type_counts[car_type] = current - 1
-
-func _on_car_volume_changed(old_volume_id: String, new_volume_id: String, car_type: int) -> void:
-	if not old_volume_id.is_empty():
-		_remove_car_from_volume(old_volume_id, car_type)
-	if not new_volume_id.is_empty():
-		_add_car_to_volume(new_volume_id, car_type)
