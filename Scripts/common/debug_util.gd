@@ -403,87 +403,42 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 	if base_vertices.size() != 4:
 		push_error("Se requieren exactamente 4 vértices para la base")
 		return null
-	
+
+	var b = base_vertices
+	var t = []
+	for i in range(4):
+		t.append(b[i] + Vector3(0, height, 0))
+
+	var mesh_center = Vector3.ZERO
+	for v in b: mesh_center += v
+	for v in t: mesh_center += v
+	mesh_center /= 8.0
+
 	var mesh_instance = MeshInstance3D.new()
-	var st = SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	
-	var bottom_verts = base_vertices
-	var top_verts = []
-	
-	for i in range(4):
-		top_verts.append(bottom_verts[i] + Vector3(0, height, 0))
-	
-	var vertices = PackedVector3Array()
-	var normals = PackedVector3Array()
-	var indices = PackedInt32Array()
-	
-	var add_triangle_with_normal = func(v1: Vector3, v2: Vector3, v3: Vector3, normal: Vector3):
-		var start_idx = vertices.size()
-		vertices.append(v1)
-		vertices.append(v2)
-		vertices.append(v3)
-		normals.append(normal)
-		normals.append(normal)
-		normals.append(normal)
-		indices.append(start_idx)
-		indices.append(start_idx + 1)
-		indices.append(start_idx + 2)
-	
-	# Cara inferior (normal hacia abajo)
-	var bottom_normal = Vector3(0, -1, 0)
-	add_triangle_with_normal.call(bottom_verts[0], bottom_verts[2], bottom_verts[1], bottom_normal)
-	add_triangle_with_normal.call(bottom_verts[0], bottom_verts[3], bottom_verts[2], bottom_normal)
-	
-	# Cara superior (normal hacia arriba)
-	var top_normal = Vector3(0, 1, 0)
-	add_triangle_with_normal.call(top_verts[0], top_verts[1], top_verts[2], top_normal)
-	add_triangle_with_normal.call(top_verts[0], top_verts[2], top_verts[3], top_normal)
-	
-	# Caras laterales
-	for i in range(4):
-		var next_i = (i + 1) % 4
-		
-		# Calcular normal usando los 3 vértices del primer triángulo
-		var v1 = bottom_verts[i]
-		var v2 = top_verts[next_i]
-		var v3 = top_verts[i]
-		
-		var edge1 = v2 - v1
-		var edge2 = v3 - v1
-		var face_normal = edge1.cross(edge2).normalized()
-		
-		# Asegurar que la normal apunte hacia afuera
-		var center = (bottom_verts[0] + bottom_verts[1] + bottom_verts[2] + bottom_verts[3]) / 4.0
-		var face_center = (v1 + v2 + v3) / 3.0
-		var to_outside = (face_center - center).normalized()
-		
-		if face_normal.dot(to_outside) < 0:
-			face_normal = -face_normal
-		
-		add_triangle_with_normal.call(bottom_verts[i], top_verts[next_i], top_verts[i], face_normal)
-		add_triangle_with_normal.call(bottom_verts[i], bottom_verts[next_i], top_verts[next_i], face_normal)
-	
+	var array_mesh = ArrayMesh.new()
 	var arrays = []
 	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = vertices
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_INDEX] = indices
-	
-	st.create_from_arrays(arrays)
-	
+	var verts = PackedVector3Array()
+	var norms = PackedVector3Array()
+	var idxs  = PackedInt32Array()
+
+	_add_quad(verts, idxs, norms, b[0], b[1], b[2], b[3], mesh_center)
+	_add_quad(verts, idxs, norms, t[3], t[2], t[1], t[0], mesh_center)
+	for i in range(4):
+		var ni = (i + 1) % 4
+		_add_quad(verts, idxs, norms, b[i], b[ni], t[ni], t[i], mesh_center)
+
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
+	arrays[Mesh.ARRAY_INDEX]  = idxs
+	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh_instance.mesh = array_mesh
+
 	var material = StandardMaterial3D.new()
 	material.albedo_color = color
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
-	
 	if use_transparency:
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	
-	st.set_material(material)
-	
-	mesh_instance.mesh = st.commit()
+	mesh_instance.material_override = material
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance

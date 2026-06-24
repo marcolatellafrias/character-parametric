@@ -1269,13 +1269,7 @@ static func _get_facade_cells(grid: DistortedGrid, edge_idx: int, reversed: bool
 # Each entry = building height at that position (0.0 if no wall: outside core, in chamfer, no cluster).
 # Computed once per edge, reused for all bridge attempts with different height thresholds.
 static func _build_facade_mask(block: BlockGenerator, cells: Array, edge_idx: int) -> Array:
-	var building_dim: int
-	match edge_idx:
-		0, 2:
-			building_dim = block.get_building_columns()
-		_:
-			building_dim = block.get_building_rows()
-
+	var building_dim = FacadeHelper.get_building_dim(edge_idx, block)
 	var total = cells.size() * building_dim
 	var mask: Array = []
 	mask.resize(total)
@@ -1298,45 +1292,14 @@ static func _build_facade_mask(block: BlockGenerator, cells: Array, edge_idx: in
 
 		var core = module.get_core_info()
 		var chamfer_rects = SidewalkMatrix._get_chamfer_rects_static(module)
+		var ranges = FacadeHelper.get_mask_ranges(edge_idx, core)
 
-		var along_min: int
-		var along_max: int
-		var depth_pos: int
-		match edge_idx:
-			0:
-				along_min = core["min_x"]; along_max = core["max_x"]
-				depth_pos = core["min_z"]
-			1:
-				along_min = core["min_z"]; along_max = core["max_z"]
-				depth_pos = core["max_x"]
-			2:
-				along_min = core["min_x"]; along_max = core["max_x"]
-				depth_pos = core["max_z"]
-			3:
-				along_min = core["min_z"]; along_max = core["max_z"]
-				depth_pos = core["min_x"]
-
-		for local_b in range(along_min, along_max + 1):
-			var bx: int
-			var bz: int
-			match edge_idx:
-				0, 2:
-					bx = local_b; bz = depth_pos
-				_:
-					bx = depth_pos; bz = local_b
-
-			if SidewalkMatrix._is_cell_in_chamfer_static(bx, bz, chamfer_rects):
+		for along in range(ranges["along_min"], ranges["along_max"] + 1):
+			var cell_pos = FacadeHelper.along_to_bx_bz(edge_idx, along, ranges["depth"])
+			if SidewalkMatrix._is_cell_in_chamfer_static(cell_pos.x, cell_pos.y, chamfer_rects):
 				continue
 
-			var global_idx: int
-			match edge_idx:
-				0, 1:
-					global_idx = ci * building_dim + local_b
-				2:
-					global_idx = ci * building_dim + (building_dim - 1 - local_b)
-				3:
-					global_idx = ci * building_dim + (building_dim - 1 - local_b)
-
+			var global_idx = FacadeHelper.along_to_mask_index(edge_idx, ci, along, building_dim)
 			if global_idx >= 0 and global_idx < total:
 				mask[global_idx] = cluster_height
 

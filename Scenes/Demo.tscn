@@ -204,7 +204,7 @@ master_seed = 10
 script = ExtResource("9_oilx1")
 region_size = Vector2(800, 800)
 min_distance = 117.325
-generation_seed = 1234
+generation_seed = 123
 show_buildings = true
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]

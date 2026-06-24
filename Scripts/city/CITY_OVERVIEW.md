@@ -135,12 +135,26 @@ The alleyway offset strips (12 or 16 building cells deep) between adjacent build
 
 ## Sidewalk instances
 
-A sidewalk instance is a physical walkable surface: a **1-cell-tall skewed cube** covering all cells of a sidewalk zone piece (a corner, a side, or a connecting sector) at a specific floor. Sidewalks are always **floor-aligned** — the bottom sits at the start of a floor.
+A sidewalk instance is a physical walkable surface: a **1-cell-tall skewed cube** at a specific floor. Sidewalks are always **floor-aligned** — the bottom sits at the start of a floor.
 
 ### Spawn rules
 
-- **Floor 0**: all external and internal sidewalk zones get a sidewalk. Every piece gets an instance.
+- **Floor 0**: all external sidewalk zones get a sidewalk.
 - **Higher floors (floating sidewalks)**: rules TBD — related to bridge placement. Floating sidewalks are the continuation of bridge pathways and railings into the sidewalk zone.
+- **Internal sidewalks**: TBD.
+
+### External sidewalk geometry (floor 0)
+
+**4 corners** — one per block corner. Each is a `facade_offset × facade_offset` skewed cube from the corner DG cell's building module, covering the square where two facade edges meet. Vertices from `get_region_vertices` on the corner module.
+
+**4 × N connectors** — one per DG cell per edge (excluding corner overlap). Each connector follows the distorted grid by using `get_region_vertices` from its own building module, so it matches building boundaries exactly. A single flat quad per edge would deviate from the wave distortion.
+
+At the corner DG cells, connectors are **trimmed** to avoid overlapping the corner piece:
+- First cell on the edge: the along-axis start is clipped to `core_min` (the corner piece covers `[0, core_min-1]`)
+- Last cell on the edge: the along-axis end is clipped to `core_max` (the corner piece covers `[core_max+1, cols/rows-1]`)
+- Middle cells: full module width, no trimming
+
+The iteration goes low-to-high index for all edges (x=0→cols-1 or z=0→rows-1), so `is_first` always corresponds to the low-index corner and `is_last` to the high-index corner.
 
 ---
 
@@ -311,6 +325,47 @@ Godot 4 uses Vulkan's CW front-face convention. The cross product `(b-a).cross(c
 
 ---
 
+## Object placement — two systems
+
+All objects placed on or between buildings use one of two systems. Both are managed through `FacadeHelper` which centralizes edge-direction logic.
+
+### Edge conventions
+
+Edges are numbered 0–3 per face: 0=north, 1=east, 2=south, 3=west. Edges 0/1 iterate cells in increasing order (x or z). Edges 2/3 iterate in decreasing order. The `reversed` flag (from graph node order vs face node order) may flip the iteration again.
+
+The combination determines whether building cell indices within a module run in the same or opposite direction as the facade order:
+
+```
+needs_reversal = (edge_idx >= 2) XOR is_reversed
+```
+
+This formula lives in `FacadeHelper.needs_cell_reversal()`. It is the single source of truth for all facade-to-grid coordinate conversions.
+
+### Between-grids placement (bridge middles, future pipes)
+
+Objects that span the street between two blocks. Two facade planes (one per block) connected via `create_skewed_cube_from_planes`.
+
+- **Position**: `c_a1.lerp(c_a2, t)` — linear interpolation between block core corners anchored at shared graph nodes. `t` is derived from integer cell indices: `t = cell_index / facade_building_cells`.
+- **Vertex correspondence**: guaranteed because `c_a1/c_b1` both correspond to the same graph node (node1), and `c_a2/c_b2` to node2. Lerping at the same `t` gives points directly across the street.
+- **Multi-cell spanning**: works naturally — the lerp is a single straight line regardless of how many distorted grid cells it crosses.
+- **Implementation**: `_bridge_plane()` and `_add_bridge_section()` in city.gd.
+
+### In-grid placement (bridge extremes, future windows, AC units, balconies, rooftop objects)
+
+Objects that occupy cells within the sidewalk 3D matrix of a single block.
+
+- **Position**: derived from building module `get_region_vertices()` or `FacadeHelper.build_plane_at_depth()`. Both use bilinear interpolation within the module's distorted quad.
+- **Cell mapping**: `FacadeHelper.facade_to_grid_rect()` converts facade-order cell indices to `(bx_min, bx_max, bz_min, bz_max)` in building grid coordinates, applying the reversal formula as needed.
+- **Depth**: `FacadeHelper.get_depth_range()` returns outer (buildable zone boundary) and inner (building core boundary) depth values for each edge.
+- **Multi-cell spanning**: one piece per distorted grid cell. If an object crosses DG cell boundaries, it produces one mesh per DG cell.
+- **Construction**: `create_skewed_cube_from_planes` with outer and inner planes at different depths within the same module. This avoids the normal-flip issues of `create_skewed_cube` on thin shapes.
+
+### Alignment guarantee
+
+At the facade edge (v=0 for north, u=0 for west, etc.), the distorted grid has zero wave distortion (edge falloff). So the in-grid outer face and the between-grids facade plane produce the same world position when the `t` values are cell-aligned. This is why bridge extremes connect perfectly with bridge middles.
+
+---
+
 ## Bridges
 
 ### Ownership
@@ -338,10 +393,10 @@ Determined by neighborhood type and street type:
 
 ### Bridge structure — two placement systems
 
-A bridge has two distinct placement systems:
+A bridge has two distinct placement systems (see "Object placement — two systems" above):
 
-- **Middle part**: spans between opposing buildable zone boundaries across the street. Uses `create_skewed_cube_from_planes` — two facade planes with no grid adaptation in between.
-- **Extremes**: extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Live inside the sidewalk 3D matrix. Use `create_skewed_cube` (base + height).
+- **Middle part** (between-grids): spans between opposing buildable zone boundaries across the street. Uses `create_skewed_cube_from_planes` with facade planes from `_bridge_plane()`.
+- **Extremes** (in-grid): extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Live inside the sidewalk 3D matrix. Uses `create_skewed_cube_from_planes` with outer/inner planes from `FacadeHelper.build_plane_at_depth()`.
 
 ### Bridge parts — middle (from-planes)
 

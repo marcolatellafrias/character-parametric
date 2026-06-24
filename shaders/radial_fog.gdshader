@@ -14,7 +14,7 @@ void vertex() {
 void fragment() {
 	float depth_raw = texture(depth_texture, SCREEN_UV).x;
 
-	if (depth_raw >= 1.0) {
+	if (depth_raw <= 0.0001) {
 		discard;
 	}
 
