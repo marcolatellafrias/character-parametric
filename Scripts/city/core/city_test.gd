@@ -118,7 +118,7 @@ extends Node3D
 @export var enable_traffic_lights: bool = true
 @export var traffic_light_cycle_duration: float = 5.0
 
-@export var show_building_grid_helpers: bool = false
+@export var show_sidewalk_matrices: bool = false
 
 # ============================================
 # DATOS DEL GRAFO
@@ -264,8 +264,8 @@ func visualize_graph() -> void:
 	if show_nodes:
 		_visualize_nodes()
 		
-	if show_building_grid_helpers:
-		_visualize_building_grid_helpers()
+	if show_sidewalk_matrices:
+		_visualize_sidewalk_matrices()
 
 # LaneVolume es Node3D y necesita estar en el árbol para funcionar.
 # Si en el futuro se convierte a RefCounted, este método desaparece.
@@ -743,13 +743,13 @@ func get_block_grid(face_idx: int) -> BlockGenerator:
 		return null
 	return generator.get_block_grid(face_idx)
 
-func _visualize_building_grid_helpers() -> void:
+func _visualize_sidewalk_matrices() -> void:
 	var all_block_faces = generator.get_all_block_faces()
 	var total_cells = 0
 	var available_cells = 0
 
 	for face_idx in all_block_faces:
-		var helper: BuildingGridHelper = generator.get_building_grid_helper(face_idx)
+		var helper: SidewalkMatrix = generator.get_sidewalk_matrix(face_idx)
 		if helper == null:
 			continue
 

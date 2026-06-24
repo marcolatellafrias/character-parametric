@@ -118,7 +118,7 @@ extends Node3D
 @export var enable_traffic_lights: bool = true
 @export var traffic_light_cycle_duration: float = 5.0
 
-@export var show_building_grid_helpers: bool = false
+@export var show_sidewalk_matrices: bool = false
 
 @export_group("Puentes")
 @export var show_bridges: bool = true
@@ -272,8 +272,8 @@ func visualize_graph() -> void:
 	if show_nodes:
 		_visualize_nodes()
 		
-	if show_building_grid_helpers:
-		_visualize_building_grid_helpers()
+	if show_sidewalk_matrices:
+		_visualize_sidewalk_matrices()
 
 	if show_bridges:
 		_visualize_bridges()
@@ -754,13 +754,13 @@ func get_block_grid(face_idx: int) -> BlockGenerator:
 		return null
 	return generator.get_block_grid(face_idx)
 
-func _visualize_building_grid_helpers() -> void:
+func _visualize_sidewalk_matrices() -> void:
 	var all_block_faces = generator.get_all_block_faces()
 	var total_cells = 0
 	var available_cells = 0
 
 	for face_idx in all_block_faces:
-		var helper: BuildingGridHelper = generator.get_building_grid_helper(face_idx)
+		var helper: SidewalkMatrix = generator.get_sidewalk_matrix(face_idx)
 		if helper == null:
 			continue
 
@@ -784,8 +784,8 @@ func _visualize_building_grid_helpers() -> void:
 				var cell_state: int = cell["state"]
 				var color: Color
 				match cell_state:
-					BuildingGridHelper.CellState.AVAILABLE:   color = Color(0.0, 1.0, 0.0, 0.5)
-					BuildingGridHelper.CellState.ROOF_ONLY:   color = Color(0.0, 0.5, 1.0, 0.5)
+					SidewalkMatrix.CellState.AVAILABLE:   color = Color(0.0, 1.0, 0.0, 0.5)
+					SidewalkMatrix.CellState.ROOF_ONLY:   color = Color(0.0, 0.5, 1.0, 0.5)
 					_:                                        color = Color(1.0, 0.0, 0.0, 0.5)
 
 				var bottom_vertices = base_module.get_cell_vertices(cell["bx"], cell["bz"], cell["height_index"])
@@ -795,7 +795,7 @@ func _visualize_building_grid_helpers() -> void:
 				add_child(DebugUtil.create_skewed_cube(bottom_vertices, building_cell_height, color, true))
 
 				total_cells += 1
-				if cell_state == BuildingGridHelper.CellState.AVAILABLE:
+				if cell_state == SidewalkMatrix.CellState.AVAILABLE:
 					available_cells += 1
 
 	print("[Visualizer] Building grid cells: %d total (%d available, %d unavailable)" % [
@@ -818,39 +818,46 @@ func _visualize_bridges() -> void:
 
 func _draw_bridge(placed: Dictionary) -> void:
 	var bridge: Bridge     = placed["bridge"]
+	var cell_start: int    = placed["cell_start"]
+	var cell_end: int      = placed["cell_end"]
+	var floor_idx: int     = placed["floor_idx"]
+	var ch: float          = placed["cell_height"]
+	var cpf: int           = placed["cells_per_floor"]
+	var fbc: int           = placed["facade_building_cells"]
 	var c_a1: Vector2      = placed["c_a1"]
 	var c_a2: Vector2      = placed["c_a2"]
 	var c_b1: Vector2      = placed["c_b1"]
 	var c_b2: Vector2      = placed["c_b2"]
-	var t_start: float     = placed["t_start"]
-	var t_end: float       = placed["t_end"]
-	var h0: float          = placed["h_start"]
-	var ch: float          = placed["cell_height"]
 
-	var h_base_top  = h0 + bridge.base_height * ch
-	var h_path_top  = h_base_top + bridge.pathway_height * ch
-	var h_rail_top  = h_path_top + bridge.railing_height * ch
-	var t_one_cell  = (t_end - t_start) / bridge.total_width
+	var t_start = float(cell_start) / fbc
+	var t_end = float(cell_end + 1) / fbc
+	var t_one_cell = 1.0 / fbc
+
+	var by_base = floor_idx * cpf - bridge.base_height
+	var h0 = by_base * ch
+	var h_base_top = h0 + bridge.base_height * ch
+	var h_path_top = h_base_top + bridge.pathway_height * ch
+	var h_rail_top = h_path_top + bridge.railing_height * ch
 
 	var static_body: StaticBody3D = null
 	if enable_bridge_colliders:
 		static_body = StaticBody3D.new()
 
-	# Base (ancho y alto completos)
+	# Base
 	var pa_base = _bridge_plane(c_a1, c_a2, t_start, t_end, h0, h_base_top)
 	var pb_base = _bridge_plane(c_b1, c_b2, t_start, t_end, h0, h_base_top)
 	add_child(DebugUtil.create_skewed_cube_from_planes(pa_base, pb_base, bridge_base_color, 1.0))
 	if static_body:
 		static_body.add_child(DebugUtil.create_collision_shape_from_planes(pa_base, pb_base))
 
-	# Pathway (mismo ancho que base, 1 celda de altura, arriba de la base)
+	# Pathway
 	var pa_path = _bridge_plane(c_a1, c_a2, t_start, t_end, h_base_top, h_path_top)
 	var pb_path = _bridge_plane(c_b1, c_b2, t_start, t_end, h_base_top, h_path_top)
 	add_child(DebugUtil.create_skewed_cube_from_planes(pa_path, pb_path, bridge_pathway_color, 1.0))
 	if static_body:
 		static_body.add_child(DebugUtil.create_collision_shape_from_planes(pa_path, pb_path))
 
-	# Railings (1 celda de ancho, en las dos celdas exteriores del pathway)
+	# Railings
 	if bridge.railing_height > 0:
 		var pa_rl = _bridge_plane(c_a1, c_a2, t_start, t_start + t_one_cell, h_path_top, h_rail_top)
 		var pb_rl = _bridge_plane(c_b1, c_b2, t_start, t_start + t_one_cell, h_path_top, h_rail_top)
@@ -864,7 +871,7 @@ func _draw_bridge(placed: Dictionary) -> void:
 		if static_body:
 			static_body.add_child(DebugUtil.create_collision_shape_from_planes(pa_rr, pb_rr))
 
-	# Arcos (dos, uno en cada extremo del puente, mismo ancho que base, tamaño fijo)
+	# Arcs
 	if bridge.arc_height > 0 and bridge.arc_length > 0:
 		var h_arc_bot = h0 - bridge.arc_height * ch
 		var pa_arc = _bridge_plane(c_a1, c_a2, t_start, t_end, h_arc_bot, h0)
@@ -888,20 +895,142 @@ func _draw_bridge(placed: Dictionary) -> void:
 		if static_body:
 			static_body.add_child(DebugUtil.create_collision_shape_from_planes(pa_far, pb_arc))
 
+	# Bridge extremes
+	var by_base_top_i = floor_idx * cpf
+	var by_arc_bot = by_base - bridge.arc_height
+	var side_a = {"face": placed["face_a"], "edge_idx": placed["edge_idx_a"], "cells": placed["cells_a"], "reversed": placed["reversed_a"]}
+	var side_b = {"face": placed["face_b"], "edge_idx": placed["edge_idx_b"], "cells": placed["cells_b"], "reversed": placed["reversed_b"]}
+	for side in [side_a, side_b]:
+		_draw_bridge_extremes(bridge, side, cell_start, cell_end,
+				by_base, by_base_top_i, by_arc_bot, ch, static_body)
+
 	if static_body:
 		add_child(static_body)
 
 
-# Devuelve los 4 vértices 3D del plano de fachada de un puente en un rango de altura dado.
-# c1/c2: esquinas 2D (X,Z) de la fachada. t_start/t_end: posición paramétrica a lo largo de la fachada.
+func _draw_bridge_extremes(bridge: Bridge, side: Dictionary, cell_start: int, cell_end: int,
+		by_base: int, by_base_top: int, by_arc_bot: int,
+		ch: float, static_body: StaticBody3D) -> void:
+	var face_idx: int = side["face"]
+	var edge_idx: int = side["edge_idx"]
+	var facade_cells: Array = side["cells"]
+	var is_reversed: bool = side["reversed"]
+
+	var block: BlockGenerator = generator.get_block_grid(face_idx)
+	if block == null:
+		return
+
+	var building_dim: int
+	match edge_idx:
+		0, 2: building_dim = block.get_building_columns()
+		_:    building_dim = block.get_building_rows()
+
+	var dg_idx_start = cell_start / building_dim
+	var dg_idx_end = cell_end / building_dim
+
+	for ci in range(dg_idx_start, dg_idx_end + 1):
+		if ci < 0 or ci >= facade_cells.size():
+			continue
+		var coord: Vector2i = facade_cells[ci]
+		var module: BuildingModule = block.get_building_module(coord.x, coord.y, 0)
+		if module == null:
+			continue
+
+		var core = module.get_core_info()
+
+		var local_start = cell_start - ci * building_dim if ci == dg_idx_start else 0
+		var local_end = cell_end - ci * building_dim if ci == dg_idx_end else building_dim - 1
+		local_start = clampi(local_start, 0, building_dim - 1)
+		local_end = clampi(local_end, 0, building_dim - 1)
+
+		var along_min: int; var along_max: int
+		var needs_reversal = ((edge_idx >= 2) != is_reversed)
+		if needs_reversal:
+			along_min = building_dim - 1 - local_end; along_max = building_dim - 1 - local_start
+		else:
+			along_min = local_start; along_max = local_end
+
+		var outer_depth: int; var inner_depth: int
+		match edge_idx:
+			0:
+				outer_depth = 0; inner_depth = core["min_z"]
+			1:
+				outer_depth = module.columns; inner_depth = core["max_x"] + 1
+			2:
+				outer_depth = module.rows; inner_depth = core["max_z"] + 1
+			3:
+				outer_depth = 0; inner_depth = core["min_x"]
+
+		if along_min > along_max:
+			continue
+
+		var outer = _extreme_plane(module, edge_idx, along_min, along_max, outer_depth)
+		var inner = _extreme_plane(module, edge_idx, along_min, along_max, inner_depth)
+
+		# Base extreme
+		var h_base_bot = by_base * ch
+		var h_base_top_w = by_base_top * ch
+		var p_outer_base = _set_plane_h(outer, h_base_bot, h_base_top_w)
+		var p_inner_base = _set_plane_h(inner, h_base_bot, h_base_top_w)
+		add_child(DebugUtil.create_skewed_cube_from_planes(p_outer_base, p_inner_base, bridge_base_color, 1.0))
+		if static_body:
+			static_body.add_child(DebugUtil.create_collision_shape_from_planes(p_outer_base, p_inner_base))
+
+		# Arc extreme
+		if bridge.arc_height > 0:
+			var h_arc_bot_w = by_arc_bot * ch
+			var p_outer_arc = _set_plane_h(outer, h_arc_bot_w, h_base_bot)
+			var p_inner_arc = _set_plane_h(inner, h_arc_bot_w, h_base_bot)
+			add_child(DebugUtil.create_skewed_cube_from_planes(p_outer_arc, p_inner_arc, bridge_arc_color, 1.0))
+			if static_body:
+				static_body.add_child(DebugUtil.create_collision_shape_from_planes(p_outer_arc, p_inner_arc))
+
+
+static func _extreme_plane(module: BuildingModule, edge_idx: int,
+		along_min: int, along_max: int, depth: int) -> Array[Vector3]:
+	var verts_2d = module._vertices_3d_to_2d()
+	var cols = max(1, module.columns)
+	var rows = max(1, module.rows)
+
+	var p1: Vector2; var p2: Vector2
+	match edge_idx:
+		0:
+			p1 = GridHelper.bilinear_interpolation(verts_2d, float(along_min) / cols, float(depth) / rows)
+			p2 = GridHelper.bilinear_interpolation(verts_2d, float(along_max + 1) / cols, float(depth) / rows)
+		1:
+			p1 = GridHelper.bilinear_interpolation(verts_2d, float(depth) / cols, float(along_min) / rows)
+			p2 = GridHelper.bilinear_interpolation(verts_2d, float(depth) / cols, float(along_max + 1) / rows)
+		2:
+			p1 = GridHelper.bilinear_interpolation(verts_2d, float(along_min) / cols, float(depth) / rows)
+			p2 = GridHelper.bilinear_interpolation(verts_2d, float(along_max + 1) / cols, float(depth) / rows)
+		3:
+			p1 = GridHelper.bilinear_interpolation(verts_2d, float(depth) / cols, float(along_min) / rows)
+			p2 = GridHelper.bilinear_interpolation(verts_2d, float(depth) / cols, float(along_max + 1) / rows)
+
+	return [
+		Vector3(p1.x, 0.0, p1.y),
+		Vector3(p2.x, 0.0, p2.y),
+		Vector3(p2.x, 1.0, p2.y),
+		Vector3(p1.x, 1.0, p1.y),
+	]
+
+
+static func _set_plane_h(plane: Array[Vector3], h_bottom: float, h_top: float) -> Array[Vector3]:
+	return [
+		Vector3(plane[0].x, h_bottom, plane[0].z),
+		Vector3(plane[1].x, h_bottom, plane[1].z),
+		Vector3(plane[2].x, h_top,    plane[2].z),
+		Vector3(plane[3].x, h_top,    plane[3].z),
+	]
+
+
 static func _bridge_plane(c1: Vector2, c2: Vector2, t_start: float, t_end: float,
 		h_bottom: float, h_top: float) -> Array[Vector3]:
 	var p_s = c1.lerp(c2, t_start)
 	var p_e = c1.lerp(c2, t_end)
-	var result: Array[Vector3] = [
+	return [
 		Vector3(p_s.x, h_bottom, p_s.y),
 		Vector3(p_e.x, h_bottom, p_e.y),
 		Vector3(p_e.x, h_top,    p_e.y),
 		Vector3(p_s.x, h_top,    p_s.y),
 	]
-	return result

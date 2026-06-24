@@ -313,6 +313,29 @@ func is_cell_alleyway(grid_x: int, grid_z: int) -> bool:
 	return not is_cell_in_core(grid_x, grid_z)
 
 
+func get_region_vertices(bx_min: int, bx_max: int, bz_min: int, bz_max: int, height_index: int = 0) -> Array[Vector3]:
+	var result: Array[Vector3] = []
+	var vertices_2d = _vertices_3d_to_2d()
+
+	var u_min = float(bx_min) / max(1, columns)
+	var u_max = float(bx_max + 1) / max(1, columns)
+	var v_min = float(bz_min) / max(1, rows)
+	var v_max = float(bz_max + 1) / max(1, rows)
+
+	var y = height_index * cell_height
+
+	var bl = GridHelper.bilinear_interpolation(vertices_2d, u_min, v_min)
+	result.append(Vector3(bl.x, y, bl.y))
+	var br = GridHelper.bilinear_interpolation(vertices_2d, u_max, v_min)
+	result.append(Vector3(br.x, y, br.y))
+	var tr = GridHelper.bilinear_interpolation(vertices_2d, u_max, v_max)
+	result.append(Vector3(tr.x, y, tr.y))
+	var tl = GridHelper.bilinear_interpolation(vertices_2d, u_min, v_max)
+	result.append(Vector3(tl.x, y, tl.y))
+
+	return result
+
+
 func get_core_info() -> Dictionary:
 	return {
 		"min_x": core_min_x,

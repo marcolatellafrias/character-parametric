@@ -8,7 +8,11 @@
 4. **Internal alleyways** — Inside each block, `PathGenerator` traces small and big alleyways in the `DistortedGrid`.
 5. **Clusters** — Non-alleyway cells are grouped into `BuildingCluster` via flood-fill, then subdivided (1–8 cells each).
 6. **Block hearts** — Interior clusters (not on the block perimeter) have a chance of becoming "hearts": their `floor_count` is set to 0, creating empty courtyards inside the block.
-7. **Building modules** — Each cell in each cluster is a `BuildingModule` per floor. Each module knows what borders its 4 sides and shrinks its core area inward (alleyway offset), forming the actual building footprint.
+7. **Building modules** — Each cell in each cluster is a `BuildingModule` per floor. Each module knows what borders its 4 sides and shrinks its core area inward (facade/alleyway offset), forming the actual building footprint.
+8. **Sidewalk zones** — The non-core cells of each building module define sidewalk zones: external (between the buildable zone boundary and the building face) and internal (alleyway offset areas between buildings).
+9. **Sidewalk 3D matrices** — Each distorted grid cell gets a 3D matrix tracking cell availability in the sidewalk zones, extruded vertically. Combined per block for cross-cell queries.
+10. **Sidewalk instances** — Physical walkable surfaces spawned within sidewalk zones. Floor 0 gets sidewalks everywhere. Higher-floor floating sidewalks are bridge-dependent (rules TBD).
+11. **Bridges** — Placed on graph edges. Middle parts span between opposing buildable zone boundaries. Extremes extend through external sidewalk zones to the building face.
 
 ---
 
@@ -25,10 +29,10 @@
 ## Two cascaded offsets
 
 ```
-[STREET]  ←block offset→  [buildable zone]  ←module offset→  [building core]
+[STREET]  ←street offset→  [external sidewalk]  ←facade offset→  [block core]
 ```
 
-**Street offset** (block level, shrinks from outside):
+**Street offset** (block level, in distorted grid cells — creates the street):
 
 | Street type | Cells |
 |---|---|
@@ -37,13 +41,24 @@
 | Medium | 6 |
 | Large | 9 |
 
-**Alleyway offset** (module level, shrinks the core):
+The street offset shrinks the block inward, creating the **buildable zone**. The space between opposing buildable zone boundaries forms the street.
+
+**Facade offset** (module level, in building cells — creates sidewalks):
 
 | Adjacent cell type | Cells |
 |---|---|
 | Normal | 0 |
 | Small alleyway / Facade | 12 |
 | Big alleyway | 16 |
+
+On street-facing (FACADE) edges, the facade offset creates the **external sidewalk** — the strip between the buildable zone boundary and the building face. On alleyway edges, it creates **internal sidewalks** — strips between adjacent building cores.
+
+**Block core** = buildable zone minus external sidewalk. Contains buildings and alleyways (including internal sidewalk zones). Building faces sit at the block core boundary.
+
+Within the block core, alleyways create additional gaps:
+```
+[building core A]  ←internal sidewalk→  [alleyway]  ←internal sidewalk→  [building core B]
+```
 
 ---
 
@@ -64,7 +79,7 @@ Each chamfer is `[c1, c2]` in building cells:
 
 The chamfer creates a rectangular exclusion rect within the core. For vertex 0 (BL): `c2` cells along +x, `c1` cells along +z from the core corner.
 
-Chamfers affect the facade mask — building cells inside a chamfer rect are treated as "no wall" for bridge placement.
+Chamfers affect the sidewalk vertical grid — building cells inside a chamfer rect are treated as "no building face" for bridge placement.
 
 ---
 
@@ -91,6 +106,71 @@ Probability per neighborhood type (`block_heart_probability` in `NeighborhoodTyp
 | Downtown | 20% |
 
 Only clusters that pass `is_interior_cluster()` are candidates. The check runs in `BlockGenerator._assign_block_hearts()` using a per-block RNG seeded from `cluster_seed`.
+
+---
+
+## Sidewalk zones
+
+The non-building-core cells of the building grid form **sidewalk zones** — areas where sidewalks, bridge extremes, and facade objects (windows, balconies, AC units, etc.) can be placed.
+
+### External sidewalk zone
+
+The facade offset strip (12 building cells deep) between the buildable zone boundary and the building face, wrapping around the block perimeter.
+
+**Geometry** — decomposed into **8 pieces** per block:
+- **4 corners**: `facade_offset × facade_offset` squares (e.g. 12×12) at each block corner, where two perimeter edges meet. These sit at the outermost part of the sidewalk, nearest the street intersection, farthest from any building face.
+- **4 sides**: rectangular strips connecting adjacent corners along each block edge. Each side is a single piece spanning the full edge.
+
+### Internal sidewalk zone
+
+The alleyway offset strips (12 or 16 building cells deep) between adjacent building cores, inside the block.
+
+**Geometry** — decomposed into:
+- **Connecting sectors**: straight strips running along alleyway edges between buildings.
+- **Corners**: where two alleyways intersect.
+
+**Corner ownership**: where an internal sidewalk zone meets an external sidewalk zone, the corner is always owned by the external zone — external has higher hierarchy. There must never be conflicting ownership of corners.
+
+---
+
+## Sidewalk instances
+
+A sidewalk instance is a physical walkable surface: a **1-cell-tall skewed cube** covering all cells of a sidewalk zone piece (a corner, a side, or a connecting sector) at a specific floor. Sidewalks are always **floor-aligned** — the bottom sits at the start of a floor.
+
+### Spawn rules
+
+- **Floor 0**: all external and internal sidewalk zones get a sidewalk. Every piece gets an instance.
+- **Higher floors (floating sidewalks)**: rules TBD — related to bridge placement. Floating sidewalks are the continuation of bridge pathways and railings into the sidewalk zone.
+
+---
+
+## Sidewalk 3D matrix
+
+Per distorted grid cell, a 3D matrix `(bx, bz, by)` tracking cell availability in the **non-building-core** space. Restructured from the former `BuildingGridHelper`.
+
+### Cell states (`CellState`)
+
+| State | Value | Meaning |
+|---|---|---|
+| `AVAILABLE` | 0 | Outside building core, on a normal floor — can receive objects, bridge extremes, sidewalks |
+| `UNAVAILABLE` | 1 | Inside building core, in chamfer, or occupied by a placed object |
+| `ROOF_ONLY` | 2 | Above building's floor count — only roof objects (antennas, water tanks) |
+
+Rules (inverted from the former BuildingGridHelper):
+- A cell starts `AVAILABLE` if it is **outside** the building core.
+- If it's **inside** the building core: → `UNAVAILABLE`.
+- If it's inside a chamfer rectangle: → `UNAVAILABLE`.
+- If it's above the building's floor count and not inside core: → `ROOF_ONLY`.
+
+### Sidewalk 3D matrices (per block)
+
+All per-cell sidewalk 3D matrices from every distorted grid cell in a block, combined into one queryable collection. Objects and bridge extremes that span multiple distorted grid cells query this combined structure.
+
+### Derived availability (lazy, not stored)
+
+- **Vertex**: available if any of its 8 neighbor cells is `AVAILABLE`.
+- **Edge**: available if any of its 4 neighbor cells is `AVAILABLE`.
+- **Face**: available if any of its 2 neighbor cells is `AVAILABLE`.
 
 ---
 
@@ -193,7 +273,7 @@ The car system is designed for deterministic prediction in online multiplayer. G
 
 All city meshes are generated via `DebugUtil`. There are two construction patterns:
 
-### Base + height (buildings)
+### Base + height (buildings, bridge extremes, sidewalk instances)
 
 `create_skewed_cube`, `create_skewed_cube_advanced`, `create_skewed_cube_advanced_grid`
 
@@ -203,7 +283,7 @@ All city meshes are generated via `DebugUtil`. There are two construction patter
 - Triangle winding is hardcoded inverted to match the CW input convention (comments say "INVERTIDO EL WINDING ORDER").
 - Basic variant uses `CULL_DISABLED` (both sides visible). Advanced variant uses `CULL_BACK`.
 
-### Two planes (lane volumes, bridges)
+### Two planes (lane volumes, bridge middle parts)
 
 `create_skewed_cube_from_planes`
 
@@ -231,7 +311,7 @@ Godot 4 uses Vulkan's CW front-face convention. The cross product `(b-a).cross(c
 
 ---
 
-## Bridges and object spawning
+## Bridges
 
 ### Ownership
 
@@ -256,41 +336,87 @@ Determined by neighborhood type and street type:
 | Industrial | 1–1 | 1 | 1 | 1 |
 | Downtown | 1–2 | 1 | 1–2 | 1–2 |
 
+### Bridge structure — two placement systems
+
+A bridge has two distinct placement systems:
+
+- **Middle part**: spans between opposing buildable zone boundaries across the street. Uses `create_skewed_cube_from_planes` — two facade planes with no grid adaptation in between.
+- **Extremes**: extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Live inside the sidewalk 3D matrix. Use `create_skewed_cube` (base + height).
+
+### Bridge parts — middle (from-planes)
+
+| Part | Color (debug) | Width | Height | Depth |
+|---|---|---|---|---|
+| Arc | Red | = base | `arc_height` below base | Fixed `arc_length` cells from each end |
+| Base | Grey | `total_width` cells | `base_height` cells | Full bridge span |
+| Pathway | Yellow | = base | 1 cell | Full bridge span |
+| Railing | Cyan | 1 cell × 2 | `railing_height` cells | Full bridge span |
+
+### Bridge parts — extremes (skewed cubes)
+
+| Part | Color (debug) | Width | Height | Depth | Condition |
+|---|---|---|---|---|---|
+| Base extreme | Grey | `total_width` cells | `base_height` cells | `facade_offset` cells (12) | Always |
+| Arc extreme | Red | = base | `arc_height` cells | `facade_offset` cells (12) | Only if `arc_height > 0` |
+
+2 base extremes per bridge (one per side). 2 arc extremes per bridge if the archetype has arcs. Total: 4 or 2 extremes per bridge.
+
+Each extreme extends from the buildable zone boundary inward to the building face. It occupies cells in the sidewalk 3D matrix, marking them as `UNAVAILABLE`.
+
+### Bridge archetypes (`Bridge` class)
+
+| Archetype | Width | Base | Arc height | Arc depth (cells) | Pathway | Railing |
+|---|---|---|---|---|---|---|
+| `wooden_simple` | 16 | 8 | 0 | 0 | 1 | 4 |
+| `stone_arched` | 24 | 10 | 8 | 20 | 1 | 4 |
+| `iron_suspension` | 24 | 10 | 10 | 20 | 1 | 4 |
+
+`wooden_simple` has no arcs, so it produces 2 extremes (base only). `stone_arched` and `iron_suspension` produce 4 extremes (base + arc).
+
+Arc depth is a **fixed size** in building cells (world depth = `arc_length × cell_height`), not proportional to bridge span. The rendering computes the fraction at draw time from the actual bridge depth.
+
+### Archetype selection
+
+Archetypes are chosen via weighted random selection using `Bridge.select_archetype(rng, context)`. The context dictionary carries placement data; weights are computed per-archetype based on:
+
+- **Floor height**: low floors strongly favor `wooden_simple` (floor 1 = always wooden). Higher floors shift toward `stone_arched` and `iron_suspension`.
+- **Bridge length**: if the bridge span (shorter lateral side, in cells) is less than `arc_length × 3`, archetypes with arcs are excluded — the bridge is too short to fit them.
+
+The weight function (`_get_archetype_weights`) is extensible: new factors (neighborhood type, street type, etc.) can be added by passing more keys in the context dictionary.
+
 ### Placement algorithm
 
 `GraphCityGenerator._create_bridges()` runs after block grids are generated. For each non-boundary edge with 2 adjacent faces:
 
-1. Get the facade lines on both sides via `get_block_corner_with_offset()` → 4 corner points (2 per face).
-2. Find the edge index in each face and compute the facade DistortedGrid cells for both sides.
-3. **Build facade masks** for both sides (computed once per edge, reused for all attempts).
+1. Get the buildable zone boundary lines on both sides via `get_block_corner_with_offset()` → 4 corner points (2 per face).
+2. Find the edge index in each face and compute the DistortedGrid cells along the facade for both sides.
+3. **Build sidewalk vertical grids** for both sides (computed once per edge, reused for all attempts).
 4. Compute `max_height = min(block_a.max_height, block_b.max_height)`.
 5. For each bridge to place (up to 20 attempts):
    - Instantiate a random `Bridge` archetype (seed-based).
    - Pick a random `t` position along the facade.
    - **Floor-aligned height**: pick a random floor (≥ 1). The pathway bottom aligns with the floor start, so `h_base = floor * floor_height - base_height * cell_height`. This ensures people can walk from a building floor directly onto the bridge pathway.
-   - **Facade mask check**: verify that ALL building cells within the bridge's t range on both sides have sufficient height (see below).
+   - **Sidewalk vertical grid check**: verify that ALL building cells within the bridge's t range on both sides have sufficient height.
    - Compute a **slot**: `{t_start, t_end, h_start, h_end}` where h includes the arc below.
    - Check overlap against all previously placed slots on this edge.
    - If no overlap and fits within `max_height`, accept.
-6. Store placed bridges with their facade corners, parametric positions, and archetype.
+6. Store placed bridges with their facade corners, parametric positions, archetype, and extreme data.
+7. Mark extreme cells as `UNAVAILABLE` in the sidewalk 3D matrices on both sides.
 
-### Facade mask (building support validation)
+### Sidewalk vertical grid (bridge/pipe validation)
 
-Bridges must connect to solid building wall on both sides. The validation uses a **facade mask** — a 1D array at the building-cell level (one entry per building cell along the facade). Each entry stores the building height at that position, or 0 if there's no wall.
+Validates that bridge/pipe middle parts have solid building wall to anchor to. A **2D vertical grid** along the buildable zone boundary: one axis is horizontal position (building cells along the edge), the other is height (vertical building cells). Each cell is available or not.
 
-The mask is built by iterating each DistortedGrid cell along the facade edge:
+Built by iterating each DistortedGrid cell along the facade edge:
 
-1. Get the cell's cluster. If none or `floor_count == 0` → all entries for this cell are 0.
-2. Get the building module (floor 0) and read its **core area** (`core_min/max`). The core already accounts for alleyway offsets — cells outside the core (shrunk by alleyway gaps) have no wall.
-3. Get the module's **chamfer rects** (diagonal corner cuts from street corners and alleyway corners). Cells inside a chamfer rect are excluded.
-4. For each building cell along the facade that is inside the core AND not in a chamfer → set the mask entry to the cluster's height.
+1. Get the cell's cluster. If none or `floor_count == 0` → all entries for this cell are unavailable.
+2. Get the building module (floor 0) and read its **core area** (`core_min/max`).
+3. Get the module's **chamfer rects**. Cells inside a chamfer rect are excluded.
+4. For each building cell along the facade that is inside the core AND not in a chamfer → mark as available up to the cluster's height.
 
-This naturally handles all three exclusion cases:
-- **Alleyway gaps**: the alleyway offset shrinks the core on each side of the alleyway, leaving a gap of `2 × offset` building cells with 0 height in the mask.
-- **Corner chamfers**: the chamfer rects at building module corners set those positions to 0.
-- **Missing buildings**: cells with no cluster or 0 floors are already 0.
+**Corner exclusion**: at each end of the edge, `max(facade_offset, chamfer_along_this_edge)` building cells are excluded. These correspond to the external sidewalk corner zones (the `facade_offset × facade_offset` squares at block corners) which have no building face behind them. The exclusion is applied per-end as a number of building cells from the edge's start/end — it manifests as unavailable entries in the horizontal axis of the grid, spanning all heights.
 
-The bridge check then simply verifies: every building cell within `[t_start, t_end]` has height ≥ `h_top` (bridge top including railing). If any cell is too short or has no wall, the placement is rejected.
+**Alleyway positions**: NOT excluded. Bridges can land on alleyway positions — floating sidewalks (rules TBD) will handle the connection to buildings.
 
 ### Slot system (anti-overlap + spacing)
 
@@ -305,56 +431,3 @@ Two slots overlap if they intersect in **both** t and h dimensions. This same sy
 1. **Physical overlap** (`occupied` slots): actual bridge bounding boxes in `(t, h)` space — prevents bridges from intersecting.
 2. **Horizontal separation** (`used_t_ranges`): padded t-ranges (`+0.06` on each side). Checked independently of height — prevents bridges from lining up vertically when viewed from above, regardless of floor.
 3. **Floor exclusion** (`used_floors`): once a bridge is placed at floor N, no other bridge on the same edge can use floor N.
-
-### Bridge parts (bottom to top)
-
-Each part has a distinct layout:
-
-| Part | Color (debug) | Width | Height | Depth | Description |
-|---|---|---|---|---|---|
-| Arc | Red | = base | `arc_height` below base | Fixed `arc_length` cells from each end | Two structural arches at bridge endpoints |
-| Base | Grey | `total_width` cells | `base_height` cells | Full bridge span | Main structural volume |
-| Pathway | Yellow | = base | 1 cell | Full bridge span | Walking surface, sits on top of base |
-| Railing | Cyan | 1 cell × 2 | `railing_height` cells | Full bridge span | Two strips on outer edges of pathway |
-
-### Bridge archetypes (`Bridge` class)
-
-| Archetype | Width | Base | Arc height | Arc depth (cells) | Pathway | Railing |
-|---|---|---|---|---|---|---|
-| `wooden_simple` | 16 | 8 | 0 | 0 | 1 | 4 |
-| `stone_arched` | 24 | 10 | 8 | 20 | 1 | 4 |
-| `iron_suspension` | 24 | 10 | 10 | 20 | 1 | 4 |
-
-Arc depth is a **fixed size** in building cells (world depth = `arc_length × cell_height`), not proportional to bridge span. The rendering computes the fraction at draw time from the actual bridge depth.
-
-### Archetype selection
-
-Archetypes are chosen via weighted random selection using `Bridge.select_archetype(rng, context)`. The context dictionary carries placement data; weights are computed per-archetype based on:
-
-- **Floor height**: low floors strongly favor `wooden_simple` (floor 1 = always wooden). Higher floors shift toward `stone_arched` and `iron_suspension`.
-- **Bridge length**: if the bridge span (shorter lateral side, in cells) is less than `arc_length × 3`, archetypes with arcs are excluded — the bridge is too short to fit them.
-
-The weight function (`_get_archetype_weights`) is extensible: new factors (neighborhood type, street type, etc.) can be added by passing more keys in the context dictionary.
-
----
-
-## Cell availability (BuildingGridHelper)
-
-`BuildingGridHelper` tracks the state of every cell `(bx, bz, by)` in the building grid with `CellState`:
-
-| State | Value | Meaning |
-|---|---|---|
-| `AVAILABLE` | 0 | In building core, normal floor — can receive windows, props, bridge endpoints |
-| `UNAVAILABLE` | 1 | Outside core (alleyway), in chamfer, or occupied |
-| `ROOF_ONLY` | 2 | In core but on the rooftop extra floor — only roof props (antennas, tanks) |
-
-Rules:
-- A cell starts `UNAVAILABLE`.
-- If it's inside the `BuildingModule` core (`is_cell_in_core`): → `AVAILABLE`.
-- If it's inside a chamfer rectangle: → back to `UNAVAILABLE`.
-- If it's on the rooftop extra floor and still available: → `ROOF_ONLY`.
-
-Derived availability (lazy, not stored):
-- **Vertex**: available if any of its 8 neighbor cells is `AVAILABLE`.
-- **Edge**: available if any of its 4 neighbor cells is `AVAILABLE`.
-- **Face**: available if any of its 2 neighbor cells is `AVAILABLE`.

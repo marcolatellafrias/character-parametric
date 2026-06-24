@@ -9,7 +9,7 @@ var block_grids: Dictionary = {}
 var region_size: Vector2 = Vector2.ZERO
 var lane_volume_areas: Dictionary = {}
 var traffic_indices: Dictionary = {}
-var building_grid_helpers: Dictionary = {}  # face_idx -> BuildingGridHelper
+var sidewalk_matrices: Dictionary = {}       # face_idx -> SidewalkMatrix
 var bridges: Dictionary = {}               # edge_key -> Array[Dictionary]
 
 var neighborhood_height_falloff: float = 1.0
@@ -468,7 +468,7 @@ func _generate_block_grids(
 	building_cell_height: float
 ) -> void:
 	block_grids.clear()
-	building_grid_helpers.clear()
+	sidewalk_matrices.clear()
 	
 	for face_idx in range(plain_graph.faces.size()):
 		var face_nodes = plain_graph.faces[face_idx]
@@ -553,15 +553,15 @@ func _generate_block_grids(
 		
 		block_grids[face_idx] = block
 	
-	print("[GraphCityGenerator] Block grids generados: %d (BuildingGridHelpers se crean bajo demanda)" % block_grids.size())
+	print("[GraphCityGenerator] Block grids generados: %d (SidewalkMatrices se crean bajo demanda)" % block_grids.size())
 
-func get_building_grid_helper(face_idx: int) -> BuildingGridHelper:
-	if face_idx not in building_grid_helpers:
+func get_sidewalk_matrix(face_idx: int) -> SidewalkMatrix:
+	if face_idx not in sidewalk_matrices:
 		var block = block_grids.get(face_idx, null)
 		if block == null:
 			return null
-		building_grid_helpers[face_idx] = BuildingGridHelper.new(block)
-	return building_grid_helpers[face_idx]
+		sidewalk_matrices[face_idx] = SidewalkMatrix.new(block)
+	return sidewalk_matrices[face_idx]
 
 func _is_face_clockwise(vertices: Array[Vector2]) -> bool:
 	var area = 0.0
@@ -1137,7 +1137,8 @@ func _create_bridges(seed: int) -> void:
 		var placed: Array = []
 		var occupied: Array = []
 		var used_floors: Dictionary = {}
-		var used_t_ranges: Array = []
+		var used_cell_ranges: Array = []
+		var half_width = bridge_length_cells * 0.06
 
 		for _i in range(bridge_count):
 			for _attempt in range(20):
@@ -1151,13 +1152,12 @@ func _create_bridges(seed: int) -> void:
 				var archetype_key = Bridge.select_archetype(rng, context)
 				var bridge = Bridge.new(archetype_key)
 
-				var t_half = _bridge_t_half(bridge, facade_building_cells)
-				var t_margin = t_half + 0.01
-				if t_margin * 2.0 >= 1.0:
+				var w = bridge.total_width
+				if w >= facade_building_cells:
 					continue
-				var t_center = rng.randf_range(t_margin, 1.0 - t_margin)
-				var t_start = t_center - t_half
-				var t_end = t_center + t_half
+				var margin = w / 2 + 1
+				var cell_start = rng.randi_range(margin, facade_building_cells - margin - w)
+				var cell_end = cell_start + w - 1
 
 				var h_base = floor_idx * floor_height - bridge.base_height * cell_height
 				var bridge_h = (bridge.base_height + bridge.pathway_height + bridge.railing_height) * cell_height
@@ -1166,36 +1166,48 @@ func _create_bridges(seed: int) -> void:
 				if h_top > max_height:
 					continue
 
+				var t_start = float(cell_start) / facade_building_cells
+				var t_end = float(cell_end + 1) / facade_building_cells
 				if not _facade_mask_supports(mask_a, t_start, t_end, h_top):
 					continue
 				if not _facade_mask_supports(mask_b, t_start, t_end, h_top):
 					continue
 
-				# El slot incluye el arco que cuelga por debajo
 				var h_arc_bottom = h_base - bridge.arc_height * cell_height
 				var slot = {
-					"t_start": t_start, "t_end": t_end,
+					"cell_start": cell_start, "cell_end": cell_end,
 					"h_start": h_arc_bottom, "h_end": h_top
 				}
 
 				if _slot_overlaps(slot, occupied):
 					continue
 
-				if _t_range_overlaps(t_start, t_end, used_t_ranges):
+				var sep = roundi(half_width)
+				var overlaps_used = false
+				for r in used_cell_ranges:
+					if cell_end + sep > r.x and cell_start - sep < r.y:
+						overlaps_used = true
+						break
+				if overlaps_used:
 					continue
 
 				occupied.append(slot)
-				used_t_ranges.append(Vector2(t_start - 0.06, t_end + 0.06))
+				used_cell_ranges.append(Vector2i(cell_start, cell_end))
 				used_floors[floor_idx] = true
 				placed.append({
 					"bridge": bridge,
-					"t_start": t_start,
-					"t_end": t_end,
-					"h_start": h_base,
+					"cell_start": cell_start,
+					"cell_end": cell_end,
+					"floor_idx": floor_idx,
 					"cell_height": cell_height,
+					"cells_per_floor": block_a.get_cells_per_floor(),
+					"facade_building_cells": facade_building_cells,
 					"c_a1": c_a1, "c_a2": c_a2,
 					"c_b1": c_b1, "c_b2": c_b2,
 					"face_a": face_a, "face_b": face_b,
+					"edge_idx_a": edge_idx_a, "edge_idx_b": edge_idx_b,
+					"cells_a": cells_a, "cells_b": cells_b,
+					"reversed_a": reversed_a, "reversed_b": reversed_b,
 				})
 				break
 
@@ -1214,24 +1226,12 @@ func _get_bridge_count(_node1: int, _node2: int, street_type: int, rng: RandomNu
 	return 0
 
 
-static func _t_range_overlaps(t_start: float, t_end: float, ranges: Array) -> bool:
-	for r in ranges:
-		if t_end > r.x and t_start < r.y:
-			return true
-	return false
-
-
-static func _bridge_t_half(bridge: Bridge, facade_building_cells: int) -> float:
-	if facade_building_cells <= 0:
-		return 0.05
-	return float(bridge.total_width) / (2.0 * facade_building_cells)
-
 
 static func _slot_overlaps(slot: Dictionary, occupied: Array) -> bool:
 	for other in occupied:
-		var t_ok = slot["t_start"] < other["t_end"] and slot["t_end"] > other["t_start"]
+		var cell_ok = slot["cell_start"] <= other["cell_end"] and slot["cell_end"] >= other["cell_start"]
 		var h_ok = slot["h_start"] < other["h_end"] and slot["h_end"] > other["h_start"]
-		if t_ok and h_ok:
+		if cell_ok and h_ok:
 			return true
 	return false
 
@@ -1297,7 +1297,7 @@ static func _build_facade_mask(block: BlockGenerator, cells: Array, edge_idx: in
 			continue
 
 		var core = module.get_core_info()
-		var chamfer_rects = BuildingGridHelper._get_chamfer_rects_static(module)
+		var chamfer_rects = SidewalkMatrix._get_chamfer_rects_static(module)
 
 		var along_min: int
 		var along_max: int
@@ -1325,7 +1325,7 @@ static func _build_facade_mask(block: BlockGenerator, cells: Array, edge_idx: in
 				_:
 					bx = depth_pos; bz = local_b
 
-			if BuildingGridHelper._is_cell_in_chamfer_static(bx, bz, chamfer_rects):
+			if SidewalkMatrix._is_cell_in_chamfer_static(bx, bz, chamfer_rects):
 				continue
 
 			var global_idx: int

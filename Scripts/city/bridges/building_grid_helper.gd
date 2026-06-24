@@ -1,4 +1,4 @@
-class_name BuildingGridHelper
+class_name SidewalkMatrix
 extends RefCounted
 
 enum CellState {
@@ -7,7 +7,6 @@ enum CellState {
 	ROOF_ONLY = 2
 }
 
-# Key: "x_z" (coord de celda en la DistortedGrid)
 var matrices: Dictionary = {}
 
 
@@ -15,40 +14,11 @@ func _init(block_generator: BlockGenerator) -> void:
 	var grid = block_generator.get_distorted_grid()
 	for z in range(grid.rows):
 		for x in range(grid.columns):
-			var matrix = BuildingGridHelper.get_3d_matrix(block_generator, Vector2i(x, z))
+			var matrix = SidewalkMatrix.get_3d_matrix(block_generator, Vector2i(x, z))
 			if not matrix.is_empty():
 				matrices["%d_%d" % [x, z]] = matrix
 
 
-# ============================================================
-# GENERACIÓN ESTÁTICA DE MATRIZ 3D
-# ============================================================
-#
-# Estructura del diccionario devuelto:
-# {
-#   "columns": int,
-#   "rows": int,
-#   "height_cells": int,   # (floor_count + 1) * cells_per_floor
-#   "floor_count": int,
-#   "cells_per_floor": int,
-#   "cell_height": float,
-#   "cells": {
-#     "bx_bz_by": {
-#       "position": Vector3,
-#       "bx": int, "bz": int,
-#       "height_index": int,
-#       "floor": int,
-#       "floor_cell": int,
-#       "type": String,   # "body" | "rooftop"
-#       "state": int      # CellState enum
-#     }
-#   }
-# }
-#
-# REGLAS DE STATE:
-#   UNAVAILABLE: fuera del core (alleyway) o en chamfer de esquina
-#   AVAILABLE:   dentro del core, en un piso normal
-#   ROOF_ONLY:   dentro del core, en el piso extra de rooftop
 static func get_3d_matrix(block_generator: BlockGenerator, coord: Vector2i) -> Dictionary:
 	var x = coord.x
 	var z = coord.y
@@ -82,16 +52,16 @@ static func get_3d_matrix(block_generator: BlockGenerator, coord: Vector2i) -> D
 
 		for bz in range(building_rows):
 			for bx in range(building_columns):
-				var state = CellState.UNAVAILABLE
+				var in_core = floor_module != null and floor_module.is_cell_in_core(bx, bz)
+				var in_chamfer = _is_cell_in_chamfer_static(bx, bz, chamfer_rects)
 
-				if floor_module != null and floor_module.is_cell_in_core(bx, bz):
-					state = CellState.AVAILABLE
-
-				if state == CellState.AVAILABLE and _is_cell_in_chamfer_static(bx, bz, chamfer_rects):
+				var state: int
+				if in_core and not in_chamfer:
 					state = CellState.UNAVAILABLE
-
-				if state == CellState.AVAILABLE and is_rooftop:
+				elif is_rooftop:
 					state = CellState.ROOF_ONLY
+				else:
+					state = CellState.AVAILABLE
 
 				var key = "%d_%d_%d" % [bx, bz, by]
 				cells[key] = {
@@ -131,22 +101,22 @@ static func _get_chamfer_rects_static(module: BuildingModule) -> Array:
 		var max_z: int
 
 		match vertex_index:
-			0:  # BL: c2 hacia +x, c1 hacia +z
+			0:
 				min_x = core["min_x"]
 				max_x = core["min_x"] + c2 - 1
 				min_z = core["min_z"]
 				max_z = core["min_z"] + c1 - 1
-			1:  # BR: c1 hacia -x, c2 hacia +z
+			1:
 				min_x = core["max_x"] - c1 + 1
 				max_x = core["max_x"]
 				min_z = core["min_z"]
 				max_z = core["min_z"] + c2 - 1
-			2:  # TR: c2 hacia -x, c1 hacia -z
+			2:
 				min_x = core["max_x"] - c2 + 1
 				max_x = core["max_x"]
 				min_z = core["max_z"] - c1 + 1
 				max_z = core["max_z"]
-			3:  # TL: c1 hacia +x, c2 hacia -z
+			3:
 				min_x = core["min_x"]
 				max_x = core["min_x"] + c1 - 1
 				min_z = core["max_z"] - c2 + 1
@@ -164,17 +134,9 @@ static func _is_cell_in_chamfer_static(bx: int, bz: int, chamfer_rects: Array) -
 	return false
 
 
-# ============================================================
-# LOOKUP EN MATRICES
-# ============================================================
-
 static func get_matrix(matrices: Dictionary, coord: Vector2i) -> Dictionary:
 	return matrices.get("%d_%d" % [coord.x, coord.y], {})
 
-
-# ============================================================
-# ACCESO A CELDAS
-# ============================================================
 
 static func get_cell(matrix: Dictionary, bx: int, bz: int, by: int) -> Dictionary:
 	if matrix.is_empty():
@@ -185,7 +147,7 @@ static func get_cell(matrix: Dictionary, bx: int, bz: int, by: int) -> Dictionar
 static func get_cell_state(matrix: Dictionary, bx: int, bz: int, by: int) -> int:
 	var cell = get_cell(matrix, bx, bz, by)
 	if cell.is_empty():
-		return CellState.UNAVAILABLE
+		return CellState.AVAILABLE
 	return cell["state"]
 
 
@@ -193,12 +155,13 @@ static func is_cell_available(matrix: Dictionary, bx: int, bz: int, by: int) -> 
 	return get_cell_state(matrix, bx, bz, by) == CellState.AVAILABLE
 
 
-# ============================================================
-# AVAILABILITY LAZY DE VÉRTICES, EDGES Y FACES
-# Solo AVAILABLE cuenta — ROOF_ONLY y UNAVAILABLE se tratan igual para props de fachada.
-# ============================================================
+static func set_cell_unavailable(matrix: Dictionary, bx: int, bz: int, by: int) -> void:
+	var key = "%d_%d_%d" % [bx, bz, by]
+	if matrix.is_empty() or not matrix["cells"].has(key):
+		return
+	matrix["cells"][key]["state"] = CellState.UNAVAILABLE
 
-# Un vértice es available si al menos una celda vecina (hasta 8) es AVAILABLE.
+
 static func get_vertex_availability(matrix: Dictionary, vx: int, vy: int, vz: int) -> bool:
 	if matrix.is_empty():
 		return false
@@ -218,7 +181,6 @@ static func get_vertex_availability(matrix: Dictionary, vx: int, vy: int, vz: in
 	return false
 
 
-# Un edge es available si al menos una de sus hasta 4 celdas vecinas es AVAILABLE.
 static func get_edge_availability(matrix: Dictionary, axis: String, vx: int, vy: int, vz: int) -> bool:
 	if matrix.is_empty():
 		return false
@@ -246,7 +208,6 @@ static func get_edge_availability(matrix: Dictionary, axis: String, vx: int, vy:
 	return false
 
 
-# Una face es available si al menos una de sus 2 celdas vecinas es AVAILABLE.
 static func get_face_availability(matrix: Dictionary, normal: String, a: int, b: int, c: int) -> bool:
 	if matrix.is_empty():
 		return false
@@ -269,9 +230,6 @@ static func get_face_availability(matrix: Dictionary, normal: String, a: int, b:
 	return false
 
 
-# Devuelve una grilla 2D vertical de faces desde un edge a una profundidad dada.
-# edge: "north" | "south" | "east" | "west"
-# depth: 0 = plano más exterior
 static func get_2d_grid_from_edge(matrix: Dictionary, edge: String, depth: int) -> Dictionary:
 	if matrix.is_empty():
 		return {}

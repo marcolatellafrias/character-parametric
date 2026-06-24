@@ -13,7 +13,7 @@
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
-albedo_color = Color(0.28412804, 0.16505393, 0.15014252, 1)
+albedo_color = Color(0.36026734, 0.21508548, 0.19387919, 1)
 uv1_scale = Vector3(1000, 750, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_hfvyn"]
@@ -21,7 +21,7 @@ material = SubResource("StandardMaterial3D_k27g2")
 size = Vector3(3000, -0.06, 3000)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_fnnck"]
-size = Vector3(1000, 1, 1000)
+size = Vector3(3000, 1, 3000)
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_u0d3p"]
 material = ExtResource("3_ecetj")
@@ -197,7 +197,7 @@ master_seed = 10
 script = ExtResource("9_oilx1")
 region_size = Vector2(800, 800)
 min_distance = 117.325
-generation_seed = 1234567
+generation_seed = 1234
 show_buildings = true
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
@@ -212,11 +212,11 @@ shape = SubResource("CapsuleShape3D_4i7ud")
 
 [node name="area_instantiator" type="Node3D" parent="." node_paths=PackedStringArray("cameras", "world")]
 script = ExtResource("12_k27g2")
-outer_radius = 200.0
-spawn_radius = 250.0
+outer_radius = 250.0
+spawn_radius = 400.0
 cameras = [NodePath("../CharacterBody3D/Camera3D")]
 world = NodePath("..")
-fog_color = Color(0.9309718, 0.5619476, 0.4062535, 1)
+fog_color = Color(0.45970815, 0.56180733, 0.96169573, 1)
 fog_shader = ExtResource("11_h3puh")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
