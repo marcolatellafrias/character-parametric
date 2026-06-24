@@ -2,19 +2,16 @@
 extends Node3D
 class_name AreaInstantiator
 
-@export_group("Zone Radii")
-@export var inner_radius: float = 100.0
-@export var outer_radius: float = 150.0
-@export var spawn_radius: float = 200.0
+@export_group("Zone Geometry")
 @export var height: float = 50.5
 @export var segments: int = 16
+
+@export var cameras: Array[Camera3D] = []
+@export var world: Node3D
 
 @export_group("Debug")
 @export var debug_cylinder_color: Color = Color(0.0, 1.0, 0.0, 0.15)
 @export var show_debug_cylinder: bool = false
-
-@export var cameras: Array[Camera3D] = []
-@export var world: Node3D
 
 @export_group("Lane Volume Visualization")
 @export var show_lane_volumes: bool = false
@@ -32,7 +29,6 @@ class_name AreaInstantiator
 @export var enable_car_spawning: bool = true
 @export var spawn_interval: float = 0.15
 @export var spawn_safety_margin: float = 3.0
-@export var max_cars: int = 100
 @export var car_spacing: float = 12.5
 @export var max_topup_per_tick: int = 5
 @export var bootstrap_duration: float = 2.0
@@ -40,7 +36,6 @@ class_name AreaInstantiator
 
 @export_group("Fog")
 @export var enable_fog: bool = true
-@export var fog_color: Color = Color(0.5, 0.55, 0.6)
 @export var fog_shader: Shader
 
 var generator: GraphCityGenerator = null
@@ -75,6 +70,8 @@ func _ready() -> void:
 	if show_debug_cylinder:
 		_create_debug_cylinders()
 
+	WorldSettings.settings_changed.connect(_on_settings_changed)
+
 func _process(delta: float) -> void:
 	_update_cylinder_positions()
 	_update_fog_position()
@@ -103,9 +100,9 @@ func _setup_fog() -> void:
 
 	fog_material = ShaderMaterial.new()
 	fog_material.shader = fog_shader
-	fog_material.set_shader_parameter("inner_radius", inner_radius)
-	fog_material.set_shader_parameter("outer_radius", outer_radius)
-	fog_material.set_shader_parameter("fog_color", fog_color)
+	fog_material.set_shader_parameter("inner_radius", WorldSettings.fog_start_distance)
+	fog_material.set_shader_parameter("outer_radius", WorldSettings.render_distance)
+	fog_material.set_shader_parameter("fog_color", WorldSettings.fog_color)
 	fog_material.set_shader_parameter("player_pos", Vector3.ZERO)
 
 	fog_quad = MeshInstance3D.new()
@@ -124,6 +121,23 @@ func _update_fog_position() -> void:
 		if camera and is_instance_valid(camera):
 			fog_material.set_shader_parameter("player_pos", camera.global_position)
 			return
+
+func _on_settings_changed() -> void:
+	if fog_material:
+		fog_material.set_shader_parameter("inner_radius", WorldSettings.fog_start_distance)
+		fog_material.set_shader_parameter("outer_radius", WorldSettings.render_distance)
+		fog_material.set_shader_parameter("fog_color", WorldSettings.fog_color)
+
+	for area in cylinder_areas:
+		if area and is_instance_valid(area):
+			area.queue_free()
+	cylinder_areas.clear()
+	volume_area_refs.clear()
+	all_lane_volumes.clear()
+	_create_cylinder_areas()
+
+	if show_debug_cylinder:
+		_create_debug_cylinders()
 
 # ============================================================================
 # SETUP & CLEANUP
@@ -170,7 +184,7 @@ func _create_cylinder_areas() -> void:
 		cylinder_area.monitoring = true
 		cylinder_area.monitorable = false
 
-		var colliders = DebugUtil.create_cylinder_colliders(spawn_radius, height, segments)
+		var colliders = DebugUtil.create_cylinder_colliders(WorldSettings.spawn_radius, height, segments)
 		for collider in colliders:
 			cylinder_area.add_child(collider)
 
@@ -266,7 +280,7 @@ func _is_position_in_frustum(pos: Vector3) -> bool:
 func _is_safe_to_seed(vol: LaneVolume) -> bool:
 	var center = vol.get_center()
 	var dist = get_min_camera_distance_xz(center)
-	if dist > outer_radius:
+	if dist > WorldSettings.render_distance:
 		return true
 	return not _is_position_in_frustum(center)
 
@@ -276,24 +290,24 @@ func _get_target_occupancy(vol: LaneVolume) -> int:
 	return int(density * path_length / car_spacing)
 
 func _seed_volume(vol: LaneVolume) -> void:
-	if car_count >= max_cars:
+	if car_count >= WorldSettings.max_cars:
 		return
 	var target = _get_target_occupancy(vol)
 	var vol_id = vol.get_id()
 	var current = volume_car_counts.get(vol_id, 0)
 	for i in range(target - current):
-		if car_count >= max_cars:
+		if car_count >= WorldSettings.max_cars:
 			return
 		_try_spawn_in_volume(vol, randf())
 
 func _topup_volumes() -> void:
-	if car_count >= max_cars:
+	if car_count >= WorldSettings.max_cars:
 		return
 	var is_bootstrap = time_alive < bootstrap_duration
 	var batch_limit = bootstrap_batch_size if is_bootstrap else max_topup_per_tick
 	var spawned = 0
 	for vol in all_lane_volumes:
-		if spawned >= batch_limit or car_count >= max_cars:
+		if spawned >= batch_limit or car_count >= WorldSettings.max_cars:
 			break
 		if not is_bootstrap and not _is_safe_to_seed(vol):
 			continue
@@ -492,17 +506,17 @@ func _create_debug_cylinders() -> void:
 	debug_cylinder_meshes.clear()
 
 	for i in range(cameras.size()):
-		var inner_mesh = DebugUtil.create_debug_cylinder(Color(0.0, 1.0, 0.0, 0.1), inner_radius, height, segments)
+		var inner_mesh = DebugUtil.create_debug_cylinder(Color(0.0, 1.0, 0.0, 0.1), WorldSettings.fog_start_distance, height, segments)
 		inner_mesh.name = "DebugCylinder_Inner_" + str(i)
 		add_child(inner_mesh)
 		debug_cylinder_meshes.append(inner_mesh)
 
-		var outer_mesh = DebugUtil.create_debug_cylinder(Color(1.0, 1.0, 0.0, 0.1), outer_radius, height, segments)
+		var outer_mesh = DebugUtil.create_debug_cylinder(Color(1.0, 1.0, 0.0, 0.1), WorldSettings.render_distance, height, segments)
 		outer_mesh.name = "DebugCylinder_Outer_" + str(i)
 		add_child(outer_mesh)
 		debug_cylinder_meshes.append(outer_mesh)
 
-		var spawn_mesh = DebugUtil.create_debug_cylinder(Color(1.0, 0.0, 0.0, 0.1), spawn_radius, height, segments)
+		var spawn_mesh = DebugUtil.create_debug_cylinder(Color(1.0, 0.0, 0.0, 0.1), WorldSettings.spawn_radius, height, segments)
 		spawn_mesh.name = "DebugCylinder_Spawn_" + str(i)
 		add_child(spawn_mesh)
 		debug_cylinder_meshes.append(spawn_mesh)

@@ -141,7 +141,7 @@ func _process(delta: float) -> void:
 
 	if area_instantiator:
 		var dist = area_instantiator.get_min_camera_distance_xz(global_position)
-		if dist > area_instantiator.spawn_radius:
+		if dist > WorldSettings.spawn_radius:
 			queue_free()
 			return
 

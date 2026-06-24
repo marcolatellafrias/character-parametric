@@ -1,4 +1,4 @@
-[gd_scene load_steps=26 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=27 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
 [ext_resource type="Material" uid="uid://da33e5tos7dp0" path="res://Materials/blue.tres" id="4_oilx1"]
@@ -11,6 +11,7 @@
 [ext_resource type="Script" uid="uid://bby2e141ke1uw" path="res://Scripts/common/fps_graph.gd" id="11_v3boh"]
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
+[ext_resource type="PackedScene" uid="uid://d2fiffsg4ajn1" path="res://Scenes/world_settings.tscn" id="12_v3boh"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
 albedo_color = Color(0.36026734, 0.21508548, 0.19387919, 1)
@@ -76,6 +77,13 @@ adjustment_enabled = true
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_4i7ud"]
 
 [node name="Demo" type="Node3D"]
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+script = ExtResource("11_v3boh")
+
+[node name="WorldSettings" parent="." instance=ExtResource("12_v3boh")]
+fog_start_distance = 5.0
+fog_color = Color(0.38688004, 0.48882216, 0.94255334, 1)
 
 [node name="world" type="Node3D" parent="."]
 
@@ -167,7 +175,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.235, 0.3, -10.597)
 [node name="AreaInstantiator" type="Node3D" parent="chars/fat"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 37.15596, 14.783778, 45.908176)
 script = ExtResource("12_k27g2")
-outer_radius = 1000.0
 metadata/_custom_type_script = "uid://btuoiwrmahgt4"
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="chars/fat"]
@@ -210,14 +217,9 @@ fly_sprint_speed = 40.0
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CharacterBody3D"]
 shape = SubResource("CapsuleShape3D_4i7ud")
 
-[node name="area_instantiator" type="Node3D" parent="." node_paths=PackedStringArray("cameras", "world")]
+[node name="area_instantiator" type="Node3D" parent="CharacterBody3D" node_paths=PackedStringArray("cameras", "world")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -3.8859253, 0)
 script = ExtResource("12_k27g2")
-outer_radius = 250.0
-spawn_radius = 400.0
-cameras = [NodePath("../CharacterBody3D/Camera3D")]
-world = NodePath("..")
-fog_color = Color(0.45970815, 0.56180733, 0.96169573, 1)
+cameras = [NodePath("../Camera3D")]
+world = NodePath("../..")
 fog_shader = ExtResource("11_h3puh")
-
-[node name="CanvasLayer" type="CanvasLayer" parent="."]
-script = ExtResource("11_v3boh")

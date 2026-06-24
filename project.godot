@@ -16,6 +16,7 @@ config/features=PackedStringArray("4.5")
 
 [autoload]
 
+WorldSettings="*res://Scenes/world_settings.tscn"
 DebugController="*res://Scripts/city/entities/car/debug_scroll.gd"
 
 [display]

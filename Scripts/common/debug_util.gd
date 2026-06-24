@@ -1,7 +1,6 @@
 # res://utils/debug_utils.gd
 class_name DebugUtil
 
-const WORLD_MESH_VISIBILITY_RANGE: float = 200.0
 
 static func create_debug_cone(color: Color, length: float, radius: float, segments: int = 32) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
@@ -264,7 +263,7 @@ static func create_debug_line_to_from(from: Vector3, to: Vector3, color: Color, 
 	material.albedo_color = color
 
 	mesh_instance.material_override = material
-	mesh_instance.visibility_range_end = WORLD_MESH_VISIBILITY_RANGE
+	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 
 static func create_debug_polygon(points: PackedVector3Array, color: Color) -> MeshInstance3D:
@@ -397,7 +396,7 @@ static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vect
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Visible desde ambos lados
 
 	mesh_instance.material_override = material
-	mesh_instance.visibility_range_end = WORLD_MESH_VISIBILITY_RANGE
+	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 
 static func create_skewed_cube(base_vertices: Array, height: float, color: Color, use_transparency: bool = false) -> MeshInstance3D:
@@ -486,7 +485,7 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 	
 	mesh_instance.mesh = st.commit()
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	mesh_instance.visibility_range_end = WORLD_MESH_VISIBILITY_RANGE
+	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 
 # Crea un cubo skewed con chamfers en sus edges verticales, especificados en unidades reales.
@@ -622,7 +621,7 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 	
 	mesh_instance.mesh = st.commit()
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	mesh_instance.visibility_range_end = WORLD_MESH_VISIBILITY_RANGE
+	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 
 # Crea un cubo skewed con chamfers en sus edges verticales, especificados en unidades de grid.
@@ -1307,7 +1306,7 @@ static func create_skewed_cube_from_planes(
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_instance.material_override = material
-	mesh_instance.visibility_range_end = WORLD_MESH_VISIBILITY_RANGE
+	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 
 # Función helper para agregar un quad a los arrays de mesh

@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3 uid="uid://d2fiffsg4ajn1"]
+
+[ext_resource type="Script" uid="uid://b0h2l700jkf6l" path="res://Scripts/world_settings.gd" id="1"]
+
+[node name="WorldSettings" type="Node"]
+script = ExtResource("1")
+fog_start_distance = 50.0
+render_distance = 350.0
+fog_color = Color(0.38905698, 0.49853778, 0.95236284, 1)
