@@ -206,6 +206,8 @@ region_size = Vector2(800, 800)
 min_distance = 117.325
 generation_seed = 123
 show_buildings = true
+show_delivery_doors = true
+delivery_door_width = 2.25
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8859253, 0)

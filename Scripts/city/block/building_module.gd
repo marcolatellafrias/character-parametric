@@ -98,7 +98,7 @@ func _calculate_chamfers(
 			var edge_type = _get_edge_type_from_vertices(
 				corner_edge["v1"], corner_edge["v2"], path_generator
 			)
-			if edge_type != DistortedGrid.CellType.NORMAL and edge_type != DistortedGrid.CellType.FACADE:
+			if edge_type != DistortedGrid.CellType.NORMAL and edge_type != DistortedGrid.CellType.FACADE and edge_type != DistortedGrid.CellType.BOUNDARY:
 				corner_edges_valid = false
 				break
 		
@@ -112,7 +112,7 @@ func _calculate_chamfers(
 			var edge_type = _get_edge_type_from_vertices(
 				secondary_edge["v1"], secondary_edge["v2"], path_generator
 			)
-			if edge_type == DistortedGrid.CellType.NORMAL or edge_type == DistortedGrid.CellType.FACADE:
+			if edge_type == DistortedGrid.CellType.NORMAL or edge_type == DistortedGrid.CellType.FACADE or edge_type == DistortedGrid.CellType.BOUNDARY:
 				all_secondary_valid = false
 				break
 			

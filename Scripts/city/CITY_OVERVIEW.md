@@ -48,6 +48,7 @@ The street offset shrinks the block inward, creating the **buildable zone**. The
 | Adjacent cell type | Cells |
 |---|---|
 | Normal | 0 |
+| Boundary | 0 |
 | Small alleyway / Facade | 12 |
 | Big alleyway | 16 |
 
@@ -86,7 +87,8 @@ Chamfers affect the sidewalk vertical grid — building cells inside a chamfer r
 ## DistortedGrid cell types
 
 - `NORMAL` — buildable interior
-- `FACADE` — block perimeter
+- `FACADE` — block perimeter facing a street (facade offset = 12 → external sidewalk zone)
+- `BOUNDARY` — block perimeter coinciding with the city boundary (facade offset = 0 → no sidewalk)
 - `SMALL` / `BIG` — small / big alleyway
 - `SMALL_ORIGIN` / `BIG_ORIGIN` — alleyway starting point
 

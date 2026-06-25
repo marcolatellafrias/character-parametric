@@ -94,22 +94,22 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 	var edge_types_array: Array[int] = []
 	
 	if z == 0:
-		edge_types_array.append(-1)
+		edge_types_array.append(distorted_grid.edge_types[0])
 	else:
 		edge_types_array.append(path_generator.get_path_edge_type_vertices(x, z, x + 1, z, floor))
-	
+
 	if x == distorted_grid.columns - 1:
-		edge_types_array.append(-1)
+		edge_types_array.append(distorted_grid.edge_types[1])
 	else:
 		edge_types_array.append(path_generator.get_path_edge_type_vertices(x + 1, z, x + 1, z + 1, floor))
-	
+
 	if z == distorted_grid.rows - 1:
-		edge_types_array.append(-1)
+		edge_types_array.append(distorted_grid.edge_types[2])
 	else:
 		edge_types_array.append(path_generator.get_path_edge_type_vertices(x + 1, z + 1, x, z + 1, floor))
-	
+
 	if x == 0:
-		edge_types_array.append(-1)
+		edge_types_array.append(distorted_grid.edge_types[3])
 	else:
 		edge_types_array.append(path_generator.get_path_edge_type_vertices(x, z + 1, x, z, floor))
 	

@@ -5,7 +5,8 @@ enum CellType {
 	NORMAL = 0,
 	SMALL = 1,
 	BIG = 2,
-	FACADE = -1,  # CAMBIO: era BOUNDARY
+	FACADE = -1,
+	BOUNDARY = -2,
 	SMALL_ORIGIN = 10,
 	BIG_ORIGIN = 11
 }
@@ -150,13 +151,13 @@ func get_cell_position(x: int, z: int) -> Vector3:
 
 
 func is_boundary_cell(x: int, z: int) -> bool:
-	if z == 0 and edge_types[0] == -1:
+	if z == 0 and (edge_types[0] == CellType.FACADE or edge_types[0] == CellType.BOUNDARY):
 		return true
-	if x == columns - 1 and edge_types[1] == -1:
+	if x == columns - 1 and (edge_types[1] == CellType.FACADE or edge_types[1] == CellType.BOUNDARY):
 		return true
-	if z == rows - 1 and edge_types[2] == -1:
+	if z == rows - 1 and (edge_types[2] == CellType.FACADE or edge_types[2] == CellType.BOUNDARY):
 		return true
-	if x == 0 and edge_types[3] == -1:
+	if x == 0 and (edge_types[3] == CellType.FACADE or edge_types[3] == CellType.BOUNDARY):
 		return true
 	return false
 

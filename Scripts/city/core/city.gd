@@ -120,6 +120,10 @@ extends Node3D
 
 @export var show_sidewalk_matrices: bool = false
 
+@export_group("Delivery Doors")
+@export var show_delivery_doors: bool = false
+@export var delivery_door_color: Color = Color(0.9, 0.9, 0.85)
+
 @export_group("Puentes")
 @export var show_bridges: bool = true
 @export var enable_bridge_colliders: bool = true
@@ -279,6 +283,9 @@ func visualize_graph() -> void:
 
 	if show_bridges:
 		_visualize_bridges()
+
+	if show_delivery_doors:
+		_visualize_delivery_doors()
 
 # LaneVolume es Node3D y necesita estar en el árbol para funcionar.
 # Si en el futuro se convierte a RefCounted, este método desaparece.
@@ -935,6 +942,58 @@ func _get_sidewalk_corner_verts(block: BlockGenerator, grid: DistortedGrid) -> D
 	return result
 
 
+
+
+# ============================================
+# VISUALIZACIÓN DE DELIVERY DOORS
+# ============================================
+
+func _visualize_delivery_doors() -> void:
+	var all_block_faces = generator.get_all_block_faces()
+	var total = 0
+
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		if block == null:
+			continue
+
+		var cells_per_floor = block.get_cells_per_floor()
+		var building_cell_height = block.get_building_cell_height()
+
+		for door in block.delivery_doors:
+			var cell: Vector2i = door["cell"]
+			var edge_idx: int = door["edge"]
+			var floor_idx: int = door["floor"]
+
+			var module = block.get_building_module(cell.x, cell.y, 0)
+			if module == null:
+				continue
+
+			var core = module.get_core_info()
+			var height_index = floor_idx * cells_per_floor
+			var floor_height = cells_per_floor * building_cell_height
+
+			var bx_min: int; var bx_max: int; var bz_min: int; var bz_max: int
+			match edge_idx:
+				0:
+					bx_min = core["min_x"]; bx_max = core["max_x"]
+					bz_min = core["min_z"] - 1; bz_max = core["min_z"] - 1
+				1:
+					bx_min = core["max_x"] + 1; bx_max = core["max_x"] + 1
+					bz_min = core["min_z"]; bz_max = core["max_z"]
+				2:
+					bx_min = core["min_x"]; bx_max = core["max_x"]
+					bz_min = core["max_z"] + 1; bz_max = core["max_z"] + 1
+				3:
+					bx_min = core["min_x"] - 1; bx_max = core["min_x"] - 1
+					bz_min = core["min_z"]; bz_max = core["max_z"]
+
+			var verts = module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, height_index)
+			if verts.size() == 4:
+				add_child(DebugUtil.create_skewed_cube(verts, floor_height, delivery_door_color))
+			total += 1
+
+	print("[Visualizer] Delivery doors: %d" % total)
 
 
 # ============================================
