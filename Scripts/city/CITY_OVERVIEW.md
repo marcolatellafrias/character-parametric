@@ -285,43 +285,19 @@ The car system is designed for deterministic prediction in online multiplayer. G
 
 ## Mesh generation — normals & winding
 
-All city meshes are generated via `DebugUtil`. There are two construction patterns:
+All city meshes are generated via `DebugUtil`. All variants use the same rendering approach:
 
-### Base + height (buildings, bridge extremes, sidewalk instances)
+- **Winding & normals**: every face goes through `_add_quad`, which computes the cross-product normal, checks it against the mesh centroid (computed from all 8 vertices), and swaps winding if the normal points inward. This auto-correction means input vertex order (CW or CCW) does not matter.
+- **Cull mode**: `CULL_BACK` for all variants.
+- **Godot/Vulkan convention**: CW front-face. The cross product `(b-a).cross(c-a)` points toward the CCW side. If it points away from the centroid (`n.dot(face_center - mesh_center) > 0`), winding is swapped so the front face points outward.
 
-`create_skewed_cube`, `create_skewed_cube_advanced`, `create_skewed_cube_advanced_grid`
+### Input formats
 
-- Input: 4 base vertices in **CW order** `[BL, BR, TR, TL]` + height.
-- Top vertices = base + `Vector3(0, height, 0)`.
-- Each side face computes its normal via cross product, then flips it if it points toward the mesh centroid.
-- Triangle winding is hardcoded inverted to match the CW input convention (comments say "INVERTIDO EL WINDING ORDER").
-- Basic variant uses `CULL_DISABLED` (both sides visible). Advanced variant uses `CULL_BACK`.
-
-### Two planes (lane volumes, bridge middle parts)
-
-`create_skewed_cube_from_planes`
-
-- Input: two quads of 4 vertices each `[BL, BR, TR, TL]`.
-- Uses `_add_quad` which auto-corrects **both** winding and normals:
-  1. Computes cross-product normal `n = (b-a).cross(c-a)`.
-  2. If `n` points **away** from the mesh centroid (`n.dot(face_center - mesh_center) > 0`), swaps `b↔d` to reverse winding.
-  3. Computes the final normal via `_quad_outward_normal` (always points outward).
-- Vertex order (CW or CCW) does not matter — the auto-correction handles it.
-
-### Why the check is `> 0` (Godot/Vulkan convention)
-
-Godot 4 uses Vulkan's CW front-face convention. The cross product `(b-a).cross(c-a)` points toward the CCW side of the triangle. For CW front-face rendering:
-- Cross product pointing **inward** (toward centroid) → front face is outward → correct.
-- Cross product pointing **outward** (away from centroid) → front face is inward → wrong → swap needed.
-
-### Convention summary
-
-| What | Standard |
-|---|---|
-| Vertex order for quads | CW: `[BL, BR, TR, TL]` |
-| Normal direction | Always outward from mesh centroid |
-| Winding correction | Automatic in `_add_quad` (from-planes path) |
-| Cull mode | `CULL_BACK` for from-planes and advanced buildings; `CULL_DISABLED` for basic buildings |
+| Function | Input | Used for |
+|---|---|---|
+| `create_skewed_cube` | 4 base vertices `[BL, BR, TR, TL]` + height | In-grid objects: buildings, bridge extremes, sidewalks |
+| `create_skewed_cube_from_planes` | Two opposing quads `[BL, BR, TR, TL]` each | Between-grids objects: bridge middles, lane volumes |
+| `create_skewed_cube_advanced_grid` | Base vertices + height + chamfers dict + grid dims | Buildings with chamfered corners |
 
 ---
 
@@ -354,11 +330,10 @@ Objects that span the street between two blocks. Two facade planes (one per bloc
 
 Objects that occupy cells within the sidewalk 3D matrix of a single block.
 
-- **Position**: derived from building module `get_region_vertices()` or `FacadeHelper.build_plane_at_depth()`. Both use bilinear interpolation within the module's distorted quad.
+- **Position**: derived from building module `get_region_vertices()`, which uses bilinear interpolation within the module's distorted quad.
 - **Cell mapping**: `FacadeHelper.facade_to_grid_rect()` converts facade-order cell indices to `(bx_min, bx_max, bz_min, bz_max)` in building grid coordinates, applying the reversal formula as needed.
-- **Depth**: `FacadeHelper.get_depth_range()` returns outer (buildable zone boundary) and inner (building core boundary) depth values for each edge.
 - **Multi-cell spanning**: one piece per distorted grid cell. If an object crosses DG cell boundaries, it produces one mesh per DG cell.
-- **Construction**: `create_skewed_cube_from_planes` with outer and inner planes at different depths within the same module. This avoids the normal-flip issues of `create_skewed_cube` on thin shapes.
+- **Construction**: `create_skewed_cube` with base vertices from `get_region_vertices` and height in building cells.
 
 ### Alignment guarantee
 
@@ -396,7 +371,7 @@ Determined by neighborhood type and street type:
 A bridge has two distinct placement systems (see "Object placement — two systems" above):
 
 - **Middle part** (between-grids): spans between opposing buildable zone boundaries across the street. Uses `create_skewed_cube_from_planes` with facade planes from `_bridge_plane()`.
-- **Extremes** (in-grid): extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Live inside the sidewalk 3D matrix. Uses `create_skewed_cube_from_planes` with outer/inner planes from `FacadeHelper.build_plane_at_depth()`.
+- **Extremes** (in-grid): extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Live inside the sidewalk 3D matrix. Uses `create_skewed_cube` with base vertices from `get_region_vertices`.
 
 ### Bridge parts — middle (from-planes)
 
@@ -473,16 +448,4 @@ Built by iterating each DistortedGrid cell along the facade edge:
 
 **Alleyway positions**: NOT excluded. Bridges can land on alleyway positions — floating sidewalks (rules TBD) will handle the connection to buildings.
 
-### Slot system (anti-overlap + spacing)
-
-Each placed bridge occupies a rectangular slot in `(t, h)` space:
-- `t ∈ [0, 1]` — parametric position along the facade edge.
-- `h` — world-space height range, including the arc that hangs below.
-
-Two slots overlap if they intersect in **both** t and h dimensions. This same system will extend to pipes, signage, and other edge-mounted objects.
-
-**Spacing** — three independent mechanisms prevent clustering:
-
-1. **Physical overlap** (`occupied` slots): actual bridge bounding boxes in `(t, h)` space — prevents bridges from intersecting.
-2. **Horizontal separation** (`used_t_ranges`): padded t-ranges (`+0.06` on each side). Checked independently of height — prevents bridges from lining up vertically when viewed from above, regardless of floor.
-3. **Floor exclusion** (`used_floors`): once a bridge is placed at floor N, no other bridge on the same edge can use floor N.
+**Anti-overlap**: placed objects occupy a cell range along the facade and a height range. New placements are checked against existing ones — they must not intersect in both dimensions. Additional spacing rules prevent clustering: a padded horizontal margin around each bridge, and a floor-exclusion rule (one bridge per floor per edge).
