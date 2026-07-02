@@ -241,7 +241,9 @@ Each street edge in the graph becomes a `LaneVolume`: a 3D rectangular region wi
 Each `LaneVolume` has a `TrafficPlane` child with a `traffic_index` (0 or 1). Volumes with opposing flow directions at the same intersection get the same index. The city toggles the `active_traffic_index` on a timer, which sets `is_blocking` on each plane. Red planes are registered as quad claims in the `TrafficClaimRegistry`; a car's corridor crossing a red, lane-relevant quad produces a stop point (no physics involved).
 
 ### Car movement
-A car enters a volume at a grid position `(u, v)` within the start plane. A `Curve3D` path is created from start to end plane via bilinear interpolation. `PathFollow3D` advances the car along the curve. When it reaches the end, it checks the traffic light, then queries `get_lane_volume_continuations()` to find the next volumes and picks one. A new path is created and the cycle repeats.
+A car enters a volume at a grid position `(u, v)` within the start plane. A `Curve3D` path is created from start to end plane via bilinear interpolation. The car holds the curve directly (no `Path3D`/`PathFollow3D`/`Timer` nodes — `PathController` is `RefCounted`): a float progress advances along the baked curve (`bake_interval` 2.0, cars don't need the default 0.2u precision) and transition/end checks run inline in `advance()`. Segment-transition offsets are computed analytically (the shared straight segment carries progress over by subtraction), so no `get_closest_offset` search. When the car reaches the end, it checks the traffic light, then queries `get_lane_volume_continuations()` to find the next volumes and picks one. A new curve is built and the cycle repeats.
+
+Each car is 2 nodes (root + `MeshInstance3D`); `CollisionAvoidance` is also `RefCounted`. All cars of an archetype share one `BoxMesh`+`StandardMaterial3D` (debug tint uses a lazy per-car `material_override`), and meshes are hidden beyond `render_distance` — the fog fully covers them there anyway.
 
 ```
 Enter volume (u,v) → build Curve3D path → follow path
@@ -268,6 +270,8 @@ Global caps are enforced at spawn time. There are no per-volume type caps — to
 ### Routing
 
 When choosing a continuation at an intersection, cars weight candidates by **traffic density** (`LaneVolume.get_traffic_density()` — the same street × neighborhood constant the spawner uses for targets), so routing and spawning push toward the same distribution: big streets attract and keep more cars. The seeded weighted draw itself provides the random variation into less dense routes. U-turns are structurally excluded by `get_lane_volume_continuations()` (the same graph edge in either direction is skipped). Population composition is controlled entirely at spawn time by the per-neighborhood weight tables.
+
+The weighted draw happens **before** validation: only the drawn volume runs the (expensive) projection-validation, falling back to the next draw if it fails — instead of validating every candidate and discarding all but one.
 
 ### Fog and zone radii (`AreaInstantiator`)
 
@@ -320,7 +324,9 @@ Cars carry **no Area3D and issue no physics queries**. Everything that occupies 
 | `TRAFFIC_LIGHT` | quad (the `TrafficPlane` face) | `AreaInstantiator` when a volume enters the tracking cylinder |
 | `OBSTACLE` | capsule polyline | anything (`register_obstacle()`) — cars adapt automatically |
 
-**Detection**: every other frame (staggered by instance id), a car samples its future path into a corridor polyline (spacing `ghost_spacing`, length `base_speed × ghost_distance_multiplier`, clamped) and queries the registry — segment-vs-segment / segment-vs-quad math against the few claims in nearby hash cells. Sampling uses `sample_baked` (position only); speed smoothing still runs every frame.
+**Detection**: at a distance-scaled cadence (staggered by instance id — every 2 frames inside `fog_start_distance`, 4 in the near fade ring, 8 in the far half; braking latency is invisible at fog range), a car samples its future path into a corridor polyline (spacing `ghost_spacing`, length `base_speed × ghost_distance_multiplier`, clamped) and queries the registry — segment-vs-segment / segment-vs-quad math against the few claims in nearby hash cells. Sampling uses `sample_baked` (position only); speed smoothing still runs every frame. Corridor buffers, query scratch arrays, and hit lists are reused across ticks (`publish_capsule` copies points into the claim's own buffer, so callers can pass reused arrays). A car's relevant volume ids are cached and refreshed only on segment transitions.
+
+**Fogged tick**: fully fogged cars do real work every 4th frame with the accumulated delta (motion is analytic, so batching is exact); on skipped frames they only republish their body claim from the last transform, since the registry's double buffer clears every frame.
 
 **Double buffering**: the registry swaps read/write buffers each frame (`process_priority = -100`); cars publish into the write buffer and query the previous frame's completed read buffer. Every car sees the same claim set regardless of processing order — no order dependence, multiplayer-determinism friendly.
 

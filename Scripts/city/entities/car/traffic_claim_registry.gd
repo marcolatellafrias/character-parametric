@@ -41,6 +41,9 @@ var _light_claims: Dictionary = {}   # TrafficPlane -> Claim
 var _light_refs: Dictionary = {}     # TrafficPlane -> refcount (multiple instantiators)
 var _query_stamp: int = 0
 var _parity: int = 0
+# Query scratch buffers, reused across calls (single-threaded access).
+var _scratch_candidates: Array[Claim] = []
+var _scratch_hits: Array[Dictionary] = []
 
 func _ready() -> void:
 	add_to_group("traffic_claim_registry")
@@ -84,9 +87,12 @@ func publish_capsule(pair: Array, points: PackedVector3Array, radius: float) -> 
 	if points.size() < 2:
 		return
 	var claim: Claim = pair[_parity]
-	claim.points = points
+	# Copy into the claim's own buffer (packed arrays are shared by reference)
+	# so callers can reuse scratch arrays without corrupting the read buffer.
+	claim.points.clear()
+	claim.points.append_array(points)
 	claim.radius = radius
-	_insert(_write_cells, claim, _capsule_aabb(points, radius), false)
+	_insert(_write_cells, claim, _capsule_aabb(claim.points, radius), false)
 
 func register_traffic_light(plane: TrafficPlane) -> void:
 	var count: int = _light_refs.get(plane, 0)
@@ -136,13 +142,16 @@ func unregister_obstacle(claim: Claim) -> void:
 ## Returns hits: { claim, my_arc, other_arc, point } where my_arc is the
 ## distance along the corridor at which contact happens and other_arc the
 ## distance along the claim's own polyline (0 for quads/static shapes).
+## The returned array is a reused buffer, only valid until the next query.
 func query_corridor(points: PackedVector3Array, arcs: PackedFloat32Array,
 					radius: float, exclude_car: Node3D) -> Array[Dictionary]:
-	var hits: Array[Dictionary] = []
+	var hits := _scratch_hits
+	hits.clear()
 	if points.size() < 2:
 		return hits
 	var aabb := _capsule_aabb(points, radius)
-	var candidates: Array[Claim] = []
+	var candidates := _scratch_candidates
+	candidates.clear()
 	_query_stamp += 1
 	_gather(_read_cells, aabb, candidates)
 	_gather(_static_cells, aabb, candidates)
@@ -163,7 +172,8 @@ func query_corridor(points: PackedVector3Array, arcs: PackedFloat32Array,
 ## Checks both buffers so cars spawned earlier in the same tick are seen.
 func is_capsule_free(a: Vector3, b: Vector3, radius: float) -> bool:
 	var aabb := AABB(a, Vector3.ZERO).expand(b).grow(radius)
-	var candidates: Array[Claim] = []
+	var candidates := _scratch_candidates
+	candidates.clear()
 	_query_stamp += 1
 	_gather(_read_cells, aabb, candidates)
 	_gather(_write_cells, aabb, candidates)

@@ -8,7 +8,7 @@
 # broadcast only applies if that car is ahead of us — a follower's broadcast
 # spilling past us can no longer stop us. Converging corridors (merges) are
 # resolved by time-to-conflict priority instead of mutual braking.
-extends Node
+extends RefCounted
 class_name CollisionAvoidance
 
 enum State { CRUISING, FOLLOWING, BRAKING, YIELDING, STOPPED, FOGGED }
@@ -49,6 +49,7 @@ var has_hit_point: bool = false
 var corridor_points: PackedVector3Array = PackedVector3Array()
 var corridor_arcs: PackedFloat32Array = PackedFloat32Array()
 var broadcast_length: float = 0.0
+var _broadcast_buffer: PackedVector3Array = PackedVector3Array()
 
 # Deadlock timeout bookkeeping
 var blocked_time: float = 0.0
@@ -73,9 +74,10 @@ func initialize(owner_car: FlyingCar, path_ctrl: PathController, p_registry: Tra
 # ============================================================================
 
 ## Sample the car's future path once; both detection and broadcast use it.
+## The point/arc buffers are reused across rebuilds to avoid per-tick churn.
 func rebuild_corridor() -> void:
-	corridor_points = PackedVector3Array()
-	corridor_arcs = PackedFloat32Array()
+	corridor_points.clear()
+	corridor_arcs.clear()
 	broadcast_length = 0.0
 
 	var curve_length := path_controller.get_curve_length()
@@ -100,19 +102,20 @@ func rebuild_corridor() -> void:
 	broadcast_length = clampf(current_speed * broadcast_distance_multiplier, 0.0, end_arc)
 
 ## Slice of the corridor the car "reserves" ahead of itself (its claim).
+## Returns a reused buffer, only valid until the next call.
 func get_broadcast_points() -> PackedVector3Array:
+	_broadcast_buffer.clear()
 	if current_speed <= STOPPED_EPSILON or broadcast_length <= 0.0 or corridor_points.size() < 2:
-		return PackedVector3Array()
-	var pts := PackedVector3Array()
-	pts.append(corridor_points[0])
+		return _broadcast_buffer
+	_broadcast_buffer.append(corridor_points[0])
 	for i in range(1, corridor_points.size()):
 		if corridor_arcs[i] >= broadcast_length:
 			var seg_len := corridor_arcs[i] - corridor_arcs[i - 1]
 			var t := (broadcast_length - corridor_arcs[i - 1]) / seg_len if seg_len > 0.0 else 0.0
-			pts.append(corridor_points[i - 1].lerp(corridor_points[i], t))
-			return pts
-		pts.append(corridor_points[i])
-	return pts
+			_broadcast_buffer.append(corridor_points[i - 1].lerp(corridor_points[i], t))
+			return _broadcast_buffer
+		_broadcast_buffer.append(corridor_points[i])
+	return _broadcast_buffer
 
 # ============================================================================
 # DECISION (staggered, expensive step)

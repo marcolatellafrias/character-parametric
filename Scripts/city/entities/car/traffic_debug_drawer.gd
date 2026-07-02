@@ -77,8 +77,8 @@ func _process(_delta: float) -> void:
 			continue
 		var color: Color = STATE_COLORS.get(ca.state, Color.WHITE)
 
-		if config.traffic_debug_tint and car.material:
-			car.material.albedo_color = color
+		if config.traffic_debug_tint:
+			car.set_debug_tint(color)
 			_tinted = true
 
 		if ca.state == CollisionAvoidance.State.FOGGED:
@@ -220,5 +220,5 @@ func _deactivate() -> void:
 func _restore_tints() -> void:
 	_tinted = false
 	for car in registry.cars:
-		if is_instance_valid(car) and car.material:
-			car.material.albedo_color = car.original_color
+		if is_instance_valid(car):
+			car.clear_debug_tint()
