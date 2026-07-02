@@ -43,16 +43,16 @@ const CONFIGS = {
 	}
 }
 
+# Ambient spawn weights. One-of vehicles (trucks) are not listed: their
+# default archetype weight is 0, so a missing entry keeps them out of the
+# pool. Explicit 0.0 entries below ARE needed — a missing entry falls back
+# to the archetype's default weight.
 const CAR_WEIGHTS = {
 	Type.SHANTY_TOWN: {
 		CarArchetypes.Type.POOR_CAR: 0.45,
 		CarArchetypes.Type.MOTORCYCLE: 0.25,
 		CarArchetypes.Type.TAXI: 0.15,
-		CarArchetypes.Type.UTILITY_TRUCK: 0.08,
-		CarArchetypes.Type.GARBAGE_TRUCK: 0.05,
 		CarArchetypes.Type.RICH_CAR: 0.02,
-		CarArchetypes.Type.VENDING_TRUCK: 0.0,
-		CarArchetypes.Type.ADVERTISEMENT_TRUCK: 0.0,
 		CarArchetypes.Type.POLICE_CAR: 0.0
 	},
 	Type.RICH_RESIDENTIAL: {
@@ -60,18 +60,10 @@ const CAR_WEIGHTS = {
 		CarArchetypes.Type.TAXI: 0.2,
 		CarArchetypes.Type.POOR_CAR: 0.15,
 		CarArchetypes.Type.MOTORCYCLE: 0.1,
-		CarArchetypes.Type.POLICE_CAR: 0.1,
-		CarArchetypes.Type.UTILITY_TRUCK: 0.05,
-		CarArchetypes.Type.GARBAGE_TRUCK: 0.0,
-		CarArchetypes.Type.VENDING_TRUCK: 0.0,
-		CarArchetypes.Type.ADVERTISEMENT_TRUCK: 0.0
+		CarArchetypes.Type.POLICE_CAR: 0.1
 	},
 	Type.INDUSTRIAL: {
-		CarArchetypes.Type.UTILITY_TRUCK: 0.3,
-		CarArchetypes.Type.GARBAGE_TRUCK: 0.15,
 		CarArchetypes.Type.POOR_CAR: 0.2,
-		CarArchetypes.Type.ADVERTISEMENT_TRUCK: 0.15,
-		CarArchetypes.Type.VENDING_TRUCK: 0.1,
 		CarArchetypes.Type.MOTORCYCLE: 0.1,
 		CarArchetypes.Type.RICH_CAR: 0.0,
 		CarArchetypes.Type.POLICE_CAR: 0.0,
@@ -82,11 +74,7 @@ const CAR_WEIGHTS = {
 		CarArchetypes.Type.RICH_CAR: 0.2,
 		CarArchetypes.Type.POOR_CAR: 0.15,
 		CarArchetypes.Type.POLICE_CAR: 0.15,
-		CarArchetypes.Type.MOTORCYCLE: 0.1,
-		CarArchetypes.Type.UTILITY_TRUCK: 0.1,
-		CarArchetypes.Type.GARBAGE_TRUCK: 0.0,
-		CarArchetypes.Type.VENDING_TRUCK: 0.0,
-		CarArchetypes.Type.ADVERTISEMENT_TRUCK: 0.0
+		CarArchetypes.Type.MOTORCYCLE: 0.1
 	}
 }
 

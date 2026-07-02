@@ -1208,31 +1208,32 @@ func _visualize_floating_sidewalk_zones() -> void:
 # ============================================
 
 func _visualize_bridges() -> void:
-	var buf := {
-		verts  = PackedVector3Array(),
-		norms  = PackedVector3Array(),
-		colors = PackedColorArray(),
-		idxs   = PackedInt32Array(),
-	}
 	var total := 0
 	for edge_key in generator.bridges:
 		for placed in generator.bridges[edge_key]:
+			var buf := {
+				verts  = PackedVector3Array(),
+				norms  = PackedVector3Array(),
+				colors = PackedColorArray(),
+				idxs   = PackedInt32Array(),
+			}
 			_draw_bridge(placed, buf)
 			total += 1
-	if not buf.verts.is_empty():
-		var arrays: Array = []
-		arrays.resize(Mesh.ARRAY_MAX)
-		arrays[Mesh.ARRAY_VERTEX] = buf.verts
-		arrays[Mesh.ARRAY_NORMAL] = buf.norms
-		arrays[Mesh.ARRAY_COLOR]  = buf.colors
-		arrays[Mesh.ARRAY_INDEX]  = buf.idxs
-		var array_mesh := ArrayMesh.new()
-		array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-		var mi := MeshInstance3D.new()
-		mi.mesh = array_mesh
-		mi.material_override = _get_bridge_material()
-		mi.visibility_range_end = WorldSettings.spawn_radius
-		add_child(mi)
+			if buf.verts.is_empty():
+				continue
+			var arrays: Array = []
+			arrays.resize(Mesh.ARRAY_MAX)
+			arrays[Mesh.ARRAY_VERTEX] = buf.verts
+			arrays[Mesh.ARRAY_NORMAL] = buf.norms
+			arrays[Mesh.ARRAY_COLOR]  = buf.colors
+			arrays[Mesh.ARRAY_INDEX]  = buf.idxs
+			var array_mesh := ArrayMesh.new()
+			array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			var mi := MeshInstance3D.new()
+			mi.mesh = array_mesh
+			mi.material_override = _get_bridge_material()
+			mi.visibility_range_end = WorldSettings.spawn_radius
+			add_child(mi)
 	print("[Visualizer] Puentes: %d" % total)
 
 

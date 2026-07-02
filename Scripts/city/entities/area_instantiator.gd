@@ -34,6 +34,7 @@ class_name AreaInstantiator
 @export var bootstrap_duration: float = 2.0
 @export var bootstrap_batch_size: int = 30
 @export_range(0.0, 1.0) var far_density_fraction: float = 0.3
+@export_range(1.0, 8.0) var spawn_height_bias: float = 2.5
 @export_flags_3d_physics var los_collision_mask: int = 1
 
 @export_group("Fog")
@@ -65,7 +66,6 @@ var pending_seed_volumes: Array[LaneVolume] = []
 var car_count: int = 0
 var global_type_counts: Dictionary = {}
 var volume_car_counts: Dictionary = {}
-var volume_type_counts: Dictionary = {}
 var car_volume_map: Dictionary = {}
 var time_alive: float = 0.0
 
@@ -355,10 +355,19 @@ func _is_point_hidden(point: Vector3) -> bool:
 			return false
 	return true
 
+# The fractional part of the target is resolved by a per-volume die roll
+# (hash of the volume id, stable across runs and machines): a street "worth"
+# 0.4 cars carries one car on 40% of streets instead of always truncating to
+# zero. Gives individual streets a fixed personality.
 func _get_target_occupancy(vol: LaneVolume) -> int:
 	var density = vol.get_traffic_density()
 	var path_length = vol.get_path_length()
-	return int(density * path_length / car_spacing * _density_falloff(vol.get_center()))
+	var exact = density * path_length / car_spacing * _density_falloff(vol.get_center())
+	var target = floori(exact)
+	var volume_roll = float(hash(vol.get_id()) % 1024) / 1024.0
+	if volume_roll < exact - target:
+		target += 1
+	return target
 
 # Full density inside the clear zone, thinning linearly to far_density_fraction
 # at the spawn edge. Ring area grows with radius squared, so without falloff
@@ -422,10 +431,6 @@ func _try_spawn_in_volume(vol: LaneVolume, check_visibility: bool) -> bool:
 		if global_type_counts.get(car_type, 0) >= archetype.max_global:
 			return false
 
-	if archetype.max_per_volume != -1:
-		if _get_volume_type_count(vol.get_id(), car_type) >= archetype.max_per_volume:
-			return false
-
 	var v_max = vol.get_max_spawn_v()
 	var v_min = archetype.min_spawn_v
 	var body_radius = Vector2(archetype.width, archetype.height).length() * 0.5
@@ -434,7 +439,9 @@ func _try_spawn_in_volume(vol: LaneVolume, check_visibility: bool) -> bool:
 	# still spawn in its hidden sections.
 	for attempt in range(5):
 		var random_u = randf()
-		var random_v = v_min + randf() * (v_max - v_min) if v_max > v_min else v_max
+		# pow-shaped draw biases altitude toward the street: bias 1 = uniform,
+		# higher = more ground traffic. min_spawn_v still holds for big vehicles.
+		var random_v = v_min + pow(randf(), spawn_height_bias) * (v_max - v_min) if v_max > v_min else v_max
 		var along_t = randf()
 
 		var start_pos = vol.get_point_at_grid(random_u, random_v, true)
@@ -481,13 +488,12 @@ func _spawn_car(vol: LaneVolume, grid_u: float, grid_v: float,
 	_add_global_type(car.car_archetype)
 
 	var vol_id = vol.get_id()
-	var car_type = car.car_archetype
-	_increment_volume_count(vol_id, car_type)
+	_increment_volume_count(vol_id)
 	car_volume_map[car.get_instance_id()] = vol_id
 
-	car.volume_changed.connect(func(old_id: String, new_id: String, type: int):
-		_decrement_volume_count(old_id, type)
-		_increment_volume_count(new_id, type)
+	car.volume_changed.connect(func(old_id: String, new_id: String):
+		_decrement_volume_count(old_id)
+		_increment_volume_count(new_id)
 		car_volume_map[car.get_instance_id()] = new_id
 	)
 
@@ -496,7 +502,7 @@ func _spawn_car(vol: LaneVolume, grid_u: float, grid_v: float,
 		_remove_global_type(car.car_archetype)
 		var last_vol_id = car_volume_map.get(car.get_instance_id(), "")
 		if last_vol_id != "":
-			_decrement_volume_count(last_vol_id, car.car_archetype)
+			_decrement_volume_count(last_vol_id)
 		car_volume_map.erase(car.get_instance_id())
 	)
 
@@ -533,34 +539,15 @@ func _remove_global_type(car_type: int) -> void:
 	if current > 0:
 		global_type_counts[car_type] = current - 1
 
-func _increment_volume_count(vol_id: String, car_type: int = -1) -> void:
+func _increment_volume_count(vol_id: String) -> void:
 	volume_car_counts[vol_id] = volume_car_counts.get(vol_id, 0) + 1
-	if car_type >= 0:
-		if not volume_type_counts.has(vol_id):
-			volume_type_counts[vol_id] = {}
-		var type_counts = volume_type_counts[vol_id]
-		type_counts[car_type] = type_counts.get(car_type, 0) + 1
 
-func _decrement_volume_count(vol_id: String, car_type: int = -1) -> void:
+func _decrement_volume_count(vol_id: String) -> void:
 	var current = volume_car_counts.get(vol_id, 0)
 	if current > 1:
 		volume_car_counts[vol_id] = current - 1
 	else:
 		volume_car_counts.erase(vol_id)
-	if car_type >= 0 and volume_type_counts.has(vol_id):
-		var type_counts = volume_type_counts[vol_id]
-		var type_current = type_counts.get(car_type, 0)
-		if type_current > 1:
-			type_counts[car_type] = type_current - 1
-		else:
-			type_counts.erase(car_type)
-		if type_counts.is_empty():
-			volume_type_counts.erase(vol_id)
-
-func _get_volume_type_count(vol_id: String, car_type: int) -> int:
-	if not volume_type_counts.has(vol_id):
-		return 0
-	return volume_type_counts[vol_id].get(car_type, 0)
 
 # ============================================================================
 # VISUALIZATION

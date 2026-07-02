@@ -250,30 +250,24 @@ Enter volume (u,v) → build Curve3D path → follow path
 
 ### Car archetypes
 
-9 types defined in `CarArchetypes`. Each has dimensions, speed range, spawn weight, per-volume cap, and global cap. Neighborhood-specific weight tables in `NeighborhoodTypes.CAR_WEIGHTS` override default weights at spawn time.
+9 types defined in `CarArchetypes`. Each has dimensions, speed range, spawn weight, and global cap. Neighborhood-specific weight tables in `NeighborhoodTypes.CAR_WEIGHTS` override default weights at spawn time (a type missing from a table falls back to its default weight, so explicit 0.0 entries matter).
 
-| Type | Weight | Per-volume | Global max |
-|---|---|---|---|
-| Poor Car | 0.30 | 30 | 150 |
-| Motorcycle | 0.20 | 10 | 30 |
-| Rich Car | 0.15 | 30 | 100 |
-| Police Car | 0.10 | 10 | 15 |
-| Utility Truck | 0.08 | 1 | 1 |
-| Taxi | 0.05 | 15 | 20 |
-| Vending Truck | 0.05 | 1 | 1 |
-| Garbage Truck | 0.04 | 1 | 1 |
-| Ad Truck | 0.03 | 1 | 1 |
+The **ambient pool** is poor car, motorcycle, rich car, police, taxi. The four **one-of trucks** have weight 0 everywhere — they never spawn ambiently and will be placed individually by the future special-car system (their archetype definitions remain).
 
-Both per-volume and global limits are enforced at spawn time. Per-volume counts are tracked via `volume_type_counts` (nested dict: `vol_id → {car_type → count}`), updated on spawn, volume transitions, and despawn.
-
-### Neighborhood affinity (routing)
-
-Each car type has an affinity value per neighborhood type (defined in `CarArchetypes.NEIGHBORHOOD_AFFINITY`). When choosing a continuation at an intersection, two factors are weighted:
-
-| Factor | Weight | Source |
+| Type | Weight | Global max |
 |---|---|---|
-| Angle (prefer straight) | 60% | `(PI - angle_diff) / PI`, normalized to 0–1 |
-| Neighborhood affinity | 40% | `CarArchetypes.get_neighborhood_affinity()` |
+| Poor Car | 0.30 | 150 |
+| Motorcycle | 0.20 | 30 |
+| Rich Car | 0.15 | 100 |
+| Police Car | 0.10 | 15 |
+| Taxi | 0.05 | 20 |
+| Utility / Vending / Garbage / Ad Truck | 0 (special-only) | 1 |
+
+Global caps are enforced at spawn time. There are no per-volume type caps — total per-volume occupancy is already bounded by target occupancy (~3–4 cars max), so per-type caps could never bind.
+
+### Routing
+
+When choosing a continuation at an intersection, cars weight candidates by **traffic density** (`LaneVolume.get_traffic_density()` — the same street × neighborhood constant the spawner uses for targets), so routing and spawning push toward the same distribution: big streets attract and keep more cars. The seeded weighted draw itself provides the random variation into less dense routes. U-turns are structurally excluded by `get_lane_volume_continuations()` (the same graph edge in either direction is skipped). Population composition is controlled entirely at spawn time by the per-neighborhood weight tables.
 
 ### Fog and zone radii (`AreaInstantiator`)
 
@@ -295,7 +289,7 @@ A fullscreen spatial shader (`radial_fog.gdshader`) on a `MeshInstance3D` quad r
 
 Instead of spawning cars at edges and hoping they drive into view, the system is **demand-pull**: each volume has a target occupancy and the system fills it to target.
 
-**Target occupancy** per volume: `int(traffic_density × path_length / car_spacing × distance_falloff)`. Big downtown streets want 3–4 cars; small alleys want 0. The **distance falloff** is 1.0 inside `fog_start_distance`, thinning linearly to `far_density_fraction` (0.3) at `spawn_radius` — ring area grows with radius squared, so without it most of the car budget lands where no player can see it.
+**Target occupancy** per volume: `traffic_density × path_length / car_spacing × distance_falloff`, with the fractional part resolved by a **per-volume die roll** (hash of the volume id, stable across runs/machines): a street "worth" 0.4 cars carries one car on 40% of streets instead of always truncating to zero — individual streets get a fixed personality. The **distance falloff** is 1.0 inside `fog_start_distance`, thinning linearly to `far_density_fraction` (0.3) at `spawn_radius` — ring area grows with radius squared, so without it most of the car budget lands where no player can see it.
 
 **Three mechanisms fill volumes:**
 
@@ -307,7 +301,7 @@ Instead of spawning cars at edges and hoping they drive into view, the system is
 
 **Pop-in mitigation — position-based line of sight** (`_is_point_hidden`): a candidate spawn point is hidden if, for every camera, it is beyond `outer_radius` (fully fogged) or a static occluder (building, sidewalk, bridge — collision layer 1) blocks the raycast from the camera *position* to the car's top. Camera orientation is never used — turning the camera can't reveal a spawn, and in multiplayer the check depends only on replicated player positions, so it stays deterministic-friendly. There is no frustum check anywhere. Spawning runs in `_physics_process` because `intersect_ray` needs a physics context.
 
-**Archetype selection**: weighted random from neighborhood-specific car weights (`NeighborhoodTypes.CAR_WEIGHTS`), via `CarArchetypes.select_type_seeded()` — the same seeded draw the car itself makes in `initialize_from_seed`, so caps can be checked without allocating a car. Checked against both global type caps and per-volume type caps. Big vehicles have `min_spawn_v > 0` so they don't appear at ground level.
+**Archetype selection**: weighted random from neighborhood-specific car weights (`NeighborhoodTypes.CAR_WEIGHTS`), via `CarArchetypes.select_type_seeded()` — the same seeded draw the car itself makes in `initialize_from_seed`, so caps can be checked without allocating a car. Checked against global type caps. Big vehicles have `min_spawn_v > 0` so they don't appear at ground level. The spawn altitude `v` is drawn as `pow(randf(), spawn_height_bias)` (default 2.5), biasing traffic toward street level — bias 1 = uniform.
 
 **Spawn overlap check**: a capsule gap query against the `TrafficClaimRegistry` (`is_capsule_free`), covering car bodies, broadcast corridors, and obstacles — no world iteration. Newly spawned cars publish their body claim immediately (`set_path`), so multiple spawns in the same tick can't overlap.
 

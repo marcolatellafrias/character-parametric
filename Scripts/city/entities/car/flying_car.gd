@@ -1,7 +1,7 @@
 extends Node3D
 class_name FlyingCar
 
-signal volume_changed(old_volume_id: String, new_volume_id: String, car_type: int)
+signal volume_changed(old_volume_id: String, new_volume_id: String)
 
 @export var width: float = 2.0
 @export var height: float = 1.0
@@ -216,7 +216,7 @@ func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0,
 
 func _on_segment_transition(old_volume_id: String, new_volume_id: String) -> void:
 	if area_instantiator:
-		volume_changed.emit(old_volume_id, new_volume_id, car_archetype)
+		volume_changed.emit(old_volume_id, new_volume_id)
 
 	var second_volume = path_controller.second_segment_volume
 	current_volume = second_volume
@@ -266,29 +266,21 @@ func _calculate_next_segment(current_end: Vector3, volume: Dictionary) -> Dictio
 	if continuations.is_empty():
 		return {}
 
-	var current_direction = Vector3.FORWARD
-	if path_controller.path_3d and path_controller.path_3d.curve:
-		current_direction = (current_end - path_controller.path_3d.curve.get_point_position(0)).normalized()
-
 	var valid_continuations = []
 
 	for cont_vol in continuations:
 		var result = _get_validated_continuation_path(cont_vol, current_cell_x, current_cell_y)
 
 		if result != null and result.has("start") and result.has("end"):
-			var cont_direction = (result["end"] - result["start"]).normalized()
-			var angle_diff = abs(current_direction.angle_to(cont_direction))
-
 			valid_continuations.append({
 				"volume": cont_vol,
-				"path": result,
-				"angle_diff": angle_diff
+				"path": result
 			})
 
 	if valid_continuations.is_empty():
 		return {}
 
-	var selected = _select_continuation_by_angle(valid_continuations)
+	var selected = _select_continuation(valid_continuations)
 
 	if selected:
 		return {
@@ -362,18 +354,18 @@ func _move_away_from_plane(plane_name: String, current_x: int, current_y: int,
 
 	return {"cell_x": new_x, "cell_y": new_y}
 
-func _select_continuation_by_angle(continuations: Array) -> Dictionary:
+# Continuations are weighted by their street's traffic density (the same
+# constant the spawner uses for targets, so routing and spawning push toward
+# the same distribution). The seeded draw itself provides the variation into
+# less dense routes. U-turns are structurally excluded by the graph query.
+func _select_continuation(continuations: Array) -> Dictionary:
 	var total_weight = 0.0
 	var weighted_continuations = []
 
 	for cont in continuations:
-		var lane_vol = cont["volume"]
-		var angle_weight = (PI - cont["angle_diff"]) / PI
-		var affinity_weight = _get_neighborhood_affinity(lane_vol)
-
-		var combined_weight = (angle_weight * 0.6) + (affinity_weight * 0.4)
-		total_weight += combined_weight
-		weighted_continuations.append({"continuation": cont, "weight": combined_weight})
+		var weight = maxf(cont["volume"].get_traffic_density(), 0.01)
+		total_weight += weight
+		weighted_continuations.append({"continuation": cont, "weight": weight})
 
 	var random_value = rng.randf() * total_weight
 	var cumulative_weight = 0.0
@@ -384,9 +376,6 @@ func _select_continuation_by_angle(continuations: Array) -> Dictionary:
 			return item["continuation"]
 
 	return continuations[0] if not continuations.is_empty() else {}
-
-func _get_neighborhood_affinity(lane_vol: LaneVolume) -> float:
-	return CarArchetypes.get_neighborhood_affinity(car_archetype, lane_vol.get_neighborhood_type())
 
 static func compute_cross_section_face(start: Vector3, end: Vector3,
 									   p_width: float, p_height: float) -> Array:

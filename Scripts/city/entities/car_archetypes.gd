@@ -16,64 +16,6 @@ enum Type {
 	TAXI
 }
 
-# Tabla de afinidad: qué tan probable es que un tipo de auto elija un tipo de barrio
-const NEIGHBORHOOD_AFFINITY = {
-	Type.RICH_CAR: {
-		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 1.0,
-		NeighborhoodTypes.Type.DOWNTOWN: 0.7,
-		NeighborhoodTypes.Type.INDUSTRIAL: 0.2,
-		NeighborhoodTypes.Type.SHANTY_TOWN: 0.1
-	},
-	Type.POOR_CAR: {
-		NeighborhoodTypes.Type.SHANTY_TOWN: 1.0,
-		NeighborhoodTypes.Type.INDUSTRIAL: 0.6,
-		NeighborhoodTypes.Type.DOWNTOWN: 0.4,
-		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.2
-	},
-	Type.TAXI: {
-		NeighborhoodTypes.Type.DOWNTOWN: 1.0,
-		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.8,
-		NeighborhoodTypes.Type.SHANTY_TOWN: 0.6,
-		NeighborhoodTypes.Type.INDUSTRIAL: 0.5
-	},
-	Type.UTILITY_TRUCK: {
-		NeighborhoodTypes.Type.INDUSTRIAL: 1.0,
-		NeighborhoodTypes.Type.DOWNTOWN: 0.5,
-		NeighborhoodTypes.Type.SHANTY_TOWN: 0.4,
-		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.3
-	},
-	Type.MOTORCYCLE: {
-		NeighborhoodTypes.Type.SHANTY_TOWN: 0.8,
-		NeighborhoodTypes.Type.DOWNTOWN: 0.7,
-		NeighborhoodTypes.Type.INDUSTRIAL: 0.6,
-		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.5
-	},
-	Type.GARBAGE_TRUCK: {
-		NeighborhoodTypes.Type.INDUSTRIAL: 0.9,
-		NeighborhoodTypes.Type.SHANTY_TOWN: 0.7,
-		NeighborhoodTypes.Type.DOWNTOWN: 0.5,
-		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.4
-	},
-	Type.VENDING_TRUCK: {
-		NeighborhoodTypes.Type.INDUSTRIAL: 0.8,
-		NeighborhoodTypes.Type.DOWNTOWN: 0.7,
-		NeighborhoodTypes.Type.SHANTY_TOWN: 0.6,
-		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.5
-	},
-	Type.ADVERTISEMENT_TRUCK: {
-		NeighborhoodTypes.Type.DOWNTOWN: 1.0,
-		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.7,
-		NeighborhoodTypes.Type.INDUSTRIAL: 0.6,
-		NeighborhoodTypes.Type.SHANTY_TOWN: 0.3
-	},
-	Type.POLICE_CAR: {
-		NeighborhoodTypes.Type.DOWNTOWN: 0.9,
-		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0.8,
-		NeighborhoodTypes.Type.SHANTY_TOWN: 0.7,
-		NeighborhoodTypes.Type.INDUSTRIAL: 0.6
-	}
-}
-
 class Archetype:
 	var name: String
 	var width: float
@@ -83,7 +25,6 @@ class Archetype:
 	var max_speed: float
 	var color: Color
 	var weight: float
-	var max_per_volume: int
 	var max_global: int
 	var min_spawn_v: float
 
@@ -96,7 +37,6 @@ class Archetype:
 		p_max_speed: float,
 		p_color: Color,
 		p_weight: float = 1.0,
-		p_max_per_volume: int = -1,
 		p_max_global: int = -1,
 		p_min_spawn_v: float = 0.0
 	):
@@ -108,7 +48,6 @@ class Archetype:
 		max_speed = p_max_speed
 		color = p_color
 		weight = p_weight
-		max_per_volume = p_max_per_volume
 		max_global = p_max_global
 		min_spawn_v = p_min_spawn_v
 	
@@ -126,6 +65,8 @@ class Archetype:
 static var archetypes: Dictionary = {}
 
 static func _static_init() -> void:
+	# One-of vehicles (trucks) have weight 0: they are not part of the ambient
+	# spawn pool and will be placed individually by the special-car system.
 	archetypes[Type.VENDING_TRUCK] = Archetype.new(
 		"Vending Truck",
 		0.35 * size_debug_factor,
@@ -134,8 +75,7 @@ static func _static_init() -> void:
 		4.0 * speed_debug_factor,
 		6.0 * speed_debug_factor,
 		Color(0.9, 0.5, 0.1),
-		0.05,
-		1,
+		0.0,
 		1,
 		0.15
 	)
@@ -149,7 +89,6 @@ static func _static_init() -> void:
 		50.0 * speed_debug_factor,
 		Color(0.1, 0.1, 0.1),
 		0.15,
-		30,
 		100
 	)
 	
@@ -162,7 +101,6 @@ static func _static_init() -> void:
 		18.0 * speed_debug_factor,
 		Color(0.6, 0.5, 0.4),
 		0.3,
-		30,
 		150
 	)
 	
@@ -175,7 +113,6 @@ static func _static_init() -> void:
 		40.0 * speed_debug_factor,
 		Color(0.9, 0.1, 0.1),
 		0.2,
-		10,
 		30
 	)
 	
@@ -187,8 +124,7 @@ static func _static_init() -> void:
 		5.0 * speed_debug_factor,
 		7.0 * speed_debug_factor,
 		Color(0.9, 0.8, 0.1),
-		0.08,
-		1,
+		0.0,
 		1,
 		0.1
 	)
@@ -201,8 +137,7 @@ static func _static_init() -> void:
 		3.5 * speed_debug_factor,
 		5.0 * speed_debug_factor,
 		Color(0.9, 0.1, 0.9),
-		0.03,
-		1,
+		0.0,
 		1,
 		0.2
 	)
@@ -215,8 +150,7 @@ static func _static_init() -> void:
 		4.0 * speed_debug_factor,
 		6.0 * speed_debug_factor,
 		Color(0.2, 0.6, 0.2),
-		0.04,
-		1,
+		0.0,
 		1,
 		0.15
 	)
@@ -230,7 +164,6 @@ static func _static_init() -> void:
 		24.0 * speed_debug_factor,
 		Color(0.1, 0.3, 0.9),
 		0.1,
-		10,
 		15
 	)
 	
@@ -243,7 +176,6 @@ static func _static_init() -> void:
 		20.0 * speed_debug_factor,
 		Color(0.95, 0.9, 0.1),
 		0.05,
-		15,
 		20
 	)
 
@@ -294,7 +226,3 @@ static func select_type_seeded(rng: RandomNumberGenerator, custom_weights: Dicti
 			return item["type"]
 
 	return Type.POOR_CAR
-
-static func get_neighborhood_affinity(car_type: Type, neighborhood_type: int) -> float:
-	var affinity_table = NEIGHBORHOOD_AFFINITY.get(car_type, {})
-	return affinity_table.get(neighborhood_type, 0.5)
