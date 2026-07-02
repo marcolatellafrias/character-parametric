@@ -50,7 +50,7 @@ The street offset shrinks the block inward, creating the **buildable zone**. The
 | Normal | 0 |
 | Boundary | 0 |
 | Facade | 18 |
-| Small alleyway | 12 |
+| Small alleyway | 18 |
 | Big alleyway | 18 |
 
 On street-facing (FACADE) edges, the facade offset creates the **external sidewalk** — the strip between the buildable zone boundary and the building face. On alleyway edges, it creates **internal sidewalks** — strips between adjacent building cores.
@@ -295,17 +295,17 @@ A fullscreen spatial shader (`radial_fog.gdshader`) on a `MeshInstance3D` quad r
 
 Instead of spawning cars at edges and hoping they drive into view, the system is **demand-pull**: each volume has a target occupancy and the system fills it to target.
 
-**Target occupancy** per volume: `int(traffic_density × path_length / car_spacing)`. Big downtown streets want 3–4 cars; small alleys want 0.
+**Target occupancy** per volume: `int(traffic_density × path_length / car_spacing × distance_falloff)`. Big downtown streets want 3–4 cars; small alleys want 0. The **distance falloff** is 1.0 inside `fog_start_distance`, thinning linearly to `far_density_fraction` (0.3) at `spawn_radius` — ring area grows with radius squared, so without it most of the car budget lands where no player can see it.
 
 **Three mechanisms fill volumes:**
 
-1. **Bootstrap** (first `bootstrap_duration` seconds): `_topup_volumes()` runs every `spawn_interval` (0.15s), spawning up to `bootstrap_batch_size` (30) cars per tick with no frustum safety check. Populates the entire scene before the player notices.
-2. **On-enter seeding**: after bootstrap, when a new `LaneVolume` enters the cylinder (`area_entered`), it is immediately seeded to target — but only if safe (out of frustum or beyond `outer_radius`, where fog hides pop-in).
-3. **Periodic top-up**: every `spawn_interval`, `_topup_volumes()` iterates active volumes and spawns up to `max_topup_per_tick` (5) cars in underpopulated volumes that pass the safety check.
+1. **Bootstrap** (first `bootstrap_duration` seconds): `_topup_volumes()` runs every `spawn_interval` (0.15s), spawning up to `bootstrap_batch_size` (30) cars per tick with no visibility check. Populates the entire scene before the player notices.
+2. **On-enter seeding**: after bootstrap, when a new `LaneVolume` enters the cylinder (`area_entered`), it is queued and seeded to target on the next physics tick (space queries can't run inside the area flush).
+3. **Periodic top-up**: every `spawn_interval`, `_topup_volumes()` iterates active volumes and spawns up to `max_topup_per_tick` (5) cars in underpopulated volumes.
 
-**Mid-volume placement**: seeded cars are placed at random positions along the volume's length (`start.lerp(end, along_t)` with `along_t ∈ [0, 1)`), so they appear mid-drive rather than at volume edges.
+**Mid-volume placement**: seeded cars are placed at random positions along the volume's length (`start.lerp(end, along_t)` with `along_t ∈ [0, 1)`), so they appear mid-drive rather than at volume edges. `along_t` is re-rolled per attempt, so a partially visible street can still spawn cars in its hidden sections.
 
-**Pop-in mitigation** (`_is_safe_to_seed`): cars only materialize where the player can't see them — either out of camera frustum or beyond `outer_radius` (fully fogged). The 50-unit buffer between `outer_radius` and `spawn_radius` gives cars time to settle before the fog clears.
+**Pop-in mitigation — position-based line of sight** (`_is_point_hidden`): a candidate spawn point is hidden if, for every camera, it is beyond `outer_radius` (fully fogged) or a static occluder (building, sidewalk, bridge — collision layer 1) blocks the raycast from the camera *position* to the car's top. Camera orientation is never used — turning the camera can't reveal a spawn, and in multiplayer the check depends only on replicated player positions, so it stays deterministic-friendly. There is no frustum check anywhere. Spawning runs in `_physics_process` because `intersect_ray` needs a physics context.
 
 **Archetype selection**: weighted random from neighborhood-specific car weights (`NeighborhoodTypes.CAR_WEIGHTS`), via `CarArchetypes.select_type_seeded()` — the same seeded draw the car itself makes in `initialize_from_seed`, so caps can be checked without allocating a car. Checked against both global type caps and per-volume type caps. Big vehicles have `min_spawn_v > 0` so they don't appear at ground level.
 

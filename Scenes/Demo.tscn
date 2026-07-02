@@ -217,6 +217,7 @@ script = ExtResource("10_4i7ud")
 fly_sprint_speed = 40.0
 
 [node name="Camera3D" type="Camera3D" parent="CharacterBody3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8358531, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CharacterBody3D"]
 shape = SubResource("CapsuleShape3D_4i7ud")
@@ -227,3 +228,4 @@ script = ExtResource("12_k27g2")
 cameras = [NodePath("../Camera3D")]
 world = NodePath("../..")
 fog_shader = ExtResource("11_h3puh")
+show_traffic_debug = true

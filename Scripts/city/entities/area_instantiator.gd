@@ -33,6 +33,8 @@ class_name AreaInstantiator
 @export var max_topup_per_tick: int = 5
 @export var bootstrap_duration: float = 2.0
 @export var bootstrap_batch_size: int = 30
+@export_range(0.0, 1.0) var far_density_fraction: float = 0.3
+@export_flags_3d_physics var los_collision_mask: int = 1
 
 @export_group("Fog")
 @export var enable_fog: bool = true
@@ -59,6 +61,7 @@ var all_lane_volumes: Array[LaneVolume] = []
 var volume_area_refs: Dictionary = {}
 
 var spawn_timer: float = 0.0
+var pending_seed_volumes: Array[LaneVolume] = []
 var car_count: int = 0
 var global_type_counts: Dictionary = {}
 var volume_car_counts: Dictionary = {}
@@ -87,14 +90,18 @@ func _ready() -> void:
 
 	WorldSettings.settings_changed.connect(_on_settings_changed)
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	_update_cylinder_positions()
 	_update_fog_position()
 
+# Spawning runs in the physics step because visibility uses space queries
+# (intersect_ray), which are only valid in a physics context.
+func _physics_process(delta: float) -> void:
 	if not enable_car_spawning or not world or not generator:
 		return
 
 	time_alive += delta
+	_flush_pending_seeds()
 	spawn_timer += delta
 	if spawn_timer >= spawn_interval:
 		spawn_timer = 0.0
@@ -168,6 +175,7 @@ func _on_settings_changed() -> void:
 	cylinder_areas.clear()
 	volume_area_refs.clear()
 	all_lane_volumes.clear()
+	pending_seed_volumes.clear()
 	_create_cylinder_areas()
 
 	if show_debug_cylinder:
@@ -269,8 +277,10 @@ func _on_cylinder_area_entered(area: Area3D, area_index: int) -> void:
 		if not all_lane_volumes.has(area):
 			all_lane_volumes.append(area)
 			_update_visualization()
-			if time_alive > bootstrap_duration and _is_safe_to_seed(area):
-				_seed_volume(area)
+			# Seeding needs space queries, which can't run inside the
+			# area_entered flush — queue it for the next physics tick.
+			if time_alive > bootstrap_duration:
+				pending_seed_volumes.append(area)
 
 func _on_cylinder_area_exited(area: Area3D, area_index: int) -> void:
 	if area is LaneVolume:
@@ -326,25 +336,47 @@ func get_min_camera_distance_xz(pos: Vector3) -> float:
 # SPAWNING
 # ============================================================================
 
-func _is_position_in_frustum(pos: Vector3) -> bool:
+# A point is hidden if, for every camera, it is beyond the fog wall or a
+# static occluder (building, sidewalk, bridge) blocks the segment from the
+# camera position to it. Only positions are used — never orientation — so
+# turning the camera can't reveal a spawn, and in multiplayer the check
+# depends solely on replicated player positions.
+func _is_point_hidden(point: Vector3) -> bool:
+	var space_state = get_world_3d().direct_space_state
 	for camera in cameras:
 		if not camera or not is_instance_valid(camera):
 			continue
-		if camera.is_position_in_frustum(pos):
-			return true
-	return false
-
-func _is_safe_to_seed(vol: LaneVolume) -> bool:
-	var center = vol.get_center()
-	var dist = get_min_camera_distance_xz(center)
-	if dist > WorldSettings.render_distance:
-		return true
-	return not _is_position_in_frustum(center)
+		var cam_pos = camera.global_position
+		var dist = Vector2(point.x - cam_pos.x, point.z - cam_pos.z).length()
+		if dist > WorldSettings.render_distance:
+			continue
+		var query = PhysicsRayQueryParameters3D.create(cam_pos, point, los_collision_mask)
+		if space_state.intersect_ray(query).is_empty():
+			return false
+	return true
 
 func _get_target_occupancy(vol: LaneVolume) -> int:
 	var density = vol.get_traffic_density()
 	var path_length = vol.get_path_length()
-	return int(density * path_length / car_spacing)
+	return int(density * path_length / car_spacing * _density_falloff(vol.get_center()))
+
+# Full density inside the clear zone, thinning linearly to far_density_fraction
+# at the spawn edge. Ring area grows with radius squared, so without falloff
+# most of the car budget lands where no player can see it.
+func _density_falloff(pos: Vector3) -> float:
+	var falloff_start = WorldSettings.fog_start_distance
+	var falloff_end = WorldSettings.spawn_radius
+	if falloff_end <= falloff_start:
+		return 1.0
+	var dist = get_min_camera_distance_xz(pos)
+	var t = clamp((dist - falloff_start) / (falloff_end - falloff_start), 0.0, 1.0)
+	return lerp(1.0, far_density_fraction, t)
+
+func _flush_pending_seeds() -> void:
+	for vol in pending_seed_volumes:
+		if is_instance_valid(vol) and all_lane_volumes.has(vol):
+			_seed_volume(vol)
+	pending_seed_volumes.clear()
 
 func _seed_volume(vol: LaneVolume) -> void:
 	if car_count >= WorldSettings.max_cars:
@@ -355,7 +387,7 @@ func _seed_volume(vol: LaneVolume) -> void:
 	for i in range(target - current):
 		if car_count >= WorldSettings.max_cars:
 			return
-		_try_spawn_in_volume(vol, randf())
+		_try_spawn_in_volume(vol, true)
 
 func _topup_volumes() -> void:
 	if car_count >= WorldSettings.max_cars:
@@ -366,17 +398,15 @@ func _topup_volumes() -> void:
 	for vol in all_lane_volumes:
 		if spawned >= batch_limit or car_count >= WorldSettings.max_cars:
 			break
-		if not is_bootstrap and not _is_safe_to_seed(vol):
-			continue
 		var target = _get_target_occupancy(vol)
 		var vol_id = vol.get_id()
 		var current = volume_car_counts.get(vol_id, 0)
 		if current >= target:
 			continue
-		if _try_spawn_in_volume(vol, randf()):
+		if _try_spawn_in_volume(vol, not is_bootstrap):
 			spawned += 1
 
-func _try_spawn_in_volume(vol: LaneVolume, along_t: float) -> bool:
+func _try_spawn_in_volume(vol: LaneVolume, check_visibility: bool) -> bool:
 	var neighborhood_type = vol.get_neighborhood_type()
 	var custom_weights = NeighborhoodTypes.get_car_weights(neighborhood_type)
 	var car_seed = randi()
@@ -400,9 +430,12 @@ func _try_spawn_in_volume(vol: LaneVolume, along_t: float) -> bool:
 	var v_min = archetype.min_spawn_v
 	var body_radius = Vector2(archetype.width, archetype.height).length() * 0.5
 
+	# along_t is re-rolled per attempt so a partially visible street can
+	# still spawn in its hidden sections.
 	for attempt in range(5):
 		var random_u = randf()
 		var random_v = v_min + randf() * (v_max - v_min) if v_max > v_min else v_max
+		var along_t = randf()
 
 		var start_pos = vol.get_point_at_grid(random_u, random_v, true)
 		var end_pos = vol.get_point_at_grid(random_u, random_v, false)
@@ -416,6 +449,10 @@ func _try_spawn_in_volume(vol: LaneVolume, along_t: float) -> bool:
 
 		var direction = (end_pos - spawn_pos).normalized()
 		if not _is_spawn_position_free(spawn_pos, direction, archetype.depth, body_radius):
+			continue
+
+		# Test the car's top — the last part a building stops occluding.
+		if check_visibility and not _is_point_hidden(spawn_pos + Vector3.UP * archetype.height * 0.5):
 			continue
 
 		_spawn_car(vol, random_u, random_v, along_t, car_seed, custom_weights)
