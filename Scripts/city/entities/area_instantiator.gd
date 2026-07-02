@@ -77,6 +77,7 @@ func _ready() -> void:
 		generator = city_visualizer.get_generator()
 
 	_setup_claim_registry()
+	_register_all_traffic_lights()
 	_create_cylinder_areas()
 	_setup_visualization_containers()
 	_setup_fog()
@@ -166,8 +167,6 @@ func _on_settings_changed() -> void:
 			area.queue_free()
 	cylinder_areas.clear()
 	volume_area_refs.clear()
-	for vol in all_lane_volumes:
-		_unregister_volume_light(vol)
 	all_lane_volumes.clear()
 	_create_cylinder_areas()
 
@@ -192,8 +191,7 @@ func _setup_visualization_containers() -> void:
 
 func _cleanup_containers() -> void:
 	if claim_registry and is_instance_valid(claim_registry):
-		for vol in all_lane_volumes:
-			_unregister_volume_light(vol)
+		_unregister_all_traffic_lights()
 
 	if lane_volumes_container and is_instance_valid(lane_volumes_container):
 		lane_volumes_container.queue_free()
@@ -270,7 +268,6 @@ func _on_cylinder_area_entered(area: Area3D, area_index: int) -> void:
 
 		if not all_lane_volumes.has(area):
 			all_lane_volumes.append(area)
-			_register_volume_light(area)
 			_update_visualization()
 			if time_alive > bootstrap_duration and _is_safe_to_seed(area):
 				_seed_volume(area)
@@ -290,16 +287,27 @@ func _on_cylinder_area_exited(area: Area3D, area_index: int) -> void:
 				var vol_idx = all_lane_volumes.find(area)
 				if vol_idx != -1:
 					all_lane_volumes.remove_at(vol_idx)
-					_unregister_volume_light(area)
 					_update_visualization()
 
-func _register_volume_light(vol: LaneVolume) -> void:
-	if claim_registry and vol.get_traffic_plane():
-		claim_registry.register_traffic_light(vol.get_traffic_plane())
+# Los semáforos son estado estático del mundo: se registran todos una sola vez.
+# Los cilindros de spawn son un anillo hueco en el borde de niebla — solo ven
+# volúmenes que cruzan ese borde, nunca los cercanos al jugador, así que no
+# sirven como señal de registro de semáforos.
+func _register_all_traffic_lights() -> void:
+	if claim_registry == null or generator == null:
+		return
+	for key in generator.lane_volume_areas:
+		var vol: LaneVolume = generator.lane_volume_areas[key]
+		if vol.get_traffic_plane():
+			claim_registry.register_traffic_light(vol.get_traffic_plane())
 
-func _unregister_volume_light(vol: LaneVolume) -> void:
-	if claim_registry and is_instance_valid(vol) and vol.get_traffic_plane():
-		claim_registry.unregister_traffic_light(vol.get_traffic_plane())
+func _unregister_all_traffic_lights() -> void:
+	if claim_registry == null or generator == null:
+		return
+	for key in generator.lane_volume_areas:
+		var vol: LaneVolume = generator.lane_volume_areas[key]
+		if is_instance_valid(vol) and vol.get_traffic_plane():
+			claim_registry.unregister_traffic_light(vol.get_traffic_plane())
 
 # ============================================================================
 # DISTANCE HELPERS

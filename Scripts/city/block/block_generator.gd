@@ -9,9 +9,9 @@ enum StreetType {
 
 const STREET_HALF_WIDTH_CELLS: Dictionary = {
 	StreetType.BOUNDARY: 0,
-	StreetType.SMALL: 4,
-	StreetType.MEDIUM: 6,
-	StreetType.LARGE: 9
+	StreetType.SMALL: 6,
+	StreetType.MEDIUM: 8,
+	StreetType.LARGE: 12
 }
 
 # Geometría del bloque (antes en GridGeometry)

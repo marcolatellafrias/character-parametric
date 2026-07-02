@@ -187,6 +187,11 @@ func generate_and_visualize() -> void:
 	generate_graph()
 	visualize_graph()
 
+	# Estado inicial de los semáforos: sin esto, is_blocking queda en false
+	# para todos los planos hasta el primer cambio de ciclo.
+	traffic_light_timer = 0.0
+	_on_traffic_cycle_changed()
+
 func generate_graph() -> void:
 	generator = GraphCityGenerator.new()
 

@@ -85,7 +85,6 @@ script = ExtResource("11_v3boh")
 [node name="WorldSettings" parent="." instance=ExtResource("12_v3boh")]
 fog_start_distance = 5.0
 fog_color = Color(0.7476558, 0.43702698, 0.38007766, 1)
-max_cars = 600
 
 [node name="world" type="Node3D" parent="."]
 
@@ -210,7 +209,6 @@ generation_seed = 1234
 show_streets = false
 show_distorted_grid = false
 show_buildings = true
-show_traffic_planes = true
 show_delivery_doors = true
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
@@ -229,4 +227,3 @@ script = ExtResource("12_k27g2")
 cameras = [NodePath("../Camera3D")]
 world = NodePath("../..")
 fog_shader = ExtResource("11_h3puh")
-show_traffic_debug = true

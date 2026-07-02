@@ -112,11 +112,13 @@ extends Node3D
 @export var show_traffic_planes: bool = false
 @export_range(0.0, 1.0) var traffic_plane_transparency: float = 0.1
 @export var traffic_plane_green_color: Color = Color.GREEN
+@export var traffic_plane_yellow_color: Color = Color.YELLOW
 @export var traffic_plane_red_color: Color = Color.RED
 
 @export_group("Traffic Lights")
 @export var enable_traffic_lights: bool = true
 @export var traffic_light_cycle_duration: float = 5.0
+@export var traffic_light_yellow_duration: float = 2.0
 
 @export var show_sidewalk_matrices: bool = false
 
@@ -143,6 +145,7 @@ extends Node3D
 var generator: GraphCityGenerator = null
 var traffic_light_timer: float = 0.0
 var active_traffic_index: int = 0
+var yellow_phase_active: bool = false
 var _building_material: StandardMaterial3D = null
 
 # ============================================
@@ -162,7 +165,11 @@ func _process(delta: float) -> void:
 
 	if traffic_light_timer >= traffic_light_cycle_duration:
 		traffic_light_timer = 0.0
+		yellow_phase_active = false
 		active_traffic_index = 1 - active_traffic_index
+		_on_traffic_cycle_changed()
+	elif not yellow_phase_active and traffic_light_timer >= traffic_light_cycle_duration - traffic_light_yellow_duration:
+		yellow_phase_active = true
 		_on_traffic_cycle_changed()
 
 # Consolida la actualización de LaneVolumes y de los meshes de debug en un solo lugar.
@@ -171,7 +178,7 @@ func _on_traffic_cycle_changed() -> void:
 		var vol: LaneVolume = generator.lane_volume_areas[key]
 		var traffic_plane = vol.get_traffic_plane()
 		if traffic_plane:
-			traffic_plane.update_layer_for_active_index(active_traffic_index)
+			traffic_plane.update_layer_for_active_index(active_traffic_index, yellow_phase_active)
 
 	if show_traffic_planes:
 		_refresh_traffic_plane_colors()
@@ -193,7 +200,13 @@ func _refresh_traffic_plane_colors() -> void:
 		if material == null:
 			continue
 
-		var color: Color = traffic_plane_green_color if traffic_index == active_traffic_index else traffic_plane_red_color
+		var color: Color
+		if traffic_index != active_traffic_index:
+			color = traffic_plane_red_color
+		elif yellow_phase_active:
+			color = traffic_plane_yellow_color
+		else:
+			color = traffic_plane_green_color
 		color.a = traffic_plane_transparency
 		material.albedo_color = color
 
@@ -204,6 +217,12 @@ func generate_and_visualize() -> void:
 	clear_visualization()
 	generate_graph()
 	visualize_graph()
+
+	# Estado inicial de los semáforos: sin esto, is_blocking queda en false
+	# para todos los planos hasta el primer cambio de ciclo.
+	traffic_light_timer = 0.0
+	yellow_phase_active = false
+	_on_traffic_cycle_changed()
 
 func generate_graph() -> void:
 	generator = GraphCityGenerator.new()

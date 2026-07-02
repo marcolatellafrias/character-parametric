@@ -68,18 +68,19 @@ func setup_collision() -> void:
 	if collision_shape:
 		add_child(collision_shape)
 
-func update_layer_for_active_index(active_index: int) -> void:
+# Fase amarilla: la dirección en verde también bloquea, así los autos que
+# pueden frenar se detienen antes de que la transversal reciba verde.
+func update_layer_for_active_index(active_index: int, yellow_phase: bool = false) -> void:
 	if traffic_index == -1:
 		collision_layer = 0
 		is_blocking = false
 		return
 
 	if traffic_index == active_index:
-		collision_layer = 0
-		is_blocking = false
+		is_blocking = yellow_phase
 	else:
-		collision_layer = 2
 		is_blocking = true
+	collision_layer = 2 if is_blocking else 0
 
 func get_end_vertices() -> Array:
 	# Retornar vértices ajustados si existen, sino los originales
