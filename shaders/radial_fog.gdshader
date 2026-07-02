@@ -14,7 +14,10 @@ void vertex() {
 void fragment() {
 	float depth_raw = texture(depth_texture, SCREEN_UV).x;
 
-	if (depth_raw <= 0.0001) {
+	// Reversed-Z: sky clears to exactly 0.0, while real geometry near the
+	// far plane still has a tiny positive depth (~1e-4 at 450u with the
+	// default near of 0.05) — the epsilon must stay below that.
+	if (depth_raw < 1e-7) {
 		discard;
 	}
 

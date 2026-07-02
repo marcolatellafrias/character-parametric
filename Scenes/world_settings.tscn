@@ -7,4 +7,3 @@ script = ExtResource("1")
 fog_start_distance = 50.0
 render_distance = 350.0
 fog_color = Color(0.7209096, 0.47572768, 0.30881587, 1)
-max_cars = 200
