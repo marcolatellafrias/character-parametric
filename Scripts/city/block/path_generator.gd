@@ -43,25 +43,14 @@ func _init(
 
 
 func generate() -> void:
-	print("\n=== GENERANDO ALLEYWAYS (CONFIGURACIÓN ÚNICA PARA TODOS LOS PISOS) ===")
-	print("Total pisos: %d" % total_floors)
-	
-	# Generar solo una vez para todos los pisos
 	_generate_alleyways()
-	
-	print("  Edges generados: %d (compartidos por todos los pisos)" % path_edges.size())
 	
 	is_generated = true
 
 
 func _generate_alleyways() -> void:
-	print("  Grilla: %dx%d (columns x rows)" % [grid.columns, grid.rows])
-	
 	var small_seeds: Array = []
 	var big_seeds: Array = []
-	
-	# Generar seed edges de SMALL
-	print("  Generando %d SEED EDGES de SMALL" % small_alleyways_count)
 	for i in range(small_alleyways_count):
 		var seed = _get_random_seed_edge(DistortedGrid.CellType.SMALL, small_seeds)
 		if not seed.is_empty():
@@ -69,7 +58,6 @@ func _generate_alleyways() -> void:
 			_add_path_edge_vertices(seed[0], seed[1], DistortedGrid.CellType.SMALL_ORIGIN)
 	
 	# Generar seed edges de BIG
-	print("  Generando %d SEED EDGES de BIG" % big_alleyways_count)
 	for i in range(big_alleyways_count):
 		var seed = _get_random_seed_edge(DistortedGrid.CellType.BIG, big_seeds)
 		if not seed.is_empty():

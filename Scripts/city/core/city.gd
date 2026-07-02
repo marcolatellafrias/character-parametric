@@ -124,6 +124,11 @@ extends Node3D
 @export var show_delivery_doors: bool = false
 @export var delivery_door_color: Color = Color(0.9, 0.9, 0.85)
 
+@export_group("Traversal Zones")
+@export var show_stair_zones: bool = false
+@export var stair_zone_color: Color = Color(1.0, 0.6, 0.1)
+@export var sidewalk_color: Color = Color(0.5, 0.48, 0.46)
+
 @export_group("Puentes")
 @export var show_bridges: bool = true
 @export var enable_bridge_colliders: bool = true
@@ -138,6 +143,7 @@ extends Node3D
 var generator: GraphCityGenerator = null
 var traffic_light_timer: float = 0.0
 var active_traffic_index: int = 0
+var _building_material: StandardMaterial3D = null
 
 # ============================================
 # INICIALIZACIÓN
@@ -279,13 +285,16 @@ func visualize_graph() -> void:
 	if show_sidewalk_matrices:
 		_visualize_sidewalk_matrices()
 
-	_visualize_sidewalks()
-
 	if show_bridges:
 		_visualize_bridges()
 
 	if show_delivery_doors:
 		_visualize_delivery_doors()
+
+	if show_stair_zones:
+		_visualize_stair_zones()
+
+	_visualize_floating_sidewalk_zones()
 
 # LaneVolume es Node3D y necesita estar en el árbol para funcionar.
 # Si en el futuro se convierte a RefCounted, este método desaparece.
@@ -382,66 +391,108 @@ func _visualize_floor_planes() -> void:
 # ============================================
 # VISUALIZACIÓN DE BUILDINGS (CON CLUSTERS)
 # ============================================
+func _get_building_material() -> StandardMaterial3D:
+	if _building_material == null:
+		_building_material = StandardMaterial3D.new()
+		_building_material.vertex_color_use_as_albedo = true
+		_building_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		_building_material.cull_mode = BaseMaterial3D.CULL_BACK
+		_building_material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
+	return _building_material
+
 func _visualize_buildings() -> void:
 	var all_block_faces = generator.get_all_block_faces()
 	var total_clusters = 0
 	var total_cells = 0
+	var mat := _get_building_material()
 
 	for face_idx in all_block_faces:
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
 		if block == null or block.get_distorted_grid() == null:
 			continue
 
-		var cells_per_floor = block.get_cells_per_floor()
-		var building_cell_height = block.get_building_cell_height()
-		var building_height = cells_per_floor * building_cell_height
-
-		var clusters = block.get_all_clusters()
+		var cells_per_floor := block.get_cells_per_floor()
+		var building_cell_height := block.get_building_cell_height()
+		var building_height := cells_per_floor * building_cell_height
+		var clusters := block.get_all_clusters()
 		total_clusters += clusters.size()
 
 		for cluster in clusters:
-			var cluster_floors = cluster.get_floor_count()
-			var base_color = cluster.color
+			var cluster_floors := cluster.get_floor_count()
+			var base_color: Color = cluster.color
 
-			for floor in range(cluster_floors):
-				var floor_base_y = floor * cells_per_floor * building_cell_height
+			var merged_verts  := PackedVector3Array()
+			var merged_norms  := PackedVector3Array()
+			var merged_colors := PackedColorArray()
+			var merged_idxs   := PackedInt32Array()
 
+			for floor_idx in range(cluster_floors):
+				var floor_base_y := floor_idx * cells_per_floor * building_cell_height
 				var floor_color: Color
 				if alternate_floor_shading:
-					floor_color = base_color if floor % 2 == 0 else base_color.darkened(1.0 - floor_shade_factor)
+					floor_color = base_color if floor_idx % 2 == 0 else base_color.darkened(1.0 - floor_shade_factor)
 				else:
 					floor_color = base_color
 
 				for cell in cluster.cells:
-					var building_module: BuildingModule = block.get_building_module(cell.x, cell.y, floor)
+					var building_module: BuildingModule = block.get_building_module(cell.x, cell.y, floor_idx)
 					if building_module == null:
 						continue
 
-					var core_vertices = building_module.get_core_vertices(0)
+					var core_vertices := building_module.get_core_vertices(0)
 					if core_vertices.size() != 4:
 						continue
 
-					var core_info = building_module.get_core_info()
+					var core_info := building_module.get_core_info()
 					if core_info["width"] <= 0 or core_info["depth"] <= 0:
 						continue
 
 					for i in range(core_vertices.size()):
 						core_vertices[i].y += floor_base_y
 
-					var module_color = floor_color
+					var module_color := floor_color
 					if alternate_module_shading and (cell.x + cell.y) % 2 == 1:
 						module_color = floor_color.darkened(1.0 - floor_shade_factor)
 
-					add_child(DebugUtil.create_skewed_cube_advanced_grid(
+					var geo := DebugUtil.get_skewed_cube_advanced_grid_geometry(
 						core_vertices,
 						building_height,
 						module_color,
 						building_module.get_chamfers(),
 						core_info["depth"],
-						core_info["width"],
-						false
-					))
+						core_info["width"]
+					)
+					if geo.is_empty():
+						continue
+
+					var offset := merged_verts.size()
+					merged_verts.append_array(geo.vertices)
+					merged_norms.append_array(geo.normals)
+					merged_colors.append_array(geo.colors)
+					for idx in geo.indices:
+						merged_idxs.append(idx + offset)
 					total_cells += 1
+
+			if merged_verts.is_empty():
+				continue
+
+			var arrays := []
+			arrays.resize(Mesh.ARRAY_MAX)
+			arrays[Mesh.ARRAY_VERTEX] = merged_verts
+			arrays[Mesh.ARRAY_NORMAL] = merged_norms
+			arrays[Mesh.ARRAY_COLOR]  = merged_colors
+			arrays[Mesh.ARRAY_INDEX]  = merged_idxs
+
+			var array_mesh := ArrayMesh.new()
+			array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+			var mesh_instance := MeshInstance3D.new()
+			mesh_instance.mesh = array_mesh
+			mesh_instance.material_override = mat
+			mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			mesh_instance.visibility_range_end = WorldSettings.spawn_radius
+			add_child(mesh_instance)
+			_add_box_occluder(array_mesh)
 
 	print("[Visualizer] Buildings: %d clusters (%d cells total) en %d bloques" % [total_clusters, total_cells, all_block_faces.size()])
 
@@ -813,138 +864,6 @@ func _visualize_sidewalk_matrices() -> void:
 
 
 # ============================================
-# VISUALIZACIÓN DE SIDEWALKS
-# ============================================
-
-func _visualize_sidewalks() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	var total_pieces = 0
-
-	for face_idx in all_block_faces:
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		if block == null:
-			continue
-
-		var grid = block.get_distorted_grid()
-		if grid == null:
-			continue
-
-		var cell_height = block.get_building_cell_height()
-		var sidewalk_h = cell_height
-
-		var corner_verts = _get_sidewalk_corner_verts(block, grid)
-		if corner_verts.is_empty():
-			continue
-
-		# 4 corners
-		for key in corner_verts:
-			var verts = corner_verts[key]
-			if verts.size() == 4:
-				add_child(DebugUtil.create_skewed_cube(verts, sidewalk_h, Color(0.45, 0.43, 0.41)))
-				total_pieces += 1
-
-		# 4 sides — one piece per DG cell between the two corners
-		# [edge_idx, fixed_coord, range_start, range_end]
-		var cols = grid.columns
-		var rows = grid.rows
-		var side_edges = [
-			[0, 0,       0, cols - 1],  # North: z=0, all x
-			[1, cols - 1, 0, rows - 1], # East: x=cols-1, all z
-			[2, rows - 1, 0, cols - 1], # South: z=rows-1, all x
-			[3, 0,       0, rows - 1],  # West: x=0, all z
-		]
-		for side_info in side_edges:
-			var edge_idx: int = side_info[0]
-			var fixed: int = side_info[1]
-			var range_start: int = side_info[2]
-			var range_end: int = side_info[3]
-			for i in range(range_start, range_end + 1):
-				var coord: Vector2i
-				if edge_idx == 0 or edge_idx == 2:
-					coord = Vector2i(i, fixed)
-				else:
-					coord = Vector2i(fixed, i)
-				var module = block.get_building_module(coord.x, coord.y, 0)
-				if module == null:
-					continue
-				var core = module.get_core_info()
-				var is_first = (i == range_start)
-				var is_last = (i == range_end)
-				var bx_min: int; var bx_max: int; var bz_min: int; var bz_max: int
-				match edge_idx:
-					0:
-						bx_min = core["min_x"] if is_first else 0
-						bx_max = core["max_x"] if is_last else module.columns - 1
-						bz_min = 0; bz_max = core["min_z"] - 1
-					1:
-						bx_min = core["max_x"] + 1; bx_max = module.columns - 1
-						bz_min = core["min_z"] if is_first else 0
-						bz_max = core["max_z"] if is_last else module.rows - 1
-					2:
-						bx_min = core["min_x"] if is_first else 0
-						bx_max = core["max_x"] if is_last else module.columns - 1
-						bz_min = core["max_z"] + 1; bz_max = module.rows - 1
-					3:
-						bx_min = 0; bx_max = core["min_x"] - 1
-						bz_min = core["min_z"] if is_first else 0
-						bz_max = core["max_z"] if is_last else module.rows - 1
-				if bx_min > bx_max or bz_min > bz_max:
-					continue
-				var verts = module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, 0)
-				if verts.size() == 4:
-					add_child(DebugUtil.create_skewed_cube(verts, sidewalk_h, Color(0.5, 0.48, 0.46)))
-					total_pieces += 1
-
-	print("[Visualizer] Sidewalks: %d pieces" % total_pieces)
-
-
-func _get_sidewalk_corner_verts(block: BlockGenerator, grid: DistortedGrid) -> Dictionary:
-	var cols = grid.columns
-	var rows = grid.rows
-	var result = {}
-
-	# Corner DG cells: NW=(0,0), NE=(cols-1,0), SE=(cols-1,rows-1), SW=(0,rows-1)
-	var corner_cells = {
-		"nw": Vector2i(0, 0),
-		"ne": Vector2i(cols - 1, 0),
-		"se": Vector2i(cols - 1, rows - 1),
-		"sw": Vector2i(0, rows - 1),
-	}
-
-	for key in corner_cells:
-		var coord = corner_cells[key]
-		var module = block.get_building_module(coord.x, coord.y, 0)
-		if module == null:
-			continue
-
-		var core = module.get_core_info()
-		var bx_min: int; var bx_max: int; var bz_min: int; var bz_max: int
-
-		match key:
-			"nw":
-				bx_min = 0; bx_max = core["min_x"] - 1
-				bz_min = 0; bz_max = core["min_z"] - 1
-			"ne":
-				bx_min = core["max_x"] + 1; bx_max = module.columns - 1
-				bz_min = 0; bz_max = core["min_z"] - 1
-			"se":
-				bx_min = core["max_x"] + 1; bx_max = module.columns - 1
-				bz_min = core["max_z"] + 1; bz_max = module.rows - 1
-			"sw":
-				bx_min = 0; bx_max = core["min_x"] - 1
-				bz_min = core["max_z"] + 1; bz_max = module.rows - 1
-
-		if bx_min > bx_max or bz_min > bz_max:
-			continue
-
-		result[key] = module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, 0)
-
-	return result
-
-
-
-
-# ============================================
 # VISUALIZACIÓN DE DELIVERY DOORS
 # ============================================
 
@@ -960,7 +879,7 @@ func _visualize_delivery_doors() -> void:
 		var cells_per_floor = block.get_cells_per_floor()
 		var building_cell_height = block.get_building_cell_height()
 
-		for door in block.delivery_doors:
+		for door in block.traversal.delivery_doors:
 			var cell: Vector2i = door["cell"]
 			var edge_idx: int = door["edge"]
 			var floor_idx: int = door["floor"]
@@ -997,19 +916,308 @@ func _visualize_delivery_doors() -> void:
 
 
 # ============================================
+# VISUALIZACIÓN DE STAIR ZONES
+# ============================================
+
+func _visualize_stair_zones() -> void:
+	var all_block_faces = generator.get_all_block_faces()
+	var total = 0
+
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		if block == null:
+			continue
+
+		var cells_per_floor = block.get_cells_per_floor()
+		var cell_h = block.get_building_cell_height()
+		var block_static_body = StaticBody3D.new()
+		var has_colliders = false
+
+		for stair in block.traversal.stair_zones:
+			var cell: Vector2i = stair["cell"]
+			var edge_idx: int = stair["edge"]
+			var floor_idx: int = stair["floor"]
+
+			var module = block.get_building_module(cell.x, cell.y, 0)
+			if module == null:
+				continue
+
+			var pieces = _build_stair_pieces(module, edge_idx, floor_idx, cells_per_floor, cell_h)
+			for piece in pieces:
+				if piece is StaticBody3D:
+					for child in piece.get_children():
+						if child is CollisionShape3D:
+							piece.remove_child(child)
+							block_static_body.add_child(child)
+							has_colliders = true
+					piece.queue_free()
+				else:
+					add_child(piece)
+					total += 1
+
+		if has_colliders:
+			add_child(block_static_body)
+
+	print("[Visualizer] Stair zones: %d pieces" % total)
+
+
+func _build_stair_pieces(module: BuildingModule, edge_idx: int, floor_idx: int, cells_per_floor: int, cell_h: float) -> Array:
+	var pieces: Array = []
+	var core = module.get_core_info()
+
+	var depth: int
+	var along_length: int
+	match edge_idx:
+		0:
+			depth = core["min_z"]
+			along_length = module.columns
+		1:
+			depth = module.columns - core["max_x"] - 1
+			along_length = module.rows
+		2:
+			depth = module.rows - core["max_z"] - 1
+			along_length = module.columns
+		3:
+			depth = core["min_x"]
+			along_length = module.rows
+
+	if depth <= 1:
+		return pieces
+
+	var half_d = depth / 2
+	if 2 * depth > along_length:
+		return pieces
+
+	var floor_base = floor_idx * cells_per_floor
+	var half_floor = cells_per_floor / 2
+
+	var to_bb = func(a_min: int, a_max: int, d_min: int, d_max: int) -> Array:
+		match edge_idx:
+			0: return [a_min, a_max, d_min, d_max]
+			1: return [core["max_x"] + 1 + d_min, core["max_x"] + 1 + d_max, a_min, a_max]
+			2: return [a_min, a_max, core["max_z"] + 1 + d_min, core["max_z"] + 1 + d_max]
+			3: return [d_min, d_max, a_min, a_max]
+		return []
+
+	var li: Array
+	var ri: Array
+	if edge_idx == 0 or edge_idx == 2:
+		li = [0, 3]
+		ri = [1, 2]
+	else:
+		li = [0, 1]
+		ri = [3, 2]
+
+	var vface = func(bb: Array, h_idx: int, idx: Array) -> Array:
+		var lo = module.get_region_vertices(bb[0], bb[1], bb[2], bb[3], h_idx)
+		var hi = module.get_region_vertices(bb[0], bb[1], bb[2], bb[3], h_idx + 1)
+		if lo.size() != 4 or hi.size() != 4:
+			return []
+		return [lo[idx[0]], lo[idx[1]], hi[idx[1]], hi[idx[0]]]
+
+	# === 3 REST PLATFORMS ===
+	# Bottom/top at far left (along=0), middle at far right (along=max)
+
+	var bot_bb = to_bb.call(0, depth - 1, 0, depth - 1)
+	var bot_v = module.get_region_vertices(bot_bb[0], bot_bb[1], bot_bb[2], bot_bb[3], floor_base)
+	if bot_v.size() == 4:
+		pieces.append(DebugUtil.create_skewed_cube(bot_v, cell_h, stair_zone_color))
+		var c = DebugUtil.create_skewed_cube_collider(bot_v, cell_h)
+		if c: pieces.append(c)
+
+	var mid_bb = to_bb.call(along_length - depth, along_length - 1, 0, depth - 1)
+	var mid_v = module.get_region_vertices(mid_bb[0], mid_bb[1], mid_bb[2], mid_bb[3], floor_base + half_floor)
+	if mid_v.size() == 4:
+		pieces.append(DebugUtil.create_skewed_cube(mid_v, cell_h, stair_zone_color))
+		var c = DebugUtil.create_skewed_cube_collider(mid_v, cell_h)
+		if c: pieces.append(c)
+
+	var top_v = module.get_region_vertices(bot_bb[0], bot_bb[1], bot_bb[2], bot_bb[3], floor_base + cells_per_floor)
+	if top_v.size() == 4:
+		pieces.append(DebugUtil.create_skewed_cube(top_v, cell_h, stair_zone_color))
+		var c = DebugUtil.create_skewed_cube_collider(top_v, cell_h)
+		if c: pieces.append(c)
+
+	var r1_bb_bot = to_bb.call(0, depth - 1, 0, half_d - 1)
+	var r1_bb_mid = to_bb.call(along_length - depth, along_length - 1, 0, half_d - 1)
+	var r1_f1 = vface.call(r1_bb_bot, floor_base, ri)
+	var r1_f2 = vface.call(r1_bb_mid, floor_base + half_floor, li)
+	if r1_f1.size() == 4 and r1_f2.size() == 4:
+		pieces.append(DebugUtil.create_skewed_cube_from_planes(r1_f1, r1_f2, stair_zone_color, 1.0))
+		var c = DebugUtil.create_from_planes_collider(r1_f1, r1_f2)
+		if c: pieces.append(c)
+
+	var r2_bb_mid = to_bb.call(along_length - depth, along_length - 1, half_d, depth - 1)
+	var r2_bb_top = to_bb.call(0, depth - 1, half_d, depth - 1)
+	var r2_f1 = vface.call(r2_bb_mid, floor_base + half_floor, li)
+	var r2_f2 = vface.call(r2_bb_top, floor_base + cells_per_floor, ri)
+	if r2_f1.size() == 4 and r2_f2.size() == 4:
+		pieces.append(DebugUtil.create_skewed_cube_from_planes(r2_f1, r2_f2, stair_zone_color, 1.0))
+		var c = DebugUtil.create_from_planes_collider(r2_f1, r2_f2)
+		if c: pieces.append(c)
+
+	return pieces
+
+
+# ============================================
+# VISUALIZACIÓN DE FLOATING SIDEWALK ZONES
+# ============================================
+
+var _sidewalk_material: StandardMaterial3D = null
+var _bridge_material: StandardMaterial3D = null
+
+func _get_bridge_material() -> StandardMaterial3D:
+	if _bridge_material == null:
+		_bridge_material = StandardMaterial3D.new()
+		_bridge_material.vertex_color_use_as_albedo = true
+		_bridge_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		_bridge_material.cull_mode = BaseMaterial3D.CULL_BACK
+		_bridge_material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
+	return _bridge_material
+
+func _add_box_occluder(mesh: ArrayMesh) -> void:
+	var aabb := mesh.get_aabb()
+	var occ_inst := OccluderInstance3D.new()
+	var box_occ := BoxOccluder3D.new()
+	box_occ.size = aabb.size
+	occ_inst.occluder = box_occ
+	occ_inst.position = aabb.get_center()
+	add_child(occ_inst)
+
+func _bridge_geo_append(buf: Dictionary, geo: Dictionary, color: Color) -> void:
+	if geo.is_empty():
+		return
+	var offset: int = buf.verts.size()
+	buf.verts.append_array(geo.vertices)
+	buf.norms.append_array(geo.normals)
+	for _i in geo.vertices.size():
+		buf.colors.append(color)
+	for idx: int in geo.indices:
+		buf.idxs.append(idx + offset)
+
+func _get_sidewalk_material() -> StandardMaterial3D:
+	if _sidewalk_material == null:
+		_sidewalk_material = StandardMaterial3D.new()
+		_sidewalk_material.albedo_color = sidewalk_color
+		_sidewalk_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		_sidewalk_material.cull_mode = BaseMaterial3D.CULL_BACK
+	return _sidewalk_material
+
+func _visualize_floating_sidewalk_zones() -> void:
+	var all_block_faces = generator.get_all_block_faces()
+	var total = 0
+	var mat := _get_sidewalk_material()
+
+	for face_idx in all_block_faces:
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		if block == null:
+			continue
+
+		var cells_per_floor := block.get_cells_per_floor()
+		var building_cell_height := block.get_building_cell_height()
+		var sidewalk_h := building_cell_height
+		var block_static_body := StaticBody3D.new()
+		var has_colliders := false
+
+		var merged_verts  := PackedVector3Array()
+		var merged_norms  := PackedVector3Array()
+		var merged_idxs   := PackedInt32Array()
+
+		for sw in block.traversal.floating_sidewalk_zones:
+			var cell: Vector2i = sw["cell"]
+			var floor_idx: int = sw["floor"]
+
+			var module = block.get_building_module(cell.x, cell.y, 0)
+			if module == null:
+				continue
+
+			var height_index := floor_idx * cells_per_floor
+			var bx_min: int = sw["bx_min"]
+			var bx_max: int = sw["bx_max"]
+			var bz_min: int = sw["bz_min"]
+			var bz_max: int = sw["bz_max"]
+
+			if bx_min > bx_max or bz_min > bz_max:
+				continue
+
+			var verts := module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, height_index)
+			if verts.size() != 4:
+				continue
+
+			var geo := DebugUtil.get_skewed_cube_geometry(verts, sidewalk_h)
+			if not geo.is_empty():
+				var offset := merged_verts.size()
+				merged_verts.append_array(geo.vertices)
+				merged_norms.append_array(geo.normals)
+				for idx in geo.indices:
+					merged_idxs.append(idx + offset)
+
+			var collider_body := DebugUtil.create_skewed_cube_collider(verts, sidewalk_h)
+			if collider_body:
+				for child in collider_body.get_children():
+					if child is CollisionShape3D:
+						collider_body.remove_child(child)
+						block_static_body.add_child(child)
+						has_colliders = true
+				collider_body.queue_free()
+			total += 1
+
+		if not merged_verts.is_empty():
+			var arrays := []
+			arrays.resize(Mesh.ARRAY_MAX)
+			arrays[Mesh.ARRAY_VERTEX] = merged_verts
+			arrays[Mesh.ARRAY_NORMAL] = merged_norms
+			arrays[Mesh.ARRAY_INDEX]  = merged_idxs
+			var array_mesh := ArrayMesh.new()
+			array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			var mesh_instance := MeshInstance3D.new()
+			mesh_instance.mesh = array_mesh
+			mesh_instance.material_override = mat
+			mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mesh_instance.visibility_range_end = WorldSettings.spawn_radius
+			add_child(mesh_instance)
+			_add_box_occluder(array_mesh)
+
+		if has_colliders:
+			add_child(block_static_body)
+
+	print("[Visualizer] Floating sidewalk zones: %d" % total)
+
+
+# ============================================
 # VISUALIZACIÓN DE PUENTES
 # ============================================
 
 func _visualize_bridges() -> void:
-	var total = 0
+	var buf := {
+		verts  = PackedVector3Array(),
+		norms  = PackedVector3Array(),
+		colors = PackedColorArray(),
+		idxs   = PackedInt32Array(),
+	}
+	var total := 0
 	for edge_key in generator.bridges:
 		for placed in generator.bridges[edge_key]:
-			_draw_bridge(placed)
+			_draw_bridge(placed, buf)
 			total += 1
+	if not buf.verts.is_empty():
+		var arrays: Array = []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = buf.verts
+		arrays[Mesh.ARRAY_NORMAL] = buf.norms
+		arrays[Mesh.ARRAY_COLOR]  = buf.colors
+		arrays[Mesh.ARRAY_INDEX]  = buf.idxs
+		var array_mesh := ArrayMesh.new()
+		array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		var mi := MeshInstance3D.new()
+		mi.mesh = array_mesh
+		mi.material_override = _get_bridge_material()
+		mi.visibility_range_end = WorldSettings.spawn_radius
+		add_child(mi)
 	print("[Visualizer] Puentes: %d" % total)
 
 
-func _draw_bridge(placed: Dictionary) -> void:
+func _draw_bridge(placed: Dictionary, buf: Dictionary) -> void:
 	var bridge: Bridge     = placed["bridge"]
 	var cell_start: int    = placed["cell_start"]
 	var cell_end: int      = placed["cell_end"]
@@ -1036,24 +1244,22 @@ func _draw_bridge(placed: Dictionary) -> void:
 	if enable_bridge_colliders:
 		static_body = StaticBody3D.new()
 
-	# Middle parts (between-grids: two facade planes connected across the street)
 	_add_bridge_section(c_a1, c_a2, c_b1, c_b2, t_start, t_end, h_base_bot, h_base_top,
-			bridge_base_color, static_body)
+			bridge_base_color, static_body, buf)
 	_add_bridge_section(c_a1, c_a2, c_b1, c_b2, t_start, t_end, h_base_top, h_path_top,
-			bridge_pathway_color, static_body)
+			bridge_pathway_color, static_body, buf)
 
 	if bridge.railing_height > 0:
 		_add_bridge_section(c_a1, c_a2, c_b1, c_b2, t_start, t_start + t_one_cell,
-				h_path_top, h_rail_top, bridge_railing_color, static_body)
+				h_path_top, h_rail_top, bridge_railing_color, static_body, buf)
 		_add_bridge_section(c_a1, c_a2, c_b1, c_b2, t_end - t_one_cell, t_end,
-				h_path_top, h_rail_top, bridge_railing_color, static_body)
+				h_path_top, h_rail_top, bridge_railing_color, static_body, buf)
 
 	if bridge.arc_height > 0 and bridge.arc_length > 0:
 		var h_arc_bot = h_base_bot - bridge.arc_height * cell_height
 		_add_bridge_arcs(c_a1, c_a2, c_b1, c_b2, t_start, t_end,
-				h_arc_bot, h_base_bot, bridge.arc_length * cell_height, static_body)
+				h_arc_bot, h_base_bot, bridge.arc_length * cell_height, static_body, buf)
 
-	# Extremes (in-grid: skewed cubes within the sidewalk 3D matrix)
 	var by_base_top = floor_idx * cells_per_floor
 	var by_arc_bot = by_base - bridge.arc_height
 	var side_a = {
@@ -1066,7 +1272,7 @@ func _draw_bridge(placed: Dictionary) -> void:
 	}
 	for side in [side_a, side_b]:
 		_draw_bridge_extremes(bridge, side, cell_start, cell_end,
-				by_base, by_base_top, by_arc_bot, cell_height, static_body)
+				by_base, by_base_top, by_arc_bot, cell_height, static_body, buf)
 
 	if static_body:
 		add_child(static_body)
@@ -1074,17 +1280,17 @@ func _draw_bridge(placed: Dictionary) -> void:
 
 func _add_bridge_section(c_a1: Vector2, c_a2: Vector2, c_b1: Vector2, c_b2: Vector2,
 		t_start: float, t_end: float, h_bottom: float, h_top: float,
-		color: Color, static_body: StaticBody3D) -> void:
+		color: Color, static_body: StaticBody3D, buf: Dictionary) -> void:
 	var plane_a = _bridge_plane(c_a1, c_a2, t_start, t_end, h_bottom, h_top)
 	var plane_b = _bridge_plane(c_b1, c_b2, t_start, t_end, h_bottom, h_top)
-	add_child(DebugUtil.create_skewed_cube_from_planes(plane_a, plane_b, color, 1.0))
+	_bridge_geo_append(buf, DebugUtil.get_skewed_cube_from_planes_geometry(plane_a, plane_b), color)
 	if static_body:
 		static_body.add_child(DebugUtil.create_collision_shape_from_planes(plane_a, plane_b))
 
 
 func _add_bridge_arcs(c_a1: Vector2, c_a2: Vector2, c_b1: Vector2, c_b2: Vector2,
 		t_start: float, t_end: float, h_bottom: float, h_top: float,
-		arc_world_depth: float, static_body: StaticBody3D) -> void:
+		arc_world_depth: float, static_body: StaticBody3D, buf: Dictionary) -> void:
 	var plane_a = _bridge_plane(c_a1, c_a2, t_start, t_end, h_bottom, h_top)
 	var plane_b = _bridge_plane(c_b1, c_b2, t_start, t_end, h_bottom, h_top)
 
@@ -1094,21 +1300,21 @@ func _add_bridge_arcs(c_a1: Vector2, c_a2: Vector2, c_b1: Vector2, c_b2: Vector2
 	var near_plane: Array[Vector3] = []
 	for i in range(4):
 		near_plane.append(plane_a[i].lerp(plane_b[i], arc_frac))
-	add_child(DebugUtil.create_skewed_cube_from_planes(plane_a, near_plane, bridge_arc_color, 1.0))
+	_bridge_geo_append(buf, DebugUtil.get_skewed_cube_from_planes_geometry(plane_a, near_plane), bridge_arc_color)
 	if static_body:
 		static_body.add_child(DebugUtil.create_collision_shape_from_planes(plane_a, near_plane))
 
 	var far_plane: Array[Vector3] = []
 	for i in range(4):
 		far_plane.append(plane_a[i].lerp(plane_b[i], 1.0 - arc_frac))
-	add_child(DebugUtil.create_skewed_cube_from_planes(far_plane, plane_b, bridge_arc_color, 1.0))
+	_bridge_geo_append(buf, DebugUtil.get_skewed_cube_from_planes_geometry(far_plane, plane_b), bridge_arc_color)
 	if static_body:
 		static_body.add_child(DebugUtil.create_collision_shape_from_planes(far_plane, plane_b))
 
 
 func _draw_bridge_extremes(bridge: Bridge, side: Dictionary, cell_start: int, cell_end: int,
 		by_base: int, by_base_top: int, by_arc_bot: int,
-		cell_height: float, static_body: StaticBody3D) -> void:
+		cell_height: float, static_body: StaticBody3D, buf: Dictionary) -> void:
 	var face_idx: int = side["face"]
 	var edge_idx: int = side["edge_idx"]
 	var facade_cells: Array = side["cells"]
@@ -1147,23 +1353,21 @@ func _draw_bridge_extremes(bridge: Bridge, side: Dictionary, cell_start: int, ce
 		var bz_min: int = grid_rect["bz_min"]
 		var bz_max: int = grid_rect["bz_max"]
 
-		# Base extreme
 		var base_verts = module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, by_base)
 		if base_verts.size() == 4:
 			var base_h = (by_base_top - by_base) * cell_height
-			add_child(DebugUtil.create_skewed_cube(base_verts, base_h, bridge_base_color))
+			_bridge_geo_append(buf, DebugUtil.get_skewed_cube_geometry(base_verts, base_h), bridge_base_color)
 			if static_body:
 				var top_verts: Array = []
 				for v in base_verts:
 					top_verts.append(v + Vector3(0, base_h, 0))
 				static_body.add_child(DebugUtil.create_collision_shape_from_planes(base_verts, top_verts))
 
-		# Arc extreme
 		if bridge.arc_height > 0:
 			var arc_verts = module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, by_arc_bot)
 			if arc_verts.size() == 4:
 				var arc_h = (by_base - by_arc_bot) * cell_height
-				add_child(DebugUtil.create_skewed_cube(arc_verts, arc_h, bridge_arc_color))
+				_bridge_geo_append(buf, DebugUtil.get_skewed_cube_geometry(arc_verts, arc_h), bridge_arc_color)
 				if static_body:
 					var top_verts: Array = []
 					for v in arc_verts:

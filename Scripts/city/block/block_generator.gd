@@ -46,7 +46,7 @@ var building_alleyway_offsets: Dictionary
 
 var cluster_seed: int
 
-var delivery_doors: Array[Dictionary] = []
+var traversal: TraversalGenerator
 
 var temporal_lane_points: Dictionary = {}
 var lane_planes: Dictionary = {}
@@ -105,12 +105,12 @@ func _init(
 	if p_building_alleyway_offsets.is_empty():
 		building_alleyway_offsets = {
 			-2: 0,
-			-1: 12,
+			-1: 18,
 			0: 0,
 			1: 12,
-			2: 16,
+			2: 18,
 			10: 12,
-			11: 16
+			11: 18
 		}
 	else:
 		building_alleyway_offsets = p_building_alleyway_offsets
@@ -146,7 +146,9 @@ func _init(
 	cluster_seed = p_grid_seed if p_grid_seed != -1 else randi()
 	_create_building_clusters()
 	_assign_block_hearts()
-	_generate_delivery_doors(p_delivery_doors_per_block)
+
+	traversal = TraversalGenerator.new(self)
+	traversal.generate(p_delivery_doors_per_block)
 
 func _calculate_available_area() -> void:
 	street_offsets = _calculate_street_offsets()
@@ -225,7 +227,6 @@ func _create_building_clusters() -> void:
 	
 	var sections = _identify_sections()
 	
-	print("[BlockGenerator] Secciones identificadas: %d" % sections.size())
 	
 	for section in sections:
 		var section_clusters = _subdivide_section_into_clusters(section, rng, cluster_id)
@@ -242,7 +243,6 @@ func _create_building_clusters() -> void:
 			building_alleyway_offsets
 		)
 	
-	print("[BlockGenerator] Clusters totales generados: %d" % building_clusters.size())
 
 func _identify_sections() -> Array[Array]:
 	var sections: Array[Array] = []
@@ -424,61 +424,6 @@ func _assign_block_hearts() -> void:
 				cluster.floor_count = 0
 				hearts_count += 1
 	
-	if candidates_count > 0:
-		print("[BlockGenerator] Corazones de manzana: %d de %d candidatos (%.1f%%)" % 
-			[hearts_count, candidates_count, (float(hearts_count) / float(candidates_count)) * 100.0])
-
-func _generate_delivery_doors(count: int) -> void:
-	delivery_doors.clear()
-
-	var candidates: Array[Dictionary] = []
-	for cluster in building_clusters:
-		if cluster.floor_count <= 0:
-			continue
-		for cell in cluster.cells:
-			var module = cluster.get_building_module(cell.x, cell.y, 0)
-			if module == null:
-				continue
-			for edge_idx in range(4):
-				var edge_type = module.edge_types[edge_idx]
-				if edge_type == DistortedGrid.CellType.NORMAL or edge_type == DistortedGrid.CellType.BOUNDARY:
-					continue
-				candidates.append({
-					"cell": cell,
-					"edge": edge_idx,
-					"cluster": cluster,
-				})
-
-	if candidates.is_empty():
-		return
-
-	var rng = RandomNumberGenerator.new()
-	rng.seed = cluster_seed + 7777
-	var placed = 0
-	var attempts = 0
-	var max_attempts = count * 10
-
-	while placed < count and attempts < max_attempts:
-		attempts += 1
-		var candidate = candidates[rng.randi_range(0, candidates.size() - 1)]
-		var cluster: BuildingCluster = candidate["cluster"]
-		var floor_idx = rng.randi_range(0, cluster.floor_count - 1)
-
-		var duplicate = false
-		for existing in delivery_doors:
-			if existing["cell"] == candidate["cell"] and existing["edge"] == candidate["edge"] and existing["floor"] == floor_idx:
-				duplicate = true
-				break
-		if duplicate:
-			continue
-
-		delivery_doors.append({
-			"cell": candidate["cell"],
-			"edge": candidate["edge"],
-			"floor": floor_idx,
-			"cluster_id": cluster.id,
-		})
-		placed += 1
 
 func _get_core_block_vertices() -> Array[Vector2]:
 	var vertices: Array[Vector2] = []

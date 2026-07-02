@@ -1,7 +1,7 @@
 extends Object
 class_name CarArchetypes
 
-static var speed_debug_factor: float = 0.8
+static var speed_debug_factor: float = 0.533
 static var size_debug_factor: float = 10.0
 
 enum Type {
@@ -272,6 +272,28 @@ static func get_weighted_random_archetype(custom_weights: Dictionary = {}) -> Ar
 			return archetypes[item["type"]]
 	
 	return archetypes[archetypes.keys()[0]]
+
+# Seeded type selection shared by spawner and car so both derive the same
+# archetype from the same seed (multiplayer/prediction friendly).
+static func select_type_seeded(rng: RandomNumberGenerator, custom_weights: Dictionary = {}) -> Type:
+	var total_weight = 0.0
+	var weighted_types = []
+
+	for type in Type.values():
+		var archetype = get_archetype(type)
+		var weight = custom_weights.get(type, archetype.weight)
+		total_weight += weight
+		weighted_types.append({"type": type, "weight": weight})
+
+	var random_value = rng.randf() * total_weight
+	var cumulative_weight = 0.0
+
+	for item in weighted_types:
+		cumulative_weight += item["weight"]
+		if random_value <= cumulative_weight:
+			return item["type"]
+
+	return Type.POOR_CAR
 
 static func get_neighborhood_affinity(car_type: Type, neighborhood_type: int) -> float:
 	var affinity_table = NEIGHBORHOOD_AFFINITY.get(car_type, {})

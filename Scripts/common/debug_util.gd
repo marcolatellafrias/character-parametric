@@ -51,12 +51,18 @@ static func create_debug_line(color: Color, length: float, on_top: bool = false,
 	mesh_instance.material_override = material
 	return mesh_instance
 
-static func update_debug_line_mesh(mesh_instance: MeshInstance3D,length: float, to_down: bool = true) -> MeshInstance3D:
+static func update_debug_line_mesh(mesh_instance: MeshInstance3D, length: float, to_down: bool = true) -> MeshInstance3D:
 	if mesh_instance == null:
 		return mesh_instance
-	var cube := BoxMesh.new()
-	cube.size = Vector3(0.01, length, 0.01)
-	mesh_instance.mesh = cube
+	var prev: float = mesh_instance.get_meta("_dline_len", -1.0)
+	if is_equal_approx(prev, length):
+		return mesh_instance
+	mesh_instance.set_meta("_dline_len", length)
+	var box := mesh_instance.mesh as BoxMesh
+	if box == null:
+		box = BoxMesh.new()
+		mesh_instance.mesh = box
+	box.size = Vector3(0.01, length, 0.01)
 	mesh_instance.position = Vector3(0.0, (-length * 0.5) if to_down else (length * 0.5), 0.0)
 	return mesh_instance
 	
@@ -399,6 +405,48 @@ static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vect
 	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 
+static func get_skewed_cube_from_planes_geometry(plane1: Array, plane2: Array) -> Dictionary:
+	if plane1.size() != 4 or plane2.size() != 4:
+		return {}
+	var p1: Array = plane1
+	var p2: Array = plane2
+	var mesh_center := Vector3.ZERO
+	for v: Vector3 in p1: mesh_center += v
+	for v: Vector3 in p2: mesh_center += v
+	mesh_center /= 8.0
+	var verts := PackedVector3Array()
+	var norms  := PackedVector3Array()
+	var idxs   := PackedInt32Array()
+	_add_quad(verts, idxs, norms, p1[0], p1[1], p1[2], p1[3], mesh_center)
+	_add_quad(verts, idxs, norms, p2[3], p2[2], p2[1], p2[0], mesh_center)
+	_add_quad(verts, idxs, norms, p1[0], p2[0], p2[1], p1[1], mesh_center)
+	_add_quad(verts, idxs, norms, p1[3], p1[2], p2[2], p2[3], mesh_center)
+	_add_quad(verts, idxs, norms, p1[0], p1[3], p2[3], p2[0], mesh_center)
+	_add_quad(verts, idxs, norms, p1[1], p2[1], p2[2], p1[2], mesh_center)
+	return {vertices = verts, normals = norms, indices = idxs}
+
+static func get_skewed_cube_geometry(base_vertices: Array, height: float) -> Dictionary:
+	if base_vertices.size() != 4:
+		return {}
+	var b: Array = base_vertices
+	var t: Array = []
+	for i in range(4):
+		var bv: Vector3 = b[i]
+		t.append(bv + Vector3(0, height, 0))
+	var mesh_center := Vector3.ZERO
+	for v: Vector3 in b: mesh_center += v
+	for v: Vector3 in t: mesh_center += v
+	mesh_center /= 8.0
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var idxs  := PackedInt32Array()
+	_add_quad(verts, idxs, norms, b[0], b[1], b[2], b[3], mesh_center)
+	_add_quad(verts, idxs, norms, t[3], t[2], t[1], t[0], mesh_center)
+	for i in range(4):
+		var ni := (i + 1) % 4
+		_add_quad(verts, idxs, norms, b[i], b[ni], t[ni], t[i], mesh_center)
+	return {vertices = verts, normals = norms, indices = idxs}
+
 static func create_skewed_cube(base_vertices: Array, height: float, color: Color, use_transparency: bool = false) -> MeshInstance3D:
 	if base_vertices.size() != 4:
 		push_error("Se requieren exactamente 4 vértices para la base")
@@ -442,6 +490,7 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
+
 
 # Crea un cubo skewed con chamfers en sus edges verticales, especificados en unidades reales.
 # 
@@ -841,6 +890,21 @@ static func create_skewed_cube_collider(base_vertices: Array, height: float) -> 
 	static_body.add_child(collision_shape)
 	
 	return static_body
+
+static func create_from_planes_collider(plane1: Array, plane2: Array) -> StaticBody3D:
+	if plane1.size() != 4 or plane2.size() != 4:
+		return null
+	var static_body = StaticBody3D.new()
+	var collision_shape = CollisionShape3D.new()
+	var points = PackedVector3Array()
+	for v in plane1: points.append(v)
+	for v in plane2: points.append(v)
+	var convex_shape = ConvexPolygonShape3D.new()
+	convex_shape.points = points
+	collision_shape.shape = convex_shape
+	static_body.add_child(collision_shape)
+	return static_body
+
 
 static func create_skewed_cube_debug(base_vertices: Array, height: float, color: Color, face_index: int) -> MeshInstance3D:
 	if base_vertices.size() != 4:
@@ -1651,5 +1715,106 @@ static func create_debug_sphere_print_int(value: int, color: Color, size: float 
 	label.position = Vector3(0, size * 1.5, 0)
 	
 	container.add_child(label)
-	
+
 	return container
+
+
+# Returns raw geometry (vertices, normals, colors, indices) for a skewed cube with
+# real-unit chamfers. No nodes created. Used for mesh merging.
+static func get_skewed_cube_advanced_geometry(
+	base_vertices: Array, height: float, color: Color, chamfers: Dictionary
+) -> Dictionary:
+	if base_vertices.size() != 4:
+		return {}
+
+	var vertices := PackedVector3Array()
+	var normals  := PackedVector3Array()
+	var colors   := PackedColorArray()
+	var indices  := PackedInt32Array()
+
+	var add_tri := func(v1: Vector3, v2: Vector3, v3: Vector3, n: Vector3) -> void:
+		var idx := vertices.size()
+		vertices.append(v1); vertices.append(v2); vertices.append(v3)
+		normals.append(n);   normals.append(n);   normals.append(n)
+		colors.append(color); colors.append(color); colors.append(color)
+		indices.append(idx); indices.append(idx + 1); indices.append(idx + 2)
+
+	var bottom_contour: Array = []
+	var top_contour: Array    = []
+	for i in range(4):
+		var ch = chamfers.get(i, [0, 0])
+		var c1: float = ch[0] if ch.size() > 0 else 0.0
+		var c2: float = ch[1] if ch.size() > 1 else 0.0
+		var bv_i: Vector3    = base_vertices[i]
+		var bv_prev: Vector3 = base_vertices[(i - 1 + 4) % 4]
+		var bv_next: Vector3 = base_vertices[(i + 1) % 4]
+		var to_prev: Vector3 = (bv_prev - bv_i).normalized()
+		var to_next: Vector3 = (bv_next - bv_i).normalized()
+		bottom_contour.append(bv_i + to_prev * c1)
+		top_contour.append(bv_i    + to_prev * c1 + Vector3(0, height, 0))
+		bottom_contour.append(bv_i + to_next * c2)
+		top_contour.append(bv_i    + to_next * c2 + Vector3(0, height, 0))
+
+	var bc := Vector3.ZERO
+	for v in bottom_contour: bc += v
+	bc /= float(bottom_contour.size())
+
+	var tc := Vector3.ZERO
+	for v in top_contour: tc += v
+	tc /= float(top_contour.size())
+
+	var n_bot := Vector3(0, -1, 0)
+	for i in range(bottom_contour.size()):
+		add_tri.call(bc, bottom_contour[i], bottom_contour[(i + 1) % bottom_contour.size()], n_bot)
+
+	var n_top := Vector3(0, 1, 0)
+	for i in range(top_contour.size()):
+		add_tri.call(tc, top_contour[(i + 1) % top_contour.size()], top_contour[i], n_top)
+
+	var center := Vector3.ZERO
+	for v in base_vertices: center += v
+	center /= 4.0
+
+	for i in range(bottom_contour.size()):
+		var ni := (i + 1) % bottom_contour.size()
+		var v1: Vector3 = bottom_contour[i];  var v2: Vector3 = bottom_contour[ni]
+		var v3: Vector3 = top_contour[i];     var v4: Vector3 = top_contour[ni]
+		var fn := (v2 - v1).cross(v3 - v1).normalized()
+		if fn.dot((v1 + v2 + v3 + v4) / 4.0 - center) < 0:
+			fn = -fn
+		add_tri.call(v1, v3, v2, fn)
+		add_tri.call(v2, v3, v4, fn)
+
+	return {vertices = vertices, normals = normals, colors = colors, indices = indices}
+
+
+# Grid-unit chamfer variant — converts cell counts to real distances, then delegates above.
+static func get_skewed_cube_advanced_grid_geometry(
+	base_vertices: Array, height: float, color: Color, chamfers: Dictionary, rows: int, columns: int
+) -> Dictionary:
+	if base_vertices.size() != 4 or rows <= 0 or columns <= 0:
+		return {}
+
+	var real_chamfers := {}
+	for i in range(4):
+		if not chamfers.has(i):
+			continue
+		var ch = chamfers[i]
+		var c1_cells: float = ch[0] if ch.size() > 0 else 0.0
+		var c2_cells: float = ch[1] if ch.size() > 1 else 0.0
+
+		var prev_i: int = (i - 1 + 4) % 4
+		var next_i: int = (i + 1) % 4
+		var bv_i: Vector3    = base_vertices[i]
+		var bv_prev: Vector3 = base_vertices[prev_i]
+		var bv_next: Vector3 = base_vertices[next_i]
+		var edge_prev: float = bv_i.distance_to(bv_prev)
+		var edge_next: float = bv_i.distance_to(bv_next)
+		var div_prev: int = rows if prev_i % 2 == 1 else columns
+		var div_next: int = rows if i      % 2 == 1 else columns
+		real_chamfers[i] = [
+			c1_cells * edge_prev / float(div_prev),
+			c2_cells * edge_next / float(div_next)
+		]
+
+	return get_skewed_cube_advanced_geometry(base_vertices, height, color, real_chamfers)

@@ -2,6 +2,15 @@ extends Node
 
 var is_paused: bool = false
 var manual_delta: float = 0.0
+# Per-frame snapshot of manual_delta consumed once here (autoloads process
+# before scene nodes), so every car steps with the same delta instead of the
+# first car consuming it.
+var frame_delta: float = 0.0
+
+func _process(_delta: float) -> void:
+	if is_paused:
+		frame_delta = manual_delta
+		manual_delta = 0.0
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_P:

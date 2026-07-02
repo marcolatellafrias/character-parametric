@@ -34,11 +34,15 @@ var right_leg_current_target: Node3D
 var left_neutral_local: Vector3
 var right_neutral_local: Vector3
 var raycast_offset: Vector2 = Vector2.ZERO
+var _step_radius_rendered: float = -1.0
 var current_step_radius: float:
 	set(value):
 		current_step_radius = value
-		current_step_left_mesh_instance.mesh = DebugUtil.create_debug_ring_mesh(current_step_radius)
-		current_step_right_mesh_instance.mesh = DebugUtil.create_debug_ring_mesh(current_step_radius)
+		if not debug_enabled or is_equal_approx(value, _step_radius_rendered):
+			return
+		_step_radius_rendered = value
+		current_step_left_mesh_instance.mesh  = DebugUtil.create_debug_ring_mesh(value)
+		current_step_right_mesh_instance.mesh = DebugUtil.create_debug_ring_mesh(value)
 	get:
 		return current_step_radius
 var left_leg_airborne_target: Node3D
@@ -67,6 +71,7 @@ var _last_step_frame: int = -1
 var _last_step_leg_id: int = -1
 
 var recovery_targets_locked: bool = false
+var debug_enabled: bool = true
 
 func get_leg_data(left: bool) -> LegData:
 	var d := LegData.new()
@@ -257,16 +262,17 @@ func update_ik_raycast(
 	var max_raycast_distance: float       = leg.raycast.target_position.length()
 	var leg_reach_raycast_distance: float = sizes.leg_height - sizes.raycast_start_y_offset
 
-	if left:
-		left_leg_raycast_indicator   = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator,   total_raycast_length - sizes.raycast_start_y_offset)
-		left_leg_raycast_indicator_b = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator_b, total_raycast_length - sizes.raycast_start_y_offset)
-		left_leg_raycast_indicator_c = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator_c, total_raycast_length - sizes.raycast_start_y_offset)
-		left_leg_raycast_indicator_d = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator_d, total_raycast_length - sizes.raycast_start_y_offset)
-	else:
-		right_leg_raycast_indicator   = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator,   total_raycast_length - sizes.raycast_start_y_offset)
-		right_leg_raycast_indicator_b = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator_b, total_raycast_length - sizes.raycast_start_y_offset)
-		right_leg_raycast_indicator_c = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator_c, total_raycast_length - sizes.raycast_start_y_offset)
-		right_leg_raycast_indicator_d = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator_d, total_raycast_length - sizes.raycast_start_y_offset)
+	if debug_enabled:
+		if left:
+			left_leg_raycast_indicator   = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator,   total_raycast_length - sizes.raycast_start_y_offset)
+			left_leg_raycast_indicator_b = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator_b, total_raycast_length - sizes.raycast_start_y_offset)
+			left_leg_raycast_indicator_c = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator_c, total_raycast_length - sizes.raycast_start_y_offset)
+			left_leg_raycast_indicator_d = DebugUtil.update_debug_line_mesh(left_leg_raycast_indicator_d, total_raycast_length - sizes.raycast_start_y_offset)
+		else:
+			right_leg_raycast_indicator   = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator,   total_raycast_length - sizes.raycast_start_y_offset)
+			right_leg_raycast_indicator_b = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator_b, total_raycast_length - sizes.raycast_start_y_offset)
+			right_leg_raycast_indicator_c = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator_c, total_raycast_length - sizes.raycast_start_y_offset)
+			right_leg_raycast_indicator_d = DebugUtil.update_debug_line_mesh(right_leg_raycast_indicator_d, total_raycast_length - sizes.raycast_start_y_offset)
 
 	var indicator_a := left_leg_raycast_indicator   if left else right_leg_raycast_indicator
 	var indicator_b := left_leg_raycast_indicator_b if left else right_leg_raycast_indicator_b

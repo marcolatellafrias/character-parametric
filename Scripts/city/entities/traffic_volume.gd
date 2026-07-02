@@ -5,6 +5,7 @@ var lane_volume: LaneVolume
 var traffic_index: int = -1
 var collision_shape: CollisionShape3D
 var adjusted_end_vertices: Array = []  # NUEVO: Vértices ajustados a block_height
+var is_blocking: bool = false  # true = semáforo en rojo (leído por TrafficClaimRegistry)
 
 const THICKNESS: float = 0.5
 
@@ -70,12 +71,15 @@ func setup_collision() -> void:
 func update_layer_for_active_index(active_index: int) -> void:
 	if traffic_index == -1:
 		collision_layer = 0
+		is_blocking = false
 		return
-	
+
 	if traffic_index == active_index:
 		collision_layer = 0
+		is_blocking = false
 	else:
 		collision_layer = 2
+		is_blocking = true
 
 func get_end_vertices() -> Array:
 	# Retornar vértices ajustados si existen, sino los originales

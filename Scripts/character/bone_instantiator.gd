@@ -28,6 +28,7 @@ var player_controller: PlayerController
 
 var jump_squat_t: float = 0.0
 var crouch_t:     float = 0.0
+var _npc_skip_frame: bool = false
 
 var grab_cone_mesh: MeshInstance3D = null
 var show_grab_cone: bool = false
@@ -50,6 +51,7 @@ func initialize_skeleton() -> void:
 	skel_sizes_util      = SkeletonSizesUtil.create(entity_instantiation)
 	custom_bones_util    = CustomBonesUtil.create(skel_sizes_util, entity_instantiation)
 	ik_util              = IkUtil.create(skel_sizes_util, self)
+	ik_util.debug_enabled = is_active
 
 	var full_height := skel_sizes_util.leg_height + skel_sizes_util.torso_height + skel_sizes_util.head_height
 	var charRb      := Vector3(skel_sizes_util.shoulders_width * 2, full_height, skel_sizes_util.hips_width * 2)
@@ -158,6 +160,11 @@ func _clear_prior_generations() -> void:
 	player_camera = null
 
 func _physics_process(delta: float) -> void:
+	if not is_active:
+		_npc_skip_frame = not _npc_skip_frame
+		if _npc_skip_frame:
+			return
+
 	_update_local_targets_positions()
 	_update_ragdoll_ext_state()
 

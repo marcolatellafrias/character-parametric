@@ -38,7 +38,18 @@ class_name AreaInstantiator
 @export var enable_fog: bool = true
 @export var fog_shader: Shader
 
+@export_group("Traffic Debug")
+@export var show_traffic_debug: bool = false
+@export var traffic_debug_corridors: bool = true
+@export var traffic_debug_links: bool = true
+@export var traffic_debug_stop_points: bool = true
+@export var traffic_debug_tint: bool = true
+@export var traffic_debug_labels: bool = true
+@export var traffic_debug_cells: bool = false
+@export var traffic_debug_label_distance: float = 30.0
+
 var generator: GraphCityGenerator = null
+var claim_registry: TrafficClaimRegistry = null
 var debug_cylinder_meshes: Array[MeshInstance3D] = []
 var lane_volumes_container: Node3D
 var grid_points_container: Node3D
@@ -59,10 +70,13 @@ var fog_quad: MeshInstance3D = null
 var fog_material: ShaderMaterial = null
 
 func _ready() -> void:
+	add_to_group("area_instantiator")
+
 	var city_visualizer = get_tree().get_first_node_in_group("city_generator")
 	if city_visualizer:
 		generator = city_visualizer.get_generator()
 
+	_setup_claim_registry()
 	_create_cylinder_areas()
 	_setup_visualization_containers()
 	_setup_fog()
@@ -89,6 +103,25 @@ func _exit_tree() -> void:
 	_cleanup_containers()
 	if fog_quad and is_instance_valid(fog_quad):
 		fog_quad.queue_free()
+
+# ============================================================================
+# CLAIM REGISTRY
+# ============================================================================
+
+# One registry is shared by every instantiator (and every car), so cars
+# spawned by different instantiators still see each other's claims.
+func _setup_claim_registry() -> void:
+	claim_registry = get_tree().get_first_node_in_group("traffic_claim_registry") as TrafficClaimRegistry
+	if claim_registry:
+		return
+	claim_registry = TrafficClaimRegistry.new()
+	claim_registry.name = "TrafficClaimRegistry"
+	add_child(claim_registry)
+
+	var drawer = TrafficDebugDrawer.new()
+	drawer.name = "TrafficDebugDrawer"
+	drawer.registry = claim_registry
+	claim_registry.add_child(drawer)
 
 # ============================================================================
 # FOG
@@ -133,6 +166,8 @@ func _on_settings_changed() -> void:
 			area.queue_free()
 	cylinder_areas.clear()
 	volume_area_refs.clear()
+	for vol in all_lane_volumes:
+		_unregister_volume_light(vol)
 	all_lane_volumes.clear()
 	_create_cylinder_areas()
 
@@ -156,6 +191,10 @@ func _setup_visualization_containers() -> void:
 	world.add_child(grid_points_container)
 
 func _cleanup_containers() -> void:
+	if claim_registry and is_instance_valid(claim_registry):
+		for vol in all_lane_volumes:
+			_unregister_volume_light(vol)
+
 	if lane_volumes_container and is_instance_valid(lane_volumes_container):
 		lane_volumes_container.queue_free()
 	if grid_points_container and is_instance_valid(grid_points_container):
@@ -231,6 +270,7 @@ func _on_cylinder_area_entered(area: Area3D, area_index: int) -> void:
 
 		if not all_lane_volumes.has(area):
 			all_lane_volumes.append(area)
+			_register_volume_light(area)
 			_update_visualization()
 			if time_alive > bootstrap_duration and _is_safe_to_seed(area):
 				_seed_volume(area)
@@ -250,7 +290,16 @@ func _on_cylinder_area_exited(area: Area3D, area_index: int) -> void:
 				var vol_idx = all_lane_volumes.find(area)
 				if vol_idx != -1:
 					all_lane_volumes.remove_at(vol_idx)
+					_unregister_volume_light(area)
 					_update_visualization()
+
+func _register_volume_light(vol: LaneVolume) -> void:
+	if claim_registry and vol.get_traffic_plane():
+		claim_registry.register_traffic_light(vol.get_traffic_plane())
+
+func _unregister_volume_light(vol: LaneVolume) -> void:
+	if claim_registry and is_instance_valid(vol) and vol.get_traffic_plane():
+		claim_registry.unregister_traffic_light(vol.get_traffic_plane())
 
 # ============================================================================
 # DISTANCE HELPERS
@@ -324,24 +373,24 @@ func _try_spawn_in_volume(vol: LaneVolume, along_t: float) -> bool:
 	var custom_weights = NeighborhoodTypes.get_car_weights(neighborhood_type)
 	var car_seed = randi()
 
-	var temp_car = FlyingCar.new()
-	temp_car.initialize_from_seed(car_seed, custom_weights)
+	# Same first draw the car will make in initialize_from_seed, so the
+	# archetype can be checked against caps without allocating a car.
+	var type_rng = RandomNumberGenerator.new()
+	type_rng.seed = car_seed
+	var car_type = CarArchetypes.select_type_seeded(type_rng, custom_weights)
+	var archetype = CarArchetypes.get_archetype(car_type)
 
-	var archetype = CarArchetypes.get_archetype(temp_car.car_archetype)
 	if archetype.max_global != -1:
-		var global_count = global_type_counts.get(temp_car.car_archetype, 0)
-		if global_count >= archetype.max_global:
-			temp_car.free()
+		if global_type_counts.get(car_type, 0) >= archetype.max_global:
 			return false
 
 	if archetype.max_per_volume != -1:
-		var vol_type_count = _get_volume_type_count(vol.get_id(), temp_car.car_archetype)
-		if vol_type_count >= archetype.max_per_volume:
-			temp_car.free()
+		if _get_volume_type_count(vol.get_id(), car_type) >= archetype.max_per_volume:
 			return false
 
 	var v_max = vol.get_max_spawn_v()
 	var v_min = archetype.min_spawn_v
+	var body_radius = Vector2(archetype.width, archetype.height).length() * 0.5
 
 	for attempt in range(5):
 		var random_u = randf()
@@ -351,21 +400,19 @@ func _try_spawn_in_volume(vol: LaneVolume, along_t: float) -> bool:
 		var end_pos = vol.get_point_at_grid(random_u, random_v, false)
 		var spawn_pos = start_pos.lerp(end_pos, along_t)
 
-		var front_face = temp_car.get_front_face_at_segment(spawn_pos, end_pos)
+		var front_face = FlyingCar.compute_cross_section_face(spawn_pos, end_pos, archetype.width, archetype.height)
 		var validation = vol.validate_face_projection(front_face, random_u, random_v)
 
 		if not validation["valid"]:
 			continue
 
 		var direction = (end_pos - spawn_pos).normalized()
-		if _check_spawn_collision(spawn_pos, direction, temp_car.width, temp_car.height, temp_car.depth):
+		if not _is_spawn_position_free(spawn_pos, direction, archetype.depth, body_radius):
 			continue
 
-		temp_car.free()
 		_spawn_car(vol, random_u, random_v, along_t, car_seed, custom_weights)
 		return true
 
-	temp_car.free()
 	return false
 
 func _spawn_car(vol: LaneVolume, grid_u: float, grid_v: float,
@@ -378,6 +425,7 @@ func _spawn_car(vol: LaneVolume, grid_u: float, grid_v: float,
 	car.world_node = world
 	car.generator = generator
 	car.area_instantiator = self
+	car.claim_registry = claim_registry
 	car.spawn_time = Time.get_ticks_msec() / 1000.0
 
 	car.initialize_from_seed(car_seed, custom_weights)
@@ -418,40 +466,14 @@ func _spawn_car(vol: LaneVolume, grid_u: float, grid_v: float,
 		vol.height_cells
 	)
 
-func _check_spawn_collision(spawn_pos: Vector3, direction: Vector3,
-							car_width: float, car_height: float, car_depth: float) -> bool:
-	if not world:
-		return false
-
-	var half_width = car_width * 0.5
-	var half_height = car_height * 0.5
-	var half_depth = car_depth * 0.5
-	var total_depth = half_depth + spawn_safety_margin
-
-	for child in world.get_children():
-		if not child is FlyingCar:
-			continue
-
-		var other_car = child as FlyingCar
-		var to_other = other_car.global_position - spawn_pos
-		var distance = to_other.length()
-
-		var max_check_distance = (car_depth + other_car.depth) * 0.5 + spawn_safety_margin * 2
-		if distance > max_check_distance:
-			continue
-
-		var projection = to_other.dot(direction)
-
-		if abs(projection) < total_depth + (other_car.depth * 0.5):
-			var lateral_offset = to_other - (direction * projection)
-			var lateral_distance = lateral_offset.length()
-
-			if lateral_distance < (half_width + other_car.width * 0.5):
-				var height_diff = abs(spawn_pos.y - other_car.global_position.y)
-				if height_diff < (half_height + other_car.height * 0.5):
-					return true
-
-	return false
+# Gap query against the claim registry (car bodies, broadcasts, obstacles)
+# instead of iterating every child of the world node.
+func _is_spawn_position_free(spawn_pos: Vector3, direction: Vector3,
+							 car_depth: float, body_radius: float) -> bool:
+	if claim_registry == null:
+		return true
+	var half = direction * (car_depth * 0.5 + spawn_safety_margin)
+	return claim_registry.is_capsule_free(spawn_pos - half, spawn_pos + half, body_radius)
 
 # ============================================================================
 # BOOKKEEPING

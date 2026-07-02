@@ -75,6 +75,7 @@ volumetric_fog_sky_affect = 0.35
 adjustment_enabled = true
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_4i7ud"]
+radius = 0.25
 
 [node name="Demo" type="Node3D"]
 
@@ -83,7 +84,8 @@ script = ExtResource("11_v3boh")
 
 [node name="WorldSettings" parent="." instance=ExtResource("12_v3boh")]
 fog_start_distance = 5.0
-fog_color = Color(0.38688004, 0.48882216, 0.94255334, 1)
+fog_color = Color(0.7476558, 0.43702698, 0.38007766, 1)
+max_cars = 600
 
 [node name="world" type="Node3D" parent="."]
 
@@ -202,12 +204,14 @@ master_seed = 10
 
 [node name="city" type="Node3D" parent="."]
 script = ExtResource("9_oilx1")
-region_size = Vector2(800, 800)
+region_size = Vector2(900, 900)
 min_distance = 117.325
-generation_seed = 123
+generation_seed = 1234
+show_streets = false
+show_distorted_grid = false
 show_buildings = true
+show_traffic_planes = true
 show_delivery_doors = true
-delivery_door_width = 2.25
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8859253, 0)
@@ -225,3 +229,4 @@ script = ExtResource("12_k27g2")
 cameras = [NodePath("../Camera3D")]
 world = NodePath("../..")
 fog_shader = ExtResource("11_h3puh")
+show_traffic_debug = true
