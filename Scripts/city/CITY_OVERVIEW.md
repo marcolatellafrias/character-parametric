@@ -37,9 +37,9 @@
 | Street type | Cells |
 |---|---|
 | Boundary | 0 |
-| Small | 4 |
-| Medium | 6 |
-| Large | 9 |
+| Small | 6 |
+| Medium | 8 |
+| Large | 12 |
 
 The street offset shrinks the block inward, creating the **buildable zone**. The space between opposing buildable zone boundaries forms the street.
 
@@ -49,7 +49,7 @@ The street offset shrinks the block inward, creating the **buildable zone**. The
 |---|---|
 | Normal | 0 |
 | Boundary | 0 |
-| Facade | 18 |
+| Facade | 20 |
 | Small alleyway | 18 |
 | Big alleyway | 18 |
 
@@ -88,7 +88,7 @@ Chamfers affect the sidewalk vertical grid — building cells inside a chamfer r
 ## DistortedGrid cell types
 
 - `NORMAL` — buildable interior
-- `FACADE` — block perimeter facing a street (facade offset = 18 → external sidewalk zone)
+- `FACADE` — block perimeter facing a street (facade offset = 20 → external sidewalk zone)
 - `BOUNDARY` — block perimeter coinciding with the city boundary (facade offset = 0 → no sidewalk)
 - `SMALL` / `BIG` — small / big alleyway
 - `SMALL_ORIGIN` / `BIG_ORIGIN` — alleyway starting point
@@ -118,15 +118,15 @@ The non-building-core cells of the building grid form **sidewalk zones** — are
 
 ### External sidewalk zone
 
-The facade offset strip (18 building cells deep) between the buildable zone boundary and the building face, wrapping around the block perimeter.
+The facade offset strip (20 building cells deep) between the buildable zone boundary and the building face, wrapping around the block perimeter.
 
 **Geometry** — decomposed into **8 pieces** per block:
-- **4 corners**: `facade_offset × facade_offset` squares (e.g. 18×18) at each block corner, where two perimeter edges meet. These sit at the outermost part of the sidewalk, nearest the street intersection, farthest from any building face.
+- **4 corners**: `facade_offset × facade_offset` squares (e.g. 20×20) at each block corner, where two perimeter edges meet. These sit at the outermost part of the sidewalk, nearest the street intersection, farthest from any building face.
 - **4 sides**: rectangular strips connecting adjacent corners along each block edge. Each side is a single piece spanning the full edge.
 
 ### Internal sidewalk zone
 
-The alleyway offset strips (12 or 18 building cells deep) between adjacent building cores, inside the block.
+The alleyway offset strips (18 building cells deep) between adjacent building cores, inside the block.
 
 **Geometry** — decomposed into:
 - **Connecting sectors**: straight strips running along alleyway edges between buildings.
@@ -243,7 +243,7 @@ Each `LaneVolume` has a `TrafficPlane` child with a `traffic_index` (0 or 1). Vo
 ### Car movement
 A car enters a volume at a grid position `(u, v)` within the start plane. A `Curve3D` path is created from start to end plane via bilinear interpolation. The car holds the curve directly (no `Path3D`/`PathFollow3D`/`Timer` nodes — `PathController` is `RefCounted`): a float progress advances along the baked curve (`bake_interval` 2.0, cars don't need the default 0.2u precision) and transition/end checks run inline in `advance()`. Segment-transition offsets are computed analytically (the shared straight segment carries progress over by subtraction), so no `get_closest_offset` search. When the car reaches the end, it checks the traffic light, then queries `get_lane_volume_continuations()` to find the next volumes and picks one. A new curve is built and the cycle repeats.
 
-Each car is 2 nodes (root + `MeshInstance3D`); `CollisionAvoidance` is also `RefCounted`. All cars of an archetype share one `BoxMesh`+`StandardMaterial3D` (debug tint uses a lazy per-car `material_override`), and meshes are hidden beyond `render_distance` — the fog fully covers them there anyway.
+A car is not a node: `FlyingCar` extends `Object` (`CollisionAvoidance` and `PathController` are `RefCounted`), and the whole fleet is ticked by one `CarManager` loop — camera positions are computed once per frame and there are no per-node `_process` callbacks. Cars inside `render_distance` borrow a pooled `MeshInstance3D` visual from the manager, released a small margin past the fog wall so boundary oscillation doesn't churn the pool; fully fogged cars are pure data with no node, no mesh and no transform updates. All cars of an archetype share one `BoxMesh`+`StandardMaterial3D` (debug tint uses a lazy per-car `material_override` on the pooled visual).
 
 ```
 Enter volume (u,v) → build Curve3D path → follow path
@@ -311,7 +311,7 @@ Instead of spawning cars at edges and hoping they drive into view, the system is
 
 ### Despawning
 
-Pure distance check: each frame, if the car's XZ distance to the nearest camera exceeds `spawn_radius`, it's `queue_free()`d. No volume-based or frustum-based despawn logic. Cars drive freely through the graph and die only when they leave the outermost ring (fully hidden by fog).
+Pure distance check: the `CarManager` frees any car whose XZ distance to the nearest camera exceeds `spawn_radius` (fully fogged cars are only checked on their batched tick). No volume-based or frustum-based despawn logic. Cars drive freely through the graph and die only when they leave the outermost ring (fully hidden by fog).
 
 ### Collision avoidance — claim registry (no physics)
 
@@ -322,7 +322,7 @@ Cars carry **no Area3D and issue no physics queries**. Everything that occupies 
 | `CAR_BODY` | capsule segment through the car | every car, every frame |
 | `CAR_BROADCAST` | capsule polyline along the car's future path, length `current_speed × broadcast_distance_multiplier` | moving cars |
 | `TRAFFIC_LIGHT` | quad (the `TrafficPlane` face) | `AreaInstantiator` when a volume enters the tracking cylinder |
-| `OBSTACLE` | capsule polyline | anything (`register_obstacle()`) — cars adapt automatically |
+| `OBSTACLE` | capsule polyline | bridge slabs (see below) and anything else (`register_obstacle()`) — cars adapt automatically |
 
 **Detection**: at a distance-scaled cadence (staggered by instance id — every 2 frames inside `fog_start_distance`, 4 in the near fade ring, 8 in the far half; braking latency is invisible at fog range), a car samples its future path into a corridor polyline (spacing `ghost_spacing`, length `base_speed × ghost_distance_multiplier`, clamped) and queries the registry — segment-vs-segment / segment-vs-quad math against the few claims in nearby hash cells. Sampling uses `sample_baked` (position only); speed smoothing still runs every frame. Corridor buffers, query scratch arrays, and hit lists are reused across ticks (`publish_capsule` copies points into the claim's own buffer, so callers can pass reused arrays). A car's relevant volume ids are cached and refreshed only on segment transitions.
 
@@ -338,7 +338,25 @@ Cars carry **no Area3D and issue no physics queries**. Everything that occupies 
 
 **Timeout system** (slim): directional evaluation makes same-lane mutual blocks impossible, so the timeout only covers genuine geometric standoffs — if both cars have been stopped for `timeout_duration` and the blocker's chain (followed via `blocking_car_ref`, up to 20 deep) isn't waiting on a red light, the blocker is ignored for 5 seconds.
 
-**Debug** (`Traffic Debug` export group on `AreaInstantiator`): `TrafficDebugDrawer` renders everything from registry data into one shared `ImmediateMesh` (one draw call, near-zero cost when off) — corridors color-coded by state (cruising/following/braking/yielding/stopped), broadcast overlays, leader links, stop-point markers, optional hash-cell wireframes, car tint by state, and inspect `Label3D`s only for cars within `traffic_debug_label_distance` (30u) of a camera.
+**Debug** (`Traffic Debug` export group on `AreaInstantiator`): `TrafficDebugDrawer` renders everything from registry data into one shared `ImmediateMesh` (one draw call, near-zero cost when off) — corridors color-coded by state (cruising/following/braking/yielding/stopped/dodging), broadcast overlays, leader links, stop-point markers, optional hash-cell wireframes, car tint by state, and inspect `Label3D`s only for cars within `traffic_debug_label_distance` (30u) of a camera.
+
+### Bridge obstacle claims
+
+Bridges physically block streets, so cars must see them. Each `AreaInstantiator` acquires the refcounted `"bridges"` static group on the registry (same once-only pattern as traffic lights); the first one builds it: every bridge's middle slab (base bottom → railing top, full span) plus its two arc sections (when the archetype has arcs) is tiled into **capsule-chain `OBSTACLE` claims** running across the street (`bridge_claim_radius` export controls tiling granularity, `enable_bridge_claims` toggles it). The height/extent math mirrors the renderer (`city.gd _draw_bridge`). Cars brake for these claims like any obstacle, spawn checks reject positions inside bridges, and the dodge system routes over or under them. Fully fogged cars skip avoidance and can clip bridges — invisible by construction.
+
+### Dodging — bezier weave (overtakes + bridges)
+
+Cars can leave their ideal path to weave around blockers, then return to it. Mechanism and policy are split:
+
+**Mechanism** (`PathController` offset envelope): the base curve is never modified. An active dodge adds `dodge_dir × magnitude × envelope(progress)` to the sampled position, where the envelope is a smoothstep ease-out → hold → ease-in over arc distance. The hold is **open-ended** (`dodge_merge_arc = INF`) until the policy requests the merge. The car's basis is rebuilt from the offset path's tangent (base tangent + closed-form envelope slope), so cars **pitch into vertical dodges and yaw into lateral ones** structurally (roll/banking intentionally not implemented yet). Envelope arcs live in progress space and shift with segment transitions; corridors sample `sample_dodged()`, so detection, broadcasts, and claims all follow the trajectory actually flown. Fresh paths and fogging cancel the dodge.
+
+**Policy** (`CollisionAvoidance` DODGE section): two triggers —
+- **Obstacle (bridges)**: nearest constraint is an `OBSTACLE` claim → probe **vertical** offsets (over/under, most-headroom side first) immediately.
+- **Overtake**: stuck ≥ `overtake_patience` behind a leader below `overtake_speed_ratio × base_speed` (and ≥ 1 u/s slower) → probe **lateral** offsets (then above as fallback). A relative-speed estimate is only a go/no-go filter (pass must fit the remaining path and `DODGE_MAX_HOLD`); it never schedules the exit.
+
+**Probes**: each candidate (direction × escalating magnitude tier) builds a hypothetical offset corridor via the same static envelope math and queries the registry once. Lights are ignored (they span the lane — dodging never escapes them; the live corridor still stops for them), cars behind never reject, anything else does. Magnitudes are bounded by the lane volume's **boundary headroom** at the car's grid position, so dodges never leave the street canyon into buildings (which have no claims). Probe rounds are rate-limited (`DODGE_PROBE_COOLDOWN`).
+
+**Condition-based exit**: while holding, every `MERGE_CHECK_INTERVAL` the car probes the corridor "as if I merged starting now" — clear means whatever it was dodging is behind or gone, and the ease-in is committed. This self-corrects against leaders that brake, accelerate, or turn (no duration prediction). If an overtake holds longer than `DODGE_MAX_HOLD` without a clear merge, the car drifts back below the leader's speed and merges behind it once clear. Cars keep their **logical grid cell** during a dodge, so continuation selection is unaffected.
 
 ### Online sync design note
 
@@ -449,8 +467,8 @@ A bridge has two distinct placement systems (see "Object placement — two syste
 
 | Part | Color (debug) | Width | Height | Depth | Condition |
 |---|---|---|---|---|---|
-| Base extreme | Grey | `total_width` cells | `base_height` cells | `facade_offset` cells (18) | Always |
-| Arc extreme | Red | = base | `arc_height` cells | `facade_offset` cells (18) | Only if `arc_height > 0` |
+| Base extreme | Grey | `total_width` cells | `base_height` cells | `facade_offset` cells (20) | Always |
+| Arc extreme | Red | = base | `arc_height` cells | `facade_offset` cells (20) | Only if `arc_height > 0` |
 
 2 base extremes per bridge (one per side). 2 arc extremes per bridge if the archetype has arcs. Total: 4 or 2 extremes per bridge.
 

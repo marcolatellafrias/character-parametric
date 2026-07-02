@@ -18,6 +18,7 @@ const STATE_COLORS: Dictionary = {
 	CollisionAvoidance.State.YIELDING: Color(0.9, 0.2, 0.9, 0.9),
 	CollisionAvoidance.State.STOPPED: Color(1.0, 0.1, 0.1, 0.9),
 	CollisionAvoidance.State.FOGGED: Color(0.5, 0.5, 0.5, 0.5),
+	CollisionAvoidance.State.DODGING: Color(1.0, 1.0, 0.2, 0.9),
 }
 const BROADCAST_COLOR: Color = Color(0.2, 0.4, 1.0, 0.5)
 const LINK_COLOR: Color = Color(1.0, 0.2, 0.6, 0.9)

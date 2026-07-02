@@ -18,7 +18,7 @@ enum ClaimType { CAR_BODY, CAR_BROADCAST, TRAFFIC_LIGHT, OBSTACLE }
 
 class Claim:
 	var type: int = ClaimType.OBSTACLE
-	var owner_car: Node3D = null
+	var owner_car: Object = null   # FlyingCar (a plain Object, not a node)
 	# Capsule chain shape (car bodies, broadcasts, generic obstacles)
 	var points: PackedVector3Array = PackedVector3Array()
 	var radius: float = 0.0
@@ -32,7 +32,7 @@ class Claim:
 	var stamp: int = -1
 
 ## Registered cars, iterated by the debug drawer.
-var cars: Array[Node3D] = []
+var cars: Array[FlyingCar] = []
 
 var _read_cells: Dictionary = {}
 var _write_cells: Dictionary = {}
@@ -65,16 +65,16 @@ func _process(_delta: float) -> void:
 # REGISTRATION / PUBLISHING
 # ============================================================================
 
-func register_car(car: Node3D) -> void:
+func register_car(car: FlyingCar) -> void:
 	if not cars.has(car):
 		cars.append(car)
 
-func unregister_car(car: Node3D) -> void:
+func unregister_car(car: FlyingCar) -> void:
 	cars.erase(car)
 
 ## Claims are ping-ponged so the read buffer keeps last frame's geometry
 ## untouched while this frame's is written.
-func create_claim_pair(type: int, owner_car: Node3D) -> Array:
+func create_claim_pair(type: int, owner_car: Object) -> Array:
 	var pair := []
 	for i in 2:
 		var claim := Claim.new()
@@ -120,6 +120,40 @@ func unregister_traffic_light(plane: TrafficPlane) -> void:
 		_remove_static(claim)
 		_light_claims.erase(plane)
 
+# Named, refcounted bundles of static obstacle claims (e.g. all bridge slabs).
+# Mirrors the traffic-light refcount: every instantiator acquires/releases the
+# group, only the first build and the last release touch the claims.
+var _static_groups: Dictionary = {}   # key -> {"claims": Array[Claim], "refs": int}
+
+## Returns true when the caller must build the group (first acquire) by
+## following up with publish_static_group().
+func acquire_static_group(key: String) -> bool:
+	var group = _static_groups.get(key)
+	if group:
+		group["refs"] += 1
+		return false
+	_static_groups[key] = {"claims": [], "refs": 1}
+	return true
+
+## `capsules` is an array of {"points": PackedVector3Array, "radius": float}.
+func publish_static_group(key: String, capsules: Array) -> void:
+	var group = _static_groups.get(key)
+	if group == null:
+		return
+	for capsule in capsules:
+		group["claims"].append(register_obstacle(capsule["points"], capsule["radius"]))
+
+func release_static_group(key: String) -> void:
+	var group = _static_groups.get(key)
+	if group == null:
+		return
+	group["refs"] -= 1
+	if group["refs"] > 0:
+		return
+	for claim in group["claims"]:
+		unregister_obstacle(claim)
+	_static_groups.erase(key)
+
 ## Generic static obstacle (debris, construction zone, ...). Cars adapt to it
 ## exactly like they do to other cars' bodies.
 func register_obstacle(points: PackedVector3Array, radius: float) -> Claim:
@@ -144,7 +178,7 @@ func unregister_obstacle(claim: Claim) -> void:
 ## distance along the claim's own polyline (0 for quads/static shapes).
 ## The returned array is a reused buffer, only valid until the next query.
 func query_corridor(points: PackedVector3Array, arcs: PackedFloat32Array,
-					radius: float, exclude_car: Node3D) -> Array[Dictionary]:
+					radius: float, exclude_car: Object) -> Array[Dictionary]:
 	var hits := _scratch_hits
 	hits.clear()
 	if points.size() < 2:

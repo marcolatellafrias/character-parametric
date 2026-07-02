@@ -1,34 +1,47 @@
-extends Node3D
+# FlyingCar.gd — a car is a plain simulation object, not a scene node.
+# CarManager ticks the whole fleet in one loop (no per-node _process) and
+# attaches a pooled MeshInstance3D visual only while the car is inside the fog
+# wall. A fully fogged car is pure data — curve progress, speed, claims — with
+# no node, no mesh and no transform propagation.
+extends Object
 class_name FlyingCar
 
 signal volume_changed(old_volume_id: String, new_volume_id: String)
+signal despawned
 
-@export var width: float = 2.0
-@export var height: float = 1.0
-@export var depth: float = 4.0
-@export var car_color: Color = Color(1.0, 0.0, 0.0, 1.0)
-@export var speed: float = 10.0
-@export var spawn_time: float = 0.0
-@export var seed: int = 0
-@export var car_archetype: CarArchetypes.Type = CarArchetypes.Type.POOR_CAR
+var width: float = 2.0
+var height: float = 1.0
+var depth: float = 4.0
+var car_color: Color = Color(1.0, 0.0, 0.0, 1.0)
+var speed: float = 10.0
+var spawn_time: float = 0.0
+var seed: int = 0
+var car_archetype: CarArchetypes.Type = CarArchetypes.Type.POOR_CAR
 
-@export_group("Path Debug")
-@export var show_path_debug: bool = false
-@export var path_debug_color: Color = Color(1.0, 1.0, 0.0, 1.0)
-@export var path_debug_width: float = 0.05
-@export var path_debug_segments: int = 30
+# Path debug
+var show_path_debug: bool = false
+var path_debug_color: Color = Color(1.0, 1.0, 0.0, 1.0)
+var path_debug_width: float = 0.05
+var path_debug_segments: int = 30
 
-@export_group("Collision Avoidance")
-@export var enable_collision_avoidance: bool = true
-@export var ghost_distance_multiplier: float = 2.0
-@export var ghost_spacing: float = 3.0
-@export var broadcast_distance_multiplier: float = 2.0
-@export var min_safe_distance: float = 5.0
-@export var comfortable_deceleration: float = 10.0
-@export var max_deceleration: float = 15.0
-@export var max_acceleration: float = 8.0
-@export var timeout_enabled: bool = true
-@export var timeout_duration: float = 3.0
+# Collision avoidance config
+var enable_collision_avoidance: bool = true
+var ghost_distance_multiplier: float = 2.0
+var ghost_spacing: float = 3.0
+var broadcast_distance_multiplier: float = 2.0
+var min_safe_distance: float = 5.0
+var comfortable_deceleration: float = 10.0
+var max_deceleration: float = 15.0
+var max_acceleration: float = 8.0
+var timeout_enabled: bool = true
+var timeout_duration: float = 3.0
+
+# Dodge/overtake config (see CollisionAvoidance DODGE section)
+var enable_dodge: bool = true
+var overtake_speed_ratio: float = 0.75
+var overtake_patience: float = 1.2
+var dodge_clearance: float = 1.5
+var dodge_ramp_time: float = 1.0
 
 # Fogged cars tick at this fraction of the frame rate; motion is analytic so
 # batching the accumulated delta is exact, not an approximation.
@@ -41,7 +54,19 @@ const DECISION_INTERVAL_FAR: int = 8
 
 var is_blocked_by_traffic_plane: bool = false
 
-var mesh_instance: MeshInstance3D
+# World-space pose, sampled from the path. Exposed under the Node3D property
+# names it replaces so readers (avoidance, debug drawer) are unchanged.
+var sim_transform: Transform3D = Transform3D.IDENTITY
+var global_transform: Transform3D:
+	get: return sim_transform
+	set(value): sim_transform = value
+var global_position: Vector3:
+	get: return sim_transform.origin
+
+## Pooled visual, owned and attached/detached by CarManager. Null while fogged.
+var visual: MeshInstance3D = null
+## Set by path end; CarManager frees the car after the tick.
+var pending_despawn: bool = false
 
 var path_controller: PathController
 var collision_avoidance: CollisionAvoidance
@@ -59,7 +84,6 @@ var area_instantiator = null
 var rng: RandomNumberGenerator
 
 var car_id: String = ""
-var _frame: int = 0
 var _stagger: int = 0
 var _move_accum: float = 0.0
 var _ca_accum: float = 0.0
@@ -74,11 +98,10 @@ var _tint_material: StandardMaterial3D = null
 # so the renderer sees a handful of resources instead of one per car.
 static var _shared_meshes: Dictionary = {}
 
-func _ready() -> void:
+## Called once by the spawner after configuration (replaces Node._ready).
+func setup() -> void:
 	car_id = _generate_car_id()
 	_stagger = int(get_instance_id() % 4096)
-
-	_create_visual()
 
 	path_controller = PathController.new()
 	path_controller.initialize(self, world_node)
@@ -101,6 +124,11 @@ func _ready() -> void:
 	collision_avoidance.max_acceleration = max_acceleration
 	collision_avoidance.timeout_enabled = timeout_enabled
 	collision_avoidance.timeout_duration = timeout_duration
+	collision_avoidance.enable_dodge = enable_dodge
+	collision_avoidance.overtake_speed_ratio = overtake_speed_ratio
+	collision_avoidance.overtake_patience = overtake_patience
+	collision_avoidance.dodge_clearance = dodge_clearance
+	collision_avoidance.dodge_ramp_time = dodge_ramp_time
 
 	rng = RandomNumberGenerator.new()
 	rng.seed = seed
@@ -110,38 +138,23 @@ func _ready() -> void:
 		_body_claims = claim_registry.create_claim_pair(TrafficClaimRegistry.ClaimType.CAR_BODY, self)
 		_broadcast_claims = claim_registry.create_claim_pair(TrafficClaimRegistry.ClaimType.CAR_BROADCAST, self)
 
-func _process(delta: float) -> void:
-	var effective_delta = delta
+## True when this fully fogged car batches this frame's work into a later tick.
+func is_fog_skip_frame(frame: int) -> bool:
+	return _is_fogged and (frame + _stagger) % FOG_TICK_INTERVAL != 0
 
-	if DebugController.is_paused:
-		effective_delta = DebugController.frame_delta
-		if effective_delta == 0.0:
-			return
+## Skipped fogged frame: accumulate time and republish the body claim from the
+## last transform, because the registry's double buffer clears every frame.
+func tick_skipped(delta: float) -> void:
+	_move_accum += delta
+	_publish_claims()
 
-	_frame += 1
-	_move_accum += effective_delta
-
-	# Fully fogged cars only do real work every FOG_TICK_INTERVAL frames. The
-	# body claim is still republished from the last transform because the
-	# registry's double buffer clears every frame.
-	if _is_fogged and (_frame + _stagger) % FOG_TICK_INTERVAL != 0:
-		_publish_claims()
-		return
-
+## Full simulation step; `dist` is the XZ distance to the nearest camera.
+func tick(delta: float, dist: float, frame: int) -> void:
+	_move_accum += delta
 	var move_delta := _move_accum
 	_move_accum = 0.0
 
-	var dist: float = area_instantiator.get_min_camera_distance_xz(global_position) if area_instantiator else 0.0
-
-	if dist > WorldSettings.spawn_radius:
-		queue_free()
-		return
-
-	# Beyond the fog wall the mesh is invisible anyway; skip drawing it.
 	_is_fogged = dist >= WorldSettings.render_distance
-	var should_render := not _is_fogged
-	if mesh_instance and mesh_instance.visible != should_render:
-		mesh_instance.visible = should_render
 
 	_ca_accum += move_delta
 	if _is_fogged:
@@ -155,7 +168,7 @@ func _process(delta: float) -> void:
 		if dist >= WorldSettings.fog_start_distance:
 			var mid: float = (WorldSettings.fog_start_distance + WorldSettings.render_distance) * 0.5
 			interval = DECISION_INTERVAL_MID if dist < mid else DECISION_INTERVAL_FAR
-		if (_frame + _stagger) % interval == 0:
+		if (frame + _stagger) % interval == 0:
 			collision_avoidance.rebuild_corridor()
 			collision_avoidance.update_target(_ca_accum)
 			_ca_accum = 0.0
@@ -164,7 +177,7 @@ func _process(delta: float) -> void:
 	if should_move:
 		path_controller.advance(move_delta, collision_avoidance.current_speed)
 
-	global_transform = path_controller.get_current_transform()
+	sim_transform = path_controller.get_current_transform()
 
 	_publish_claims()
 
@@ -173,9 +186,9 @@ func _publish_claims() -> void:
 		return
 	# Body claim: one segment through the car along its facing axis
 	# (symmetric, so the sign of the basis axis does not matter).
-	var half: Vector3 = global_transform.basis.z * (depth * 0.5)
-	_body_points[0] = global_position - half
-	_body_points[1] = global_position + half
+	var half: Vector3 = sim_transform.basis.z * (depth * 0.5)
+	_body_points[0] = sim_transform.origin - half
+	_body_points[1] = sim_transform.origin + half
 	claim_registry.publish_capsule(_body_claims, _body_points,
 		collision_avoidance.car_radius)
 
@@ -186,7 +199,10 @@ func _publish_claims() -> void:
 		claim_registry.publish_capsule(_broadcast_claims, broadcast_points,
 			collision_avoidance.car_radius)
 
-func _exit_tree() -> void:
+## Tear-down before free() (replaces Node._exit_tree). Emits `despawned` while
+## the object is still alive so listeners can read its fields.
+func dispose() -> void:
+	despawned.emit()
 	if claim_registry:
 		claim_registry.unregister_car(self)
 	path_controller.cleanup()
@@ -208,6 +224,10 @@ func get_debug_info() -> String:
 		text += "\nred light"
 		if ca.stop_gap != INF:
 			text += "  gap %.1f" % ca.stop_gap
+	if path_controller.dodge_active:
+		var reason = CollisionAvoidance.DodgeReason.keys()[ca.dodge_reason]
+		var phase = "merging" if path_controller.dodge_merge_arc != INF else "holding"
+		text += "\ndodge %s %s  off %.1f" % [reason, phase, path_controller.dodge_magnitude]
 	return text
 
 func initialize_from_seed(p_seed: int, archetype_weights: Dictionary = {}) -> void:
@@ -246,7 +266,7 @@ func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0,
 
 	# Snap to the path immediately and claim the space, so spawn checks made
 	# later in this same tick already see this car.
-	global_transform = path_controller.get_current_transform()
+	sim_transform = path_controller.get_current_transform()
 	_publish_claims()
 
 func _on_segment_transition(old_volume_id: String, new_volume_id: String) -> void:
@@ -266,12 +286,25 @@ func _on_segment_transition(old_volume_id: String, new_volume_id: String) -> voi
 	_update_relevant_volume_ids()
 
 func _on_path_ended() -> void:
-	queue_free()
+	pending_despawn = true
 
-func _create_visual() -> void:
-	mesh_instance = MeshInstance3D.new()
-	mesh_instance.mesh = _get_shared_box_mesh(width, height, depth, car_color)
-	add_child(mesh_instance)
+# ============================================================================
+# VISUAL (pooled MeshInstance3D, managed by CarManager)
+# ============================================================================
+
+## The archetype's shared mesh, assigned by CarManager when a visual attaches.
+func get_shared_mesh() -> BoxMesh:
+	return _get_shared_box_mesh(width, height, depth, car_color)
+
+## Hand the pooled visual back to the manager, stripping per-car state.
+func detach_visual() -> MeshInstance3D:
+	var mi := visual
+	visual = null
+	_tint_material = null
+	if mi:
+		mi.material_override = null
+		mi.visible = false
+	return mi
 
 static func _get_shared_box_mesh(w: float, h: float, d: float, color: Color) -> BoxMesh:
 	var key := "%.2f_%.2f_%.2f_%s" % [w, h, d, color.to_html()]
@@ -286,21 +319,22 @@ static func _get_shared_box_mesh(w: float, h: float, d: float, color: Color) -> 
 	return box
 
 ## Debug-only per-car tint: lazily overrides the shared material so tinting
-## one car never recolors its whole archetype.
+## one car never recolors its whole archetype. No-op while the car has no
+## visual (fogged) — the drawer re-tints every frame anyway.
 func set_debug_tint(color: Color) -> void:
-	if mesh_instance == null:
+	if visual == null:
 		return
 	if _tint_material == null:
 		_tint_material = StandardMaterial3D.new()
-		mesh_instance.material_override = _tint_material
+		visual.material_override = _tint_material
 	_tint_material.albedo_color = color
 
 func clear_debug_tint() -> void:
 	if _tint_material == null:
 		return
 	_tint_material = null
-	if mesh_instance and is_instance_valid(mesh_instance):
-		mesh_instance.material_override = null
+	if visual and is_instance_valid(visual):
+		visual.material_override = null
 
 ## Cached: only changes on set_path / segment transitions, and the avoidance
 ## decision step reads it every tick.
