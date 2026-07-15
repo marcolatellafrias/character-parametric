@@ -878,6 +878,19 @@ func get_lane_volume_area(face_idx: int, edge_idx: int) -> LaneVolume:
 	var key = "%d_%d" % [face_idx, edge_idx]
 	return lane_volume_areas.get(key, null)
 
+## Bridges spanning the street a lane volume runs along (empty when none).
+## Lane volumes are keyed by (face, edge index in face); bridges by the
+## underlying graph edge, which both adjacent faces share.
+func get_bridges_for_lane(face_idx: int, edge_idx: int) -> Array:
+	if face_idx < 0 or face_idx >= plain_graph.faces.size():
+		return []
+	var face = plain_graph.faces[face_idx]
+	if edge_idx < 0 or edge_idx >= face.size():
+		return []
+	var node1 = face[edge_idx]
+	var node2 = face[(edge_idx + 1) % face.size()]
+	return bridges.get(GraphGenerator._get_edge_key(node1, node2), [])
+
 func _generate_lane_volume_areas() -> void:
 	lane_volume_areas.clear()
 	var total_areas = 0

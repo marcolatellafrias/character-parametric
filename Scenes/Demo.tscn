@@ -205,7 +205,7 @@ master_seed = 10
 script = ExtResource("9_oilx1")
 region_size = Vector2(900, 900)
 min_distance = 117.325
-generation_seed = 1234
+generation_seed = 12345
 show_streets = false
 show_distorted_grid = false
 show_buildings = true
@@ -217,7 +217,7 @@ script = ExtResource("10_4i7ud")
 fly_sprint_speed = 40.0
 
 [node name="Camera3D" type="Camera3D" parent="CharacterBody3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.32296515, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.13701487, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CharacterBody3D"]
 shape = SubResource("CapsuleShape3D_4i7ud")
@@ -227,5 +227,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -3.8859253, 0)
 script = ExtResource("12_k27g2")
 cameras = [NodePath("../Camera3D")]
 world = NodePath("../..")
+car_unstuck_enabled = false
 fog_shader = ExtResource("11_h3puh")
 show_traffic_debug = true

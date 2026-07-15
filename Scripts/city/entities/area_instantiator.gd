@@ -36,15 +36,6 @@ class_name AreaInstantiator
 @export_range(0.0, 1.0) var far_density_fraction: float = 0.3
 @export_range(1.0, 8.0) var spawn_height_bias: float = 2.5
 @export_flags_3d_physics var los_collision_mask: int = 1
-
-@export_group("Bridge Obstacles")
-## Publish every bridge's middle slab (and arcs) as static obstacle claims so
-## cars detect and dodge them like any other traffic obstacle.
-@export var enable_bridge_claims: bool = true
-## Target capsule radius for tiling bridge slabs. Smaller = tighter fit, more
-## claims per bridge.
-@export var bridge_claim_radius: float = 1.5
-
 @export_group("Fog")
 @export var enable_fog: bool = true
 @export var fog_shader: Shader
@@ -91,7 +82,6 @@ func _ready() -> void:
 	_setup_claim_registry()
 	_setup_car_manager()
 	_register_all_traffic_lights()
-	_register_all_bridges()
 	_create_cylinder_areas()
 	_setup_visualization_containers()
 	_setup_fog()
@@ -221,8 +211,6 @@ func _setup_visualization_containers() -> void:
 func _cleanup_containers() -> void:
 	if claim_registry and is_instance_valid(claim_registry):
 		_unregister_all_traffic_lights()
-		if enable_bridge_claims:
-			claim_registry.release_static_group("bridges")
 
 	if lane_volumes_container and is_instance_valid(lane_volumes_container):
 		lane_volumes_container.queue_free()
@@ -343,103 +331,6 @@ func _unregister_all_traffic_lights() -> void:
 			claim_registry.unregister_traffic_light(vol.get_traffic_plane())
 
 # ============================================================================
-# BRIDGE OBSTACLE CLAIMS
-# ============================================================================
-
-# Bridges are static world state, like traffic lights: published once into the
-# registry (refcounted across instantiators). Each bridge's middle slab and arc
-# sections become capsule-chain obstacle claims spanning the street, so cars
-# brake for them and the dodge logic routes over or under them.
-func _register_all_bridges() -> void:
-	if not enable_bridge_claims or claim_registry == null or generator == null:
-		return
-	if not claim_registry.acquire_static_group("bridges"):
-		return
-	var capsules: Array = []
-	for edge_key in generator.bridges:
-		for placed in generator.bridges[edge_key]:
-			_append_bridge_capsules(placed, capsules)
-	claim_registry.publish_static_group("bridges", capsules)
-
-# Mirrors the height/extent math of the bridge renderer (city.gd _draw_bridge):
-# one box from the base bottom to the railing top across the full span, plus
-# the two arc boxes near the ends when the archetype has arcs.
-func _append_bridge_capsules(placed: Dictionary, out: Array) -> void:
-	var bridge: Bridge = placed["bridge"]
-	var cell_height: float = placed["cell_height"]
-	var facade_building_cells: int = placed["facade_building_cells"]
-	var c_a1: Vector2 = placed["c_a1"]
-	var c_a2: Vector2 = placed["c_a2"]
-	var c_b1: Vector2 = placed["c_b1"]
-	var c_b2: Vector2 = placed["c_b2"]
-
-	var t_start = float(placed["cell_start"]) / facade_building_cells
-	var t_end = float(placed["cell_end"] + 1) / facade_building_cells
-
-	var by_base = placed["floor_idx"] * placed["cells_per_floor"] - bridge.base_height
-	var h_base_bot = by_base * cell_height
-	var h_rail_top = h_base_bot + (bridge.base_height + bridge.pathway_height
-			+ bridge.railing_height) * cell_height
-
-	var plane_a = _claim_plane(c_a1, c_a2, t_start, t_end, h_base_bot, h_rail_top)
-	var plane_b = _claim_plane(c_b1, c_b2, t_start, t_end, h_base_bot, h_rail_top)
-	_append_capsules_between_planes(plane_a, plane_b, out)
-
-	if bridge.arc_height > 0 and bridge.arc_length > 0:
-		var h_arc_bot = h_base_bot - bridge.arc_height * cell_height
-		var arc_a = _claim_plane(c_a1, c_a2, t_start, t_end, h_arc_bot, h_base_bot)
-		var arc_b = _claim_plane(c_b1, c_b2, t_start, t_end, h_arc_bot, h_base_bot)
-		var span = arc_a[0].distance_to(arc_b[0])
-		var arc_frac = clampf(bridge.arc_length * cell_height / span, 0.0, 0.45) if span > 0.0 else 0.0
-		var near_plane: Array[Vector3] = []
-		var far_plane: Array[Vector3] = []
-		for i in range(4):
-			near_plane.append(arc_a[i].lerp(arc_b[i], arc_frac))
-			far_plane.append(arc_a[i].lerp(arc_b[i], 1.0 - arc_frac))
-		_append_capsules_between_planes(arc_a, near_plane, out)
-		_append_capsules_between_planes(far_plane, arc_b, out)
-
-# Same vertex layout as city.gd _bridge_plane: [bottom-start, bottom-end,
-# top-end, top-start] along the c1->c2 (street) direction.
-static func _claim_plane(c1: Vector2, c2: Vector2, t_start: float, t_end: float,
-		h_bottom: float, h_top: float) -> Array[Vector3]:
-	var p_s = c1.lerp(c2, t_start)
-	var p_e = c1.lerp(c2, t_end)
-	return [
-		Vector3(p_s.x, h_bottom, p_s.y),
-		Vector3(p_e.x, h_bottom, p_e.y),
-		Vector3(p_e.x, h_top,    p_e.y),
-		Vector3(p_s.x, h_top,    p_s.y),
-	]
-
-# Tile the box between two facade planes with capsules running across the
-# street (plane A -> plane B), laid out in a grid over the cross-section. The
-# grid is sized so neighbouring capsules touch; the car's own radius closes
-# the remaining diagonal gaps in corridor tests.
-func _append_capsules_between_planes(plane_a: Array, plane_b: Array, out: Array) -> void:
-	var w = (plane_a[0].distance_to(plane_a[1]) + plane_a[3].distance_to(plane_a[2])) * 0.5
-	var h = (plane_a[0].distance_to(plane_a[3]) + plane_a[1].distance_to(plane_a[2])) * 0.5
-	var cols = maxi(1, ceili(w / (bridge_claim_radius * 2.0)))
-	var rows = maxi(1, ceili(h / (bridge_claim_radius * 2.0)))
-	var radius = maxf(w / cols, h / rows) * 0.5
-	for i in range(cols):
-		for j in range(rows):
-			var u = (i + 0.5) / cols
-			var v = (j + 0.5) / rows
-			out.append({
-				"points": PackedVector3Array([
-					_bilinear(plane_a, u, v),
-					_bilinear(plane_b, u, v)
-				]),
-				"radius": radius
-			})
-
-static func _bilinear(plane: Array, u: float, v: float) -> Vector3:
-	var bottom: Vector3 = plane[0].lerp(plane[1], u)
-	var top: Vector3 = plane[3].lerp(plane[2], u)
-	return bottom.lerp(top, v)
-
-# ============================================================================
 # DISTANCE HELPERS
 # ============================================================================
 
@@ -553,7 +444,9 @@ func _try_spawn_in_volume(vol: LaneVolume, check_visibility: bool) -> bool:
 
 	var v_max = vol.get_max_spawn_v()
 	var v_min = archetype.min_spawn_v
-	var body_radius = Vector2(archetype.width, archetype.height).length() * 0.5
+	# Match the runtime claim radius (FlyingCar.SIDE_PADDING) so the spawn gap
+	# check reserves the same side padding.
+	var body_radius = Vector2(archetype.width, archetype.height).length() * 0.5 + FlyingCar.SIDE_PADDING
 
 	# along_t is re-rolled per attempt so a partially visible street can
 	# still spawn in its hidden sections.
@@ -568,7 +461,10 @@ func _try_spawn_in_volume(vol: LaneVolume, check_visibility: bool) -> bool:
 		var end_pos = vol.get_point_at_grid(random_u, random_v, false)
 		var spawn_pos = start_pos.lerp(end_pos, along_t)
 
-		var front_face = FlyingCar.compute_cross_section_face(spawn_pos, end_pos, archetype.width, archetype.height)
+		# Widen by the side padding so the spawn position leaves the padded claim
+		# inside the lane (same reservation the route walk applies downstream).
+		var front_face = FlyingCar.compute_cross_section_face(spawn_pos, end_pos,
+			archetype.width + 2.0 * FlyingCar.SIDE_PADDING, archetype.height)
 		var validation = vol.validate_face_projection(front_face, random_u, random_v)
 
 		if not validation["valid"]:
@@ -576,6 +472,11 @@ func _try_spawn_in_volume(vol: LaneVolume, check_visibility: bool) -> bool:
 
 		var direction = (end_pos - spawn_pos).normalized()
 		if not _is_spawn_position_free(spawn_pos, direction, archetype.depth, body_radius):
+			continue
+
+		# Bridges have no registry claims (cars clear them via their planned
+		# profile), so reject in-slab spawns analytically instead.
+		if _is_spawn_inside_bridge(vol, spawn_pos, direction, archetype):
 			continue
 
 		# Test the car's top — the last part a building stops occluding.
@@ -640,14 +541,41 @@ func _spawn_car(vol: LaneVolume, grid_u: float, grid_v: float,
 
 	car_manager.add_car(car)
 
-# Gap query against the claim registry (car bodies, broadcasts, obstacles)
-# instead of iterating every child of the world node.
+# Gap query against the claim registry (car bodies) instead of iterating
+# every child of the world node.
 func _is_spawn_position_free(spawn_pos: Vector3, direction: Vector3,
 							 car_depth: float, body_radius: float) -> bool:
 	if claim_registry == null:
 		return true
 	var half = direction * (car_depth * 0.5 + spawn_safety_margin)
 	return claim_registry.is_capsule_free(spawn_pos - half, spawn_pos + half, body_radius)
+
+# Exact skewed-box test (BridgePlanner) on the body plus a DENSE forward sweep
+# to the gentle-climb runway (SPAWN_BRIDGE_RUNWAY): a car whose spawn altitude
+# would meet a bridge within that distance can't ramp over it gently, so it
+# spawns elsewhere. A car that TURNS into a bridged street mid-route climbs
+# early on the previous street — but a spawn has no previous street, so this is
+# where runway starvation must be caught. The old check sampled only 17/34/50u
+# and slipped bridges through the gaps (the residual undershoot clips).
+const SPAWN_BRIDGE_RUNWAY: float = 50.0   # = BridgePlanner MAX_RAMP
+const SPAWN_BRIDGE_STEP: float = 4.0
+func _is_spawn_inside_bridge(vol: LaneVolume, spawn_pos: Vector3,
+							 direction: Vector3, archetype) -> bool:
+	if generator == null:
+		return false
+	var v_margin: float = archetype.height * 0.5 + spawn_safety_margin
+	var xz_margin: float = archetype.width * 0.5
+	var half = direction * (archetype.depth * 0.5 + spawn_safety_margin)
+	if BridgePlanner.point_blocked(generator, vol.face_idx, vol.edge_idx,
+			spawn_pos - half, v_margin, xz_margin):
+		return true
+	var d := 0.0
+	while d <= SPAWN_BRIDGE_RUNWAY:
+		if BridgePlanner.point_blocked(generator, vol.face_idx, vol.edge_idx,
+				spawn_pos + direction * d, v_margin, xz_margin):
+			return true
+		d += SPAWN_BRIDGE_STEP
+	return false
 
 # ============================================================================
 # BOOKKEEPING

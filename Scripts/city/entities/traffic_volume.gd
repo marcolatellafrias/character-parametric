@@ -5,7 +5,23 @@ var lane_volume: LaneVolume
 var traffic_index: int = -1
 var collision_shape: CollisionShape3D
 var adjusted_end_vertices: Array = []  # NUEVO: Vértices ajustados a block_height
-var is_blocking: bool = false  # true = semáforo en rojo (leído por TrafficClaimRegistry)
+
+# Global light phase — ONE source of truth (two scalars; trivially synced in
+# multiplayer). `is_blocking` DERIVES from it on read, so a plane holds no
+# per-plane light state that can go stale: the frozen-red-light class of bugs
+# (the same ~20 lanes stuck red run after run, gridlocking their nodes) is
+# impossible by construction.
+static var global_active_index: int = 0
+static var global_yellow_phase: bool = false
+
+## true = semáforo en rojo (leído por TrafficClaimRegistry). During the yellow
+## phase the green direction blocks too, so cars that can brake stop before the
+## cross direction receives green.
+var is_blocking: bool:
+	get:
+		if traffic_index == -1:
+			return false
+		return global_yellow_phase if traffic_index == global_active_index else true
 
 const THICKNESS: float = 0.5
 
@@ -67,20 +83,6 @@ func setup_collision() -> void:
 	
 	if collision_shape:
 		add_child(collision_shape)
-
-# Fase amarilla: la dirección en verde también bloquea, así los autos que
-# pueden frenar se detienen antes de que la transversal reciba verde.
-func update_layer_for_active_index(active_index: int, yellow_phase: bool = false) -> void:
-	if traffic_index == -1:
-		collision_layer = 0
-		is_blocking = false
-		return
-
-	if traffic_index == active_index:
-		is_blocking = yellow_phase
-	else:
-		is_blocking = true
-	collision_layer = 2 if is_blocking else 0
 
 func get_end_vertices() -> Array:
 	# Retornar vértices ajustados si existen, sino los originales

@@ -10,15 +10,39 @@ class_name CarManager
 # Visuals are released a margin past the fog wall (where they are invisible
 # anyway) so a car oscillating on the boundary doesn't churn the pool.
 const VISUAL_RELEASE_MARGIN: float = 10.0
+# Diagnostics cadence (frames). Deadlocks persist for seconds → coarse scan;
+# clips are transient (a car passes through in ~1s) → finer scan.
+const STUCK_SCAN_INTERVAL: int = 15
+const CLIP_SCAN_INTERVAL: int = 5
+const DISC_SCAN_INTERVAL: int = 2    # short: a long gap would hide a teleport in normal motion
+const HEALTH_SCAN_INTERVAL: int = 60 # heartbeat samples itself every 10s anyway
+const LIGHT_SCAN_INTERVAL: int = 30
+
+## Diagnostic reports, one file each in the project root, overwritten per run:
+## stuck_report.md (permanently stuck roots), clip_report.md (car/bridge
+## clips), discontinuity_report.md (teleports/snaps), traffic_health.md
+## (flow heartbeat), light_watchdog.md (lights that stop cycling).
+@export var record_diagnostics: bool = true
 
 var cars: Array[FlyingCar] = []
 
 var _frame: int = 0
 var _camera_xz: PackedVector2Array = PackedVector2Array()
 var _visual_pool: Array[MeshInstance3D] = []
+var _stuck_reporter: StuckReporter = null
+var _clip_reporter: ClipReporter = null
+var _disc_reporter: DiscontinuityReporter = null
+var _health: TrafficHealth = null
+var _light_watchdog: LightWatchdog = null
 
 func _ready() -> void:
 	add_to_group("car_manager")
+	if record_diagnostics:
+		_stuck_reporter = StuckReporter.new()
+		_clip_reporter = ClipReporter.new()
+		_disc_reporter = DiscontinuityReporter.new()
+		_health = TrafficHealth.new()
+		_light_watchdog = LightWatchdog.new()
 
 func _process(delta: float) -> void:
 	var effective_delta := delta
@@ -34,14 +58,6 @@ func _process(delta: float) -> void:
 	while i < cars.size():
 		var car := cars[i]
 
-		# Fully fogged cars batch their work; on skipped frames they only
-		# accumulate time and republish their body claim — no distance math,
-		# no path advance, no transform.
-		if car.is_fog_skip_frame(_frame):
-			car.tick_skipped(effective_delta)
-			i += 1
-			continue
-
 		var dist := _min_camera_distance_xz(car.sim_transform.origin)
 		if dist > WorldSettings.spawn_radius:
 			_despawn_at(i)
@@ -54,6 +70,17 @@ func _process(delta: float) -> void:
 
 		_update_visual(car, dist)
 		i += 1
+
+	if _stuck_reporter != null and _frame % STUCK_SCAN_INTERVAL == 0:
+		_stuck_reporter.consider(cars)
+	if _clip_reporter != null and _frame % CLIP_SCAN_INTERVAL == 0:
+		_clip_reporter.consider(cars)
+	if _disc_reporter != null and _frame % DISC_SCAN_INTERVAL == 0:
+		_disc_reporter.consider(cars)
+	if _health != null and _frame % HEALTH_SCAN_INTERVAL == 0:
+		_health.consider(cars)
+	if _light_watchdog != null and _frame % LIGHT_SCAN_INTERVAL == 0:
+		_light_watchdog.consider(get_tree().get_nodes_in_group("traffic_planes"))
 
 func _exit_tree() -> void:
 	for car in cars:
@@ -74,6 +101,8 @@ func add_car(car: FlyingCar) -> void:
 # the registry's completed read buffer from the previous frame.
 func _despawn_at(index: int) -> void:
 	var car := cars[index]
+	if _health != null and car.pending_despawn:
+		_health.completed_routes += 1   # finished its route (vs. distance-culled)
 	cars[index] = cars[cars.size() - 1]
 	cars.pop_back()
 	if car.visual:

@@ -1,6 +1,6 @@
 # TrafficClaimRegistry.gd
 # Mathematical replacement for the physics-based car detection system.
-# Anything that occupies traffic space (car bodies, broadcast corridors,
+# Anything that occupies traffic space (car bodies, broadcast claims,
 # traffic lights, future generic obstacles) publishes a Claim into a spatial
 # hash. Cars query their future-path corridor against the hash with pure
 # segment math — no Area3D, no PhysicsShapeQueryParameters3D.
@@ -44,6 +44,7 @@ var _parity: int = 0
 # Query scratch buffers, reused across calls (single-threaded access).
 var _scratch_candidates: Array[Claim] = []
 var _scratch_hits: Array[Dictionary] = []
+var _neighbor_buffer: Array = []
 
 func _ready() -> void:
 	add_to_group("traffic_claim_registry")
@@ -120,53 +121,6 @@ func unregister_traffic_light(plane: TrafficPlane) -> void:
 		_remove_static(claim)
 		_light_claims.erase(plane)
 
-# Named, refcounted bundles of static obstacle claims (e.g. all bridge slabs).
-# Mirrors the traffic-light refcount: every instantiator acquires/releases the
-# group, only the first build and the last release touch the claims.
-var _static_groups: Dictionary = {}   # key -> {"claims": Array[Claim], "refs": int}
-
-## Returns true when the caller must build the group (first acquire) by
-## following up with publish_static_group().
-func acquire_static_group(key: String) -> bool:
-	var group = _static_groups.get(key)
-	if group:
-		group["refs"] += 1
-		return false
-	_static_groups[key] = {"claims": [], "refs": 1}
-	return true
-
-## `capsules` is an array of {"points": PackedVector3Array, "radius": float}.
-func publish_static_group(key: String, capsules: Array) -> void:
-	var group = _static_groups.get(key)
-	if group == null:
-		return
-	for capsule in capsules:
-		group["claims"].append(register_obstacle(capsule["points"], capsule["radius"]))
-
-func release_static_group(key: String) -> void:
-	var group = _static_groups.get(key)
-	if group == null:
-		return
-	group["refs"] -= 1
-	if group["refs"] > 0:
-		return
-	for claim in group["claims"]:
-		unregister_obstacle(claim)
-	_static_groups.erase(key)
-
-## Generic static obstacle (debris, construction zone, ...). Cars adapt to it
-## exactly like they do to other cars' bodies.
-func register_obstacle(points: PackedVector3Array, radius: float) -> Claim:
-	var claim := Claim.new()
-	claim.type = ClaimType.OBSTACLE
-	claim.points = points
-	claim.radius = radius
-	_insert(_static_cells, claim, _capsule_aabb(points, radius), true)
-	return claim
-
-func unregister_obstacle(claim: Claim) -> void:
-	_remove_static(claim)
-
 # ============================================================================
 # QUERIES
 # ============================================================================
@@ -201,6 +155,32 @@ func query_corridor(points: PackedVector3Array, arcs: PackedFloat32Array,
 		if not hit.is_empty():
 			hits.append(hit)
 	return hits
+
+## Cars whose body sits within `radius` of `center` (last frame's read buffer).
+## Feeds the lateral field — it needs neighbours beside AND ahead, which the
+## forward-only corridor query misses. Returns a reused buffer, valid until the
+## next call.
+func query_neighbors(center: Vector3, radius: float, exclude: Object) -> Array:
+	_neighbor_buffer.clear()
+	var aabb := AABB(center - Vector3.ONE * radius, Vector3.ONE * (radius * 2.0))
+	var candidates := _scratch_candidates
+	candidates.clear()
+	_query_stamp += 1
+	_gather(_read_cells, aabb, candidates)
+	var r2 := radius * radius
+	for claim in candidates:
+		if claim.type != ClaimType.CAR_BODY:
+			continue  # one body claim per car → no dedupe needed
+		if not is_instance_valid(claim.owner_car):
+			continue
+		if claim.owner_car == exclude:
+			continue
+		var car := claim.owner_car as FlyingCar
+		if car == null:
+			continue
+		if car.global_position.distance_squared_to(center) <= r2:
+			_neighbor_buffer.append(car)
+	return _neighbor_buffer
 
 ## Spawn check: is this capsule free of car bodies/broadcasts and obstacles?
 ## Checks both buffers so cars spawned earlier in the same tick are seen.

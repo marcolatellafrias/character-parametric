@@ -2,7 +2,7 @@ extends Object
 class_name CarArchetypes
 
 static var speed_debug_factor: float = 0.533
-static var size_debug_factor: float = 10.0
+static var size_debug_factor: float = 7.2
 
 enum Type {
 	VENDING_TRUCK,
@@ -65,17 +65,16 @@ class Archetype:
 static var archetypes: Dictionary = {}
 
 static func _static_init() -> void:
-	# One-of vehicles (trucks) have weight 0: they are not part of the ambient
-	# spawn pool and will be placed individually by the special-car system.
+	# Big trucks are rare ambient spawns: small weight, low global cap.
 	archetypes[Type.VENDING_TRUCK] = Archetype.new(
 		"Vending Truck",
-		0.35 * size_debug_factor,
-		0.4 * size_debug_factor,
-		1.0 * size_debug_factor,
-		4.0 * speed_debug_factor,
-		6.0 * speed_debug_factor,
+		0.175 * size_debug_factor,
+		0.2 * size_debug_factor,
+		0.5 * size_debug_factor,
+		8.0 * speed_debug_factor,
+		12.0 * speed_debug_factor,
 		Color(0.9, 0.5, 0.1),
-		0.0,
+		0.03,
 		1,
 		0.15
 	)
@@ -107,7 +106,7 @@ static func _static_init() -> void:
 	archetypes[Type.MOTORCYCLE] = Archetype.new(
 		"Motorcycle",
 		0.05 * size_debug_factor,
-		0.035 * size_debug_factor,
+		0.049 * size_debug_factor,
 		0.2 * size_debug_factor,
 		22.0 * speed_debug_factor,
 		40.0 * speed_debug_factor,
@@ -124,34 +123,34 @@ static func _static_init() -> void:
 		5.0 * speed_debug_factor,
 		7.0 * speed_debug_factor,
 		Color(0.9, 0.8, 0.1),
-		0.0,
-		1,
+		0.03,
+		3,
 		0.1
 	)
 	
 	archetypes[Type.ADVERTISEMENT_TRUCK] = Archetype.new(
 		"Advertisement Truck",
-		0.35 * size_debug_factor,
-		0.6 * size_debug_factor,
-		1.5 * size_debug_factor,
-		3.5 * speed_debug_factor,
-		5.0 * speed_debug_factor,
+		0.175 * size_debug_factor,
+		0.3 * size_debug_factor,
+		0.75 * size_debug_factor,
+		7.0 * speed_debug_factor,
+		10.0 * speed_debug_factor,
 		Color(0.9, 0.1, 0.9),
-		0.0,
+		0.03,
 		1,
 		0.2
 	)
 	
 	archetypes[Type.GARBAGE_TRUCK] = Archetype.new(
 		"Garbage Truck",
-		0.35 * size_debug_factor,
-		0.45 * size_debug_factor,
-		1.3 * size_debug_factor,
-		4.0 * speed_debug_factor,
-		6.0 * speed_debug_factor,
+		0.175 * size_debug_factor,
+		0.225 * size_debug_factor,
+		0.65 * size_debug_factor,
+		8.0 * speed_debug_factor,
+		12.0 * speed_debug_factor,
 		Color(0.2, 0.6, 0.2),
-		0.0,
-		1,
+		0.03,
+		2,
 		0.15
 	)
 	

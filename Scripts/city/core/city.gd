@@ -161,24 +161,24 @@ func _process(delta: float) -> void:
 	if not enable_traffic_lights or generator == null:
 		return
 
+	# The whole phase is a PURE FUNCTION of accumulated time — never a mutation
+	# that can wedge. (The previous flip-on-threshold version froze one index
+	# deterministically ~t60 every run and no static inspection revealed why;
+	# deriving from the clock removes the entire failure mode. Combined with the
+	# computed is_blocking property, a stuck light is now impossible short of
+	# _process itself not running.) Each direction holds the road for
+	# `cycle_duration`, the last `yellow_duration` of it being yellow (both
+	# directions block), so the full period is 2 × cycle_duration.
 	traffic_light_timer += delta
+	var phase := int(traffic_light_timer / traffic_light_cycle_duration)
+	active_traffic_index = phase % 2
+	var into_phase := traffic_light_timer - phase * traffic_light_cycle_duration
+	yellow_phase_active = into_phase >= (traffic_light_cycle_duration - traffic_light_yellow_duration)
 
-	if traffic_light_timer >= traffic_light_cycle_duration:
-		traffic_light_timer = 0.0
-		yellow_phase_active = false
-		active_traffic_index = 1 - active_traffic_index
-		_on_traffic_cycle_changed()
-	elif not yellow_phase_active and traffic_light_timer >= traffic_light_cycle_duration - traffic_light_yellow_duration:
-		yellow_phase_active = true
-		_on_traffic_cycle_changed()
-
-# Consolida la actualización de LaneVolumes y de los meshes de debug en un solo lugar.
-func _on_traffic_cycle_changed() -> void:
-	for key in generator.lane_volume_areas:
-		var vol: LaneVolume = generator.lane_volume_areas[key]
-		var traffic_plane = vol.get_traffic_plane()
-		if traffic_plane:
-			traffic_plane.update_layer_for_active_index(active_traffic_index, yellow_phase_active)
+	# Every plane DERIVES is_blocking from these two globals on read — no per-plane
+	# push loop, no per-plane state to go stale.
+	TrafficPlane.global_active_index = active_traffic_index
+	TrafficPlane.global_yellow_phase = yellow_phase_active
 
 	if show_traffic_planes:
 		_refresh_traffic_plane_colors()
@@ -218,11 +218,13 @@ func generate_and_visualize() -> void:
 	generate_graph()
 	visualize_graph()
 
-	# Estado inicial de los semáforos: sin esto, is_blocking queda en false
-	# para todos los planos hasta el primer cambio de ciclo.
+	# Estado inicial de los semáforos (index 0 activo, sin amarillo); _process lo
+	# recalcula desde el reloj cada frame.
 	traffic_light_timer = 0.0
+	active_traffic_index = 0
 	yellow_phase_active = false
-	_on_traffic_cycle_changed()
+	TrafficPlane.global_active_index = 0
+	TrafficPlane.global_yellow_phase = false
 
 func generate_graph() -> void:
 	generator = GraphCityGenerator.new()

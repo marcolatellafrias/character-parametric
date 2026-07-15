@@ -17,8 +17,6 @@ const STATE_COLORS: Dictionary = {
 	CollisionAvoidance.State.BRAKING: Color(1.0, 0.6, 0.1, 0.9),
 	CollisionAvoidance.State.YIELDING: Color(0.9, 0.2, 0.9, 0.9),
 	CollisionAvoidance.State.STOPPED: Color(1.0, 0.1, 0.1, 0.9),
-	CollisionAvoidance.State.FOGGED: Color(0.5, 0.5, 0.5, 0.5),
-	CollisionAvoidance.State.DODGING: Color(1.0, 1.0, 0.2, 0.9),
 }
 const BROADCAST_COLOR: Color = Color(0.2, 0.4, 1.0, 0.5)
 const LINK_COLOR: Color = Color(1.0, 0.2, 0.6, 0.9)
@@ -82,9 +80,6 @@ func _process(_delta: float) -> void:
 			car.set_debug_tint(color)
 			_tinted = true
 
-		if ca.state == CollisionAvoidance.State.FOGGED:
-			continue
-
 		if config.traffic_debug_corridors:
 			_draw_polyline(ca.corridor_points, color)
 			_draw_broadcast(ca)
@@ -128,8 +123,7 @@ func _draw_polyline(points: PackedVector3Array, color: Color) -> void:
 		_line(points[i], points[i + 1], color)
 
 func _draw_broadcast(ca: CollisionAvoidance) -> void:
-	# The reserved corridor, drawn slightly raised so it reads over the
-	# detection corridor.
+	# The ghost claim, drawn slightly raised so it reads over the corridor.
 	var points := ca.get_broadcast_points()
 	var lift := Vector3(0.0, 0.25, 0.0)
 	for i in range(points.size() - 1):

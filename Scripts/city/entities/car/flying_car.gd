@@ -26,31 +26,22 @@ var path_debug_segments: int = 30
 
 # Collision avoidance config
 var enable_collision_avoidance: bool = true
-var ghost_distance_multiplier: float = 2.0
 var ghost_spacing: float = 3.0
-var broadcast_distance_multiplier: float = 2.0
 var min_safe_distance: float = 5.0
+# Extra lateral half-padding, applied ONLY to the sides (it inflates the claim
+# capsule's radius — perpendicular to travel — never its length, so the
+# speed-dependent front/back gap is untouched). The SAME amount is reserved in
+# path validation (below), so across a two-way boundary the fatter claim and
+# the extra reserved clearance cancel: opposing lanes are unaffected, while
+# same-lane cars gain a side gap and won't drive abreast.
+const SIDE_PADDING: float = 0.6
 var comfortable_deceleration: float = 10.0
 var max_deceleration: float = 15.0
 var max_acceleration: float = 8.0
-var timeout_enabled: bool = true
-var timeout_duration: float = 3.0
 
-# Dodge/overtake config (see CollisionAvoidance DODGE section)
-var enable_dodge: bool = true
-var overtake_speed_ratio: float = 0.75
-var overtake_patience: float = 1.2
+# Vertical clearance the bridge profile keeps between the car and a slab
+# (BridgePlanner reads it).
 var dodge_clearance: float = 1.5
-var dodge_ramp_time: float = 1.0
-
-# Fogged cars tick at this fraction of the frame rate; motion is analytic so
-# batching the accumulated delta is exact, not an approximation.
-const FOG_TICK_INTERVAL: int = 4
-# Avoidance decision cadence (frames) scaled by camera distance: braking
-# latency is invisible at fog range, so far cars decide less often.
-const DECISION_INTERVAL_NEAR: int = 2
-const DECISION_INTERVAL_MID: int = 4
-const DECISION_INTERVAL_FAR: int = 8
 
 var is_blocked_by_traffic_plane: bool = false
 
@@ -84,14 +75,13 @@ var area_instantiator = null
 var rng: RandomNumberGenerator
 
 var car_id: String = ""
-var _stagger: int = 0
+# Spawn pose, kept for the stuck-diagnostics report (StuckReporter).
+var spawn_position: Vector3 = Vector3.ZERO
+var spawn_heading: Vector3 = Vector3.FORWARD
 var _move_accum: float = 0.0
-var _ca_accum: float = 0.0
-var _is_fogged: bool = false
 var _body_claims: Array = []
 var _broadcast_claims: Array = []
 var _body_points: PackedVector3Array = PackedVector3Array([Vector3.ZERO, Vector3.ZERO])
-var _relevant_volume_ids: Array[String] = []
 var _tint_material: StandardMaterial3D = null
 
 # All cars of an archetype share one mesh+material (keyed by size and color),
@@ -101,7 +91,6 @@ static var _shared_meshes: Dictionary = {}
 ## Called once by the spawner after configuration (replaces Node._ready).
 func setup() -> void:
 	car_id = _generate_car_id()
-	_stagger = int(get_instance_id() % 4096)
 
 	path_controller = PathController.new()
 	path_controller.initialize(self, world_node)
@@ -115,20 +104,11 @@ func setup() -> void:
 	collision_avoidance = CollisionAvoidance.new()
 	collision_avoidance.initialize(self, path_controller, claim_registry)
 	collision_avoidance.enabled = enable_collision_avoidance
-	collision_avoidance.ghost_distance_multiplier = ghost_distance_multiplier
 	collision_avoidance.ghost_spacing = ghost_spacing
-	collision_avoidance.broadcast_distance_multiplier = broadcast_distance_multiplier
 	collision_avoidance.min_safe_distance = min_safe_distance
 	collision_avoidance.comfortable_deceleration = comfortable_deceleration
 	collision_avoidance.max_deceleration = max_deceleration
 	collision_avoidance.max_acceleration = max_acceleration
-	collision_avoidance.timeout_enabled = timeout_enabled
-	collision_avoidance.timeout_duration = timeout_duration
-	collision_avoidance.enable_dodge = enable_dodge
-	collision_avoidance.overtake_speed_ratio = overtake_speed_ratio
-	collision_avoidance.overtake_patience = overtake_patience
-	collision_avoidance.dodge_clearance = dodge_clearance
-	collision_avoidance.dodge_ramp_time = dodge_ramp_time
 
 	rng = RandomNumberGenerator.new()
 	rng.seed = seed
@@ -138,45 +118,30 @@ func setup() -> void:
 		_body_claims = claim_registry.create_claim_pair(TrafficClaimRegistry.ClaimType.CAR_BODY, self)
 		_broadcast_claims = claim_registry.create_claim_pair(TrafficClaimRegistry.ClaimType.CAR_BROADCAST, self)
 
-## True when this fully fogged car batches this frame's work into a later tick.
-func is_fog_skip_frame(frame: int) -> bool:
-	return _is_fogged and (frame + _stagger) % FOG_TICK_INTERVAL != 0
-
-## Skipped fogged frame: accumulate time and republish the body claim from the
-## last transform, because the registry's double buffer clears every frame.
-func tick_skipped(delta: float) -> void:
-	_move_accum += delta
-	_publish_claims()
-
-## Full simulation step; `dist` is the XZ distance to the nearest camera.
-func tick(delta: float, dist: float, frame: int) -> void:
+## Full simulation step; `_dist` (XZ distance to the nearest camera) is no
+## `_dist` (XZ distance to the nearest camera) is only used by CarManager for
+## despawning. Every car runs full avoidance every frame — NO fog shortcut.
+## (Both fog optimisations were field-tested and removed: blind-cruising fog
+## cars clipped at the boundary and ran lights, muddying every diagnosis.
+## Correctness first; optimise again once the system is proven.)
+func tick(delta: float, _dist: float, _frame: int) -> void:
 	_move_accum += delta
 	var move_delta := _move_accum
 	_move_accum = 0.0
 
-	_is_fogged = dist >= WorldSettings.render_distance
-
-	_ca_accum += move_delta
-	if _is_fogged:
-		# Fully fogged — no avoidance, cruise at base speed
-		collision_avoidance.set_fogged()
-		_ca_accum = 0.0
-	else:
-		# Decision step at a distance-scaled cadence (staggered by instance
-		# id); motion smoothing still runs every frame below.
-		var interval := DECISION_INTERVAL_NEAR
-		if dist >= WorldSettings.fog_start_distance:
-			var mid: float = (WorldSettings.fog_start_distance + WorldSettings.render_distance) * 0.5
-			interval = DECISION_INTERVAL_MID if dist < mid else DECISION_INTERVAL_FAR
-		if (frame + _stagger) % interval == 0:
-			collision_avoidance.rebuild_corridor()
-			collision_avoidance.update_target(_ca_accum)
-			_ca_accum = 0.0
+	collision_avoidance.rebuild_corridor()
+	collision_avoidance.update_target()
 
 	var should_move = collision_avoidance.integrate_speed(move_delta)
+	var step := 0.0
 	if should_move:
-		path_controller.advance(move_delta, collision_avoidance.current_speed)
+		step = collision_avoidance.current_speed * move_delta
+		if step > 0.0:
+			path_controller.advance_distance(step)
 
+	# Slide sideways by the distance just driven (bounded slope), then pose the
+	# car — so its published body/ray reflect the new offset this frame.
+	collision_avoidance.update_lateral(step)
 	sim_transform = path_controller.get_current_transform()
 
 	_publish_claims()
@@ -192,8 +157,6 @@ func _publish_claims() -> void:
 	claim_registry.publish_capsule(_body_claims, _body_points,
 		collision_avoidance.car_radius)
 
-	if collision_avoidance.state == CollisionAvoidance.State.FOGGED:
-		return
 	var broadcast_points = collision_avoidance.get_broadcast_points()
 	if broadcast_points.size() >= 2:
 		claim_registry.publish_capsule(_broadcast_claims, broadcast_points,
@@ -217,17 +180,17 @@ func get_debug_info() -> String:
 	text += "\n%s  v %.1f > %.1f" % [CollisionAvoidance.State.keys()[ca.state], ca.current_speed, ca.target_speed]
 	if ca.blocking_car_id != "":
 		var short_id = ca.blocking_car_id.substr(ca.blocking_car_id.length() - 6)
-		text += "\nblocked: %s%s" % [short_id, " (broadcast)" if ca.is_blocked_by_broadcast else ""]
+		text += "\nblocked: %s%s" % [short_id, " (claim)" if ca.is_blocked_by_broadcast else ""]
 		if ca.stop_gap != INF:
 			text += "  gap %.1f" % ca.stop_gap
 	elif is_blocked_by_traffic_plane:
 		text += "\nred light"
 		if ca.stop_gap != INF:
 			text += "  gap %.1f" % ca.stop_gap
-	if path_controller.dodge_active:
-		var reason = CollisionAvoidance.DodgeReason.keys()[ca.dodge_reason]
-		var phase = "merging" if path_controller.dodge_merge_arc != INF else "holding"
-		text += "\ndodge %s %s  off %.1f" % [reason, phase, path_controller.dodge_magnitude]
+	if not path_controller.profile.is_empty():
+		var alt = path_controller.profile_offset(path_controller.get_progress())
+		if absf(alt) > 0.05:
+			text += "\nbridge alt %+.1f" % alt
 	return text
 
 func initialize_from_seed(p_seed: int, archetype_weights: Dictionary = {}) -> void:
@@ -248,7 +211,7 @@ func initialize_from_seed(p_seed: int, archetype_weights: Dictionary = {}) -> vo
 	if collision_avoidance:
 		collision_avoidance.base_speed = speed
 		collision_avoidance.current_speed = speed
-		collision_avoidance.car_radius = Vector2(width, height).length() * 0.5
+		collision_avoidance.car_radius = Vector2(width, height).length() * 0.5 + SIDE_PADDING
 
 func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0,
 			  grid_u: float = 0.0, grid_v: float = 0.0,
@@ -260,30 +223,33 @@ func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0,
 	current_width_cells = width_cells
 	current_height_cells = height_cells
 
-	var next_segment = _calculate_next_segment(end, volume)
-	path_controller.create_path(start, end, initial_progress, volume, next_segment)
-	_update_relevant_volume_ids()
+	spawn_position = start
+	var sh := end - start
+	spawn_heading = sh.normalized() if sh.length_squared() > 1e-6 else Vector3.FORWARD
+
+	# Commit the WHOLE route now: a seeded, weighted, no-repeat walk to the
+	# city boundary. The path controller freezes it into one immutable curve +
+	# Y-profile, so nothing the car flies is ever recomputed (no teleports).
+	var first_vol := volume.duplicate()
+	first_vol["used_cell_x"] = current_cell_x
+	first_vol["used_cell_y"] = current_cell_y
+	var route := _build_route(start, end, first_vol)
+	path_controller.create_route(route, initial_progress)
 
 	# Snap to the path immediately and claim the space, so spawn checks made
 	# later in this same tick already see this car.
 	sim_transform = path_controller.get_current_transform()
 	_publish_claims()
 
+# Arc crossed into the next street: bookkeeping only (the route never changes).
 func _on_segment_transition(old_volume_id: String, new_volume_id: String) -> void:
 	if area_instantiator:
 		volume_changed.emit(old_volume_id, new_volume_id)
-
-	var second_volume = path_controller.second_segment_volume
-	current_volume = second_volume
-	current_cell_x = second_volume.get("used_cell_x", current_cell_x)
-	current_cell_y = second_volume.get("used_cell_y", current_cell_y)
-	current_width_cells = second_volume.get("width_cells", current_width_cells)
-	current_height_cells = second_volume.get("height_cells", current_height_cells)
-
-	var current_end = path_controller.curve.get_point_position(3)
-	var next_segment = _calculate_next_segment(current_end, current_volume)
-	path_controller.advance_to_next_segment(next_segment)
-	_update_relevant_volume_ids()
+	current_volume = path_controller.current_volume_data()
+	current_cell_x = current_volume.get("used_cell_x", current_cell_x)
+	current_cell_y = current_volume.get("used_cell_y", current_cell_y)
+	current_width_cells = current_volume.get("width_cells", current_width_cells)
+	current_height_cells = current_volume.get("height_cells", current_height_cells)
 
 func _on_path_ended() -> void:
 	pending_despawn = true
@@ -336,70 +302,121 @@ func clear_debug_tint() -> void:
 	if visual and is_instance_valid(visual):
 		visual.material_override = null
 
-## Cached: only changes on set_path / segment transitions, and the avoidance
-## decision step reads it every tick.
 func get_relevant_volume_ids() -> Array[String]:
-	return _relevant_volume_ids
+	return path_controller.get_relevant_volume_ids()
 
-func _update_relevant_volume_ids() -> void:
-	_relevant_volume_ids.clear()
+# ============================================================================
+# ROUTE BUILDING (once, at spawn)
+# ============================================================================
 
-	if not path_controller.first_segment_volume.is_empty():
-		_relevant_volume_ids.append(_get_volume_id(path_controller.first_segment_volume))
+const ROUTE_MAX_SEGMENTS: int = 60
+# Arterials pull more traffic: continuation weight scales with street type
+# (0 = small, 1 = medium, 2 = large) on top of the street's traffic density.
+const STREET_TYPE_BIAS: Dictionary = {0: 1.0, 1: 2.5, 2: 6.0}
 
-	if not path_controller.second_segment_volume.is_empty():
-		_relevant_volume_ids.append(_get_volume_id(path_controller.second_segment_volume))
+# Seeded, weighted, no-repeat walk to the city boundary. Returns an ordered
+# list of {start, end, volume_data}. Finite by construction — a trail can't
+# repeat a street, and a hard cap backstops the rare relaxed-repeat case — and
+# it terminates at a boundary node, so the car despawns off-screen at the city
+# edge rather than popping mid-view.
+func _build_route(spawn_start: Vector3, first_end: Vector3, first_vol: Dictionary) -> Array:
+	var route: Array = [{"start": spawn_start, "end": first_end, "volume_data": first_vol}]
+	if generator == null:
+		return route
+	var visited: Dictionary = {}
+	visited[_edge_key_of(first_vol)] = true
+	var cur := first_vol
+	for _i in range(ROUTE_MAX_SEGMENTS):
+		if _is_boundary_exit(cur):
+			break
+		var nxt := _draw_next_volume(cur, visited)
+		if nxt.is_empty():
+			break
+		route.append({"start": nxt["start"], "end": nxt["end"], "volume_data": nxt["volume_data"]})
+		visited[nxt["edge_key"]] = true
+		cur = nxt["volume_data"]
+	return route
 
-# Continuations are weighted by their street's traffic density (the same
-# constant the spawner uses for targets, so routing and spawning push toward
-# the same distribution). The seeded draw itself provides the variation into
-# less dense routes. U-turns are structurally excluded by the graph query.
-#
-# The draw happens BEFORE validation: only the selected volume is validated
-# (falling back to the next draw if it fails), instead of paying the
-# projection checks for every candidate and then discarding all but one.
-func _calculate_next_segment(_current_end: Vector3, volume: Dictionary) -> Dictionary:
-	if not generator or not volume.has("face_idx") or not volume.has("edge_idx"):
+# Continuations weighted by traffic density AND street type, excluding streets
+# already driven. If every option is used (local dead-end), the no-repeat
+# filter is relaxed so the walk keeps heading out — finiteness holds via the
+# caller's cap. Validation may shift the target grid cell (falls back to the
+# next draw on failure).
+func _draw_next_volume(vol: Dictionary, visited: Dictionary) -> Dictionary:
+	var all: Array = generator.get_lane_volume_continuations(vol["face_idx"], vol["edge_idx"]).duplicate()
+	if all.is_empty():
 		return {}
-
-	var remaining: Array = generator.get_lane_volume_continuations(volume["face_idx"], volume["edge_idx"]).duplicate()
-
-	while not remaining.is_empty():
-		var idx = _draw_weighted_index(remaining)
-		var lane_vol: LaneVolume = remaining[idx]
-		var result = _get_validated_continuation_path(lane_vol, current_cell_x, current_cell_y)
-
+	var candidates: Array = []
+	for lv in all:
+		if not visited.has(_edge_key_of_lane(lv)):
+			candidates.append(lv)
+	if candidates.is_empty():
+		candidates = all
+	var tx: int = vol.get("used_cell_x", current_cell_x)
+	var ty: int = vol.get("used_cell_y", current_cell_y)
+	while not candidates.is_empty():
+		var idx := _draw_weighted_index(candidates)
+		var lane_vol: LaneVolume = candidates[idx]
+		var result = _get_validated_continuation_path(lane_vol, tx, ty)
 		if result != null and result.has("start") and result.has("end"):
 			return {
-				"path": result,
+				"start": result["start"],
+				"end": result["end"],
+				"edge_key": _edge_key_of_lane(lane_vol),
 				"volume_data": {
 					"face_idx": lane_vol.face_idx,
 					"edge_idx": lane_vol.edge_idx,
 					"used_cell_x": result["used_cell_x"],
 					"used_cell_y": result["used_cell_y"],
 					"width_cells": lane_vol.width_cells,
-					"height_cells": lane_vol.height_cells
+					"height_cells": lane_vol.height_cells,
+					"street_type": lane_vol.street_type,
 				}
 			}
-
-		remaining.remove_at(idx)
-
+		candidates.remove_at(idx)
 	return {}
 
 func _draw_weighted_index(lane_vols: Array) -> int:
-	var total_weight = 0.0
-	for lane_vol in lane_vols:
-		total_weight += maxf(lane_vol.get_traffic_density(), 0.01)
-
-	var random_value = rng.randf() * total_weight
-	var cumulative_weight = 0.0
-
+	var total := 0.0
+	for lv in lane_vols:
+		total += _route_weight(lv)
+	var r := rng.randf() * total
+	var acc := 0.0
 	for i in range(lane_vols.size()):
-		cumulative_weight += maxf(lane_vols[i].get_traffic_density(), 0.01)
-		if random_value <= cumulative_weight:
+		acc += _route_weight(lane_vols[i])
+		if r <= acc:
 			return i
-
 	return lane_vols.size() - 1
+
+func _route_weight(lv: LaneVolume) -> float:
+	return maxf(lv.get_traffic_density(), 0.01) * STREET_TYPE_BIAS.get(lv.street_type, 1.0)
+
+func _edge_key_of(vol: Dictionary) -> String:
+	return _edge_key(vol.get("face_idx", -1), vol.get("edge_idx", -1))
+
+func _edge_key_of_lane(lv: LaneVolume) -> String:
+	return _edge_key(lv.face_idx, lv.edge_idx)
+
+func _edge_key(face_idx: int, edge_idx: int) -> String:
+	if generator == null or face_idx < 0:
+		return "%d_%d" % [face_idx, edge_idx]
+	var face = generator.plain_graph.faces[face_idx]
+	var n1 = face[edge_idx]
+	var n2 = face[(edge_idx + 1) % face.size()]
+	return GraphGenerator._get_edge_key(n1, n2)
+
+# The car exits a volume at its flow end-node (face[edge_idx]); a boundary node
+# there means the route has reached the edge of the city.
+func _is_boundary_exit(vol: Dictionary) -> bool:
+	if generator == null:
+		return true
+	var fi: int = vol.get("face_idx", -1)
+	var ei: int = vol.get("edge_idx", -1)
+	if fi < 0:
+		return true
+	var face = generator.plain_graph.faces[fi]
+	var end_node = face[ei]
+	return generator.plain_graph.node_types.get(end_node, 0) == 1
 
 func _get_validated_continuation_path(lane_vol: LaneVolume, target_cell_x: int, target_cell_y: int) -> Variant:
 	var cont_width_cells = lane_vol.width_cells
@@ -479,8 +496,12 @@ static func compute_cross_section_face(start: Vector3, end: Vector3,
 		-right * half_width + true_up * half_height
 	]
 
+# The cross-section used for PATH VALIDATION — widened by the side padding so a
+# car only ever commits to lane positions where its full padded claim fits
+# within the lane, for the whole route. Height (vertical) is left as-is; the
+# padding is lateral only.
 func get_front_face_at_segment(start: Vector3, end: Vector3) -> Array:
-	return compute_cross_section_face(start, end, width, height)
+	return compute_cross_section_face(start, end, width + 2.0 * SIDE_PADDING, height)
 
 func _get_volume_id(volume: Dictionary) -> String:
 	if volume.has("face_idx") and volume.has("edge_idx"):
