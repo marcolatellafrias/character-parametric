@@ -30,6 +30,7 @@ var remote_players: Dictionary = {}
 func _ready() -> void:
 	add_to_group("character_spawner")
 	SessionManager.session_ready.connect(_on_session_ready)
+	SessionManager.local_peer_id_changed.connect(_on_local_identity_changed)
 	SessionManager.remote_player_joined.connect(_on_remote_joined)
 	SessionManager.remote_player_left.connect(_on_remote_left)
 
@@ -47,6 +48,28 @@ func _ready() -> void:
 func _on_session_ready(local_peer_id: int) -> void:
 	if is_instance_valid(local_player):
 		return
+	_spawn_local(local_peer_id)
+
+## Al unirse a un amigo el id local cambia (solo/host → cliente): re-spawneamos el
+## jugador local con la nueva authority y limpiamos los proxies de la sesión anterior.
+func _on_local_identity_changed(new_peer_id: int) -> void:
+	if is_instance_valid(local_player):
+		local_player.queue_free()
+	local_player = null
+	for pid in remote_players.keys():
+		var proxy = remote_players[pid]
+		if is_instance_valid(proxy):
+			proxy.queue_free()
+	remote_players.clear()
+
+	_spawn_local(new_peer_id)
+	# Re-spawnear proxies de peers ya conectados (por si peer_connected llegó primero).
+	for pid in SessionManager.players:
+		var sp: SessionPlayer = SessionManager.players[pid]
+		if not sp.is_local:
+			_on_remote_joined(pid)
+
+func _spawn_local(local_peer_id: int) -> void:
 	local_player = _instantiate_character(true, LOCAL_SEED, "char_%d" % local_peer_id)
 	_attach_net_sync(local_player, local_peer_id)
 	# La cámara del jugador se recrea en cada respawn (reseed con P): reengancharla
@@ -66,6 +89,7 @@ func _on_remote_joined(peer_id: int) -> void:
 		return
 	var proxy := RemoteCharacter.new()
 	proxy.name = "char_%d" % peer_id
+	proxy.peer_id = peer_id
 	characters_root.add_child(proxy)
 	proxy.global_position = SPAWN_POINT
 	_attach_net_sync(proxy, peer_id)

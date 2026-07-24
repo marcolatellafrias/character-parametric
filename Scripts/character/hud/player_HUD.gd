@@ -131,51 +131,8 @@ static func create(inst: EntityInstantiation) -> PlayerHUD:
 	hud._stability_hud = stability
 	hud.add_child(stability)
 
-	# --- Stats panel ---
-	var primary_str := str(EntityArchetype.Archetype.keys()[inst.archetype_type])
-	var secondary_str := ""
-	if inst.archetype_blend > 0.0:
-		secondary_str = "secondary  %s (%.0f%%)" % [
-			str(EntityArchetype.Archetype.keys()[inst.secondary_archetype_type]),
-			inst.archetype_blend * 100
-		]
-	var lines := [
-		"seed      %d" % inst.master_seed,
-		"arch      %s" % primary_str,
-		secondary_str if secondary_str != "" else "arch      (no blend)",
-		"%s  |  age %d" % [EntitySpecie.Specie.keys()[inst.specie_type], inst.age],
-		"",
-		"height    %.2f m" % arch.height,
-		"weight    %.1f kg" % arch.weight,
-		"speed     %.1f" % arch.speed,
-		"strength  %.2f" % arch.strenght,
-		"jump      %.2f" % arch.jump_strenght,
-		"reach     %.2f" % arch.reach,
-		"fatness   %.2f" % arch.fatness,
-		"muscle    %.2f" % arch.muscularity,
-	]
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color(0, 0, 0, 0.45)
-	bg.corner_radius_top_left = 4
-	bg.corner_radius_bottom_right = 4
-	var stats_panel := Panel.new()
-	stats_panel.anchor_left = 0.0
-	stats_panel.anchor_top = 0.0
-	stats_panel.offset_left = 10
-	stats_panel.offset_top = 10
-	stats_panel.offset_right = 210
-	stats_panel.offset_bottom = 10 + lines.size() * 22 + 14
-	stats_panel.add_theme_stylebox_override("panel", bg)
-	var label := Label.new()
-	label.text = "\n".join(lines)
-	label.anchor_left = 0.0
-	label.anchor_top = 0.0
-	label.offset_left = 10
-	label.offset_top = 7
-	label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	label.add_theme_font_size_override("font_size", 13)
-	stats_panel.add_child(label)
-	hud.add_child(stats_panel)
+	# Los stats del personaje (seed/arquetipo/height/weight/…) ahora viven en el tab
+	# Info del panel de debug (F1), no en el HUD de gameplay. Ver technical/ui.md.
 
 	return hud
 

@@ -95,8 +95,15 @@ func _ready() -> void:
 	axis_lock_angular_y = true
 
 func _physics_process(delta: float) -> void:
+	# El movimiento lee Input directo, así que se congela mientras haya un overlay
+	# abierto (pausa/menú/consola/debug). El mundo sigue simulando igual.
+	var input_active := UIState.gameplay_active()
+
 	if creative_mode:
-		_apply_creative_fly()
+		if input_active:
+			_apply_creative_fly()
+		else:
+			linear_velocity = Vector3.ZERO
 		_ground_ray.force_raycast_update()
 		is_grounded = _ground_ray.is_colliding()
 		_prev_velocity = linear_velocity
@@ -104,7 +111,7 @@ func _physics_process(delta: float) -> void:
 
 	_frame_force = Vector3.ZERO
 
-	if is_active:
+	if is_active and input_active:
 		_apply_movement_force()
 	_apply_braking_force()
 

@@ -25,8 +25,7 @@ func _apply_enabled() -> void:
 	set_process_unhandled_input(enabled)
 	if camera:
 		camera.current = enabled
-	if not Engine.is_editor_hint():
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if enabled else Input.MOUSE_MODE_VISIBLE
+	# El mouse_mode lo maneja UIState (technical/ui.md), no este freecam de debug.
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:

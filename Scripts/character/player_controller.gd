@@ -49,7 +49,7 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 	head_size      = h_size
 	is_ready       = true
 	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# El mouse_mode lo maneja UIState (technical/ui.md); acá no lo tocamos.
 
 	var bi := _get_bi()
 	arms_controller = bi.arms_controller
@@ -104,21 +104,25 @@ func _input(event: InputEvent) -> void:
 	if not is_ready:
 		return
 
+	# F1 abre/cierra el panel de debug — disponible siempre, incluso con overlay abierto.
+	if is_instance_valid(_debug_panel) and event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_F1:
+		_debug_panel.toggle()
+		return
+
+	# Con cualquier overlay abierto (pausa/menú/consola/debug) se bloquea el input de gameplay.
+	if not UIState.gameplay_active():
+		return
+
 	var ic     := interaction_controller if is_instance_valid(interaction_controller) else null
 	var bi     := _get_bi()
 	var seated := is_instance_valid(bi) and bi.is_seated
 
-	# ── Debug panel / creative (only if this character has debug_enabled) ─────
-	if is_instance_valid(_debug_panel):
-		if event is InputEventKey and event.pressed and not event.echo:
-			if event.keycode == KEY_F1:
-				_debug_panel.toggle()
-				return
-			if event.keycode == KEY_V:
-				_set_creative(not _creative)
-				return
-		if _debug_panel.is_open():
-			return
+	# V alterna creative (solo en gameplay).
+	if is_instance_valid(_debug_panel) and event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_V:
+		_set_creative(not _creative)
+		return
 
 	# ── Mouse motion ─────────────────────────────────────────────────────────
 	if event is InputEventMouseMotion:
@@ -566,21 +570,61 @@ func _set_creative(on: bool) -> void:
 
 
 func _setup_debug_panel() -> void:
+	# setup() se re-llama en cada respawn: recreamos el panel para reflejar el nuevo
+	# personaje (y no acumular paneles).
+	if is_instance_valid(_debug_panel):
+		_debug_panel.queue_free()
 	_debug_panel = DebugPanel.new()
 	add_child(_debug_panel)
+
+	# ── Info (stats del personaje generado + mundo + red) ──
+	var bi := _get_bi()
+	if is_instance_valid(bi) and is_instance_valid(bi.entity_instantiation):
+		_debug_panel.add_text("Info", _character_stats_text(bi.entity_instantiation))
 	var d := WorldSeeds.ba_date()
 	_debug_panel.add_info("BA date",     "%04d-%02d-%02d" % [int(d.get("year", 0)), int(d.get("month", 0)), int(d.get("day", 0))])
 	_debug_panel.add_info("Weekly seed", str(WorldSeeds.weekly_seed()))
 	_debug_panel.add_info("Daily seed",  str(WorldSeeds.daily_seed()))
-	_debug_panel.add_action("Self",  "Toggle creative (V)",       func(): _set_creative(not _creative))
-	_debug_panel.add_action("Self",  "Toggle ragdoll (G)",        _toggle_ragdoll)
-	_debug_panel.add_action("Self",  "Respawn (P)",               _respawn)
-	_debug_panel.add_action("View",  "Show capsule / hide body",  _debug_toggle_capsule_view)
-	_debug_panel.add_action("View",  "Ragdoll debug color",       _debug_toggle_ragdoll_color)
-	_debug_panel.add_action("View",  "Grab cone",                 _debug_toggle_grab_cone)
-	_debug_panel.add_action("Spawn", "Go to start",               _go_to_start)
-	_debug_panel.add_action("Spawn", "Character",                 _debug_spawn_character)
-	_debug_panel.add_action("Spawn", "Box",                       _debug_spawn_box)
+	_debug_panel.add_info("Red", _net_status_text())
+
+	# ── Acciones ──
+	_debug_panel.add_action("Acciones", "Toggle creative (V)",      func(): _set_creative(not _creative))
+	_debug_panel.add_action("Acciones", "Toggle ragdoll (G)",       _toggle_ragdoll)
+	_debug_panel.add_action("Acciones", "Respawn (P)",              _respawn)
+	_debug_panel.add_action("Acciones", "Show capsule / hide body", _debug_toggle_capsule_view)
+	_debug_panel.add_action("Acciones", "Ragdoll debug color",      _debug_toggle_ragdoll_color)
+	_debug_panel.add_action("Acciones", "Grab cone",                _debug_toggle_grab_cone)
+
+	# ── Spawn ──
+	_debug_panel.add_action("Spawn", "Go to start", _go_to_start)
+	_debug_panel.add_action("Spawn", "Character",   _debug_spawn_character)
+	_debug_panel.add_action("Spawn", "Box",         _debug_spawn_box)
+
+
+func _character_stats_text(inst: EntityInstantiation) -> String:
+	var arch := inst.arch_final
+	var primary := str(EntityArchetype.Archetype.keys()[inst.archetype_type])
+	var blend := "arch      (no blend)"
+	if inst.archetype_blend > 0.0:
+		blend = "secondary %s (%.0f%%)" % [
+			str(EntityArchetype.Archetype.keys()[inst.secondary_archetype_type]),
+			inst.archetype_blend * 100.0]
+	var lines := [
+		"seed      %d" % inst.master_seed,
+		"arch      %s" % primary,
+		blend,
+		"%s  |  age %d" % [EntitySpecie.Specie.keys()[inst.specie_type], inst.age],
+		"",
+		"height    %.2f m" % arch.height,
+		"weight    %.1f kg" % arch.weight,
+		"speed     %.1f" % arch.speed,
+		"strength  %.2f" % arch.strenght,
+		"jump      %.2f" % arch.jump_strenght,
+		"reach     %.2f" % arch.reach,
+		"fatness   %.2f" % arch.fatness,
+		"muscle    %.2f" % arch.muscularity,
+	]
+	return "\n".join(lines)
 
 
 func _debug_toggle_capsule_view() -> void:
@@ -613,6 +657,16 @@ func _go_to_start() -> void:
 	var spawner := get_tree().get_first_node_in_group("character_spawner")
 	if spawner and spawner.has_method("respawn_local_at_start"):
 		spawner.respawn_local_at_start()
+
+
+func _net_status_text() -> String:
+	if SessionManager.is_host and SessionManager.lobby_code != "":
+		return "Host — código %s" % SessionManager.lobby_code
+	if SessionManager.is_host:
+		return "Host"
+	if SessionManager.session_started and SessionManager.local_peer_id != 1:
+		return "Cliente"
+	return "Solo (local)"
 
 
 func _debug_spawn_character() -> void:

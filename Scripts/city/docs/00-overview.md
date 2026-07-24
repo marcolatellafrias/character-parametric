@@ -47,6 +47,7 @@ The docs are split into **conceptual** (game design — the `conceptual/` folder
 | [technical/bridges.md](technical/bridges.md) | Bridge ownership, count, structure, archetypes, and the placement algorithm. |
 | [technical/traffic.md](technical/traffic.md) | The ambient flying-car simulation: lane volumes, movement, spawning, collision avoidance, and bridge navigation. |
 | [technical/characters.md](technical/characters.md) | The character's two layers (physics capsule vs aesthetic skeleton), the impact→fall model, the ragdoll, the grab/interaction system, and the decoupling loose ends. |
+| [technical/ui.md](technical/ui.md) | **Plan.** UI layering: the player-facing shell (main menu, pause, options), the tabbed F1 debug panel, a global Valve-style console, the UI-state/mouse owner, and in-match player names. |
 
 
 

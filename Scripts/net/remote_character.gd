@@ -14,8 +14,13 @@ const RADIUS := 0.3
 const COLOR_GROUNDED := Color(1.0, 1.0, 1.0, 0.4)
 const COLOR_AIRBORNE := Color(1.0, 0.5, 0.0, 0.4)
 
+## Peer dueño de este proxy. Lo setea el CharacterSpawner antes de add_child; se usa para
+## mostrar el nombre de Steam sobre la cápsula.
+var peer_id: int = 0
+
 var _material: StandardMaterial3D
 var _ground_ray: RayCast3D
+var _name_tag: Label3D
 
 func _ready() -> void:
 	var capsule := CapsuleMesh.new()
@@ -36,6 +41,17 @@ func _ready() -> void:
 	_ground_ray.target_position = Vector3(0.0, -(RADIUS + 0.12), 0.0)
 	add_child(_ground_ray)
 
+	# Cartel con el nombre sobre la cápsula (billboard, visible a través de paredes cercanas).
+	_name_tag = Label3D.new()
+	_name_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_name_tag.no_depth_test = true
+	_name_tag.pixel_size = 0.006
+	_name_tag.outline_size = 8
+	_name_tag.position = Vector3(0.0, HEIGHT * 0.5 + 0.3, 0.0)
+	add_child(_name_tag)
+	SessionManager.players_changed.connect(_update_name)
+	_update_name()
+
 func _physics_process(_delta: float) -> void:
 	# El ray corre local sobre la posición ya interpolada, así el color grounded/aire
 	# no necesita sincronizarse.
@@ -43,3 +59,13 @@ func _physics_process(_delta: float) -> void:
 		return
 	_ground_ray.force_raycast_update()
 	_material.albedo_color = COLOR_GROUNDED if _ground_ray.is_colliding() else COLOR_AIRBORNE
+
+func _update_name() -> void:
+	if not is_instance_valid(_name_tag):
+		return
+	var display := "Jugador %d" % peer_id
+	if SessionManager.players.has(peer_id):
+		var sp: SessionPlayer = SessionManager.players[peer_id]
+		if sp.steam_name != "":
+			display = sp.steam_name
+	_name_tag.text = display

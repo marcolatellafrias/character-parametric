@@ -15,21 +15,15 @@ For now the game runs under **Spacewar (app id `480`)**, so Steam features work 
 
 ---
 
-## Session & joining — no menu (for now)
+## Session & joining — main menu (host / join by code)
 
-**Deliberately menuless while we build.** On launch the game **auto-creates a session as host** — no title screen, no lobby UI. The only way a friend joins is the **Steam overlay → "Join Game"**.
+On launch the game shows a **main menu** (a separate scene, no world loaded); from there the player **hosts** or **joins by a short code**. Friends can also join through the **Steam overlay → "Join Game"**, and if Steam launched us with `+connect_lobby <id>` we join that lobby directly, skipping the menu. The menu is a **temporary front-end**, later replaced by the diegetic **Lounge / assembly** flow ([run-setup.md](run-setup.md#match-lifecycle)). Full UI layering in [technical/ui.md](../technical/ui.md).
 
-Why: a menu means clicking through UI on every run, and we relaunch constantly to test. Auto-host keeps the iteration loop tight. A real front-end — and the diegetic **Lounge / assembly** join flow from [run-setup.md](run-setup.md#match-lifecycle) — comes later; this is scaffolding.
+**Host (`SessionManager.host()`):** create a **public** Steam lobby, publish a **short code** as lobby data (+ `host_steam_id`), mark it joinable, set **rich presence** (so friends see "Join Game"), and start `SteamMultiplayerPeer` as **server** (peer `1`). Without Steam, `host()` starts a **local-only** session so dev iteration still works (play alone, nobody can join). On `session_ready` the menu loads the game scene.
 
-**Host, on launch:**
-1. Init Steam, create a **Steam lobby** (friends-only), mark it joinable.
-2. Set **rich presence** so friends see **"Join Game"** on your profile.
-3. Start `SteamMultiplayerPeer` as **server** (peer `1`).
+**Join (`SessionManager.join_by_code(code)`, the overlay's join-requested callback, or `+connect_lobby`):** join-by-code runs a **lobby-list search filtered by the code** to resolve the lobby id, then joins; it reads the host's Steam id from lobby data and connects `SteamMultiplayerPeer` as **client**. On `connected_to_server` the assigned client id becomes the local id and the session is ready — the game scene loads and the `CharacterSpawner` spawns the local character under the right authority. Failures emit `session_failed` and the menu stays put.
 
-**Client, on "Join Game":**
-1. GodotSteam fires the **join-requested / lobby-join-requested** callback with the lobby id.
-2. Join the lobby, read the host's Steam id from lobby data.
-3. Connect `SteamMultiplayerPeer` to the host → Godot's high-level multiplayer takes over.
+Because the local character isn't spawned until the game scene loads (after the id is known), there's no launch-time re-key; `local_peer_id_changed` only matters for the rare mid-game overlay-join.
 
 ---
 
@@ -88,7 +82,7 @@ So the hard part of physics sync (authority + interpolation) is identical either
 
 Built incrementally — networking first, fidelity later:
 
-1. **Host + join + player registry.** ✅ *Implemented.* Auto-host, join via the Steam overlay, and the **session-player registry** (`peer ↔ steam ↔ Player`); each peer spawns a character. Proves the transport and identity end to end.
+1. **Host + join + player registry.** ✅ *Implemented.* Host / join-by-code (or Steam overlay), and the **session-player registry** (`peer ↔ steam ↔ Player`) — including each peer's **Steam name**, exchanged on connect via a reliable `_register_identity` RPC. Each peer spawns a character. Proves the transport and identity end to end.
 2. **Capsule sync.** ✅ *Implemented (pending live 2-player verification).* Replicate each player's **capsule** (transform + movement state). Remote players are just the **capsule + its debug ray** — no aesthetic skeleton yet.
 3. **Aesthetic & animation.** Reconstruct/replicate the skeleton so remote players look like characters (mostly seed-reconstructed + a little state).
 4. **Interaction.** Grab / controllables / ship (host-authoritative), objects, ownership handoff on grab.
@@ -96,7 +90,7 @@ Built incrementally — networking first, fidelity later:
 
 ### Implementation (M1–M2)
 
-- **`SessionManager`** (autoload) owns the session lifecycle: init Steam, host/join, and — the key timing fix — it emits **`session_ready(local_peer_id)`** only once the local id is definitive (offline/host → `1`; client → its unique id, on `connected_to_server`), plus `remote_player_joined/left`. Nothing spawns before the id is known (a client spawning early would collide on peer `1`).
+- **`SessionManager`** (autoload) owns the session lifecycle: init Steam, then start **solo** (peer `1`) unless launched with `+connect_lobby`. `host()` / `join(lobby_id)` are called from the debug panel (and `join` from the overlay's join-requested callback). It emits **`session_ready(local_peer_id)`** for the initial spawn and **`local_peer_id_changed(new_id)`** when the local id changes (solo/host → client), plus `remote_player_joined/left`. Hosting keeps id `1` (no re-spawn); joining re-keys the local character to the assigned client id.
 - **`CharacterSpawner`** (scene node) spawns every character by code: the local player (a full `BoneInstantiator`) and one **`RemoteCharacter`** proxy per remote peer. Each is named **`char_<peer_id>`** and its **`NetSync`** child's `multiplayer_authority` is that peer — so the RPC path matches on every machine and `is_multiplayer_authority()` decides who simulates.
 - **`CharacterNetSync`** (child `NetSync`): the authority sends capsule **centre pos + yaw + linear velocity** on an **unreliable_ordered** RPC each physics tick; remotes buffer with a local timestamp and **interpolate** (100 ms render delay, short velocity extrapolation on late packets). No `MultiplayerSynchronizer`, per the physics-sync rules above.
 - **`RemoteCharacter`**: lightweight capsule + local ground ray only. No skeleton (M3), no physics sim — it just follows the interpolated transform.
