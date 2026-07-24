@@ -9,6 +9,8 @@ extends Node3D
 @export var min_distance: float = 180.5*1.3
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
+## When true, the city derives its seeds from the weekly world seed (WorldSeeds). Untick to force the inspector values (debug).
+@export var use_world_seed: bool = true
 
 @export_group("Barrios")
 @export var num_neighborhoods: int = 10
@@ -227,7 +229,13 @@ func generate_and_visualize() -> void:
 	TrafficPlane.global_yellow_phase = false
 
 func generate_graph() -> void:
+	if use_world_seed:
+		generation_seed   = WorldSeeds.weekly_seed()
+		neighborhood_seed = WorldSeeds.derive(generation_seed, 1)
+		grid_seed         = WorldSeeds.derive(generation_seed, 2)
+
 	generator = GraphCityGenerator.new()
+	generator.enable_traffic_lights = enable_traffic_lights
 
 	var legacy_block_cell_height = min_distance / block_grid_rows
 

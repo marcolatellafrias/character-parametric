@@ -5,6 +5,11 @@ var _last_impact_world_dir: Vector3 = Vector3.ZERO
 
 var can_sprint: bool = true
 
+# Creative/debug flight (see PlayerController + technical/characters.md). No noclip: the capsule still collides.
+var creative_mode: bool = false
+var fly_speed: float = 12.0
+var fly_sprint_multiplier: float = 2.0
+
 const SPEED_SCALE := 10.0
 const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
@@ -90,6 +95,13 @@ func _ready() -> void:
 	axis_lock_angular_y = true
 
 func _physics_process(delta: float) -> void:
+	if creative_mode:
+		_apply_creative_fly()
+		_ground_ray.force_raycast_update()
+		is_grounded = _ground_ray.is_colliding()
+		_prev_velocity = linear_velocity
+		return
+
 	_frame_force = Vector3.ZERO
 
 	if is_active:
@@ -208,6 +220,42 @@ func _apply_movement_force() -> void:
 
 func jump(impulse: float) -> void:
 	apply_central_impulse(Vector3.UP * impulse)
+
+func set_creative_mode(enabled: bool) -> void:
+	creative_mode = enabled
+	if enabled:
+		gravity_scale    = 0.0
+		linear_velocity  = Vector3.ZERO
+		angular_velocity = Vector3.ZERO
+		reset_impact_state()
+	else:
+		gravity_scale      = 1.0
+		linear_velocity    = Vector3.ZERO
+		_prev_velocity     = Vector3.ZERO
+		is_snapshot_active = true
+
+func _apply_creative_fly() -> void:
+	var input := Vector2(
+		Input.get_axis("move_left", "move_right"),
+		Input.get_axis("move_forward", "move_backward")
+	)
+	var right   := global_transform.basis.x
+	var forward := global_transform.basis.z
+	right.y = 0.0
+	forward.y = 0.0
+	right = right.normalized()
+	forward = forward.normalized()
+
+	var dir := right * input.x + forward * input.y
+	var vertical := 0.0
+	if Input.is_physical_key_pressed(KEY_SPACE): vertical += 1.0
+	if Input.is_physical_key_pressed(KEY_CTRL):  vertical -= 1.0
+
+	var speed := fly_speed
+	if Input.is_action_pressed("sprint"):
+		speed *= fly_sprint_multiplier
+
+	linear_velocity = dir * speed + Vector3.UP * vertical * speed
 
 func set_crouched(crouched: bool) -> void:
 	var shape := collider.shape as CapsuleShape3D

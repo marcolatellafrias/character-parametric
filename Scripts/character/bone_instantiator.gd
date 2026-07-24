@@ -1,8 +1,14 @@
 class_name BoneInstantiator
 extends Node3D
 
+## Emitida cuando el jugador activo (re)crea su cámara en initialize_skeleton, para
+## que quien la consuma (CharacterSpawner → AreaInstantiator) la reenganche.
+signal active_camera_changed(camera: Camera3D)
+
 @export var is_active: bool = false
 @export var master_seed: int = 0
+## When true (and this character is the active player), unlocks creative mode + the debug panel.
+@export var debug_enabled: bool = false
 var entity_instantiation: EntityInstantiation
 
 var player_camera: Camera3D
@@ -98,6 +104,7 @@ func initialize_skeleton() -> void:
 		player_camera.current = true
 		char_rigidbody.add_child(player_camera)
 		player_controller.setup(char_rigidbody, player_camera, custom_bones_util.head, skel_sizes_util.head_size, entity_instantiation)
+		active_camera_changed.emit(player_camera)
 
 	locomotion_signals = LocomotionSignals.create(ik_util, char_rigidbody, skel_sizes_util)
 

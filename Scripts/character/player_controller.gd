@@ -38,6 +38,10 @@ var _prev_fall_rb: CharacterRigidBody3D = null
 var interaction_controller: InteractionController = null
 var arms_controller: ArmsController = null
 
+var _creative: bool = false
+var _debug_panel: DebugPanel = null
+var _capsule_view: bool = false
+
 func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
 	char_rigidbody = rb
 	player_camera  = cam
@@ -64,6 +68,9 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Ve
 	_debug_camera.current = false
 	add_child(_debug_camera)
 	_set_debug_cam(0)
+
+	if is_instance_valid(_get_bi()) and _get_bi().debug_enabled:
+		_setup_debug_panel()
 
 func _get_bi() -> BoneInstantiator:
 	return char_rigidbody.get_parent() as BoneInstantiator
@@ -101,6 +108,18 @@ func _input(event: InputEvent) -> void:
 	var bi     := _get_bi()
 	var seated := is_instance_valid(bi) and bi.is_seated
 
+	# ── Debug panel / creative (only if this character has debug_enabled) ─────
+	if is_instance_valid(_debug_panel):
+		if event is InputEventKey and event.pressed and not event.echo:
+			if event.keycode == KEY_F1:
+				_debug_panel.toggle()
+				return
+			if event.keycode == KEY_V:
+				_set_creative(not _creative)
+				return
+		if _debug_panel.is_open():
+			return
+
 	# ── Mouse motion ─────────────────────────────────────────────────────────
 	if event is InputEventMouseMotion:
 		if not _is_ragdoll_active():
@@ -116,8 +135,10 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton:
 		match event.button_index:
 			MOUSE_BUTTON_LEFT:
-				if event.pressed: ic.try_interact()
-				else:             ic.release_interact()
+				if event.pressed:
+					if not _is_ragdoll_active(): ic.try_interact()
+				else:
+					ic.release_interact()
 			MOUSE_BUTTON_RIGHT:
 				if ic: ic.set_rotating(event.pressed)
 			MOUSE_BUTTON_WHEEL_UP:
@@ -131,15 +152,15 @@ func _input(event: InputEvent) -> void:
 			match event.keycode:
 				# Movimiento
 				KEY_SPACE:
-					if not _is_crouched and char_rigidbody.is_grounded and not seated:
+					if not _is_crouched and char_rigidbody.is_grounded and not seated and not _creative:
 						_is_charging_jump = true
 				KEY_CTRL:
-					if not _is_crouched and not seated:
+					if not _is_crouched and not seated and not _creative:
 						_start_crouch()
 
 				# Interacción
 				KEY_E:
-					if ic: ic.try_activate(bi)
+					if ic and not _is_ragdoll_active(): ic.try_activate(bi)
 				KEY_R:
 					if ic: ic.start_throw_charge()
 				KEY_F:
@@ -517,3 +538,102 @@ func apply_camera_pitch(pitch: float) -> void:
 	camera_pitch = pitch
 	if is_instance_valid(player_camera):
 		player_camera.rotation.x = camera_pitch
+
+
+# ── Creative / debug ────────────────────────────────────────────────────────
+
+func _set_creative(on: bool) -> void:
+	if on == _creative:
+		return
+	_creative = on
+	var bi := _get_bi()
+	if on:
+		# Force-exit ragdoll before flying (the capsule is frozen while ragdolled).
+		if is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) \
+				and (bi.ragdoll_util.is_active or bi.ragdoll_util.is_recovering):
+			bi.ragdoll_util.deactivate(char_rigidbody, bi.custom_bones_util.lower_spine)
+		if is_instance_valid(interaction_controller):
+			interaction_controller.stop_all()
+		if _is_crouched:
+			_stop_crouch()
+		_is_charging_jump = false
+		_jump_charge = 0.0
+		char_rigidbody.set_creative_mode(true)
+	else:
+		char_rigidbody.set_creative_mode(false)
+		char_rigidbody.rotation.y = camera_yaw
+		camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
+
+
+func _setup_debug_panel() -> void:
+	_debug_panel = DebugPanel.new()
+	add_child(_debug_panel)
+	var d := WorldSeeds.ba_date()
+	_debug_panel.add_info("BA date",     "%04d-%02d-%02d" % [int(d.get("year", 0)), int(d.get("month", 0)), int(d.get("day", 0))])
+	_debug_panel.add_info("Weekly seed", str(WorldSeeds.weekly_seed()))
+	_debug_panel.add_info("Daily seed",  str(WorldSeeds.daily_seed()))
+	_debug_panel.add_action("Self",  "Toggle creative (V)",       func(): _set_creative(not _creative))
+	_debug_panel.add_action("Self",  "Toggle ragdoll (G)",        _toggle_ragdoll)
+	_debug_panel.add_action("Self",  "Respawn (P)",               _respawn)
+	_debug_panel.add_action("View",  "Show capsule / hide body",  _debug_toggle_capsule_view)
+	_debug_panel.add_action("View",  "Ragdoll debug color",       _debug_toggle_ragdoll_color)
+	_debug_panel.add_action("View",  "Grab cone",                 _debug_toggle_grab_cone)
+	_debug_panel.add_action("Spawn", "Go to start",               _go_to_start)
+	_debug_panel.add_action("Spawn", "Character",                 _debug_spawn_character)
+	_debug_panel.add_action("Spawn", "Box",                       _debug_spawn_box)
+
+
+func _debug_toggle_capsule_view() -> void:
+	_capsule_view = not _capsule_view
+	if is_instance_valid(char_rigidbody) and is_instance_valid(char_rigidbody.mesh_instance):
+		char_rigidbody.mesh_instance.visible = _capsule_view
+	var bi := _get_bi()
+	if is_instance_valid(bi):
+		bi.set_first_person_visibility(_capsule_view)
+
+
+func _debug_toggle_ragdoll_color() -> void:
+	var rd := _get_ragdoll()
+	if rd != null:
+		rd.debug_ragdoll_color = not rd.debug_ragdoll_color
+
+
+func _debug_toggle_grab_cone() -> void:
+	var bi := _get_bi()
+	if is_instance_valid(bi):
+		bi.show_grab_cone = not bi.show_grab_cone
+
+
+func _debug_spawn_pos() -> Vector3:
+	var fwd := -player_camera.global_transform.basis.z
+	return char_rigidbody.global_position + fwd * 2.5 + Vector3.UP
+
+
+func _go_to_start() -> void:
+	var spawner := get_tree().get_first_node_in_group("character_spawner")
+	if spawner and spawner.has_method("respawn_local_at_start"):
+		spawner.respawn_local_at_start()
+
+
+func _debug_spawn_character() -> void:
+	var scene := load("res://Scenes/player.tscn") as PackedScene
+	if scene == null:
+		return
+	var inst := scene.instantiate() as BoneInstantiator
+	if inst == null:
+		return
+	inst.is_active = false
+	inst.master_seed = randi() % 100000
+	get_tree().current_scene.add_child(inst)
+	inst.global_position = _debug_spawn_pos()
+
+
+func _debug_spawn_box() -> void:
+	var scene := load("res://Scenes/weighted_box.tscn") as PackedScene
+	if scene == null:
+		return
+	var inst := scene.instantiate() as Node3D
+	if inst == null:
+		return
+	get_tree().current_scene.add_child(inst)
+	inst.global_position = _debug_spawn_pos()

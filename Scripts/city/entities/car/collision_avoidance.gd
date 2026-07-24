@@ -50,20 +50,6 @@ var comfortable_deceleration: float = 10.0
 var max_deceleration: float = 15.0
 var max_acceleration: float = 8.0
 
-# --- Lateral offset field. One memoryless push per frame slides the car
-# sideways to stay out of the space of cars ahead. Spacing, overtaking, head-on
-# passing and going-around-a-stall all emerge from this single field; the
-# path_controller clamps it to the road/bridge "free tube" and to a bounded
-# slope, so it can never clip a wall or jump. No states, no accumulators.
-const LATERAL_LOOK: float = 18.0        # a car within this far ahead pushes me sideways
-const LATERAL_NEAR_RAMP: float = 3.0    # ramp influence up over this, so a car drawing even doesn't pop in
-const LATERAL_MARGIN: float = 0.6       # extra lateral gap on top of both radii
-const REPEL_STRENGTH: float = 0.7       # sideways slope from a car sharing my band
-const LEAN_STRENGTH: float = 0.12       # standing lean to my RIGHT — splits head-ons
-const ALIGN_THRESH: float = 1.2         # lateral window a near-dead-ahead car leans me in
-const RAIL_SPRING: float = 0.15         # slope pulling me back to the rail, per metre off it
-const MAX_LATERAL_SLOPE: float = 0.5    # metres sideways per metre driven (smooth, bounded)
-
 var base_speed: float = 10.0
 var current_speed: float = 10.0
 var target_speed: float = 10.0
@@ -274,58 +260,6 @@ func update_target() -> void:
 		state = State.BRAKING
 	else:
 		state = State.FOLLOWING
-
-# ============================================================================
-# LATERAL FIELD (slide around obstacles; every frame, cheap)
-# ============================================================================
-
-## Nudge the car's sideways offset. `ds` is the distance it just drove forward,
-## so the offset moves in "metres sideways per metre forward" — a bounded slope,
-## the same smoothness the bridge ramp has. Pure function of the neighbours'
-## current positions plus a spring to the rail: no memory, no state to sync.
-func update_lateral(ds: float) -> void:
-	if not enabled or registry == null or path_controller.get_curve_length() <= 0.0:
-		return
-	var nose_arc := path_controller.get_progress() + car_owner.depth * 0.5
-	var my_pos := car_owner.global_position
-	var forward := path_controller.rail_tangent(nose_arc)
-	var right := path_controller.right_at(nose_arc)
-	var n := path_controller.lateral_offset
-
-	var push := 0.0
-	for other in registry.query_neighbors(my_pos, LATERAL_LOOK, car_owner):
-		var rel: Vector3 = other.global_position - my_pos
-		var fwd := rel.dot(forward)
-		if fwd <= 0.0 or fwd > LATERAL_LOOK:
-			continue  # behind me, or too far — my followers never push me
-		var lat := rel.dot(right)  # + = other is to my right
-		var clearance: float = car_radius + other.collision_avoidance.car_radius + LATERAL_MARGIN
-		if absf(lat) >= clearance:
-			continue  # already laterally clear of it
-		# Ramp up from 0 as a car draws even (no pop-in), fade out toward the reach.
-		var w_fwd := smoothstep(0.0, LATERAL_NEAR_RAMP, fwd) * (1.0 - fwd / LATERAL_LOOK)
-		var depth := 1.0 - absf(lat) / clearance    # more aligned = deeper in its band
-		# Repel toward MORE ROOM: a car on my right pushes me left and vice versa,
-		# so the busier side always wins and I drift to the emptier one.
-		push -= REPEL_STRENGTH * w_fwd * depth * signf(lat)
-		# A near-dead-ahead car gives a standing lean to my right — the whisper
-		# that splits a head-on and starts an overtake of a directly-leading car.
-		if absf(lat) < ALIGN_THRESH:
-			push += LEAN_STRENGTH * w_fwd * (1.0 - absf(lat) / ALIGN_THRESH)
-
-	# Spring home: with nothing ahead the sum above is zero and this returns the
-	# car to its rail — no separate "return" state.
-	push -= RAIL_SPRING * n
-
-	var slope := clampf(push, -MAX_LATERAL_SLOPE, MAX_LATERAL_SLOPE)
-	var room := path_controller.lateral_room(nose_arc)
-	# Take one bounded step and stay inside the road/bridge room — but cap the net
-	# change at the slope bound even when the room clamp bites, so a sharp taper
-	# can never jump the car (or spike its yaw). Stopped cars (ds≈0) can't drift.
-	var step_cap := MAX_LATERAL_SLOPE * ds
-	var n_new := clampf(n + slope * ds, -room, room)
-	n_new = clampf(n_new, n - step_cap, n + step_cap)
-	path_controller.set_lateral(n_new, (n_new - n) / maxf(ds, 0.001))
 
 # ============================================================================
 # MOTION (every frame, cheap)

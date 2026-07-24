@@ -75,10 +75,22 @@ var area_instantiator = null
 var rng: RandomNumberGenerator
 
 var car_id: String = ""
-# Spawn pose, kept for the stuck-diagnostics report (StuckReporter).
-var spawn_position: Vector3 = Vector3.ZERO
-var spawn_heading: Vector3 = Vector3.FORWARD
 var _move_accum: float = 0.0
+# Avoidance decision cadence (frames), scaled by camera distance and staggered by
+# instance id: braking latency is invisible at range, so far cars decide less
+# often. Motion (integrate + advance + pose) still runs every frame.
+const DECISION_INTERVAL_NEAR: int = 2
+const DECISION_INTERVAL_MID: int = 4
+const DECISION_INTERVAL_FAR: int = 8
+var _stagger: int = 0
+# Unstuck watchdog (see tick): motionless this long, not at a light and not
+# tailing a same-direction leader → wedged; drive straight through the blocker.
+const UNSTUCK_AFTER: float = 4.0        # seconds motionless before we force through
+const UNSTUCK_CLIP_TIME: float = 1.5    # force through the blocker for this long once triggered
+const UNSTUCK_MOVE_EPS: float = 0.3     # movement under this still counts as motionless
+var _still_time: float = 0.0
+var _clip_time: float = 0.0
+var _unstuck_pos: Vector3 = Vector3.ZERO
 var _body_claims: Array = []
 var _broadcast_claims: Array = []
 var _body_points: PackedVector3Array = PackedVector3Array([Vector3.ZERO, Vector3.ZERO])
@@ -91,6 +103,7 @@ static var _shared_meshes: Dictionary = {}
 ## Called once by the spawner after configuration (replaces Node._ready).
 func setup() -> void:
 	car_id = _generate_car_id()
+	_stagger = int(get_instance_id() % 4096)
 
 	path_controller = PathController.new()
 	path_controller.initialize(self, world_node)
@@ -118,33 +131,68 @@ func setup() -> void:
 		_body_claims = claim_registry.create_claim_pair(TrafficClaimRegistry.ClaimType.CAR_BODY, self)
 		_broadcast_claims = claim_registry.create_claim_pair(TrafficClaimRegistry.ClaimType.CAR_BROADCAST, self)
 
-## Full simulation step; `_dist` (XZ distance to the nearest camera) is no
-## `_dist` (XZ distance to the nearest camera) is only used by CarManager for
-## despawning. Every car runs full avoidance every frame — NO fog shortcut.
-## (Both fog optimisations were field-tested and removed: blind-cruising fog
-## cars clipped at the boundary and ran lights, muddying every diagnosis.
-## Correctness first; optimise again once the system is proven.)
-func tick(delta: float, _dist: float, _frame: int) -> void:
+## Full simulation step; `dist` is the XZ distance to the nearest camera. The
+## expensive avoidance decision (corridor rebuild + target) runs at a
+## distance-scaled, staggered cadence — never blind, just less often when far;
+## motion runs every frame so movement stays smooth at any distance.
+func tick(delta: float, dist: float, frame: int) -> void:
 	_move_accum += delta
 	var move_delta := _move_accum
 	_move_accum = 0.0
 
-	collision_avoidance.rebuild_corridor()
-	collision_avoidance.update_target()
+	var interval := DECISION_INTERVAL_NEAR
+	if dist >= WorldSettings.fog_start_distance:
+		var mid: float = (WorldSettings.fog_start_distance + WorldSettings.render_distance) * 0.5
+		interval = DECISION_INTERVAL_MID if dist < mid else DECISION_INTERVAL_FAR
+	if (frame + _stagger) % interval == 0:
+		collision_avoidance.rebuild_corridor()
+		collision_avoidance.update_target()
 
 	var should_move = collision_avoidance.integrate_speed(move_delta)
-	var step := 0.0
+	var step_speed := collision_avoidance.current_speed
+
+	# Unstuck watchdog (deliberately simple). If a car sits still too long and it is
+	# NOT held by a red light and NOT merely tailing a same-direction leader (i.e. a
+	# normal draining queue), it is wedged — an oncoming/crossing deadlock or the
+	# keep-the-box-clear hold (the cases in stuck_report.md). Break it by driving
+	# straight THROUGH whatever blocks it for a moment: a brief accepted clip beats a
+	# permanent stall. Red lights and queue-tailing are exempt, so we never run a
+	# light or ram the car we are legitimately following.
+	if _clip_time > 0.0 and not is_blocked_by_traffic_plane:
+		_clip_time -= move_delta
+		step_speed = maxf(step_speed, collision_avoidance.base_speed)
+		should_move = true
+	else:
+		_clip_time = 0.0   # a red light came up → stop forcing, defer to the governor
+		if not is_blocked_by_traffic_plane and not _is_tailing() \
+				and sim_transform.origin.distance_to(_unstuck_pos) <= UNSTUCK_MOVE_EPS:
+			_still_time += move_delta
+			if _still_time >= UNSTUCK_AFTER:
+				_clip_time = UNSTUCK_CLIP_TIME
+				_still_time = 0.0
+		else:
+			_unstuck_pos = sim_transform.origin
+			_still_time = 0.0
+
 	if should_move:
-		step = collision_avoidance.current_speed * move_delta
+		var step := step_speed * move_delta
 		if step > 0.0:
 			path_controller.advance_distance(step)
 
-	# Slide sideways by the distance just driven (bounded slope), then pose the
-	# car — so its published body/ray reflect the new offset this frame.
-	collision_avoidance.update_lateral(step)
 	sim_transform = path_controller.get_current_transform()
 
 	_publish_claims()
+
+# Tailing = the car blocking me is another car ahead heading roughly my way — a
+# normal follow/queue, which the unstuck watchdog must never clip through. A null
+# blocker (box-hold) or an oncoming/crossing blocker is NOT tailing, so those wedge
+# cases stay eligible to be forced through.
+func _is_tailing() -> bool:
+	var ref: WeakRef = collision_avoidance.blocking_car_ref
+	var b = ref.get_ref() if ref != null else null
+	if not (b is FlyingCar):
+		return false
+	return path_controller.get_heading().dot(b.path_controller.get_heading()) > 0.5
 
 func _publish_claims() -> void:
 	if claim_registry == null:
@@ -222,10 +270,6 @@ func set_path(start: Vector3, end: Vector3, initial_progress: float = 0.0,
 	current_cell_y = int(round(grid_v * height_cells))
 	current_width_cells = width_cells
 	current_height_cells = height_cells
-
-	spawn_position = start
-	var sh := end - start
-	spawn_heading = sh.normalized() if sh.length_squared() > 1e-6 else Vector3.FORWARD
 
 	# Commit the WHOLE route now: a seeded, weighted, no-repeat walk to the
 	# city boundary. The path controller freezes it into one immutable curve +

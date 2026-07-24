@@ -33,7 +33,7 @@ class_name AreaInstantiator
 @export var max_topup_per_tick: int = 5
 @export var bootstrap_duration: float = 2.0
 @export var bootstrap_batch_size: int = 30
-@export_range(0.0, 1.0) var far_density_fraction: float = 0.3
+@export_range(0.0, 1.0) var far_density_fraction: float = 0.1
 @export_range(1.0, 8.0) var spawn_height_bias: float = 2.5
 @export_flags_3d_physics var los_collision_mask: int = 1
 @export_group("Fog")
@@ -180,6 +180,17 @@ func _on_settings_changed() -> void:
 		fog_material.set_shader_parameter("outer_radius", WorldSettings.render_distance)
 		fog_material.set_shader_parameter("fog_color", WorldSettings.fog_color)
 
+	_rebuild_cylinders()
+
+# La cámara del/los jugador(es) local(es) se inyecta en runtime (el CharacterSpawner
+# la pasa cuando spawnea el jugador y en cada respawn). Los cilindros de spawn se
+# crean uno por cámara, así que hay que reconstruirlos al cambiar el set.
+func set_cameras(new_cameras: Array[Camera3D]) -> void:
+	cameras = new_cameras
+	if is_inside_tree():
+		_rebuild_cylinders()
+
+func _rebuild_cylinders() -> void:
 	for area in cylinder_areas:
 		if area and is_instance_valid(area):
 			area.queue_free()
@@ -200,13 +211,17 @@ func _setup_visualization_containers() -> void:
 	if not world:
 		return
 
+	# Deferred: _ready() can run while `world` is still adding its own children,
+	# and add_child() is blocked during a parent's setup. Deferring lets the add
+	# happen once world is idle. Building children on these containers before they
+	# enter the tree is fine — the whole subtree attaches when the deferred call runs.
 	lane_volumes_container = Node3D.new()
 	lane_volumes_container.name = "LaneVolumesDebug_" + str(get_instance_id())
-	world.add_child(lane_volumes_container)
+	world.add_child.call_deferred(lane_volumes_container)
 
 	grid_points_container = Node3D.new()
 	grid_points_container.name = "GridPointsDebug_" + str(get_instance_id())
-	world.add_child(grid_points_container)
+	world.add_child.call_deferred(grid_points_container)
 
 func _cleanup_containers() -> void:
 	if claim_registry and is_instance_valid(claim_registry):

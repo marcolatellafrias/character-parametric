@@ -37,18 +37,15 @@ func _init(
 	
 	var rng = RandomNumberGenerator.new()
 	rng.seed = p_seed + id
-	
-	color = Color.from_hsv(
-		rng.randf(),
-		rng.randf_range(0.5, 0.8),
-		rng.randf_range(0.6, 0.9),
-		1.0
-	)
-	
+
 	floor_count = rng.randi_range(p_min_floors, p_max_floors)
-	
+
 	# Asignar arquetipo basado en neighborhood y seed
 	archetype = ArchetypeDefinitions.get_archetype_for_cluster(neighborhood_type, p_seed + id)
+
+	# El color (debug) ahora proviene del arquetipo: familia de tono fija por
+	# arquetipo, el seed varía saturación/valor.
+	color = archetype.get_color(p_seed + id)
 
 
 func set_grid_config(

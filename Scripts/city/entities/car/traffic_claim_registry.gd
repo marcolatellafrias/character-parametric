@@ -44,7 +44,6 @@ var _parity: int = 0
 # Query scratch buffers, reused across calls (single-threaded access).
 var _scratch_candidates: Array[Claim] = []
 var _scratch_hits: Array[Dictionary] = []
-var _neighbor_buffer: Array = []
 
 func _ready() -> void:
 	add_to_group("traffic_claim_registry")
@@ -155,32 +154,6 @@ func query_corridor(points: PackedVector3Array, arcs: PackedFloat32Array,
 		if not hit.is_empty():
 			hits.append(hit)
 	return hits
-
-## Cars whose body sits within `radius` of `center` (last frame's read buffer).
-## Feeds the lateral field — it needs neighbours beside AND ahead, which the
-## forward-only corridor query misses. Returns a reused buffer, valid until the
-## next call.
-func query_neighbors(center: Vector3, radius: float, exclude: Object) -> Array:
-	_neighbor_buffer.clear()
-	var aabb := AABB(center - Vector3.ONE * radius, Vector3.ONE * (radius * 2.0))
-	var candidates := _scratch_candidates
-	candidates.clear()
-	_query_stamp += 1
-	_gather(_read_cells, aabb, candidates)
-	var r2 := radius * radius
-	for claim in candidates:
-		if claim.type != ClaimType.CAR_BODY:
-			continue  # one body claim per car → no dedupe needed
-		if not is_instance_valid(claim.owner_car):
-			continue
-		if claim.owner_car == exclude:
-			continue
-		var car := claim.owner_car as FlyingCar
-		if car == null:
-			continue
-		if car.global_position.distance_squared_to(center) <= r2:
-			_neighbor_buffer.append(car)
-	return _neighbor_buffer
 
 ## Spawn check: is this capsule free of car bodies/broadcasts and obstacles?
 ## Checks both buffers so cars spawned earlier in the same tick are seen.

@@ -192,6 +192,7 @@ func generate_and_visualize() -> void:
 
 func generate_graph() -> void:
 	generator = GraphCityGenerator.new()
+	generator.enable_traffic_lights = enable_traffic_lights
 
 	var legacy_block_cell_height = min_distance / block_grid_rows
 

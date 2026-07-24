@@ -6,4 +6,3 @@
 script = ExtResource("1")
 fog_color = Color(0.7209096, 0.47572768, 0.30881587, 1)
 spawn_buffer = 100.0
-max_cars = 300

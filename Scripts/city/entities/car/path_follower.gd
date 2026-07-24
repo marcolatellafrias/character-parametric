@@ -36,22 +36,6 @@ var progress: float = 0.0
 var profile: PackedVector2Array = PackedVector2Array()
 var route_volumes: Array = []
 
-# Lateral offset — the horizontal analogue of the bridge profile. A signed
-# sideways displacement (metres, + = the car's RIGHT) from the rail, driven at
-# runtime by CollisionAvoidance so cars slide around each other. Bounded by the
-# lateral room below and by a lateral slope, so it is always smooth (no teleport)
-# — exactly the bridge-ramp discipline, one axis over. `lateral_slope` is the
-# current d(offset)/d(arc), used only to yaw the car into its drift.
-var lateral_offset: float = 0.0
-var lateral_slope: float = 0.0
-
-# The static "free tube": how far sideways the car may drift and stay on safe
-# ground. A constant on open road, tapering to ~0 through a bridge passage (where
-# the vertical profile is committed and the car must hold its rail), with a
-# bounded run-up so an active drift is drawn home BEFORE the bridge.
-const LATERAL_ROOM_BASE: float = 2.5   # metres of sideways room on open road
-const BRIDGE_RUNUP: float = 12.0       # arc over which room tapers to 0 before a bridge
-
 # Per-segment arc ranges along the baked curve, for volume/light tracking.
 # Each entry: {"id": String, "volume": Dictionary, "arc_start": float,
 # "arc_end": float}. Contiguous and ordered.
@@ -88,8 +72,6 @@ func create_route(route: Array, initial_progress: float) -> void:
 	segments.clear()
 	_current_seg = 0
 	_ended = false
-	lateral_offset = 0.0
-	lateral_slope = 0.0
 
 	if route.is_empty():
 		curve = null
@@ -98,6 +80,12 @@ func create_route(route: Array, initial_progress: float) -> void:
 
 	curve = Curve3D.new()
 	curve.bake_interval = BAKE_INTERVAL
+	# Godot's up-vector BAKE passes a slightly-denormalized forward tangent into
+	# Basis.set_axis_angle and spams "axis must be normalized" (a harmless engine
+	# bug, but constant log noise). We don't need the baked up vectors: with them
+	# off, sample_baked_with_rotation still yields the same upright basis from the
+	# tangent alone (verified), and the profile branch derives its own basis anyway.
+	curve.up_vector_enabled = false
 	_build_curve(route)
 	_length = curve.get_baked_length()
 
@@ -185,20 +173,19 @@ func get_current_transform() -> Transform3D:
 	if not curve:
 		return Transform3D()
 	var xf := curve.sample_baked_with_rotation(progress)
-	var v_off := profile_offset(progress)
-	var v_slope := profile_slope(progress)
-	if absf(v_off) < 1e-5 and absf(v_slope) < 1e-5 \
-			and absf(lateral_offset) < 1e-5 and absf(lateral_slope) < 1e-5:
+	var offset := profile_offset(progress)
+	var slope := profile_slope(progress)
+	if absf(offset) < 1e-5 and absf(slope) < 1e-5:
 		return xf
-	var base_tangent := rail_tangent(progress)
+	xf.origin.y += offset
+	# Orient along the offset path's tangent: pitch into climbs/descents.
+	var h := 0.5
+	var base_tangent := curve.sample_baked(minf(progress + h, _length)) \
+		- curve.sample_baked(maxf(progress - h, 0.0))
 	if base_tangent.length_squared() < 1e-8:
 		return xf
-	var right := Vector3.UP.cross(base_tangent)
-	right = right.normalized() if right.length_squared() > 1e-8 else Vector3.RIGHT
-	# Displace the origin: vertical (bridge profile) + lateral (traffic offset).
-	xf.origin += Vector3.UP * v_off + right * lateral_offset
-	# Heading tilts with both slopes: pitch from the climb, yaw from the drift.
-	var tangent := (base_tangent + Vector3.UP * v_slope + right * lateral_slope).normalized()
+	base_tangent = base_tangent.normalized()
+	var tangent := (base_tangent + Vector3(0.0, slope, 0.0)).normalized()
 	var z_axis := tangent * (1.0 if xf.basis.z.dot(base_tangent) >= 0.0 else -1.0)
 	var y_axis := xf.basis.y - z_axis * xf.basis.y.dot(z_axis)
 	if y_axis.length_squared() < 1e-8:
@@ -206,37 +193,6 @@ func get_current_transform() -> Transform3D:
 	y_axis = y_axis.normalized()
 	xf.basis = Basis(y_axis.cross(z_axis), y_axis, z_axis)
 	return xf
-
-## Normalised tangent of the BASE rail (no offsets) at an arc — the frame the
-## lateral offset is measured and applied in.
-func rail_tangent(arc: float) -> Vector3:
-	var h := 0.5
-	var t := sample_baked(minf(arc + h, _length)) - sample_baked(maxf(arc - h, 0.0))
-	return t.normalized() if t.length_squared() > 1e-8 else Vector3.FORWARD
-
-## Unit vector pointing to the car's RIGHT at an arc (horizontal, ⟂ to travel).
-func right_at(arc: float) -> Vector3:
-	var r := Vector3.UP.cross(rail_tangent(arc))
-	return r.normalized() if r.length_squared() > 1e-8 else Vector3.RIGHT
-
-## Set the lateral offset and its current slope (from CollisionAvoidance).
-func set_lateral(offset: float, slope: float) -> void:
-	lateral_offset = offset
-	lateral_slope = slope
-
-## Static sideways room at an arc: full on open road, tapering to 0 approaching a
-## bridge passage (where the vertical profile is active), with a bounded run-up
-## so any active drift is drawn back to the rail before the slab.
-func lateral_room(arc: float) -> float:
-	var nearest := BRIDGE_RUNUP
-	var a := 0.0
-	while a <= BRIDGE_RUNUP:
-		var s := arc + a
-		if absf(profile_offset(s)) > 0.2 or absf(profile_slope(s)) > 0.02:
-			nearest = a
-			break
-		a += 1.5
-	return LATERAL_ROOM_BASE * clampf(nearest / BRIDGE_RUNUP, 0.0, 1.0)
 
 func advance(delta: float, speed: float) -> void:
 	advance_distance(delta * speed)
@@ -282,15 +238,11 @@ func get_heading() -> Vector3:
 	var t := sample_profiled(minf(progress + h, _length)) - sample_profiled(maxf(progress - h, 0.0))
 	return t.normalized() if t.length_squared() > 1e-8 else Vector3.FORWARD
 
-## Base curve plus the planned Y-profile AND the current lateral offset — the
-## path actually flown. Corridor building and occupancy sampling use this, so the
-## speed-ray looks down the line the car is drifting into (that coupling is what
-## turns a sideways nudge into an overtake / head-on pass).
+## Base curve plus the planned Y-profile — the path actually flown. Corridor
+## building and occupancy sampling use this so everything follows it.
 func sample_profiled(p_progress: float) -> Vector3:
 	var p := sample_baked(p_progress)
 	p.y += profile_offset(p_progress)
-	if absf(lateral_offset) > 1e-5:
-		p += right_at(p_progress) * lateral_offset
 	return p
 
 # ============================================================================

@@ -1,4 +1,4 @@
-[gd_scene load_steps=27 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=28 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
 [ext_resource type="Material" uid="uid://da33e5tos7dp0" path="res://Materials/blue.tres" id="4_oilx1"]
@@ -12,6 +12,7 @@
 [ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
 [ext_resource type="PackedScene" uid="uid://d2fiffsg4ajn1" path="res://Scenes/world_settings.tscn" id="12_v3boh"]
+[ext_resource type="Script" path="res://Scripts/net/character_spawner.gd" id="13_spawn"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
 albedo_color = Color(0.36026734, 0.21508548, 0.19387919, 1)
@@ -168,38 +169,14 @@ cells_x = 6
 weight = 40.0
 
 [node name="chars" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -3)
 
-[node name="fat" parent="chars" instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.235, 0.3, -10.597)
-
-[node name="AreaInstantiator" type="Node3D" parent="chars/fat"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 37.15596, 14.783778, 45.908176)
-script = ExtResource("12_k27g2")
-metadata/_custom_type_script = "uid://btuoiwrmahgt4"
-
-[node name="WorldEnvironment" type="WorldEnvironment" parent="chars/fat"]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_bg2jp")
 
-[node name="giga" parent="chars" instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3612877, 0.3, -10.597)
-master_seed = 3
-
-[node name="old" parent="chars" instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.6626201, 0.3, -10.597)
-master_seed = 4
-
-[node name="tall" parent="chars" instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8281984, 0.5, -10.493808)
-master_seed = 2
-
-[node name="kid" parent="chars" instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.446537, 0.3, -10.347981)
-master_seed = 1
-
-[node name="normal" parent="chars" instance=ExtResource("11_ymvx6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.446537, 0.29999995, -10.347981)
-master_seed = 10
+[node name="CharacterSpawner" type="Node" parent="." node_paths=PackedStringArray("characters_root", "area_instantiator")]
+script = ExtResource("13_spawn")
+characters_root = NodePath("../chars")
+area_instantiator = NodePath("../CharacterBody3D/area_instantiator")
 
 [node name="city" type="Node3D" parent="."]
 script = ExtResource("9_oilx1")
@@ -209,24 +186,25 @@ generation_seed = 12345
 show_streets = false
 show_distorted_grid = false
 show_buildings = true
+show_traffic_planes = true
+enable_traffic_lights = false
 show_delivery_doors = true
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8859253, 0)
 script = ExtResource("10_4i7ud")
+enabled = false
 fly_sprint_speed = 40.0
 
 [node name="Camera3D" type="Camera3D" parent="CharacterBody3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.13701487, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.030937672, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CharacterBody3D"]
 shape = SubResource("CapsuleShape3D_4i7ud")
 
-[node name="area_instantiator" type="Node3D" parent="CharacterBody3D" node_paths=PackedStringArray("cameras", "world")]
+[node name="area_instantiator" type="Node3D" parent="CharacterBody3D" node_paths=PackedStringArray("world")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -3.8859253, 0)
 script = ExtResource("12_k27g2")
-cameras = [NodePath("../Camera3D")]
 world = NodePath("../..")
-car_unstuck_enabled = false
 fog_shader = ExtResource("11_h3puh")
 show_traffic_debug = true

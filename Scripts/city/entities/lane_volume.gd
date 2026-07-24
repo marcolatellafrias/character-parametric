@@ -46,8 +46,11 @@ func _init(volume_data: Dictionary) -> void:
 	_setup_area()
 	_generate_collision()
 	
-	var traffic_idx = volume_data.get("traffic_index", -1)
-	_create_traffic_plane(traffic_idx)
+	# No plane at all when traffic lights are disabled — nothing to block cars,
+	# render, or watchdog (get_traffic_plane() stays null everywhere downstream).
+	if volume_data.get("create_traffic_plane", true):
+		var traffic_idx = volume_data.get("traffic_index", -1)
+		_create_traffic_plane(traffic_idx)
 
 func _setup_area() -> void:
 	monitoring = true

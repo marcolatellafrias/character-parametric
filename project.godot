@@ -18,6 +18,7 @@ config/features=PackedStringArray("4.5")
 
 WorldSettings="*res://Scenes/world_settings.tscn"
 DebugController="*res://Scripts/city/entities/car/debug_scroll.gd"
+SessionManager="*res://Scripts/net/session_manager.gd"
 
 [display]
 
@@ -101,3 +102,10 @@ common/physics_ticks_per_second=240
 [rendering]
 
 anti_aliasing/quality/msaa=2
+
+[steam]
+
+initialization/app_id=0
+initialization/initialize_on_startup=false
+initialization/embed_callbacks=false
+multiplayer_peer/max_channels=4

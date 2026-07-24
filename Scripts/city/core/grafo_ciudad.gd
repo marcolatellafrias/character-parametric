@@ -9,6 +9,9 @@ var block_grids: Dictionary = {}
 var region_size: Vector2 = Vector2.ZERO
 var lane_volume_areas: Dictionary = {}
 var traffic_indices: Dictionary = {}
+# When false, lane volumes are built WITHOUT a traffic plane at all — no node, no
+# blocking claim, no visual. Set by the city script before generation.
+var enable_traffic_lights: bool = true
 var sidewalk_matrices: Dictionary = {}       # face_idx -> SidewalkMatrix
 var bridges: Dictionary = {}               # edge_key -> Array[Dictionary]
 
@@ -865,6 +868,7 @@ func _enrich_lane_volume_data(volume_data: Dictionary, face_idx: int, edge_idx: 
 	
 	var key = "%d_%d" % [face_idx, edge_idx]
 	enriched["traffic_index"] = traffic_indices.get(key, -1)
+	enriched["create_traffic_plane"] = enable_traffic_lights
 	
 	if block:
 		enriched["block_height"] = block.get_max_building_height()
