@@ -60,6 +60,19 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: 
 
 	set_reach(max_reach)
 
+## Re-apunta el IC (persistente) a un esqueleto nuevo tras un respawn/switch: refs de cápsula,
+## cámara, brazos, anim y el detector. El IC y su detector sobreviven; solo se re-vinculan.
+func rebind(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: AnimationModifiers, max_reach: float, inst: EntityInstantiation) -> void:
+	char_rigidbody        = rb
+	player_camera         = cam
+	arms_controller       = arms
+	anim_mod              = anim
+	_entity_instantiation = inst
+	_update_grab_strength()
+	set_reach(max_reach)
+	if is_instance_valid(detector):
+		detector.rebind(rb, cam, rb.get_parent() as BoneInstantiator)
+
 func set_reach(max_reach: float) -> void:
 	interact_dist_max = max_reach * 0.85
 	grab_dist_max     = max_reach * 0.9

@@ -21,6 +21,8 @@ var impact_xz: Vector2 = Vector2.ZERO
 # ── Pose de cuerpo ──
 var crouch_t: float = 0.0
 var jump_squat_t: float = 0.0
+## Pitch de mirada (cabeza/columna, mirar arriba/abajo), ya clampeado. Local: cámara; proxy: red.
+var head_pitch: float = 0.0
 
 # ── Agarre ──
 ## El GrabbableInteractable que este personaje está agarrando (o null). El resto (handles, grab

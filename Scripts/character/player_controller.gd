@@ -42,35 +42,64 @@ var _creative: bool = false
 var _debug_panel: DebugPanel = null
 var _capsule_view: bool = false
 
-func setup(rb: CharacterRigidBody3D, cam: Camera3D, head: CustomBone, h_size: Vector3, inst: EntityInstantiation) -> void:
-	char_rigidbody = rb
-	player_camera  = cam
-	head_bone      = head
-	head_size      = h_size
-	is_ready       = true
-	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
+## Punto de entrada único cuando el BoneInstantiator (re)construye el esqueleto del jugador
+## activo — tanto el build inicial como cada respawn. Construye lo persistente una sola vez
+## (InteractionController, cámara de debug, HUD de impacto) y re-vincula el controlador al
+## esqueleto nuevo. Lo llama BoneInstantiator.initialize_skeleton.
+func on_skeleton_built(target: BoneInstantiator, cam: Camera3D) -> void:
+	player_camera = cam
+	if not is_ready:
+		_construct_persistent(target, cam)
+		is_ready = true
+	rebind(target)
+	_set_debug_cam(_debug_cam_mode)
+	if target.debug_enabled:
+		_setup_debug_panel()  # refleja el personaje nuevo (se recrea adentro)
 	# El mouse_mode lo maneja UIState (technical/ui.md); acá no lo tocamos.
 
-	var bi := _get_bi()
-	arms_controller = bi.arms_controller
-
+## Nodos que viven en el PlayerController y sobreviven a los respawns: se crean una sola vez.
+func _construct_persistent(target: BoneInstantiator, cam: Camera3D) -> void:
 	interaction_controller = InteractionController.new()
 	add_child(interaction_controller)
-	var max_reach := inst.arch_final.reach * inst.arch_final.reach_multiplier
-	interaction_controller.setup(char_rigidbody, player_camera, arms_controller, bi.anim_mod, max_reach, inst)
+	var max_reach := target.entity_instantiation.arch_final.reach * target.entity_instantiation.arch_final.reach_multiplier
+	interaction_controller.setup(target.char_rigidbody, cam, target.arms_controller, target.anim_mod, max_reach, target.entity_instantiation)
 
-	_hud = PlayerHUD.create(inst)
-	char_rigidbody.add_child(_hud)
 	_impact_debug_hud = ImpactDebugHUD.create()
-	_connect_fall_signal(char_rigidbody)
 
 	_debug_camera = Camera3D.new()
 	_debug_camera.current = false
 	add_child(_debug_camera)
-	_set_debug_cam(0)
 
-	if is_instance_valid(_get_bi()) and _get_bi().debug_enabled:
-		_setup_debug_panel()
+## Re-vincula el controlador (persistente) al esqueleto target: refs de cápsula/brazos/anim, el
+## InteractionController, reparenta la cámara y recrea el HUD. Único lugar donde se re-cablea:
+## compartido por on_skeleton_built (build/respawn) y _switch_to (cambio de cuerpo en creative).
+func rebind(target: BoneInstantiator) -> void:
+	char_rigidbody  = target.char_rigidbody
+	head_bone       = target.custom_bones_util.head
+	head_size       = target.skel_sizes_util.head_size
+	arms_controller = target.arms_controller
+
+	var max_reach := target.entity_instantiation.arch_final.reach * target.entity_instantiation.arch_final.reach_multiplier
+	if is_instance_valid(interaction_controller):
+		interaction_controller.rebind(char_rigidbody, player_camera, arms_controller, target.anim_mod, max_reach, target.entity_instantiation)
+
+	if is_instance_valid(player_camera):
+		if is_instance_valid(player_camera.get_parent()):
+			player_camera.get_parent().remove_child(player_camera)
+		char_rigidbody.add_child(player_camera)
+		target.player_camera   = player_camera
+		player_camera.position = Vector3.ZERO
+		player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
+		player_camera.current  = _debug_cam_mode == 0
+
+	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
+
+	if is_instance_valid(_hud):
+		_hud.queue_free()
+	_hud = PlayerHUD.create(target.entity_instantiation)
+	char_rigidbody.add_child(_hud)
+
+	_connect_fall_signal(char_rigidbody)
 
 func _get_bi() -> BoneInstantiator:
 	return char_rigidbody.get_parent() as BoneInstantiator
@@ -403,33 +432,12 @@ func _switch_to(target: BoneInstantiator) -> void:
 	current_bi.is_active = false
 
 	target.is_active = true
-	char_rigidbody = target.char_rigidbody
-	head_bone      = target.custom_bones_util.head
-	head_size      = target.skel_sizes_util.head_size
-
-	var max_reach := target.entity_instantiation.arch_final.reach * target.entity_instantiation.arch_final.reach_multiplier
-	if is_instance_valid(interaction_controller):
-		interaction_controller.set_reach(max_reach)
-		interaction_controller.char_rigidbody = char_rigidbody
-		interaction_controller.player_camera  = player_camera
-		interaction_controller.anim_mod       = target.anim_mod
-		interaction_controller.set_entity_instantiation(target.entity_instantiation)
-
-	arms_controller = target.arms_controller
-	if is_instance_valid(interaction_controller):
-		interaction_controller.arms_controller = arms_controller
-
-	player_camera.get_parent().remove_child(player_camera)
-	char_rigidbody.add_child(player_camera)
-	target.player_camera = player_camera
-	player_camera.current = _debug_cam_mode == 0
-	player_camera.position = Vector3.ZERO
-	player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
-	char_rigidbody.is_active = true
+	rebind(target)  # cápsula, IC, cámara, HUD, fall signal — compartido con el respawn
+	char_rigidbody.is_active  = true
 	char_rigidbody.rotation.y = camera_yaw
-	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 	_was_ragdoll_active = false
 
+	# En primera persona la cabeza/torso los maneja la cámara: sacamos esos bones del animador.
 	var bones_to_clear := [
 		target.custom_bones_util.head,
 		target.custom_bones_util.neck,
@@ -442,79 +450,50 @@ func _switch_to(target: BoneInstantiator) -> void:
 			target.procedural_animator.unregister_bone(bone)
 	target.refresh_camera_animations()
 
-	if _is_crouched:
-		char_rigidbody.set_crouched(false)
-	_is_crouched = false
+	_is_crouched      = false
 	_is_charging_jump = false
-	_jump_charge = 0.0
+	_jump_charge      = 0.0
 	char_rigidbody.crouch_speed_factor = 1.0
 
-	if is_instance_valid(_hud):
-		_hud.queue_free()
-	_hud = PlayerHUD.create(target.entity_instantiation)
-	char_rigidbody.add_child(_hud)
-
-	_connect_fall_signal(char_rigidbody)
 	_set_debug_cam(_debug_cam_mode)
-
 	if is_instance_valid(interaction_controller):
 		interaction_controller.stop_all()
 
 
 func _respawn() -> void:
-	var current_bi := _get_bi()
-	if not current_bi:
+	var bi := _get_bi()
+	if not bi:
 		return
-	if is_instance_valid(current_bi.ragdoll_util) and current_bi.ragdoll_util.is_active:
-		current_bi.ragdoll_util.deactivate(char_rigidbody, current_bi.custom_bones_util.lower_spine)
+
+	# Salir limpio de todo estado que se aferra a la cápsula actual, ANTES de reconstruirla.
+	if _creative:
+		_set_creative(false)
+	var seat := bi.current_seat as SeatInteractable
+	if is_instance_valid(seat):
+		seat.activate(bi)  # de-ocupa el asiento (stand up) para que quede libre
+	if is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active:
+		bi.ragdoll_util.deactivate(char_rigidbody, bi.custom_bones_util.lower_spine)
+	if is_instance_valid(interaction_controller):
+		interaction_controller.stop_all()  # suelta grab/control (y sincroniza grab_target null)
 
 	var prev_pos := Vector3(char_rigidbody.global_position.x, 3.0, char_rigidbody.global_position.z)
-	current_bi.master_seed = randi() % 100000
-	current_bi.initialize_skeleton()
-	# Multiplayer: el aspecto cambió, avisá a los demás para que reconstruyan mi proxy.
-	if is_instance_valid(current_bi.net_sync):
-		current_bi.net_sync.broadcast_seed()
 
-	char_rigidbody = current_bi.char_rigidbody
-	head_bone      = current_bi.custom_bones_util.head
-	head_size      = current_bi.skel_sizes_util.head_size
-
-	var max_reach := current_bi.entity_instantiation.arch_final.reach * current_bi.entity_instantiation.arch_final.reach_multiplier
-	if is_instance_valid(interaction_controller):
-		interaction_controller.set_reach(max_reach)
-		interaction_controller.char_rigidbody = char_rigidbody
-		interaction_controller.anim_mod       = current_bi.anim_mod
-		interaction_controller.set_entity_instantiation(current_bi.entity_instantiation)
-	arms_controller = current_bi.arms_controller
-	if is_instance_valid(interaction_controller):
-		interaction_controller.arms_controller = arms_controller
+	# Reconstruir el esqueleto con seed nueva. initialize_skeleton → on_skeleton_built → rebind
+	# re-vincula todo (cápsula, IC, cámara, HUD); acá solo reposicionamos y reseteamos estado.
+	bi.master_seed = randi() % 100000
+	bi.initialize_skeleton()
+	if is_instance_valid(bi.net_sync):
+		bi.net_sync.broadcast_seed()  # multiplayer: reconstruir mi proxy en las demás máquinas
 
 	char_rigidbody.global_position = prev_pos
-	char_rigidbody.rotation.y = camera_yaw
-	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
+	char_rigidbody.rotation.y      = camera_yaw
+
+	# El esqueleto nuevo arranca limpio; reseteamos el estado de locomoción que vive acá.
+	_is_crouched        = false
+	_is_charging_jump   = false
+	_jump_charge        = 0.0
 	_was_ragdoll_active = false
-
-	if _is_crouched:
-		char_rigidbody.set_crouched(false)
-	_is_crouched = false
-	_is_charging_jump = false
-	_jump_charge = 0.0
 	char_rigidbody.crouch_speed_factor = 1.0
-
-	player_camera.get_parent().remove_child(player_camera)
-	char_rigidbody.add_child(player_camera)
-	player_camera.current = _debug_cam_mode == 0
-	player_camera.position = Vector3.ZERO
-	player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
-
-	if is_instance_valid(_hud):
-		_hud.queue_free()
-	_hud = PlayerHUD.create(current_bi.entity_instantiation)
-	char_rigidbody.add_child(_hud)
-
-	_connect_fall_signal(char_rigidbody)
-	if is_instance_valid(interaction_controller):
-		interaction_controller.stop_all()
 
 
 func _process_stamina(delta: float) -> void:
@@ -573,8 +552,8 @@ func _set_creative(on: bool) -> void:
 
 
 func _setup_debug_panel() -> void:
-	# setup() se re-llama en cada respawn: recreamos el panel para reflejar el nuevo
-	# personaje (y no acumular paneles).
+	# Se re-llama en cada respawn (desde on_skeleton_built): recreamos el panel para reflejar
+	# el nuevo personaje (y no acumular paneles).
 	if is_instance_valid(_debug_panel):
 		_debug_panel.queue_free()
 	_debug_panel = DebugPanel.new()

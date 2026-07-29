@@ -206,8 +206,8 @@ func register_all() -> void:
 
 
 func _register_camera_pitch_animations() -> void:
-	if not bi.is_active or not is_instance_valid(bi.player_camera):
-		return
+	if not (bi.is_active or bi.is_puppet):
+		return  # jugador local o proxy remoto; los NPCs puros no miran con la cámara
 	var pa             := bi.procedural_animator
 	var PA             := ProceduralBoneAnimator
 	var pitch_callable := _make_pitch_callable()
@@ -226,23 +226,17 @@ func _register_camera_pitch_animations() -> void:
 	var middle_spine    := bi.custom_bones_util.middle_spine
 	var upper_spine     := bi.custom_bones_util.upper_spine
 	var chest           := bi.custom_bones_util.chest
-	var cam             := bi.player_camera
-	pa.register_formula(lower_spine,  PA.Axis.ROT_X,
-		func(): return -min(0.0, cam.rotation.x), -look_down_extra * 0.4)
-	pa.register_formula(middle_spine, PA.Axis.ROT_X,
-		func(): return -min(0.0, cam.rotation.x), -look_down_extra * 0.7)
-	pa.register_formula(upper_spine,  PA.Axis.ROT_X,
-		func(): return -min(0.0, cam.rotation.x), -look_down_extra * 1.0)
-	pa.register_formula(chest,        PA.Axis.ROT_X,
-		func(): return -min(0.0, cam.rotation.x), -look_down_extra * 0.5)
-	pa.register_formula(lower_spine,  PA.Axis.POS_Y,
-		func(): return -min(0.0, cam.rotation.x), -look_down_extra * 0.6)
-	pa.register_formula(lower_spine,  PA.Axis.POS_Z,
-		func(): return -min(0.0, cam.rotation.x),  look_down_extra * 0.4)
+	var down_callable   := func() -> float: return -min(0.0, pitch_callable.call())
+	pa.register_formula(lower_spine,  PA.Axis.ROT_X, down_callable, -look_down_extra * 0.4)
+	pa.register_formula(middle_spine, PA.Axis.ROT_X, down_callable, -look_down_extra * 0.7)
+	pa.register_formula(upper_spine,  PA.Axis.ROT_X, down_callable, -look_down_extra * 1.0)
+	pa.register_formula(chest,        PA.Axis.ROT_X, down_callable, -look_down_extra * 0.5)
+	pa.register_formula(lower_spine,  PA.Axis.POS_Y, down_callable, -look_down_extra * 0.6)
+	pa.register_formula(lower_spine,  PA.Axis.POS_Z, down_callable,  look_down_extra * 0.4)
 
 
 func refresh_camera_animations() -> void:
-	if not bi.is_active or not is_instance_valid(bi.player_camera):
+	if not (bi.is_active or bi.is_puppet):
 		return
 	var PA := ProceduralBoneAnimator
 	var bones := [
@@ -259,11 +253,10 @@ func refresh_camera_animations() -> void:
 
 
 func _make_pitch_callable() -> Callable:
-	var cam := bi.player_camera
+	# El pitch ya viene clampeado en AnimationInputs (productor local / owner antes de enviar).
+	var bi_ref := bi
 	return func() -> float:
-		if not is_instance_valid(cam):
-			return 0.0
-		return clamp(cam.rotation.x, -0.5, 0.8)
+		return bi_ref.animation_inputs.head_pitch if bi_ref.animation_inputs != null else 0.0
 
 
 func _spine_local_weight(index: int, count: int, min_rot: float, max_rot: float) -> float:

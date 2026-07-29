@@ -44,6 +44,9 @@ var net_sync: CharacterNetSync
 
 var jump_squat_t: float = 0.0
 var crouch_t:     float = 0.0
+## Pitch de la cabeza/columna (mirar arriba/abajo). Jugador local: de la cámara; proxy: de la red
+## (lo setea CharacterNetSync.apply_to_puppet). El yaw no va acá: lo maneja la cápsula entera.
+var head_pitch:   float = 0.0
 var _npc_skip_frame: bool = false
 
 var grab_cone_mesh: MeshInstance3D = null
@@ -115,7 +118,7 @@ func initialize_skeleton() -> void:
 		player_camera = Camera3D.new()
 		player_camera.current = true
 		char_rigidbody.add_child(player_camera)
-		player_controller.setup(char_rigidbody, player_camera, custom_bones_util.head, skel_sizes_util.head_size, entity_instantiation)
+		player_controller.on_skeleton_built(self, player_camera)
 		active_camera_changed.emit(player_camera)
 
 	animation_inputs = AnimationInputs.new()
@@ -377,6 +380,11 @@ func _update_animation_inputs() -> void:
 	animation_inputs.impact_xz    = char_rigidbody.impact_xz
 	animation_inputs.crouch_t     = crouch_t
 	animation_inputs.jump_squat_t = jump_squat_t
+	# Head pitch: jugador local = de su cámara (clampeado); proxy = lo que ya dejó la red en head_pitch
+	# (apply_to_puppet corre antes que este productor). Los NPCs quedan en 0 (mirada neutra).
+	if is_active and is_instance_valid(player_camera):
+		head_pitch = clampf(player_camera.rotation.x, -0.5, 0.8)
+	animation_inputs.head_pitch   = head_pitch
 	# Grab: proxy = lo sincronizado; jugador local = lo que setea su InteractionController.
 	animation_inputs.grab_target  = net_sync.grab_target if is_instance_valid(net_sync) else null
 	# Reset del pulso de impacto vertical (antes lo hacía locomotion_signals._update_velocity_signals).

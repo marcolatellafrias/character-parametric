@@ -68,7 +68,8 @@ Everything the pipeline reads to produce a pose:
 | **crouch / jump squat** | `crouch_t`, `jump_squat_t` (PlayerController) | root squat |
 | **throw** (`throw_t`, `throw_push_t`, dir) | `AnimationModifiers` (set by grab/throw) | throw arms + tilt |
 | **grab target** | interactable + grab point (via `ArmsController.start_grab/update_grab_handles`) | arms to handle points, body/shoulder adjust |
-| **camera** | `player_camera` | head look, first-person hiding |
+| **head pitch** | `head_pitch` — camera pitch (local) / network (proxy) | head/neck/spine look up-down |
+| **camera** | `player_camera` | first-person hiding (head look now goes through `head_pitch`) |
 | **seat** | `is_seated`, `current_seat` | seated solve |
 | per-foot **ground raycasts** | `ik_util` RayCast3Ds vs the world | exact foot placement (local, always) |
 
@@ -82,9 +83,9 @@ A remote **proxy** rebuilds the same skeleton from a **seed derived from the pee
 
 **What travels vs. what's rebuilt locally** (the reason the input struct exists):
 
-- **Synced** (the proxy can't know these): transform (pos + yaw), velocity, impact, crouch / jump / throw, and the **grab reference** — just *which* interactable (its node path); the arms-to-handles is rebuilt locally. All of it flows through `CharacterNetSync` into `AnimationInputs`.
+- **Synced** (the proxy can't know these): transform (pos + yaw), velocity, impact, crouch / jump / throw, **head pitch** (mirar up-down — the yaw is already in the transform), and the **grab reference** — just *which* interactable (its node path); the arms-to-handles is rebuilt locally. All of it flows through `CharacterNetSync` into `AnimationInputs`.
 - **Derived locally** (never synced): foot placement / ground raycasts, `is_grounded` (the puppet still runs its own ground ray), and stepping — these fall out of the synced velocity plus the proxy's own raycasts against its own world. Per-foot heights are **not** synced.
-- **Not done yet**: head look (a proxy has no camera → would need a synced look direction), the seated solve, and unifying the *local* player's grab onto the struct (cosmetic — the proxy already routes grab through it).
+- **Not done yet**: the seated solve, and unifying the *local* player's grab onto the struct (cosmetic — the proxy already routes grab through it).
 
 **Two gotchas worth keeping in mind:**
 

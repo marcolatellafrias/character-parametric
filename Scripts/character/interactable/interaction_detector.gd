@@ -21,6 +21,12 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, bi: BoneInstantiator) -> voi
 	_own_bi        = bi
 	_build_outline_material()
 
+func rebind(rb: CharacterRigidBody3D, cam: Camera3D, bi: BoneInstantiator) -> void:
+	char_rigidbody = rb
+	player_camera  = cam
+	_own_bi        = bi
+	force_clear()
+
 func set_reach(reach: float) -> void:
 	max_reach  = reach
 	ray_length = reach + 2.0

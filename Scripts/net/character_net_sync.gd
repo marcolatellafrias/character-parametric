@@ -8,9 +8,9 @@ extends Node
 ##   - En la máquina del dueño: lee la cápsula/controllers y transmite el estado cada tick físico.
 ##   - En las demás: bufferea (con timestamp local) e interpola, y lo aplica a la cápsula puppet.
 ##
-## Manda pos/yaw/velocidad (movimiento) + impacto (stagger) + crouch/jump/throw (pose). Todo lo que
-## el proxy NO puede derivar solo (grounded/pasos SÍ los deriva local). El agarre (brazos a handle
-## points) es aparte. Sin MultiplayerSynchronizer: el remoto interpola, no re-simula.
+## Manda pos/yaw/velocidad (movimiento) + impacto (stagger) + crouch/jump/throw + head pitch (pose).
+## Todo lo que el proxy NO puede derivar solo (grounded/pasos SÍ los deriva local). El agarre (brazos
+## a handle points) es aparte. Sin MultiplayerSynchronizer: el remoto interpola, no re-simula.
 ## Ver Scripts/city/docs/conceptual/multiplayer.md y technical/character-animation.md.
 
 ## Delay de render para la interpolación (mostramos el pasado reciente).
@@ -19,7 +19,7 @@ const INTERP_DELAY_MS := 100.0
 const MAX_EXTRAPOLATION_S := 0.15
 const BUFFER_MAX := 20
 
-## [{t, pos, yaw, vel, impact_xz, impact_y, crouch, jump, throw_t, throw_push, throw_dir}]
+## [{t, pos, yaw, vel, impact_xz, impact_y, crouch, jump, throw_t, throw_push, throw_dir, pitch}]
 var _buffer: Array = []
 
 func _physics_process(_delta: float) -> void:
@@ -47,16 +47,18 @@ func _send_state() -> void:
 		throw_push = bi.anim_mod.throw_push_t
 		throw_dir = bi.anim_mod.throw_world_dir
 	_receive_state.rpc(rb.global_position, rb.rotation.y, rb.linear_velocity, rb.impact_xz, rb.impact_y,
-		bi.crouch_t, bi.jump_squat_t, throw_t, throw_push, throw_dir)
+		bi.crouch_t, bi.jump_squat_t, throw_t, throw_push, throw_dir, bi.head_pitch)
 
 @rpc("authority", "unreliable_ordered", "call_remote")
 func _receive_state(pos: Vector3, yaw: float, vel: Vector3, impact_xz: Vector2, impact_y: float,
-		crouch: float, jump: float, throw_t: float, throw_push: float, throw_dir: Vector3) -> void:
+		crouch: float, jump: float, throw_t: float, throw_push: float, throw_dir: Vector3,
+		pitch: float) -> void:
 	_buffer.append({
 		"t": Time.get_ticks_msec(), "pos": pos, "yaw": yaw, "vel": vel,
 		"impact_xz": impact_xz, "impact_y": impact_y,
 		"crouch": crouch, "jump": jump,
-		"throw_t": throw_t, "throw_push": throw_push, "throw_dir": throw_dir})
+		"throw_t": throw_t, "throw_push": throw_push, "throw_dir": throw_dir,
+		"pitch": pitch})
 	while _buffer.size() > BUFFER_MAX:
 		_buffer.pop_front()
 
@@ -82,6 +84,7 @@ func apply_to_puppet() -> void:
 	rb.impact_y = s["impact_y"]     # stagger de salto/aterrizaje
 	bi.crouch_t = s["crouch"]
 	bi.jump_squat_t = s["jump"]
+	bi.head_pitch = s["pitch"]      # mirar arriba/abajo (el productor lo copia a AnimationInputs)
 	if is_instance_valid(bi.anim_mod):
 		bi.anim_mod.throw_t = s["throw_t"]
 		bi.anim_mod.throw_push_t = s["throw_push"]
@@ -118,7 +121,8 @@ func _lerp_state(a: Dictionary, b: Dictionary, f: float) -> Dictionary:
 		"jump": lerpf(a["jump"], b["jump"], f),
 		"throw_t": lerpf(a["throw_t"], b["throw_t"], f),
 		"throw_push": lerpf(a["throw_push"], b["throw_push"], f),
-		"throw_dir": (a["throw_dir"] as Vector3).lerp(b["throw_dir"], f)}
+		"throw_dir": (a["throw_dir"] as Vector3).lerp(b["throw_dir"], f),
+		"pitch": lerpf(a["pitch"], b["pitch"], f)}
 
 func _rigidbody() -> CharacterRigidBody3D:
 	var bi := get_parent() as BoneInstantiator
