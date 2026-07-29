@@ -138,6 +138,30 @@ func begin_grab() -> void:
 	else:
 		_add_grabber.rpc_id(1, multiplayer.get_unique_id())
 
+## Lanza el cuerpo con un impulso, sobreviviendo el handoff de autoridad al soltar. La AUTORIDAD FINAL
+## (el host, u offline el local) lo aplica a su instancia — la que se sincroniza — así no depende del
+## buffer y no hay snap. El cliente NO aplica local (si lo hiciera, al pasar la autoridad al host su
+## caja volvería atrás ~1 RTT). Ver conceptual/multiplayer.md (Causa B).
+func throw_body(impulse: Vector3) -> void:
+	if not multiplayer.has_multiplayer_peer() or multiplayer.is_server():
+		var body := get_parent() as RigidBody3D  # offline u host: soy (o seré) la autoridad
+		if body != null:
+			body.apply_central_impulse(impulse)
+			_dormant = false
+	else:
+		_request_throw.rpc_id(1, impulse)  # cliente: que lo aplique el host cuando retome la autoridad
+
+@rpc("any_peer", "reliable")
+func _request_throw(impulse: Vector3) -> void:
+	if not multiplayer.is_server():
+		return
+	if get_multiplayer_authority() != 1:  # end_grab ya la devuelve; si por orden aún no, forzar
+		_apply_authority.rpc(1)
+	var body := get_parent() as RigidBody3D
+	if body != null:
+		body.apply_central_impulse(impulse)
+		_dormant = false
+
 ## Lo llama quien suelta. Si era la autoridad, el host promueve al siguiente que quede.
 func end_grab() -> void:
 	if not multiplayer.has_multiplayer_peer():

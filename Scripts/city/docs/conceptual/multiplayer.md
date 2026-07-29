@@ -115,6 +115,30 @@ Built incrementally — networking first, fidelity later:
 
 ## Known open points
 
-- **Equilibrium / falls** are frame-dependent ([people.md](people.md), [onfoot-gameplay.md](onfoot-gameplay.md)) — need a deterministic form before the *same* fall simulates identically on two machines. Milestone 2 dodges this by replicating the owner's transform rather than re-simulating.
-- **Controllable sync transport** (the layer that replicates control state) isn't wired yet ([interactables.md](interactables.md)).
+- **Equilibrium / falls** are frame-dependent ([people.md](people.md), [onfoot-gameplay.md](onfoot-gameplay.md)) — need a deterministic form before the *same* fall simulates identically on two machines. Milestone 2 dodges this by replicating the owner's transform rather than re-simulating. (This is **Cause C** below.)
 - **Front-end / menu** intentionally absent for now — auto-host scaffolding until the Lounge join flow is built.
+
+## Pending — on-foot interaction gaps (grouped by root cause)
+
+Surfaced in 2-player play-testing (2026-07-29). Six reported symptoms, but they collapse to a few **root causes** — fix the root, not the symptom. Suggested order: **A → B → C**, then the tuning discussion. See [onfoot-gameplay.md](onfoot-gameplay.md) for the gameplay intent (carrying packages, shoving/grabbing teammates).
+
+### Cause A — proxies have no collision presence ✅ *Done*
+`CharacterRigidBody3D.setup_as_puppet()` sets `collision_layer = 0` / `collision_mask = 0`, so a remote player's capsule is invisible both to physics and to the interaction raycast (mask `1|2`). It was a deliberate simplification in the M2/M3 puppet work that over-shot. **One fix** — give the puppet a *kinematic* collision presence (a layer the local dynamic capsule and the detector ray hit) — unblocks three symptoms:
+- **Characters don't collide with each other** — your dynamic capsule can't hit a layer-0 proxy.
+- **Can't grab teammates** — the detector's ray misses the proxy, so it never reaches the character's `GrabbableInteractable` (which still exists — `_setup_char_grabbable`).
+- **Can't push a teammate** — the empty-handed push (`_release_throw` with no held object) acts on the *hovered* interactable, and a layer-0 proxy can't be hovered.
+
+Also fold in: **spawn-overlap handling** — if a character spawns *inside* another, it must ignore that collision instead of getting flung out. Check whether Jolt already resolves overlaps gently on its own; if not, add a brief mutual collision-ignore at spawn.
+
+Caveat: a collidable kinematic proxy will *push* the local dynamic capsule as it interpolates — mostly desirable (you feel teammates) but watch for jitter when a proxy interpolates through you.
+
+### Cause B — the throw impulse is lost in the authority handoff ✅ *Done*
+Holding **R** with a grabbed box threw it, but it dropped in place: `_release_throw` applied the impulse locally, then `_stop_grab` handed the box's `NetBody` authority back to the host, which retook it at rest (the velocity never made it across) → the box snapped back. **Fix:** the impulse is now applied by the **final authority** (`NetBody.throw_body` → the host, or the local peer offline), to the instance that everyone syncs from — not via the buffer, so it can't be lost. The client does **not** apply locally (that would snap back ~1 RTT when authority transfers); it sends the impulse to the host, which applies it after `end_grab` returns authority. *Trade-off:* a client's own thrown box starts moving ~1 RTT + render-delay late, but smoothly (no snap). Client-side prediction could hide that later if it bothers.
+
+`_release_throw` now routes the launch (`_launch`) by target: a synced box → `throw_body`; a **teammate** → `CharacterNetSync.push` (the impulse is sent to the teammate's machine, where their capsule is dynamic and they're the authority, then replicated back — so the empty-handed **R push** shoves a teammate now, needing Cause A to have made them hoverable); anything else → a direct impulse. *Still open:* **grab-dragging** a teammate — grabbing latches (Cause A) but the grab PD hits their frozen proxy locally and does nothing; dragging them would need a continuous force-intent to their machine (like `NetBody`'s co-grab intent), a further mechanic.
+
+### Cause C — ragdoll isn't replicated to proxies
+When a remote player falls/ragdolls, others see them frozen in the last puppet pose. This is the existing *falls are frame-dependent* open point: **don't re-simulate** (physics isn't deterministic across machines) — sync the *ragdoll-active* flag plus a key transform (root/spine) and let the proxy approximate the pose. Its own small design. It's the visible payoff of Cause A + the tuning below (shove someone → they fall → others actually see it).
+
+### To design — grab-force vs knockdown magnitudes (NOT in the active plan)
+Grabbing a box sometimes flings/ragdolls the grabber, and even a *light* box can send a nearby teammate flying. Likely a **tuning/magnitudes** problem, not architecture: `grab_strength` (~500) and the force needed to knock someone over are comparable, and the box masses (2 / 30 / 3 / 40 kg) may not read as "light vs heavy" against that. Intent to preserve: running into a teammate with a *big* package should knock them over (emergent fun); a *light* one shouldn't. Prefer calibrating magnitudes over making collision one-way (which would kill that emergent moment). **To be discussed before touching.**

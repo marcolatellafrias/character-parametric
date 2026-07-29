@@ -275,19 +275,38 @@ func _apply_grab_torque() -> void:
 func _release_throw() -> void:
 	var dir := -player_camera.global_transform.basis.z
 	var t   := _throw_charge / throw_max_charge_time
-	if is_instance_valid(_grabbed):
-		_grabbed.apply_central_impulse(dir * throw_strength * t)
-	elif is_instance_valid(detector):
+	var impulse := dir * throw_strength * t
+
+	# Objetivo: lo que tengo agarrado (throw), o si no lo hovereado (push sin objeto).
+	var target: RigidBody3D = _grabbed
+	if not is_instance_valid(target) and is_instance_valid(detector):
 		var h := detector.get_hovered()
 		if h is GrabbableInteractable:
-			var rb := h.get_parent() as RigidBody3D
-			if is_instance_valid(rb):
-				rb.apply_impulse(dir * throw_strength * t, rb.global_position - _get_interaction_origin())
+			target = h.get_parent() as RigidBody3D
+
+	_stop_grab()  # soltar el grab (si había): la autoridad de la caja vuelve al host antes de lanzar
+	_launch(target, impulse)
+
 	if is_instance_valid(anim_mod):
 		anim_mod.trigger_throw_push(dir)
 	_is_charging_throw = false
 	_throw_charge      = 0.0
-	_stop_grab()
+
+## Aplica un impulso al objetivo, ruteando según qué es: caja sincronizada (sobrevive el handoff),
+## compañero (se lo mando a su máquina), o cuerpo suelto/offline (impulso directo). Ver multiplayer.md (B).
+func _launch(rb: RigidBody3D, impulse: Vector3) -> void:
+	if not is_instance_valid(rb):
+		return
+	var net := _net_body_of(rb)
+	if is_instance_valid(net):
+		net.throw_body(impulse)
+		return
+	if rb is CharacterRigidBody3D:
+		var target_bi := rb.get_parent() as BoneInstantiator
+		if is_instance_valid(target_bi) and is_instance_valid(target_bi.net_sync):
+			target_bi.net_sync.push(impulse)
+			return
+	rb.apply_central_impulse(impulse)
 
 func _get_interaction_origin() -> Vector3:
 	var bi := char_rigidbody.get_parent() as BoneInstantiator

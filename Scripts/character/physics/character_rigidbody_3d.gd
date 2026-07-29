@@ -29,6 +29,11 @@ var _ground_ray: RayCast3D
 var is_puppet: bool = false
 var puppet_velocity: Vector3 = Vector3.ZERO
 
+## Grupo de todas las cápsulas de personaje, para resolver overlaps de spawn entre sí (Causa A).
+const CHARACTER_GROUP := "character_capsule"
+var _capsule_radius: float = 0.5
+var _overlap_ignored: Array = []  # cápsulas con las que ignoramos colisión por solaparse al spawnear
+
 var _capsule_stand_height: float = 0.0
 var _capsule_stand_y_offset: float = 0.0
 
@@ -89,14 +94,15 @@ func get_ground_collision_point() -> Vector3:
 func get_motion_velocity() -> Vector3:
 	return puppet_velocity if is_puppet else linear_velocity
 
-## Convierte la cápsula en un proxy manejado por red: sin física, sin colisión.
+## Convierte la cápsula en un proxy manejado por red: sin simulación propia, pero CON colisión
+## kinemática, para que chocar/agarrar/empujar compañeros funcione. Ver multiplayer.md (Causa A).
 func setup_as_puppet() -> void:
 	is_puppet = true
 	freeze = true
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	gravity_scale = 0.0
-	collision_layer = 0
-	collision_mask = 0
+	collision_layer = 1  # detectable por la cápsula local (dinámica) y el raycast de interacción (mask 1|2)
+	collision_mask = 0   # net-driven: no necesita detectar nada, solo ser detectado y empujar
 
 func _ready() -> void:
 	linear_damp = 0.0
@@ -112,6 +118,25 @@ func _ready() -> void:
 	contact_monitor = true
 	max_contacts_reported = 4
 	axis_lock_angular_y = true
+	add_to_group(CHARACTER_GROUP)
+
+## Evita que la cápsula salga despedida si spawnea/teleporta DENTRO de otro personaje: mientras dos
+## cápsulas se solapan PROFUNDO (un centro dentro del otro — solo pasa al spawnear), ignoran su
+## colisión; al separarse a contacto normal, vuelven a chocar. Ver multiplayer.md (Causa A).
+func _resolve_spawn_overlaps() -> void:
+	_overlap_ignored = _overlap_ignored.filter(func(b): return is_instance_valid(b))
+	for node in get_tree().get_nodes_in_group(CHARACTER_GROUP):
+		var other := node as CharacterRigidBody3D
+		if other == null or other == self:
+			continue
+		var deep := global_position.distance_to(other.global_position) < _capsule_radius
+		var ignoring: bool = _overlap_ignored.has(other)
+		if deep and not ignoring:
+			add_collision_exception_with(other)
+			_overlap_ignored.append(other)
+		elif not deep and ignoring:
+			remove_collision_exception_with(other)
+			_overlap_ignored.erase(other)
 
 func _physics_process(delta: float) -> void:
 	# Puppet (proxy remoto): la posición la maneja la red y no simulamos, pero SÍ actualizamos el
@@ -121,6 +146,9 @@ func _physics_process(delta: float) -> void:
 		_ground_ray.force_raycast_update()
 		is_grounded = _ground_ray.is_colliding()
 		return
+
+	if is_active:
+		_resolve_spawn_overlaps()  # no salir despedido si spawneé dentro de otro personaje (Causa A)
 
 	# El movimiento lee Input directo, así que se congela mientras haya un overlay
 	# abierto (pausa/menú/consola/debug). El mundo sigue simulando igual.
@@ -357,6 +385,7 @@ static func create(root_size: Vector3, distance_from_ground: float, leg_height: 
 	rb.mesh_instance = new_mesh_instance
 	rb._ground_ray = ground_ray
 	rb.is_active = active
+	rb._capsule_radius = radius
 	return rb
 
 func _apply_braking_force() -> void:

@@ -366,8 +366,10 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
 			if _parent_bone[child_bone] == current and _bodies.has(child_bone):
 				queue.append(child_bone)
 
-	var safe_pos: Vector3 = _find_safe_spawn(char_rb)
-	char_rb.global_position   = safe_pos
+	# No reposicionamos: la cápsula ya sigue a la pelvis (via _update_active) y arranca sin velocidad,
+	# así que te parás donde está tu cuerpo, a ras del piso. El ragdoll colisiona con el mundo → nunca
+	# queda encerrado; un solape parcial lo separa el resolvedor de spawn-overlap (personajes) o la
+	# recuperación de penetración acotada de Jolt (mundo). Ver multiplayer.md (Causa A).
 	char_rb.linear_velocity   = Vector3.ZERO
 	char_rb.angular_velocity  = Vector3.ZERO
 	char_rb.collider.disabled = false
@@ -482,31 +484,6 @@ func cleanup() -> void:
 	_char_rb            = null
 	_recovering_char_rb = null
 	_skeleton_root      = null
-
-func _find_safe_spawn(char_rb: CharacterRigidBody3D) -> Vector3:
-	if not is_instance_valid(_lower_spine_body):
-		return char_rb.global_position
-
-	var base_pos := _lower_spine_body.global_position
-	var space    := _skel_rb_node.get_world_3d().direct_space_state
-	var capsule  := char_rb.collider.shape as CapsuleShape3D
-	if not capsule:
-		return base_pos + Vector3(0.0, 1.0, 0.0)
-
-	var params := PhysicsShapeQueryParameters3D.new()
-	params.shape          = capsule
-	params.collision_mask = RAGDOLL_MASK
-	params.exclude        = _make_exclude()
-
-	var collider_local := char_rb.collider.transform
-
-	for i in range(12):
-		var test_pos := Vector3(base_pos.x, base_pos.y + i * 0.35, base_pos.z)
-		params.transform = Transform3D(Basis.IDENTITY, test_pos) * collider_local
-		if space.intersect_shape(params, 1).is_empty():
-			return test_pos
-
-	return Vector3(base_pos.x, base_pos.y + 4.0, base_pos.z)
 
 func _clear_joints() -> void:
 	for j in _joints:

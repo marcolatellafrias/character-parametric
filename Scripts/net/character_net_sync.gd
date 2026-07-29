@@ -152,6 +152,29 @@ func _receive_grab(path: NodePath) -> void:
 	grab_target = null
 	_resolve_pending()  # resuelve ya si el objeto existe; si no, se reintenta cada frame
 
+# ── Empuje: aplicar un impulso a un compañero (Causa B) ───────────────────────
+# La cápsula del compañero es un proxy congelado en MI máquina, así que el impulso se lo mando a SU
+# máquina (donde es dinámica y él es la autoridad), que lo aplica y lo replica de vuelta.
+
+## Empujá a este personaje con un impulso. Lo aplica su dueño (autoridad); si no soy yo, se lo mando.
+func push(impulse: Vector3) -> void:
+	if not multiplayer.has_multiplayer_peer():
+		return  # offline solo existe el jugador local; no hay compañero que empujar
+	if is_multiplayer_authority():
+		_apply_push(impulse)
+	else:
+		_receive_push.rpc_id(get_multiplayer_authority(), impulse)
+
+@rpc("any_peer", "reliable")
+func _receive_push(impulse: Vector3) -> void:
+	if is_multiplayer_authority():
+		_apply_push(impulse)
+
+func _apply_push(impulse: Vector3) -> void:
+	var rb := _rigidbody()
+	if is_instance_valid(rb) and not rb.is_puppet:
+		rb.apply_central_impulse(impulse)
+
 # ── Sentado: sincronizar en qué asiento está cada jugador ──────────────────────
 # Análogo al grab: solo viaja la REFERENCIA al asiento (mismo path en todas las máquinas, spawn con
 # nombre estable). El pose sentado lo arma cada proxy corriendo el mismo _solve_seated_frame con su

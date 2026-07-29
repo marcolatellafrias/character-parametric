@@ -8,7 +8,9 @@ The on-foot half of the loop: players leave the ship to carry packages through a
 
 ### Grab system
 
-A player can grab either a **controllable** ([interactables.md](interactables.md)) or an **object/package** ([objects.md](objects.md)). The grab ray latches onto a **grab point**; valid grab distance depends on the player's **reach**. The grip is lost as soon as the grab point leaves the **conical grip area**.
+A player can grab either a **controllable** ([interactables.md](interactables.md)) or an **object/package** ([objects.md](objects.md)) — or **another player** (characters carry a `GrabbableInteractable` too). The grab ray latches onto a **grab point**; valid grab distance depends on the player's **reach**. The grip is lost as soon as the grab point leaves the **conical grip area**.
+
+**Teammate interaction is intended play:** you can grab a teammate, **shove** one (empty-handed **R**), or **throw** a held package — and running into someone while carrying a big package should knock them over (emergent). Several of these are currently broken in multiplayer (proxies have no collision, the throw impulse is lost in the grab handoff) and the grab-force/knockdown magnitudes need tuning — tracked under [multiplayer.md → Pending: on-foot interaction gaps](multiplayer.md#pending--on-foot-interaction-gaps-grouped-by-root-cause).
 
 The ray is cast from the camera each frame while the player is holding nothing, and highlights the nearest interactable in reach. Reach defines **three ascending distance bands** (fractions of the person's **reach** stat): **interact** (`0.85×`) to highlight and engage, **grab** (`0.9×`) where a held object floats (the scroll wheel slides it between `0.1×` and `0.9×`), and **grip** (`1.0×`), beyond which an already-established hold is dropped. The debug reach line colours these green → yellow → orange, and red once out of reach.
 
