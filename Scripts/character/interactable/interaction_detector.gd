@@ -65,7 +65,6 @@ func _process_hover() -> void:
 		return
 
 	var check_point := _get_nearest_interactable_point(found)
-	print("[DETECTOR] dist_to_chest=%.3f max_reach=%.3f" % [check_point.distance_to(_get_chest_tip()), max_reach])
 	if check_point.distance_to(_get_chest_tip()) > max_reach:
 		_set_hovered(null)
 		return
@@ -112,9 +111,9 @@ func _is_own_character(node: Node) -> bool:
 	return false
 
 func _apply_outline_to(interactable: Interactable) -> void:
-	_collect_meshes_recursive(interactable, _hovered_meshes)
-	if _hovered_meshes.is_empty() and is_instance_valid(interactable.get_parent()):
-		_collect_meshes_recursive(interactable.get_parent(), _hovered_meshes)
+	for target in interactable.get_outline_targets():
+		if is_instance_valid(target):
+			_collect_meshes_recursive(target, _hovered_meshes)
 	for mesh in _hovered_meshes:
 		if is_instance_valid(mesh):
 			for i in mesh.mesh.get_surface_count():
@@ -148,11 +147,8 @@ func _get_nearest_interactable_point(interactable: Interactable) -> Vector3:
 	if interactable is GrabbableInteractable:
 		var grab := (interactable as GrabbableInteractable).get_nearest_grab_point(origin)
 		if is_instance_valid(grab):
-			print("[DETECTOR] using grab_point at %.3f from chest" % grab.global_position.distance_to(origin))
 			return grab.global_position
 	var handle := interactable.get_nearest_handle_point(origin)
 	if is_instance_valid(handle):
-		print("[DETECTOR] using handle_point at %.3f from chest" % handle.global_position.distance_to(origin))
 		return handle.global_position
-	print("[DETECTOR] WARNING — no points found, using interactable.global_position")
 	return interactable.global_position

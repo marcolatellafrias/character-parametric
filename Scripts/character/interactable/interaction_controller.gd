@@ -146,8 +146,6 @@ func _start_control(ctrl: ControllableInteractable) -> void:
 	var origin     := _get_interaction_origin()
 	var handle     := ctrl.get_nearest_handle_point(origin)
 	var ctrl_world := handle.global_position if is_instance_valid(handle) else ctrl.global_position
-	print("[START_CONTROL] origin dist to handle=%.3f grip_dist_max=%.3f" % [
-		origin.distance_to(ctrl_world), grip_dist_max])
 	if is_instance_valid(arms_controller):
 		arms_controller.start_grab(ctrl, origin, handle, grab_dist_min, grab_dist_max)
 
@@ -176,8 +174,6 @@ func _start_grab(grabbable: GrabbableInteractable) -> void:
 	_grabbed_grab_point  = grabbable.get_nearest_grab_point(origin)
 	var grab_world      := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
 	_grab_distance       = clamp(origin.distance_to(grab_world), grab_dist_min, grab_dist_max)
-	print("[START_GRAB] origin=%.3f grab_world dist=%.3f grip_dist_max=%.3f grab_dist_max=%.3f" % [
-		0.0, origin.distance_to(grab_world), grip_dist_max, grab_dist_max])
 	_grabbed.sleeping      = false
 	_grab_target_rotation  = _grabbed.global_transform.basis.get_rotation_quaternion()
 	var player_rot         := Quaternion(char_rigidbody.global_transform.basis)

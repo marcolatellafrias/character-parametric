@@ -2,7 +2,7 @@
 
 How the **aesthetic skeleton** is built and posed. This is the visual layer that hangs off the physics capsule ([characters.md](characters.md) covers the capsule, ragdoll and grab). The skeleton is **generated from the seed** and **re-posed from scratch every physics frame** by a procedural pipeline — there are **no keyframed animations**. The whole pose is a function of a handful of **inputs** read mostly from the capsule.
 
-This doc exists to make the pipeline explicit before simplifying it (and before syncing it for remote players — see [Multiplayer implications](#multiplayer-implications)).
+It documents the pipeline explicitly — the per-frame inputs, and how a remote proxy replays the same pipeline from synced state (see [Multiplayer](#multiplayer-proxies)).
 
 ---
 
@@ -72,37 +72,21 @@ Everything the pipeline reads to produce a pose:
 | **seat** | `is_seated`, `current_seat` | seated solve |
 | per-foot **ground raycasts** | `ik_util` RayCast3Ds vs the world | exact foot placement (local, always) |
 
-Note the coupling: the animation **reaches directly into the live physics body and the grab controller** for most of these. That implicit coupling is what makes the pipeline hard to reason about and hard to reproduce on a remote proxy.
+The pose reads these through an explicit **`AnimationInputs`** struct, not the live bodies directly: one **producer** (`BoneInstantiator._update_animation_inputs`) fills the struct from the sources above once per frame, and every module reads the struct. That single indirection is what lets a remote proxy run the *identical* pipeline from network-filled inputs (below). A couple of spots aren't migrated yet and still read live state — the seated solve, and the local player's own grab (its `InteractionController` drives the arms directly).
 
 ---
 
-## Multiplayer implications
+## Multiplayer (proxies)
 
-A remote **proxy** (M3) rebuilds the same skeleton from the synced seed and is driven by a **puppet** capsule: `CharacterNetSync` writes its `global_position`/`yaw` and feeds `puppet_velocity`; the puppet's `_physics_process` **early-returns** (no simulation). Given that, the inputs split three ways:
+A remote **proxy** rebuilds the same skeleton from a **seed derived from the peer's id** (deterministic → identical on every machine, so only the seed + transform travel, never the mesh). It's driven by a **puppet** capsule whose `_physics_process` early-returns (no simulation); `CharacterNetSync` owns it — the owner broadcasts, the proxy interpolates. The proxy then runs the **same** per-frame pose pipeline as everyone else, which only works because the pose reads `AnimationInputs` — filled from the network on a proxy instead of from a live local capsule.
 
-**Re-derivable locally on the proxy (no sync needed):**
-- **Foot placement / per-foot ground raycasts** — the proxy raycasts against its own world; feet find the floor locally. *(Answering the obvious question: no, you do not sync per-foot heights.)*
-- **is_grounded** — could be re-derived from the capsule's own ground ray, **if the puppet ran it**.
-- **Steps** — fall out of velocity (synced) + local raycasts.
+**What travels vs. what's rebuilt locally** (the reason the input struct exists):
 
-**Must be synced (the proxy cannot know them):**
-- ✅ **crouch / jump squat**, **throw** state, **impact/stagger** — now travel in the `CharacterNetSync` state (pos/yaw/vel + impact + crouch/jump/throw), interpolated and applied to the puppet.
-- ⬜ **grab target** (which interactable + handles) — still pending (bug 3). It needs the grabbed object's reference resolved on the proxy so it can drive its own `ArmsController` to the handle points.
-- ⬜ **head look** depends on the owner's camera — either sync a look direction or skip for proxies (minor).
+- **Synced** (the proxy can't know these): transform (pos + yaw), velocity, impact, crouch / jump / throw, and the **grab reference** — just *which* interactable (its node path); the arms-to-handles is rebuilt locally. All of it flows through `CharacterNetSync` into `AnimationInputs`.
+- **Derived locally** (never synced): foot placement / ground raycasts, `is_grounded` (the puppet still runs its own ground ray), and stepping — these fall out of the synced velocity plus the proxy's own raycasts against its own world. Per-foot heights are **not** synced.
+- **Not done yet**: head look (a proxy has no camera → would need a synced look direction), the seated solve, and unifying the *local* player's grab onto the struct (cosmetic — the proxy already routes grab through it).
 
-**Remote-animation bugs:**
-1. ✅ **Fixed (stage 2).** *Feet always airborne / "skeleton too high, no steps".* The puppet now updates its ground ray + `is_grounded` (it skips only movement/impact), and the leg IK reads `is_grounded` via `AnimationInputs.grounded`, so proxies plant their feet and step.
-2. ✅ **Fixed (stage 2).** *Velocity read directly instead of the puppet velocity.* `SkeletonSizesUtil._update_step_radius`, `IkUtil.update_leg_raycast_offsets` and `get_step_duration` now read `AnimationInputs.velocity` (which is `get_motion_velocity()`, i.e. the puppet velocity on a proxy).
-3. ✅ **Fixed.** *Arms don't reach handle points when a remote grabs.* `ArmsController.start_grab/update_grab_handles` are called by the **local** `InteractionController`; a proxy has none. *Fix:* only the grabbed **reference** is synced (`CharacterNetSync.set_grab_target` → `_receive_grab`, a node path). It lands in `AnimationInputs.grab_target`; the proxy's `ArmsController.drive_grab()` detects the start/stop and drives the arms, deriving origin / grab-point / handles **locally** (the object exists on every machine). The local player is unchanged (its IC still drives directly).
-4. ✅ **Fixed.** *On a proxy the capsule + skeleton rotate but the IK targets (feet raycasts, arm poles) don't follow the yaw.* Root cause was **execution order**: `CharacterNetSync` is a *child* of the `BoneInstantiator`, so it applied the synced transform *after* the parent solved the pose that frame — the IK targets were built from the previous frame's yaw. *Fix:* the `BoneInstantiator` calls `net_sync.apply_to_puppet()` at the **start** of its `_physics_process`, before the solve. (The general lesson: whatever sets the capsule transform — player facing for the local player, net interpolation for a proxy — must run **before** the solve. `facing` should eventually become an explicit `AnimationInputs` field to make this impossible to get wrong.)
-5. ✅ **Fixed.** *Reseed (respawn with `P`) changed the local skeleton but not the proxies.* The seed is normally derived from the steam id (deterministic, unsynced), which a local reseed breaks. *Fix:* the owner broadcasts its new seed (`CharacterNetSync.broadcast_seed()` on respawn); proxies rebuild via `_receive_seed` (and re-attach their name tag). Late joiners request the current seed on spawn (`request_seed_if_proxy`).
+**Two gotchas worth keeping in mind:**
 
-### Decoupling target
-
-The structural fix is to stop the animation reaching into live physics/grab state and instead read an explicit **animation-input struct** — `{ velocity, facing, grounded, crouch_t, jump_t, throw_state, grab_target, impact }` — that fully determines the pose. Then:
-- **single-player** builds the struct from the local capsule/controllers,
-- a **proxy** receives the struct over the wire (only the non-derivable fields) and runs the **same** pipeline,
-
-and questions like "why doesn't the proxy step?" disappear because the inputs are explicit and either synced or locally derived. Local-only inputs (foot raycasts, head-look) stay local.
-
-**Progress:** `locomotion_signals`, `ik_util` and `skeleton_sizes_util` read the struct (stages 1–2). The **transform/facing** is now also consumed from it: `_update_animation_inputs()` (the producer) runs first each frame, then `_update_local_targets_positions()` reads `animation_inputs.origin`/`.basis` instead of the live capsule — so `local_targets` (feet raycasts, arm targets/poles) can't fall out of sync with the body regardless of who set the transform (see bug 4). **Grab** also flows through the struct now (`grab_target`, bug 3) — though the *local* player's arms are still driven directly by its `InteractionController` (only the proxy reads `grab_target`); unifying both onto the struct is the remaining polish. Still fully live: the seated solve.
+- **The capsule transform must be applied before the pose solve.** The whole pose is built from it, so whatever sets it — player facing (local) or net interpolation (proxy) — has to run *before* `BoneInstantiator` solves the frame, or the IK targets (feet raycasts, arm poles) lag the body by a frame and look detached when turning. Both sources are applied at the start of the bone frame; don't add a transform source that runs after the solve.
+- **Cross-machine references need explicit node names.** Syncing "which object" as a node path only resolves if the node is named the same on every machine — Godot's auto-generated names are per-instance. Spawned objects (`spawned_<id>`) and their `Grabbable` child are named explicitly for this reason.

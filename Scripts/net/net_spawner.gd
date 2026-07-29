@@ -11,7 +11,7 @@ extends Node
 ## Escenas para entidades no-caja.
 const SCENES := {
 	"dashboard": "res://Scripts/character/interactable/controllable/dashboard.tscn",
-	"seat": "res://Scenes/ship/ship_seat.tscn",
+	"seat": "res://Scenes/ship/working_seat.tscn",  # SeatInteractable funcional (no la malla suelta)
 }
 
 ## Variantes de caja: tamaño (m), masa (kg) y color.
@@ -59,6 +59,8 @@ func _do_spawn(id: int, type_name: String, xform: Transform3D) -> void:
 		return
 
 	inst.name = "spawned_%d" % id  # mismo nombre en todas las máquinas → path estable
+	if "show_debug" in inst:  # spawns de debug: mostrar la zona de interacción (asiento, etc.)
+		inst.set("show_debug", true)
 	get_tree().current_scene.add_child(inst)
 	inst.global_transform = xform
 

@@ -4,7 +4,7 @@
 [ext_resource type="Material" uid="uid://du5qso8qhjk0v" path="res://Models/auto/metal oscuro.tres" id="2_3w216"]
 
 [node name="asiento" instance=ExtResource("1_20lyq")]
-transform = Transform3D(0.31, 0, 0, 0, 0.31, 0, 0, 0, 0.31, 0, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 
 [node name="Cube" parent="." index="0"]
 surface_material_override/0 = ExtResource("2_3w216")

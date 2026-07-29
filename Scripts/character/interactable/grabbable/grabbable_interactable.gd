@@ -35,6 +35,13 @@ func setup_from_cells(cells_x: int, cells_y: int, cells_z: int) -> void:
 func get_prompt() -> String:
 	return "[LMB] to grab"
 
+## El grabbable cuelga del cuerpo que representa; se contornea el objeto entero, no el grabbable
+## (que solo contiene puntos de grab/handle, no la malla visible).
+func get_outline_targets() -> Array[Node]:
+	var parent := get_parent()
+	var targets: Array[Node] = [parent if is_instance_valid(parent) else self]
+	return targets
+
 func _generate_grab_points(cx: int, cy: int, cz: int, sx: float, sy: float, sz: float) -> void:
 	var nx := ceili(cx / float(GRAB_DENSITY))
 	var ny := ceili(cy / float(GRAB_DENSITY))
@@ -89,6 +96,7 @@ func show_debug_points() -> void:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		mat.no_depth_test = true  # visibles atravesando el mesh
 		mi.material_override = mat
+		mi.set_meta("no_outline", true)  # nunca contornear los puntos de debug
 		pt.add_child(mi)
 
 	for pt in handle_points:
@@ -104,4 +112,5 @@ func show_debug_points() -> void:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		mat.no_depth_test = true  # visibles atravesando el mesh
 		mi.material_override = mat
+		mi.set_meta("no_outline", true)  # nunca contornear los puntos de debug
 		pt.add_child(mi)

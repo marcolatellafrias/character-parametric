@@ -27,6 +27,13 @@ func get_prompt() -> String:
 func can_interact() -> bool:
 	return true
 
+## Nodos cuyos meshes se contornean al mirar este interactuable. Por defecto el propio
+## interactuable (dashboards/controllables contienen su malla). Un grabbable representa al
+## objeto sobre el que cuelga (su padre) → lo overridea.
+func get_outline_targets() -> Array[Node]:
+	var targets: Array[Node] = [self]
+	return targets
+
 func _clear_handle_points() -> void:
 	for pt in handle_points:
 		if is_instance_valid(pt):

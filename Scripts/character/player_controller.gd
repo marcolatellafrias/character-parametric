@@ -691,4 +691,17 @@ func _debug_spawn_character() -> void:
 
 
 func _debug_spawn(type_name: String) -> void:
-	NetSpawner.request_spawn(type_name, Transform3D(Basis(), _debug_spawn_pos()))
+	var pos := _debug_spawn_pos()
+	# Los objetos de escena (asiento/dashboard) son estáticos y no caen: los apoyamos en el piso.
+	# Las cajas son rigidbodies, caen solas, así que las dejamos spawnear en el aire.
+	if NetSpawner.SCENES.has(type_name):
+		pos = _snap_to_ground(pos)
+	NetSpawner.request_spawn(type_name, Transform3D(Basis(), pos))
+
+## Baja un punto hasta el piso con un raycast (para spawnear objetos estáticos apoyados).
+func _snap_to_ground(from: Vector3) -> Vector3:
+	var space := char_rigidbody.get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(from + Vector3.UP, from + Vector3.DOWN * 20.0)
+	q.exclude = [char_rigidbody.get_rid()]
+	var hit := space.intersect_ray(q)
+	return hit.position if hit else from
