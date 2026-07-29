@@ -19,7 +19,7 @@ const INTERP_DELAY_MS := 100.0
 const MAX_EXTRAPOLATION_S := 0.15
 const BUFFER_MAX := 20
 
-## [{t, pos, yaw, vel, impact_xz, impact_y, crouch, jump, throw_t, throw_push, throw_dir, pitch}]
+## [{t, pos, yaw, vel, impact_xz, impact_y, crouch, jump, throw_t, throw_push, throw_dir, pitch, ragdoll}]
 var _buffer: Array = []
 
 func _physics_process(_delta: float) -> void:
@@ -46,19 +46,20 @@ func _send_state() -> void:
 		throw_t = bi.anim_mod.throw_t
 		throw_push = bi.anim_mod.throw_push_t
 		throw_dir = bi.anim_mod.throw_world_dir
+	var ragdoll := is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active
 	_receive_state.rpc(rb.global_position, rb.rotation.y, rb.linear_velocity, rb.impact_xz, rb.impact_y,
-		bi.crouch_t, bi.jump_squat_t, throw_t, throw_push, throw_dir, bi.head_pitch)
+		bi.crouch_t, bi.jump_squat_t, throw_t, throw_push, throw_dir, bi.head_pitch, ragdoll)
 
 @rpc("authority", "unreliable_ordered", "call_remote")
 func _receive_state(pos: Vector3, yaw: float, vel: Vector3, impact_xz: Vector2, impact_y: float,
 		crouch: float, jump: float, throw_t: float, throw_push: float, throw_dir: Vector3,
-		pitch: float) -> void:
+		pitch: float, ragdoll: bool) -> void:
 	_buffer.append({
 		"t": Time.get_ticks_msec(), "pos": pos, "yaw": yaw, "vel": vel,
 		"impact_xz": impact_xz, "impact_y": impact_y,
 		"crouch": crouch, "jump": jump,
 		"throw_t": throw_t, "throw_push": throw_push, "throw_dir": throw_dir,
-		"pitch": pitch})
+		"pitch": pitch, "ragdoll": ragdoll})
 	while _buffer.size() > BUFFER_MAX:
 		_buffer.pop_front()
 
@@ -79,6 +80,15 @@ func apply_to_puppet() -> void:
 
 	var s := _sample_at(float(Time.get_ticks_msec()) - INTERP_DELAY_MS)
 
+	# Ragdoll: replicamos el estado y el proxy corre su PROPIO ragdoll local. La física no es
+	# determinística entre máquinas → es una aproximación (un cuerpo flojo cerca de la posición
+	# correcta), no un calco. Durante el ragdoll ACTIVO el sim local maneja la cápsula/pose, así que
+	# no pisamos con el transform sincronizado; en la recuperación sí (para volver a la pos del dueño).
+	# Ver conceptual/multiplayer.md (Causa C).
+	_drive_proxy_ragdoll(bi, rb, s["ragdoll"])
+	if is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active:
+		return
+
 	rb.global_position = s["pos"]
 	rb.rotation.y = s["yaw"]
 	rb.puppet_velocity = s["vel"]   # alimenta la animación de caminado
@@ -91,6 +101,19 @@ func apply_to_puppet() -> void:
 		bi.anim_mod.throw_t = s["throw_t"]
 		bi.anim_mod.throw_push_t = s["throw_push"]
 		bi.anim_mod.throw_world_dir = s["throw_dir"]
+
+## Enciende/apaga el ragdoll LOCAL del proxy según el flag sincronizado (en flancos). El proxy no
+## detecta impactos (es puppet), así que su ragdoll solo lo dispara esto. Al salir, deactivate arranca
+## la recuperación local y hay que restaurar el estado puppet (deactivate des-congela la cápsula).
+func _drive_proxy_ragdoll(bi: BoneInstantiator, rb: CharacterRigidBody3D, want: bool) -> void:
+	var rd := bi.ragdoll_util
+	if not is_instance_valid(rd):
+		return
+	if want and not rd.is_active:
+		rd.activate(rb, bi.custom_bones_util.lower_spine)
+	elif not want and rd.is_active:
+		rd.deactivate(rb, bi.custom_bones_util.lower_spine)
+		rb.setup_as_puppet()  # restaurar puppet (kinemático, sin gravedad): deactivate lo des-congeló
 
 ## Estado interpolado al tiempo de render (extrapola con la velocidad si va por delante del buffer).
 func _sample_at(render_t: float) -> Dictionary:
@@ -124,7 +147,8 @@ func _lerp_state(a: Dictionary, b: Dictionary, f: float) -> Dictionary:
 		"throw_t": lerpf(a["throw_t"], b["throw_t"], f),
 		"throw_push": lerpf(a["throw_push"], b["throw_push"], f),
 		"throw_dir": (a["throw_dir"] as Vector3).lerp(b["throw_dir"], f),
-		"pitch": lerpf(a["pitch"], b["pitch"], f)}
+		"pitch": lerpf(a["pitch"], b["pitch"], f),
+		"ragdoll": a["ragdoll"]}  # bool: tomamos el del estado más viejo (mismo delay que la posición)
 
 func _rigidbody() -> CharacterRigidBody3D:
 	var bi := get_parent() as BoneInstantiator
