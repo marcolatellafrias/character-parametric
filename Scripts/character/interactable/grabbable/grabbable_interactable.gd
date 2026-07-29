@@ -87,6 +87,7 @@ func show_debug_points() -> void:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color.CYAN
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.no_depth_test = true  # visibles atravesando el mesh
 		mi.material_override = mat
 		pt.add_child(mi)
 
@@ -101,5 +102,6 @@ func show_debug_points() -> void:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color.YELLOW
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.no_depth_test = true  # visibles atravesando el mesh
 		mi.material_override = mat
 		pt.add_child(mi)

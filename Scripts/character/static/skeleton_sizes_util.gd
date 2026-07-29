@@ -232,11 +232,11 @@ static func _compute_arm_pole_local(left: bool, s: SkeletonSizesUtil) -> Vector3
 	return elbow + pole_dir * s.upper_arm_size.y * 0.8 + Vector3(0, 0, 0.5)
 
 
-func update(_delta: float, char_rigidbody: CharacterRigidBody3D, inst: EntityInstantiation, ik_util: IkUtil) -> void:
-	_update_step_radius(char_rigidbody, inst.arch_final, ik_util)
+func update(_delta: float, inputs: AnimationInputs, inst: EntityInstantiation, ik_util: IkUtil) -> void:
+	_update_step_radius(inputs, inst.arch_final, ik_util)
 
-func _update_step_radius(char_rigidbody: CharacterRigidBody3D, entity_stats: EntityArchetype, ik_util: IkUtil) -> void:
-	var dxz := Vector2(char_rigidbody.linear_velocity.x, char_rigidbody.linear_velocity.z)
+func _update_step_radius(inputs: AnimationInputs, entity_stats: EntityArchetype, ik_util: IkUtil) -> void:
+	var dxz := Vector2(inputs.velocity.x, inputs.velocity.z)
 	var instant_speed = dxz.length()
 	var min_speed = 0.01
 	var max_speed: float = entity_stats.speed * entity_stats.sprint_multiplier * CharacterRigidBody3D.SPEED_SCALE

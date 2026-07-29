@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "conceptual/run-setup.md",
+                "file": "technical/character-animation.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "run-setup"
+              "title": "character-animation"
             }
           }
         ]
@@ -185,25 +185,26 @@
   },
   "active": "9576508c48e6342d",
   "lastOpenFiles": [
-    "technical/ui.md.tmp.4500.3edca18dadb9",
-    "conceptual/multiplayer.md.tmp.4500.6e6a3a487470",
-    "technical/ui.md.tmp.4500.02cc36a8673c",
-    "conceptual/people.md",
+    "technical/character-animation.md.tmp.21296.ef40d9dcdbe5",
+    "technical/character-animation.md.tmp.21296.70fc091e22d3",
+    "conceptual/multiplayer.md.tmp.21296.99acaf4cd570",
+    "comandos-utiles.md.tmp.21296.f006c328b0e9",
+    "technical/characters.md",
+    "technical/character-animation.md",
     "conceptual/run-setup.md",
+    "conceptual/multiplayer.md.tmp.4500.44f83e4b92ca",
+    "conceptual/multiplayer.md.tmp.4500.c031dd6815e1",
+    "conceptual/multiplayer.md.tmp.4500.6bcc15d76e4c",
+    "conceptual/multiplayer.md.tmp.4500.93070e8a71af",
+    "conceptual/multiplayer.md.tmp.4500.cfff243a19f8",
+    "conceptual/multiplayer.md.tmp.4500.745e4f301af8",
+    "technical/ui.md.tmp.4500.3edca18dadb9",
+    "conceptual/people.md",
     "conceptual/world.md",
     "conceptual/multiplayer.md",
-    "conceptual/multiplayer.md.tmp.4500.75092c1f06c2",
-    "technical/ui.md.tmp.4500.7bff8bc6af29",
-    "technical/ui.md.tmp.4500.056fe81e0de0",
-    "technical/ui.md.tmp.4500.ebcbf111206e",
-    "00-overview.md.tmp.4500.0573e6a485fc",
     "technical/ui.md",
-    "technical/ui.md.tmp.4500.38a166bc7f40",
-    "comandos-utiles.md.tmp.4500.a5eae07b01c1",
-    "comandos-utiles.md.tmp.4500.73073972f0af",
     "comandos-utiles.md",
     "conceptual/ship-gameplay.md",
-    "technical/characters.md",
     "technical/sidewalks.md",
     "technical/traffic.md",
     "00-overview.md",

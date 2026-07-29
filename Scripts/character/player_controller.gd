@@ -471,6 +471,9 @@ func _respawn() -> void:
 	var prev_pos := Vector3(char_rigidbody.global_position.x, 3.0, char_rigidbody.global_position.z)
 	current_bi.master_seed = randi() % 100000
 	current_bi.initialize_skeleton()
+	# Multiplayer: el aspecto cambió, avisá a los demás para que reconstruyan mi proxy.
+	if is_instance_valid(current_bi.net_sync):
+		current_bi.net_sync.broadcast_seed()
 
 	char_rigidbody = current_bi.char_rigidbody
 	head_bone      = current_bi.custom_bones_util.head
@@ -596,9 +599,14 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Grab cone",                _debug_toggle_grab_cone)
 
 	# ── Spawn ──
-	_debug_panel.add_action("Spawn", "Go to start", _go_to_start)
-	_debug_panel.add_action("Spawn", "Character",   _debug_spawn_character)
-	_debug_panel.add_action("Spawn", "Box",         _debug_spawn_box)
+	_debug_panel.add_action("Spawn", "Go to start",        _go_to_start)
+	_debug_panel.add_action("Spawn", "Character",          _debug_spawn_character)
+	_debug_panel.add_action("Spawn", "Caja liviana ▪",     func(): _debug_spawn("box_light_square"))
+	_debug_panel.add_action("Spawn", "Caja pesada ▪",      func(): _debug_spawn("box_heavy_square"))
+	_debug_panel.add_action("Spawn", "Caja liviana ▬",     func(): _debug_spawn("box_light_long"))
+	_debug_panel.add_action("Spawn", "Caja pesada ▬",      func(): _debug_spawn("box_heavy_long"))
+	_debug_panel.add_action("Spawn", "Dashboard",          func(): _debug_spawn("dashboard"))
+	_debug_panel.add_action("Spawn", "Seat",               func(): _debug_spawn("seat"))
 
 
 func _character_stats_text(inst: EntityInstantiation) -> String:
@@ -682,12 +690,5 @@ func _debug_spawn_character() -> void:
 	inst.global_position = _debug_spawn_pos()
 
 
-func _debug_spawn_box() -> void:
-	var scene := load("res://Scenes/weighted_box.tscn") as PackedScene
-	if scene == null:
-		return
-	var inst := scene.instantiate() as Node3D
-	if inst == null:
-		return
-	get_tree().current_scene.add_child(inst)
-	inst.global_position = _debug_spawn_pos()
+func _debug_spawn(type_name: String) -> void:
+	NetSpawner.request_spawn(type_name, Transform3D(Basis(), _debug_spawn_pos()))

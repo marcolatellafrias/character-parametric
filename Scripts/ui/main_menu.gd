@@ -60,6 +60,14 @@ func _build() -> void:
 	vbox.add_child(_button("Opciones", _on_options))
 	vbox.add_child(_button("Salir", _on_quit))
 
+	# Dev: test multiplayer local con varias instancias (ENet, sin Steam).
+	var dev_label := Label.new()
+	dev_label.text = "— dev (test local) —"
+	dev_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(dev_label)
+	vbox.add_child(_button("Host local", func(): SessionManager.host_local()))
+	vbox.add_child(_button("Join local", func(): SessionManager.join_local()))
+
 	_status = Label.new()
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_status)

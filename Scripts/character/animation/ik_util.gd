@@ -38,7 +38,9 @@ var _step_radius_rendered: float = -1.0
 var current_step_radius: float:
 	set(value):
 		current_step_radius = value
-		if not debug_enabled or is_equal_approx(value, _step_radius_rendered):
+		# Actualizamos el anillo de debug aunque no sea el jugador activo, así en un proxy el step
+		# radius se ve escalar con la velocidad (el valor ya escalaba; era solo la viz).
+		if is_equal_approx(value, _step_radius_rendered) or not is_instance_valid(current_step_left_mesh_instance):
 			return
 		_step_radius_rendered = value
 		current_step_left_mesh_instance.mesh  = DebugUtil.create_debug_ring_mesh(value)
@@ -244,7 +246,7 @@ func _register_step(current_target: Node3D) -> void:
 	_last_step_leg_id = current_target.get_instance_id()
 
 func update_ik_raycast(
-	left: bool, bones: CustomBonesUtil, sizes: SkeletonSizesUtil, char_rigidbody: CharacterRigidBody3D,
+	left: bool, bones: CustomBonesUtil, sizes: SkeletonSizesUtil, inputs: AnimationInputs,
 ) -> void:
 	var leg := get_leg_data(left)
 	var upper_leg := bones.left_upper_leg if left else bones.right_upper_leg
@@ -279,7 +281,7 @@ func update_ik_raycast(
 	var indicator_c := left_leg_raycast_indicator_c if left else right_leg_raycast_indicator_c
 	var indicator_d := left_leg_raycast_indicator_d if left else right_leg_raycast_indicator_d
 
-	if not char_rigidbody.is_grounded:
+	if not inputs.grounded:
 		if not recovery_targets_locked:
 			leg.current_target.set_meta("was_airborne", true)
 			if not _is_stepping(leg.current_target):
@@ -298,7 +300,7 @@ func update_ik_raycast(
 	var original_origin := leg.raycast.transform.origin
 
 	var basis_owner := leg.raycast.get_parent() as Node3D
-	var ground_world := char_rigidbody.get_ground_collision_point()
+	var ground_world := inputs.ground_point
 	var ground_local := basis_owner.global_transform.affine_inverse() * ground_world
 
 	var candidate_origins: Array[Vector3] = [
@@ -363,7 +365,7 @@ func update_ik_raycast(
 
 				var step_distance: float = sqrt(dist2Exp)
 				var wants_step: bool     = dist2 > (step_radius * step_radius)
-				var step_duration: float = get_step_duration(char_rigidbody, sizes, step_distance)
+				var step_duration: float = get_step_duration(inputs, sizes, step_distance)
 				var step_height: float   = sizes.step_height * clamp(step_distance / sizes.step_radius_max, 0.1, 1.0)
 
 				_set_leg_measure(left, dist2, wants_step, collision_point, step_duration, step_height)
@@ -452,8 +454,8 @@ static func _clear_step_data(node: Node3D) -> void:
 static func _is_stepping(n: Node) -> bool:
 	return n.has_meta("stepping") and bool(n.get_meta("stepping"))
 
-func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left: bool, sizes: SkeletonSizesUtil, entity_stats: EntityArchetype) -> void:
-	var hvel := root_rigidbody.linear_velocity
+func update_leg_raycast_offsets(inputs: AnimationInputs, delta: float, left: bool, sizes: SkeletonSizesUtil, entity_stats: EntityArchetype) -> void:
+	var hvel := inputs.velocity
 	hvel.y = 0.0
 
 	var leg := get_leg_data(left)
@@ -469,11 +471,11 @@ func update_leg_raycast_offsets(root_rigidbody: RigidBody3D, delta: float, left:
 	var weight_z := sizes.axis_weight_forward if v2.y <= 0.0 else sizes.axis_weight_backward
 	target_off = Vector2(target_off.x * sizes.axis_weight_lateral, target_off.y * weight_z)
 
-	var grounded_target := target_off if root_rigidbody.is_grounded else Vector2.ZERO
+	var grounded_target := target_off if inputs.grounded else Vector2.ZERO
 	var k: float = clamp(delta * sizes.raycast_smooth, 0.0, 1.0)
 	raycast_offset = raycast_offset.lerp(grounded_target, k)
 
-	var y_vel := root_rigidbody.linear_velocity.y
+	var y_vel := inputs.velocity.y
 	var velocity_factor: float = clamp(abs(y_vel) / 5.0, 0.0, 1.0)
 	var target_y_position: float = lerp(sizes.leg_height * 0.5, sizes.leg_height, velocity_factor)
 
@@ -490,8 +492,8 @@ static func get_orthogonal(v: Vector3) -> Vector3:
 	else:
 		return Vector3(-v.z, 0, v.x).normalized()
 
-func get_step_duration(char_rigidbody: CharacterRigidBody3D, sizes: SkeletonSizesUtil, step_distance: float) -> float:
-	var dxz := Vector2(char_rigidbody.linear_velocity.x, char_rigidbody.linear_velocity.z)
+func get_step_duration(inputs: AnimationInputs, sizes: SkeletonSizesUtil, step_distance: float) -> float:
+	var dxz := Vector2(inputs.velocity.x, inputs.velocity.z)
 	var horizontal_speed := dxz.length()
 	if horizontal_speed < 0.01:
 		return 0.3

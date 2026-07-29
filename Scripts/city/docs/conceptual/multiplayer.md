@@ -13,6 +13,8 @@ Networking runs on **[GodotSteam](https://godotsteam.com)**:
 
 For now the game runs under **Spacewar (app id `480`)**, so Steam features work without our own app id.
 
+Because everything is on Godot's **high-level** multiplayer, the transport is swappable: there's a **local ENet mode** (`SessionManager.host_local()` / `join_local()`, console `host_local`/`join_local`, or `--host-local`/`--join-local` args) for testing multiplayer with **several instances on one machine** — no Steam, no second account. Identity/seed fall back to the peer id, so the test characters look different. The whole sync stack (capsule, boxes, grab) runs unchanged.
+
 ---
 
 ## Session & joining — main menu (host / join by code)
@@ -84,8 +86,12 @@ Built incrementally — networking first, fidelity later:
 
 1. **Host + join + player registry.** ✅ *Implemented.* Host / join-by-code (or Steam overlay), and the **session-player registry** (`peer ↔ steam ↔ Player`) — including each peer's **Steam name**, exchanged on connect via a reliable `_register_identity` RPC. Each peer spawns a character. Proves the transport and identity end to end.
 2. **Capsule sync.** ✅ *Implemented (pending live 2-player verification).* Replicate each player's **capsule** (transform + movement state). Remote players are just the **capsule + its debug ray** — no aesthetic skeleton yet.
-3. **Aesthetic & animation.** Reconstruct/replicate the skeleton so remote players look like characters (mostly seed-reconstructed + a little state).
-4. **Interaction.** Grab / controllables / ship (host-authoritative), objects, ownership handoff on grab.
+3. **Aesthetic & animation.** ✅ *Implemented (pending live 2-player verification).* Remote players are now full seed-reconstructed skeletons, not capsules: the seed is **derived from each peer's Steam id** (same on every machine, no extra sync), so the proxy rebuilds the same character locally. Only the capsule transform + velocity travel; the walk animation is driven locally from that replicated velocity.
+4. **Interaction.** Grab / controllables / ship (host-authoritative), objects, ownership handoff on grab. *In progress:* the **replicated debug spawner** (`NetSpawner`) + generic **`NetBody`** physics sync are in (spawn boxes/dashboards/seats on every machine; boxes sync host-authoritative). **Grab ownership handoff is in**: grabbing a synced box migrates its `NetBody` authority to the grabber (host-arbitrated), so whoever holds it simulates it locally and everyone interpolates; releasing hands it back to the host (velocity carried over so throws survive). Spawned boxes are made grabbable (a `GrabbableInteractable` is attached), in 4 debug variants (light/heavy × square/long).
+
+**Grab model (all forces/torques — never sets the transform, so no exploits):** the PD pulls the **grab point** (not the centre) toward the player's aim ray, so off-centre force gives emergent translation+rotation and grabbing a specific part matters. Rotation control (yaw-follow: the object rotates with the grabber) runs **only with a single grabber**; with 2+ it's off and orientation is purely emergent, tamed by an **angular-damping torque**. Free mouse-rotate is dropped.
+
+**Co-grab netcode:** the host tracks the grabber set per body. The first grabber becomes the `NetBody` authority (simulates it locally, responsive); extra grabbers stay non-authority and stream their **intent** (grab-point offset + aim target + stiffness/damping) to the authority, which applies each as a force at that grab point. On release, if grabbers remain, authority is **promoted to the next grabber** (else back to host); velocity carries over so throws survive. Still to do: controllable `_network_state`, seat occupancy.
 5. **Run.** Run state, the shift/patience clock, scoring — and the assembly/join flow moving onto the real Lounge front-end.
 
 ### Implementation (M1–M2)
@@ -93,7 +99,9 @@ Built incrementally — networking first, fidelity later:
 - **`SessionManager`** (autoload) owns the session lifecycle: init Steam, then start **solo** (peer `1`) unless launched with `+connect_lobby`. `host()` / `join(lobby_id)` are called from the debug panel (and `join` from the overlay's join-requested callback). It emits **`session_ready(local_peer_id)`** for the initial spawn and **`local_peer_id_changed(new_id)`** when the local id changes (solo/host → client), plus `remote_player_joined/left`. Hosting keeps id `1` (no re-spawn); joining re-keys the local character to the assigned client id.
 - **`CharacterSpawner`** (scene node) spawns every character by code: the local player (a full `BoneInstantiator`) and one **`RemoteCharacter`** proxy per remote peer. Each is named **`char_<peer_id>`** and its **`NetSync`** child's `multiplayer_authority` is that peer — so the RPC path matches on every machine and `is_multiplayer_authority()` decides who simulates.
 - **`CharacterNetSync`** (child `NetSync`): the authority sends capsule **centre pos + yaw + linear velocity** on an **unreliable_ordered** RPC each physics tick; remotes buffer with a local timestamp and **interpolate** (100 ms render delay, short velocity extrapolation on late packets). No `MultiplayerSynchronizer`, per the physics-sync rules above.
-- **`RemoteCharacter`**: lightweight capsule + local ground ray only. No skeleton (M3), no physics sim — it just follows the interpolated transform.
+- **`NetBody`** (M4, generic physics sync): a child of any `RigidBody3D`. The **authority** simulates normally and sends transform + velocity each tick; non-authorities freeze (kinematic) and interpolate — the capsule-puppet pattern generalized. `set_body_authority(peer)` migrates ownership (grab handoff, later). No prediction/rollback (chill co-op).
+- **`NetSpawner`** (autoload): replicated debug/authoring spawn. A spawn request goes to the host, which assigns an incrementing id and broadcasts `_do_spawn(id, type, xform)`; every machine instantiates `spawned_<id>` under the current scene (matching path → sync routes). Physics bodies get a host-authority `NetBody`. It's a testing tool — production contraptions come from seeds, not this.
+- **Remote proxy** (M3): a full **`BoneInstantiator`** (`is_active=false`, `is_puppet=true`) rebuilt from the peer's seed (`hash(steam_id)`). Its `CharacterRigidBody3D` runs in **puppet mode** — `_physics_process` early-returns (no simulation, no impact/fall, no collision, frozen kinematic); `CharacterNetSync` writes its `global_position`/`yaw` from interpolation and feeds `puppet_velocity`, which the animation reads via `get_motion_velocity()` to drive the walk cycle. All the puppet changes are guarded so single-player is untouched. A `NameTag` (billboarded `Label3D`) sits above it.
 
 ---
 

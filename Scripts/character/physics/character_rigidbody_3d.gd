@@ -23,6 +23,12 @@ var collider: CollisionShape3D
 var mesh_instance: MeshInstance3D
 var _ground_ray: RayCast3D
 
+# Modo puppet: proxy remoto (milestone 3). La posición/yaw los pone el CharacterNetSync
+# desde la red; no simulamos física ni detectamos impactos. La animación lee la velocidad
+# de red (puppet_velocity) en vez de linear_velocity, que en un cuerpo freeze es 0.
+var is_puppet: bool = false
+var puppet_velocity: Vector3 = Vector3.ZERO
+
 var _capsule_stand_height: float = 0.0
 var _capsule_stand_y_offset: float = 0.0
 
@@ -79,6 +85,19 @@ var impact_y_signed: float = 0.0
 func get_ground_collision_point() -> Vector3:
 	return _ground_ray.get_collision_point()
 
+## Velocidad que maneja la animación: la real si simulamos, o la de red si somos puppet.
+func get_motion_velocity() -> Vector3:
+	return puppet_velocity if is_puppet else linear_velocity
+
+## Convierte la cápsula en un proxy manejado por red: sin física, sin colisión.
+func setup_as_puppet() -> void:
+	is_puppet = true
+	freeze = true
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	gravity_scale = 0.0
+	collision_layer = 0
+	collision_mask = 0
+
 func _ready() -> void:
 	linear_damp = 0.0
 	var physics_mat := PhysicsMaterial.new()
@@ -95,6 +114,14 @@ func _ready() -> void:
 	axis_lock_angular_y = true
 
 func _physics_process(delta: float) -> void:
+	# Puppet (proxy remoto): la posición la maneja la red y no simulamos, pero SÍ actualizamos el
+	# ground ray para que la animación sepa si está apoyado (si no, los pies quedan recogidos y no
+	# camina). Ver technical/character-animation.md.
+	if is_puppet:
+		_ground_ray.force_raycast_update()
+		is_grounded = _ground_ray.is_colliding()
+		return
+
 	# El movimiento lee Input directo, así que se congela mientras haya un overlay
 	# abierto (pausa/menú/consola/debug). El mundo sigue simulando igual.
 	var input_active := UIState.gameplay_active()

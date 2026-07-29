@@ -11,6 +11,8 @@ extends Node
 
 const MAX_MEMBERS := 4
 const VIRTUAL_PORT := 0
+## Puerto para el modo local (ENet), para testear multiplayer con varias instancias.
+const LOCAL_PORT := 24565
 
 ## Caracteres del código de partida (sin O/0/I/1 para no confundir).
 const CODE_CHARS := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -22,6 +24,8 @@ var enabled: bool = false
 var is_host: bool = false
 var lobby_id: int = 0
 var local_steam_id: int = 0
+## True cuando el transporte es ENet local (test multi-instancia), no Steam.
+var is_local_transport: bool = false
 
 ## Código corto de la partida hosteada (lobby data "code"). Vacío si sos cliente/solo.
 var lobby_code: String = ""
@@ -54,8 +58,24 @@ signal remote_player_left(peer_id: int)
 signal session_failed(reason: String)
 
 func _ready() -> void:
+	# Señales del multiplayer de alto nivel de Godot — SIEMPRE (sirven para Steam y ENet local).
+	multiplayer.peer_connected.connect(_on_peer_connected)
+	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	multiplayer.connected_to_server.connect(_on_connected_to_server)
+	multiplayer.connection_failed.connect(_on_connection_failed)
+	multiplayer.server_disconnected.connect(_on_server_disconnected)
+
+	# Args de lanzamiento para test local (útil con "Run Multiple Instances" con args por instancia).
+	var cli := OS.get_cmdline_args()
+	if cli.has("--host-local"):
+		host_local.call_deferred()
+		return
+	if cli.has("--join-local"):
+		join_local.call_deferred()
+		return
+
 	if not Engine.has_singleton("Steam"):
-		push_warning("[Session] GodotSteam not available — host() will run local-only.")
+		push_warning("[Session] GodotSteam not available — solo el modo local (ENet) funciona.")
 		return
 
 	_ensure_steam_appid_file()
@@ -74,14 +94,7 @@ func _ready() -> void:
 	Steam.lobby_match_list.connect(_on_lobby_match_list)
 	Steam.join_requested.connect(_on_join_requested)
 
-	multiplayer.peer_connected.connect(_on_peer_connected)
-	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
-	multiplayer.connected_to_server.connect(_on_connected_to_server)
-	multiplayer.connection_failed.connect(_on_connection_failed)
-	multiplayer.server_disconnected.connect(_on_server_disconnected)
-
 	# Si Steam nos lanzó para unirnos a un lobby, nos unimos directo (salteando el menú).
-	# Si no, no arrancamos nada: el main menu maneja Host/Join.
 	var launch_lobby := _lobby_from_args(OS.get_cmdline_args())
 	if launch_lobby != 0:
 		_join_lobby(launch_lobby)
@@ -98,12 +111,21 @@ func _start_session(peer_id: int) -> void:
 		return
 	session_started = true
 	local_peer_id = peer_id
-	# Registrar al jugador local en el registro (el host ya se agregó en lobby_created).
+	# Registrar al jugador local en el registro (el host Steam ya se agregó en lobby_created).
 	if not players.has(peer_id):
-		var my_name := Steam.getPersonaName() if enabled else "Vos"
-		_add_player(peer_id, local_steam_id, my_name, true)
+		_add_player(peer_id, local_identity(), _local_name(), true)
 	session_ready.emit(peer_id)
 	print("[Session] Session ready — local peer %d" % peer_id)
+
+## Identidad estable del jugador local, igual en todas las máquinas: steam id con Steam, o el
+## peer id en modo local (ENet). Determina el seed del personaje → los proxies coinciden.
+func local_identity() -> int:
+	return local_peer_id if is_local_transport else local_steam_id
+
+func _local_name() -> String:
+	if is_local_transport:
+		return "Player %d" % local_peer_id
+	return Steam.getPersonaName() if enabled else "Vos"
 
 ## Host sin Steam (dev): sesión local, peer 1, sin red — jugás solo y nadie se puede unir.
 func _start_local_session() -> void:
@@ -140,7 +162,7 @@ func _on_connected_to_server() -> void:
 
 func _on_connection_failed() -> void:
 	push_warning("[Session] Connection to host failed.")
-	session_failed.emit("No se pudo conectar al host")
+	_fail("No se pudo conectar al host")
 
 func _on_server_disconnected() -> void:
 	# El host se cayó: si somos cliente, volvemos al menú.
@@ -154,6 +176,54 @@ func leave_session() -> void:
 	lobby_code = ""
 	local_peer_id = 0
 	session_started = false
+	is_local_transport = false
+
+# ── Modo local (ENet) — testear multiplayer con varias instancias del juego ───
+
+## Hostea por ENet en localhost (no usa Steam). Corré "Run Multiple Instances" y en una
+## instancia host_local, en las otras join_local.
+func host_local() -> void:
+	if session_started:
+		return
+	_leave_current()
+	is_local_transport = true
+	_tile_window(true)  # mitad izquierda, para ver las dos instancias a la vez
+	var peer := ENetMultiplayerPeer.new()
+	var err := peer.create_server(LOCAL_PORT, MAX_MEMBERS)
+	if err != OK:
+		_fail("No se pudo hostear local (err %d)" % err)
+		return
+	multiplayer.multiplayer_peer = peer
+	is_host = true
+	_start_session(1)
+	_console("Hosteando local en 127.0.0.1:%d" % LOCAL_PORT)
+
+## Acomoda la ventana a la mitad izquierda/derecha de la pantalla (solo para test local, así se
+## ven las dos instancias a la vez).
+func _tile_window(left: bool) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var win := get_window()
+	win.mode = Window.MODE_WINDOWED
+	var rect := DisplayServer.screen_get_usable_rect(win.current_screen)
+	var half_w := int(rect.size.x / 2)
+	win.size = Vector2i(half_w, rect.size.y)
+	win.position = rect.position + Vector2i(0 if left else half_w, 0)
+
+## Se une a un host local por ENet (default 127.0.0.1).
+func join_local(ip: String = "127.0.0.1") -> void:
+	if session_started:
+		return
+	_leave_current()
+	is_local_transport = true
+	_tile_window(false)  # mitad derecha
+	var peer := ENetMultiplayerPeer.new()
+	var err := peer.create_client(ip, LOCAL_PORT)
+	if err != OK:
+		_fail("No se pudo unir local (err %d)" % err)
+		return
+	multiplayer.multiplayer_peer = peer
+	_console("Uniéndote a %s:%d…" % [ip, LOCAL_PORT])
 
 ## Deja la sesión y vuelve al main menu (botón "Salir de la partida", o host caído).
 func return_to_menu() -> void:
@@ -177,12 +247,13 @@ func host() -> void:
 ## Se une por código corto: busca el lobby público con ese "code" y se conecta.
 func join_by_code(code: String) -> void:
 	if not enabled:
-		session_failed.emit("Steam no disponible")
+		_fail("Steam no disponible")
 		return
 	var clean := code.strip_edges().to_upper()
 	if clean == "":
 		return
 	_pending_join_code = clean
+	_console("Buscando sala %s…" % clean)
 	Steam.addRequestLobbyListStringFilter("code", clean, Steam.LOBBY_COMPARISON_EQUAL)
 	Steam.addRequestLobbyListDistanceFilter(Steam.LOBBY_DISTANCE_FILTER_WORLDWIDE)
 	Steam.requestLobbyList()
@@ -192,7 +263,7 @@ func _on_lobby_match_list(lobbies: Array) -> void:
 		return
 	_pending_join_code = ""
 	if lobbies.is_empty():
-		session_failed.emit("Código no encontrado")
+		_fail("Código no encontrado")
 		return
 	_join_lobby(int(lobbies[0]))
 
@@ -200,6 +271,7 @@ func _on_lobby_match_list(lobbies: Array) -> void:
 func _join_lobby(target_lobby: int) -> void:
 	if not enabled or target_lobby == 0:
 		return
+	_console("Uniéndote a la sala…")
 	_leave_current()
 	Steam.joinLobby(target_lobby)
 
@@ -224,13 +296,25 @@ func _generate_code() -> String:
 		code += CODE_CHARS[randi() % CODE_CHARS.length()]
 	return code
 
+## Imprime un evento en la consola de dev (si ya existe). Los eventos de sesión son
+## asíncronos, así que la consola siempre está lista para cuando se llaman.
+func _console(msg: String) -> void:
+	var console := get_node_or_null("/root/DevConsole")
+	if console:
+		console.log_line(msg)
+
+## Falla la sesión: avisa al menú y lo loguea en la consola.
+func _fail(reason: String) -> void:
+	session_failed.emit(reason)
+	_console("Error: %s" % reason)
+
 # ── Host ──────────────────────────────────────────────────────────────────────
 
 func _on_lobby_created(result: int, new_lobby_id: int) -> void:
 	if result != 1:  # k_EResultOK
 		push_warning("[Session] Lobby create failed (%d)" % result)
 		lobby_code = ""
-		session_failed.emit("No se pudo crear la partida")
+		_fail("No se pudo crear la partida")
 		return
 	lobby_id = new_lobby_id
 	is_host = true
@@ -245,6 +329,7 @@ func _on_lobby_created(result: int, new_lobby_id: int) -> void:
 	multiplayer.multiplayer_peer = peer
 	_add_player(1, local_steam_id, Steam.getPersonaName(), true)
 	_start_session(multiplayer.get_unique_id())
+	_console("Sala creada — código %s" % lobby_code)
 	print("[Session] Hosting lobby %d (code %s)" % [lobby_id, lobby_code])
 
 # ── Join ──────────────────────────────────────────────────────────────────────
@@ -257,7 +342,7 @@ func _on_join_requested(connect_info: Variant, _friend_id: int) -> void:
 func _on_lobby_joined(joined_lobby: int, _permissions: int, _locked: bool, response: int) -> void:
 	if response != 1:  # k_EChatRoomEnterResponseSuccess
 		push_warning("[Session] Lobby join failed (%d)" % response)
-		session_failed.emit("No se pudo entrar al lobby")
+		_fail("No se pudo entrar al lobby")
 		return
 	lobby_id = joined_lobby
 	if is_host:
@@ -265,11 +350,12 @@ func _on_lobby_joined(joined_lobby: int, _permissions: int, _locked: bool, respo
 	var host_id := int(Steam.getLobbyData(lobby_id, "host_steam_id"))
 	if host_id == 0:
 		push_warning("[Session] No host_steam_id in lobby %d" % lobby_id)
-		session_failed.emit("Lobby inválido")
+		_fail("Lobby inválido")
 		return
 	var peer := SteamMultiplayerPeer.new()
 	peer.create_client(host_id, VIRTUAL_PORT)
 	multiplayer.multiplayer_peer = peer
+	_console("Te uniste a la sala")
 	print("[Session] Joining host %d (lobby %d)" % [host_id, lobby_id])
 
 # ── Peer registry ─────────────────────────────────────────────────────────────
@@ -279,8 +365,7 @@ func _on_peer_connected(peer_id: int) -> void:
 	# peer_connected dispara para cada par de peers, todos terminan conociendo a todos.
 	_add_player(peer_id, 0, "", false)
 	remote_player_joined.emit(peer_id)
-	if enabled:
-		_register_identity.rpc_id(peer_id, local_steam_id, Steam.getPersonaName())
+	_register_identity.rpc_id(peer_id, local_identity(), _local_name())
 	print("[Session] Peer connected: %d" % peer_id)
 
 ## Handshake de identidad: el emisor nos dice su steam id + nombre. Reliable porque es
@@ -288,18 +373,27 @@ func _on_peer_connected(peer_id: int) -> void:
 @rpc("any_peer", "reliable")
 func _register_identity(steam_id: int, steam_name: String) -> void:
 	var sender := multiplayer.get_remote_sender_id()
+	# Anunciamos "se unió" al conocer el nombre por primera vez (no en peer_connected,
+	# que todavía no lo tiene).
+	var was_unknown: bool = (not players.has(sender)) or players[sender].steam_name == ""
 	if not players.has(sender):
 		_add_player(sender, steam_id, steam_name, false)
-		return
-	var sp: SessionPlayer = players[sender]
-	sp.steam_id = steam_id
-	sp.steam_name = steam_name
-	players_changed.emit()
+	else:
+		var sp: SessionPlayer = players[sender]
+		sp.steam_id = steam_id
+		sp.steam_name = steam_name
+		players_changed.emit()
+	if was_unknown:
+		_console("%s se unió" % steam_name)
 
 func _on_peer_disconnected(peer_id: int) -> void:
+	var display := "Jugador %d" % peer_id
+	if players.has(peer_id) and players[peer_id].steam_name != "":
+		display = players[peer_id].steam_name
 	players.erase(peer_id)
 	players_changed.emit()
 	remote_player_left.emit(peer_id)
+	_console("%s salió" % display)
 	print("[Session] Peer disconnected: %d" % peer_id)
 
 func _add_player(peer_id: int, steam_id: int, steam_name: String, local: bool) -> void:

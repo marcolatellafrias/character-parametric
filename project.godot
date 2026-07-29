@@ -21,6 +21,7 @@ DebugController="*res://Scripts/city/entities/car/debug_scroll.gd"
 SessionManager="*res://Scripts/net/session_manager.gd"
 UIState="*res://Scripts/ui/ui_state.gd"
 DevConsole="*res://Scripts/ui/dev_console.gd"
+NetSpawner="*res://Scripts/net/net_spawner.gd"
 
 [display]
 

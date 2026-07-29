@@ -1,7 +1,7 @@
 class_name LocomotionSignals
 
 var ik_util: IkUtil
-var char_rigidbody: CharacterRigidBody3D
+var inputs: AnimationInputs
 var sizes: SkeletonSizesUtil
 
 var foot_spread_unified: Vector2 = Vector2.ZERO
@@ -26,10 +26,10 @@ var arm_compress: float = 0.0
 var impact_xz_smooth: Vector2 = Vector2.ZERO
 const IMPACT_XZ_SMOOTH: float = 8.0
 
-static func create(ik: IkUtil, rb: CharacterRigidBody3D, sz: SkeletonSizesUtil) -> LocomotionSignals:
+static func create(ik: IkUtil, anim_inputs: AnimationInputs, sz: SkeletonSizesUtil) -> LocomotionSignals:
 	var s := LocomotionSignals.new()
 	s.ik_util = ik
-	s.char_rigidbody = rb
+	s.inputs = anim_inputs
 	s.sizes = sz
 	return s
 
@@ -67,9 +67,9 @@ func _update_step_signals(delta: float) -> void:
 	var k_s: float = clamp(delta * SPREAD_SMOOTH, 0.0, 1.0)
 	foot_spread_norm = foot_spread_norm.lerp(raw_spread.clamp(Vector2.ZERO, Vector2.ONE), k_s)
 
-	var basis_inv := char_rigidbody.global_transform.basis.inverse()
-	var left_local := basis_inv * (ik_util.left_leg_current_target.global_position - char_rigidbody.global_position)
-	var right_local := basis_inv * (ik_util.right_leg_current_target.global_position - char_rigidbody.global_position)
+	var basis_inv := inputs.basis.inverse()
+	var left_local := basis_inv * (ik_util.left_leg_current_target.global_position - inputs.origin)
+	var right_local := basis_inv * (ik_util.right_leg_current_target.global_position - inputs.origin)
 	left_foot_local_norm = Vector2(left_local.x, left_local.z) / sizes.leg_height
 	right_foot_local_norm = Vector2(right_local.x, right_local.z) / sizes.leg_height
 
@@ -83,8 +83,8 @@ func _update_step_signals(delta: float) -> void:
 	)
 
 func _update_velocity_signals(delta: float) -> void:
-	var vel := char_rigidbody.linear_velocity
-	var local_vel := char_rigidbody.global_transform.basis.inverse() * Vector3(vel.x, 0.0, vel.z)
+	var vel := inputs.velocity
+	var local_vel := inputs.basis.inverse() * Vector3(vel.x, 0.0, vel.z)
 	var k_h: float = clamp(delta * H_SMOOTH, 0.0, 1.0)
 	horizontal_velocity_smooth = horizontal_velocity_smooth.lerp(Vector2(local_vel.x, local_vel.z), k_h)
 	var k_v: float = clamp(delta * V_SMOOTH, 0.0, 1.0)
@@ -92,7 +92,6 @@ func _update_velocity_signals(delta: float) -> void:
 	var max_speed := sizes.leg_height * 3.0
 	speed_norm = clamp(Vector2(vel.x, vel.z).length() / max_speed, 0.0, 1.0)
 	var k_i: float = clamp(delta * IMPACT_Y_SMOOTH, 0.0, 1.0)
-	impact_y_signed_smooth = char_rigidbody.impact_y
-	char_rigidbody.impact_y_signed = 0.0  # reset cada frame para que sea un pulso
+	impact_y_signed_smooth = inputs.impact_y
 	var k_xz: float = clamp(delta * IMPACT_XZ_SMOOTH, 0.0, 1.0)
-	impact_xz_smooth = impact_xz_smooth.lerp(char_rigidbody.impact_xz, k_xz)
+	impact_xz_smooth = impact_xz_smooth.lerp(inputs.impact_xz, k_xz)

@@ -9,6 +9,9 @@ signal active_camera_changed(camera: Camera3D)
 @export var master_seed: int = 0
 ## When true (and this character is the active player), unlocks creative mode + the debug panel.
 @export var debug_enabled: bool = false
+## When true, this is a remote proxy (milestone 3): skeleton reconstructed from the seed, but the
+## capsule is a puppet driven by CharacterNetSync — no local physics. Set before add_child.
+@export var is_puppet: bool = false
 var entity_instantiation: EntityInstantiation
 
 var player_camera: Camera3D
@@ -21,11 +24,18 @@ var locomotion_signals: LocomotionSignals
 var procedural_animator: ProceduralBoneAnimator
 var ragdoll_util: RagdollUtil
 
+## Entrada de animación: la llena _update_animation_inputs() cada frame; los módulos de animación
+## la leen en vez de char_rigidbody (refactor de desacople, ver technical/character-animation.md).
+var animation_inputs: AnimationInputs
+
 var anim_mod: AnimationModifiers
 var bone_animations: BoneAnimations
 var arms_controller: ArmsController
 
 var player_controller: PlayerController
+## Solo en proxies remotos: lo setea el CharacterSpawner. Se llama al inicio del frame para aplicar
+## el transform sincronizado ANTES del solve del esqueleto.
+var net_sync: CharacterNetSync
 
 @onready var global_targets:   Node3D = $"global_targets"
 @onready var local_targets:    Node3D = $"local_targets"
@@ -62,6 +72,8 @@ func initialize_skeleton() -> void:
 	var full_height := skel_sizes_util.leg_height + skel_sizes_util.torso_height + skel_sizes_util.head_height
 	var charRb      := Vector3(skel_sizes_util.shoulders_width * 2, full_height, skel_sizes_util.hips_width * 2)
 	char_rigidbody  = CharacterRigidBody3D.create(charRb, skel_sizes_util.distance_from_ground, skel_sizes_util.leg_height, is_active, entity_instantiation)
+	if is_puppet:
+		char_rigidbody.setup_as_puppet()  # antes de add_child: no simula ni un frame
 	char_rigidbody.fall_triggered.connect(_on_fall_triggered)
 	char_rigidbody.add_child(custom_bones_util.lower_spine)
 	add_child(char_rigidbody)
@@ -106,7 +118,9 @@ func initialize_skeleton() -> void:
 		player_controller.setup(char_rigidbody, player_camera, custom_bones_util.head, skel_sizes_util.head_size, entity_instantiation)
 		active_camera_changed.emit(player_camera)
 
-	locomotion_signals = LocomotionSignals.create(ik_util, char_rigidbody, skel_sizes_util)
+	animation_inputs = AnimationInputs.new()
+	_update_animation_inputs()
+	locomotion_signals = LocomotionSignals.create(ik_util, animation_inputs, skel_sizes_util)
 
 	ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
 	ik_util.right_arm_ik_target.position = skel_sizes_util.right_arm_tip_rest_local
@@ -167,19 +181,26 @@ func _clear_prior_generations() -> void:
 	player_camera = null
 
 func _physics_process(delta: float) -> void:
+	# Proxy remoto: aplicar el transform sincronizado (posición + yaw) ANTES de todo, para que el
+	# solve del esqueleto de este frame use el yaw actual. Va antes del frame-skip así la cápsula
+	# sigue moviéndose suave aunque el solve corra a mitad de tasa. Ver character-animation.md.
+	if is_instance_valid(net_sync):
+		net_sync.apply_to_puppet()
+
 	if not is_active:
 		_npc_skip_frame = not _npc_skip_frame
 		if _npc_skip_frame:
 			return
 
-	_update_local_targets_positions()
 	_update_ragdoll_ext_state()
+	_update_animation_inputs()          # productor: llena animation_inputs desde la cápsula
+	_update_local_targets_positions()   # consumidor: lee animation_inputs (ya no la cápsula)
 
 	if is_instance_valid(ragdoll_util):
 		ragdoll_util.update(delta)
 		if ragdoll_util.is_active:
-			ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, char_rigidbody)
-			ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
+			ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, animation_inputs)
+			ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, animation_inputs)
 			return
 		if ragdoll_util.is_recovering and not ik_util.recovery_targets_locked:
 			ik_util.recovery_targets_locked = true
@@ -187,7 +208,7 @@ func _physics_process(delta: float) -> void:
 			ik_util.recovery_targets_locked = false
 			char_rigidbody.is_snapshot_active = true
 
-	skel_sizes_util.update(delta, char_rigidbody, entity_instantiation, ik_util)
+	skel_sizes_util.update(delta, animation_inputs, entity_instantiation, ik_util)
 
 	if is_instance_valid(arms_controller):
 		arms_controller.update_arm_compress(jump_squat_t, 1.0 if is_seated else crouch_t)
@@ -217,11 +238,11 @@ func _update_ragdoll_ext_state() -> void:
 
 
 func _solve_standing_frame(delta: float) -> void:
-	ik_util.update_leg_raycast_offsets(char_rigidbody, delta, true,  skel_sizes_util, entity_archetype)
-	ik_util.update_leg_raycast_offsets(char_rigidbody, delta, false, skel_sizes_util, entity_archetype)
+	ik_util.update_leg_raycast_offsets(animation_inputs, delta, true,  skel_sizes_util, entity_archetype)
+	ik_util.update_leg_raycast_offsets(animation_inputs, delta, false, skel_sizes_util, entity_archetype)
 
-	ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, char_rigidbody)
-	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, char_rigidbody)
+	ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, animation_inputs)
+	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, animation_inputs)
 
 	# procedural primero, anim_mod encima — mismo orden que antes
 	procedural_animator.update()
@@ -243,6 +264,10 @@ func _solve_standing_frame(delta: float) -> void:
 
 	ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_pole_anim_offset)
 	ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_pole_anim_offset)
+
+	# Proxy: manejar el agarre desde el estado sincronizado (el jugador local lo maneja su IC).
+	if not is_active and is_instance_valid(arms_controller):
+		arms_controller.drive_grab(delta, animation_inputs.grab_target)
 
 	if is_instance_valid(arms_controller):
 		arms_controller.apply_world_overrides(delta)
@@ -328,9 +353,34 @@ func _solve_seated_frame(delta: float) -> void:
 	ik_util.solve_two_bone_ik(custom_bones_util.left_upper_leg,  custom_bones_util.left_lower_leg,  left_foot,  left_knee  + pole)
 	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_leg, custom_bones_util.right_lower_leg, right_foot, right_knee + pole)
 
+## Ubica local_targets (raycasts de pies, targets/poles de brazos) siguiendo el transform del
+## personaje. Lee animation_inputs (no la cápsula en vivo): así el facing viene de una sola fuente
+## llenada por el productor tras aplicarse el transform (local o de red), sin depender del orden.
 func _update_local_targets_positions() -> void:
-	local_targets.global_position = char_rigidbody.global_position
-	local_targets.global_rotation = Vector3(0, char_rigidbody.global_rotation.y, 0)
+	if animation_inputs == null:
+		return
+	local_targets.global_position = animation_inputs.origin
+	local_targets.global_rotation = Vector3(0, animation_inputs.basis.get_euler().y, 0)
+
+## Productor de la entrada de animación. Hoy lee la cápsula física (igual que antes lo hacían los
+## módulos directo); a futuro un proxy la llenará desde la red. Ver technical/character-animation.md.
+func _update_animation_inputs() -> void:
+	if not is_instance_valid(char_rigidbody) or animation_inputs == null:
+		return
+	var t := char_rigidbody.global_transform
+	animation_inputs.velocity     = char_rigidbody.get_motion_velocity()
+	animation_inputs.basis        = t.basis
+	animation_inputs.origin       = t.origin
+	animation_inputs.grounded     = char_rigidbody.is_grounded
+	animation_inputs.ground_point = char_rigidbody.get_ground_collision_point()
+	animation_inputs.impact_y     = char_rigidbody.impact_y
+	animation_inputs.impact_xz    = char_rigidbody.impact_xz
+	animation_inputs.crouch_t     = crouch_t
+	animation_inputs.jump_squat_t = jump_squat_t
+	# Grab: proxy = lo sincronizado; jugador local = lo que setea su InteractionController.
+	animation_inputs.grab_target  = net_sync.grab_target if is_instance_valid(net_sync) else null
+	# Reset del pulso de impacto vertical (antes lo hacía locomotion_signals._update_velocity_signals).
+	char_rigidbody.impact_y_signed = 0.0
 
 func refresh_camera_animations() -> void:
 	if is_instance_valid(bone_animations):
@@ -372,6 +422,7 @@ func set_first_person_visibility(first_person: bool) -> void:
 
 func _setup_char_grabbable() -> void:
 	var grabbable := GrabbableInteractable.new()
+	grabbable.name = "Grabbable"  # nombre estable para el grab sync entre máquinas
 	char_rigidbody.add_child(grabbable)
 
 	var full_height    := skel_sizes_util.leg_height + skel_sizes_util.torso_height + skel_sizes_util.head_height

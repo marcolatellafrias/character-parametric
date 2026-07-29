@@ -70,8 +70,11 @@ func _register_builtins() -> void:
 	register("help", _cmd_help, "lista los comandos")
 	register("clear", func(_a): _output.clear(), "limpia la consola")
 	register("quit", func(_a): get_tree().quit(), "cierra el juego")
-	register("host", func(_a): SessionManager.host(), "hostea una partida")
-	register("join", _cmd_join, "join <código> — se une por código")
+	register("host", func(_a): SessionManager.host(), "hostea una partida (Steam)")
+	register("join", _cmd_join, "join <código> — se une por código (Steam)")
+	register("host_local", func(_a): SessionManager.host_local(), "hostea local (ENet) para test multi-instancia")
+	register("join_local", _cmd_join_local, "join_local [ip] — se une a un host local (default 127.0.0.1)")
+	register("spawn", _cmd_spawn, "spawn <box_light_square|box_heavy_square|box_light_long|box_heavy_long|dashboard|seat>")
 
 func _cmd_help(_args: PackedStringArray) -> void:
 	log_line("Comandos:")
@@ -83,6 +86,21 @@ func _cmd_join(args: PackedStringArray) -> void:
 		log_line("uso: join <código>")
 		return
 	SessionManager.join_by_code(args[0])
+
+func _cmd_join_local(args: PackedStringArray) -> void:
+	SessionManager.join_local(args[0] if not args.is_empty() else "127.0.0.1")
+
+func _cmd_spawn(args: PackedStringArray) -> void:
+	if args.is_empty():
+		log_line("uso: spawn <box|dashboard|seat>")
+		return
+	# Adelante del jugador local (si existe); si no, en el punto de inicio.
+	var pos := Vector3(0.0, 3.0, 0.0)
+	var spawner := get_tree().get_first_node_in_group("character_spawner") as CharacterSpawner
+	if spawner and is_instance_valid(spawner.local_player) and is_instance_valid(spawner.local_player.char_rigidbody):
+		var rb := spawner.local_player.char_rigidbody
+		pos = rb.global_position + (-rb.global_transform.basis.z) * 2.5 + Vector3.UP
+	NetSpawner.request_spawn(args[0], Transform3D(Basis(), pos))
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 
