@@ -26,20 +26,45 @@ const _DEFS: Array = [
 
 var _grid: Array                 = []
 var _rng:  RandomNumberGenerator = null
+## Índice incremental por control colocado (orden determinístico) → nombre estable "ctrl_N" para que
+## el path del control coincida en todas las máquinas y el sync por RPC rutee. Ver ControllableInteractable.
+var _ctrl_index: int             = 0
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		generate()
 		return
-	generate() 
+	generate()
+	# Cliente que se une: pedir al host el estado actual de los controles. El dashboard se regenera
+	# determinístico (en default); los que alguien movió hay que traerlos (permanencia). Ver multiplayer.md.
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+		_request_control_states.rpc_id(1)
+
+@rpc("any_peer", "reliable")
+func _request_control_states() -> void:
+	if not multiplayer.is_server():
+		return
+	var states: Array = []
+	for i in _ctrl_index:
+		var ctrl := get_node_or_null("ctrl_%d/Control" % i) as ControllableInteractable
+		states.append(ctrl.get_sync_state() if is_instance_valid(ctrl) else null)
+	_receive_control_states.rpc_id(multiplayer.get_remote_sender_id(), states)
+
+@rpc("authority", "reliable", "call_remote")
+func _receive_control_states(states: Array) -> void:
+	for i in mini(_ctrl_index, states.size()):
+		var ctrl := get_node_or_null("ctrl_%d/Control" % i) as ControllableInteractable
+		if is_instance_valid(ctrl) and states[i] != null:
+			ctrl.apply_sync_state(states[i])
 
 func generate() -> void:
 	for child in get_children():
 		child.queue_free()
 
-	_rng      = RandomNumberGenerator.new()
-	_rng.seed = seed_value
-	_grid     = []
+	_rng        = RandomNumberGenerator.new()
+	_rng.seed   = seed_value
+	_ctrl_index = 0
+	_grid       = []
 	for _c in grid_columns:
 		var col: Array[bool] = []
 		for _r in grid_rows:
@@ -185,8 +210,11 @@ func _place_definition(cell: Vector2i, def: ControlDefinition) -> void:
 
 	var interactable       := _make_control_from_def(def)
 	interactable.grid_size  = gs
+	interactable.name       = "Control"
 
 	var body   := StaticBody3D.new()
+	body.name   = "ctrl_%d" % _ctrl_index  # path estable en todas las máquinas (sync de controllables)
+	_ctrl_index += 1
 	var shape  := CollisionShape3D.new()
 	var bshape := BoxShape3D.new()
 	bshape.size = ctrl_sz
@@ -234,8 +262,11 @@ func _place_at(cell: Vector2i) -> void:
 
 	var interactable            := _make_control(type_id)
 	interactable.grid_size       = gs
+	interactable.name            = "Control"
 
 	var body   := StaticBody3D.new()
+	body.name   = "ctrl_%d" % _ctrl_index  # path estable en todas las máquinas (sync de controllables)
+	_ctrl_index += 1
 	var shape  := CollisionShape3D.new()
 	var bshape := BoxShape3D.new()
 	bshape.size  = ctrl_size

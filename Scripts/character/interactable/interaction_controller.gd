@@ -155,15 +155,21 @@ func cancel_throw() -> void:
 
 func _start_control(ctrl: ControllableInteractable) -> void:
 	_controlled = ctrl
+	if not ctrl.control_lost.is_connected(_on_control_lost):
+		ctrl.control_lost.connect(_on_control_lost)
 	_controlled.start_control()
-	var origin     := _get_interaction_origin()
-	var handle     := ctrl.get_nearest_handle_point(origin)
-	var ctrl_world := handle.global_position if is_instance_valid(handle) else ctrl.global_position
+	var origin := _get_interaction_origin()
+	var handle := ctrl.get_nearest_handle_point(origin)
 	if is_instance_valid(arms_controller):
 		arms_controller.start_grab(ctrl, origin, handle, grab_dist_min, grab_dist_max)
+	var ns := _char_net_sync()  # avisar qué controlo, para que los proxies muevan los brazos al handle
+	if is_instance_valid(ns):
+		ns.set_grab_target(ctrl)
 
 func _stop_control() -> void:
 	if is_instance_valid(_controlled):
+		if _controlled.control_lost.is_connected(_on_control_lost):
+			_controlled.control_lost.disconnect(_on_control_lost)
 		_controlled.stop_control()
 	_controlled = null
 	if is_instance_valid(_line_mesh):
@@ -171,6 +177,13 @@ func _stop_control() -> void:
 		_line_mesh = null
 	if is_instance_valid(arms_controller):
 		arms_controller.stop_grab()
+	var ns := _char_net_sync()
+	if is_instance_valid(ns):
+		ns.set_grab_target(null)
+
+## El host me negó el control (perdí la carrera por el mismo control): soltar.
+func _on_control_lost() -> void:
+	_stop_control()
 
 # ── Grab ──────────────────────────────────────────────────────────────────────
 

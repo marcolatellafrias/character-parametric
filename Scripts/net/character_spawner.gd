@@ -57,6 +57,8 @@ func _spawn_local(local_peer_id: int) -> void:
 	# La cámara se recrea en cada respawn (reseed con P): reengancharla al AreaInstantiator.
 	local_player.active_camera_changed.connect(_apply_local_camera)
 	_apply_local_camera(local_player.player_camera)
+	# Ya estamos en la escena del mundo: pedirle al host los objetos ya spawneados (permanencia).
+	NetSpawner.request_world_snapshot()
 
 ## Teletransporta el jugador local al punto de inicio (botón "Go to start" del F1).
 func respawn_local_at_start() -> void:
@@ -122,8 +124,9 @@ func _attach_net_sync(character_root: BoneInstantiator, authority_peer_id: int) 
 	# El BoneInstantiator dispara net.apply_to_puppet() al inicio de su frame (antes del solve),
 	# así en proxies el transform sincronizado se aplica antes de armar los IK targets.
 	character_root.net_sync = net
-	# Proxy: pedirle al dueño su seed actual, por si reseedó antes de que me uniera.
-	net.request_seed_if_proxy.call_deferred()
+	# Proxy: pedirle al dueño su estado que no viaja continuo (seed + sentado/grab actuales), por si
+	# ya cambió antes de que me uniera. Las refs de objeto se resuelven lazy (pueden llegar después).
+	net.request_state_if_proxy.call_deferred()
 
 ## Re-cuelga el name tag tras un rebuild del proxy (reseed): el tag viejo estaba en la cápsula
 ## anterior, que se liberó en initialize_skeleton. Lo llama CharacterNetSync tras reconstruir.

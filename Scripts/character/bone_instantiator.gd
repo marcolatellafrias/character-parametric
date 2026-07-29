@@ -285,7 +285,7 @@ func _solve_standing_frame(delta: float) -> void:
 
 
 func _solve_seated_frame(delta: float) -> void:
-	current_seat.update_borrowed_mesh()
+	current_seat.update_seated_visual(char_rigidbody.global_rotation.y)
 
 	# 1. Fijar spine
 	var seat_pos : Vector3 = current_seat.global_position
@@ -387,8 +387,24 @@ func _update_animation_inputs() -> void:
 	animation_inputs.head_pitch   = head_pitch
 	# Grab: proxy = lo sincronizado; jugador local = lo que setea su InteractionController.
 	animation_inputs.grab_target  = net_sync.grab_target if is_instance_valid(net_sync) else null
+	# Sentado: en un proxy derivamos el estado del asiento sincronizado (el jugador local lo maneja
+	# su SeatInteractable._sit/_stand_up). Estos flags los lee el gate seated/standing de este frame.
+	if not is_active:
+		_set_seated_flags(net_sync.seat_target if is_instance_valid(net_sync) else null)
 	# Reset del pulso de impacto vertical (antes lo hacía locomotion_signals._update_velocity_signals).
 	char_rigidbody.impact_y_signed = 0.0
+
+## Setea todo el estado de pose "sentado" (flags que leen el gate del solve, el anim_mod y el
+## procedural). Lo usa el proxy para replicar; el jugador local lo maneja su SeatInteractable.
+func _set_seated_flags(seat: Node) -> void:
+	var seated := is_instance_valid(seat)
+	is_seated    = seated
+	current_seat = seat
+	if is_instance_valid(anim_mod):
+		anim_mod.is_seated = seated
+	if is_instance_valid(procedural_animator):
+		procedural_animator.is_seated = seated
+		procedural_animator._seated_locked_bone = custom_bones_util.lower_spine if seated else null
 
 func refresh_camera_animations() -> void:
 	if is_instance_valid(bone_animations):

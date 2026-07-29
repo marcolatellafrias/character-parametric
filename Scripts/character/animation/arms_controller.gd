@@ -171,22 +171,28 @@ var _driven_grab_point: Node3D = null
 ## start/stop/cambio de objeto y llama start_grab/update_grab_handles/stop_grab. El origen, el grab
 ## point y los handles se derivan local (el objeto existe en esta máquina). El jugador local NO usa
 ## esto — su InteractionController maneja los brazos directo. Ver character-animation.md (bug 3).
-func drive_grab(delta: float, grabbable: Node) -> void:
-	if grabbable == _driven_grab_target:
-		if is_instance_valid(grabbable):
-			update_grab_handles(delta, grabbable as Interactable, bi.get_interaction_origin(), _driven_grab_point)
+func drive_grab(delta: float, target: Node) -> void:
+	if target == _driven_grab_target:
+		if is_instance_valid(target):
+			update_grab_handles(delta, target as Interactable, bi.get_interaction_origin(), _driven_grab_point)
 		return
-	if is_instance_valid(grabbable):
-		var gb := grabbable as GrabbableInteractable
+	if is_instance_valid(target):
+		var interactable := target as Interactable
 		var origin := bi.get_interaction_origin()
-		_driven_grab_point = gb.get_nearest_grab_point(origin)
+		_driven_grab_point = _nearest_interaction_point(interactable, origin)
 		var arch := bi.entity_instantiation.arch_final
 		var max_reach: float = arch.reach * arch.reach_multiplier
-		start_grab(gb, origin, _driven_grab_point, max_reach * 0.1, max_reach * 0.9)
+		start_grab(interactable, origin, _driven_grab_point, max_reach * 0.1, max_reach * 0.9)
 	else:
 		_driven_grab_point = null
 		stop_grab()
-	_driven_grab_target = grabbable
+	_driven_grab_target = target
+
+## Punto que el brazo alcanza: grab point si es agarrable, handle point si es un controllable.
+func _nearest_interaction_point(interactable: Interactable, origin: Vector3) -> Node3D:
+	if interactable is GrabbableInteractable:
+		return (interactable as GrabbableInteractable).get_nearest_grab_point(origin)
+	return interactable.get_nearest_handle_point(origin)
 
 func _apply_grab_arms(delta: float) -> void:
 	# Aun cuando los targets son 0, seguimos lerpeando los blends para la transicion de salida

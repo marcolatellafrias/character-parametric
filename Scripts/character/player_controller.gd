@@ -470,7 +470,7 @@ func _respawn() -> void:
 		_set_creative(false)
 	var seat := bi.current_seat as SeatInteractable
 	if is_instance_valid(seat):
-		seat.activate(bi)  # de-ocupa el asiento (stand up) para que quede libre
+		seat.release_occupant_for_teardown()  # soltar YA (sincrónico) antes de reconstruir
 	if is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active:
 		bi.ragdoll_util.deactivate(char_rigidbody, bi.custom_bones_util.lower_spine)
 	if is_instance_valid(interaction_controller):
@@ -586,6 +586,7 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Spawn", "Caja pesada ▬",      func(): _debug_spawn("box_heavy_long"))
 	_debug_panel.add_action("Spawn", "Dashboard",          func(): _debug_spawn("dashboard"))
 	_debug_panel.add_action("Spawn", "Seat",               func(): _debug_spawn("seat"))
+	_debug_panel.add_action("Spawn", "Limpiar spawns",     func(): NetSpawner.request_clear_all())
 
 
 func _character_stats_text(inst: EntityInstantiation) -> String:
@@ -671,10 +672,12 @@ func _debug_spawn_character() -> void:
 
 func _debug_spawn(type_name: String) -> void:
 	var pos := _debug_spawn_pos()
-	# Los objetos de escena (asiento/dashboard) son estáticos y no caen: los apoyamos en el piso.
-	# Las cajas son rigidbodies, caen solas, así que las dejamos spawnear en el aire.
-	if NetSpawner.SCENES.has(type_name):
+	# Objetos de escena estáticos (no caen). El asiento se apoya en el piso; el dashboard es un panel
+	# de control y va a altura de uso, sobre el piso. Las cajas son rigidbodies: caen solas.
+	if type_name == "seat":
 		pos = _snap_to_ground(pos)
+	elif type_name == "dashboard":
+		pos = _snap_to_ground(pos) + Vector3.UP * 1.2
 	NetSpawner.request_spawn(type_name, Transform3D(Basis(), pos))
 
 ## Baja un punto hasta el piso con un raycast (para spawnear objetos estáticos apoyados).

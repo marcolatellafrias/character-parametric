@@ -11,6 +11,15 @@ signal state_changed_2d(value: Vector2)
 func get_prompt() -> String:
 	return "[LMB] + drag to move"
 
+func get_sync_state() -> Variant:
+	return axis_value
+
+func apply_sync_state(state: Variant) -> void:
+	axis_value   = state
+	visual_value = axis_value.length()
+	_apply_visual()
+	state_changed_2d.emit(axis_value)
+
 func handle_mouse_motion(delta: Vector2) -> void:
 	axis_value   = (axis_value + delta * sensitivity).limit_length(1.0)
 	visual_value = axis_value.length()

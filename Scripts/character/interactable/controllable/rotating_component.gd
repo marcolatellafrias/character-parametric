@@ -13,6 +13,10 @@ var total_rotation: float = 0.0
 func get_prompt() -> String:
 	return "[LMB] + scroll to rotate"
 
+func apply_sync_state(state: Variant) -> void:
+	total_rotation = state  # el visual y el control local leen de acá
+	super(state)
+
 func handle_scroll(delta: float) -> void:
 	total_rotation += delta * sensitivity
 	visual_value    = total_rotation

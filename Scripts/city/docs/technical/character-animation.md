@@ -73,7 +73,7 @@ Everything the pipeline reads to produce a pose:
 | **seat** | `is_seated`, `current_seat` | seated solve |
 | per-foot **ground raycasts** | `ik_util` RayCast3Ds vs the world | exact foot placement (local, always) |
 
-The pose reads these through an explicit **`AnimationInputs`** struct, not the live bodies directly: one **producer** (`BoneInstantiator._update_animation_inputs`) fills the struct from the sources above once per frame, and every module reads the struct. That single indirection is what lets a remote proxy run the *identical* pipeline from network-filled inputs (below). A couple of spots aren't migrated yet and still read live state — the seated solve, and the local player's own grab (its `InteractionController` drives the arms directly).
+The pose reads these through an explicit **`AnimationInputs`** struct, not the live bodies directly: one **producer** (`BoneInstantiator._update_animation_inputs`) fills the struct from the sources above once per frame, and every module reads the struct. That single indirection is what lets a remote proxy run the *identical* pipeline from network-filled inputs (below). Two things still live outside the struct as flags rather than struct fields (the seated solve reads `is_seated`/`current_seat`; the local player's own grab is driven by its `InteractionController`), but both are already replicated to proxies — the producer derives the proxy's seated flags from the synced seat reference, and grab routes through `grab_target`.
 
 ---
 
@@ -83,9 +83,9 @@ A remote **proxy** rebuilds the same skeleton from a **seed derived from the pee
 
 **What travels vs. what's rebuilt locally** (the reason the input struct exists):
 
-- **Synced** (the proxy can't know these): transform (pos + yaw), velocity, impact, crouch / jump / throw, **head pitch** (mirar up-down — the yaw is already in the transform), and the **grab reference** — just *which* interactable (its node path); the arms-to-handles is rebuilt locally. All of it flows through `CharacterNetSync` into `AnimationInputs`.
+- **Synced** (the proxy can't know these): transform (pos + yaw), velocity, impact, crouch / jump / throw, **head pitch** (mirar up-down — the yaw is already in the transform), the **grab reference** and the **seat reference** — just *which* interactable/seat (its node path); the arms-to-handles and the seated pose are rebuilt locally. All of it flows through `CharacterNetSync` into the proxy's pose. Both references resolve because spawned objects have stable names on every machine.
 - **Derived locally** (never synced): foot placement / ground raycasts, `is_grounded` (the puppet still runs its own ground ray), and stepping — these fall out of the synced velocity plus the proxy's own raycasts against its own world. Per-foot heights are **not** synced.
-- **Not done yet**: the seated solve, and unifying the *local* player's grab onto the struct (cosmetic — the proxy already routes grab through it).
+- **Not done yet**: unifying the *local* player's grab onto the struct (cosmetic — the proxy already routes grab through it). *Late-join is handled*: on proxy creation `CharacterNetSync.request_state_if_proxy` asks the owner for its current seed **and** its seat/grab references, so a player who joins while someone is already seated/holding sees that pose. The reference path (`spawned_<id>/…`) is resolved **lazily** (`_resolve_pending`, retried each frame) because the referenced object may arrive later via the `NetSpawner` snapshot — the two joins are async.
 
 **Two gotchas worth keeping in mind:**
 

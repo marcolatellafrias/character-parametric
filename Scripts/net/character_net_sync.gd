@@ -70,6 +70,8 @@ func _receive_state(pos: Vector3, yaw: float, vel: Vector3, impact_xz: Vector2, 
 func apply_to_puppet() -> void:
 	if is_multiplayer_authority():
 		return  # el dueño no es puppet
+	if not _pending_grab_path.is_empty() or not _pending_seat_path.is_empty():
+		_resolve_pending()  # el objeto referenciado pudo llegar recién ahora (join)
 	var rb := _rigidbody()
 	var bi := get_parent() as BoneInstantiator
 	if not is_instance_valid(rb) or not is_instance_valid(bi) or _buffer.is_empty():
@@ -132,10 +134,13 @@ func _rigidbody() -> CharacterRigidBody3D:
 # Solo se sincroniza la REFERENCIA al grabbable (mismo path en todas las máquinas). Los brazos a los
 # handle points los arma el proxy local con su propio esqueleto. Ver character-animation.md (bug 3).
 
-## El grabbable que agarra este personaje (o null). Local = propio, proxy = sincronizado.
+## El objeto de interacción cuyos handle/grab points alcanzan los brazos: un grabbable agarrado o un
+## controllable que se está manejando (o null). Local = propio, proxy = sincronizado.
 var grab_target: Node = null
+## Path pendiente de resolver (proxy): el objeto puede no existir aún al unirse. Vacío = nada pendiente.
+var _pending_grab_path: NodePath = NodePath()
 
-## Lo llama el InteractionController local al agarrar/soltar (grabbable o null).
+## Lo llama el InteractionController local al agarrar/controlar/soltar (el interactuable o null).
 func set_grab_target(grabbable: Node) -> void:
 	grab_target = grabbable
 	if multiplayer.has_multiplayer_peer() and is_multiplayer_authority():
@@ -143,7 +148,47 @@ func set_grab_target(grabbable: Node) -> void:
 
 @rpc("authority", "reliable", "call_remote")
 func _receive_grab(path: NodePath) -> void:
-	grab_target = null if path.is_empty() else get_node_or_null(path)
+	_pending_grab_path = path
+	grab_target = null
+	_resolve_pending()  # resuelve ya si el objeto existe; si no, se reintenta cada frame
+
+# ── Sentado: sincronizar en qué asiento está cada jugador ──────────────────────
+# Análogo al grab: solo viaja la REFERENCIA al asiento (mismo path en todas las máquinas, spawn con
+# nombre estable). El pose sentado lo arma cada proxy corriendo el mismo _solve_seated_frame con su
+# propio esqueleto. Ver technical/character-animation.md.
+
+## El asiento que ocupa este personaje (o null). Local = propio, proxy = sincronizado.
+var seat_target: Node = null
+## Path pendiente de resolver (proxy): el asiento puede no existir aún al unirse. Vacío = nada pendiente.
+var _pending_seat_path: NodePath = NodePath()
+
+## Lo llama el SeatInteractable local al sentarse/pararse (el asiento o null).
+func set_seat_target(seat: Node) -> void:
+	seat_target = seat
+	if multiplayer.has_multiplayer_peer() and is_multiplayer_authority():
+		_receive_seat.rpc(seat.get_path() if is_instance_valid(seat) else NodePath())
+
+@rpc("authority", "reliable", "call_remote")
+func _receive_seat(path: NodePath) -> void:
+	_pending_seat_path = path
+	seat_target = null
+	_resolve_pending()  # resuelve ya si el asiento existe; si no, se reintenta cada frame
+
+## Resuelve los paths pendientes de grab/seat. El estado (grab/seat) puede llegar ANTES de que el
+## objeto exista acá: al unirse, el snapshot de objetos (NetSpawner) y el estado del personaje son
+## async. Reintentamos cada frame hasta que el nodo aparezca, así el orden deja de importar. Lo llama
+## apply_to_puppet mientras haya algo pendiente.
+func _resolve_pending() -> void:
+	if not _pending_grab_path.is_empty():
+		var g := get_node_or_null(_pending_grab_path)
+		if is_instance_valid(g):
+			grab_target = g
+			_pending_grab_path = NodePath()
+	if not _pending_seat_path.is_empty():
+		var st := get_node_or_null(_pending_seat_path)
+		if is_instance_valid(st):
+			seat_target = st
+			_pending_seat_path = NodePath()
 
 # ── Seed / aspecto: sincronizar el reseed (respawn con P) ──────────────────────
 # El aspecto normalmente sale del seed derivado del steam_id (igual en todas las máquinas, sin
@@ -157,11 +202,23 @@ func broadcast_seed() -> void:
 	if is_instance_valid(bi):
 		_receive_seed.rpc(bi.master_seed)
 
-## Proxy: le pide el seed actual al dueño (por si reseedó antes de que yo me uniera). Lo llama el
-## CharacterSpawner al crear el proxy.
-func request_seed_if_proxy() -> void:
-	if multiplayer.has_multiplayer_peer() and not is_multiplayer_authority():
-		_request_seed.rpc_id(get_multiplayer_authority())
+## Proxy: al crear el proxy (join), le pide al dueño su estado actual que no viaja continuo — el seed
+## (por si reseedó antes de que me uniera) y las referencias de sentado/grab (por si ya estaba
+## sentado o sosteniendo algo). Lo llama el CharacterSpawner. Las refs se resuelven lazy (ver
+## _resolve_pending): el objeto referenciado puede llegar después por el snapshot de NetSpawner.
+func request_state_if_proxy() -> void:
+	if not multiplayer.has_multiplayer_peer() or is_multiplayer_authority():
+		return
+	_request_seed.rpc_id(get_multiplayer_authority())
+	_request_interaction_state.rpc_id(get_multiplayer_authority())
+
+@rpc("any_peer", "reliable")
+func _request_interaction_state() -> void:
+	if not is_multiplayer_authority():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	_receive_grab.rpc_id(sender, grab_target.get_path() if is_instance_valid(grab_target) else NodePath())
+	_receive_seat.rpc_id(sender, seat_target.get_path() if is_instance_valid(seat_target) else NodePath())
 
 @rpc("any_peer", "reliable")
 func _request_seed() -> void:

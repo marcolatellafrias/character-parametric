@@ -25,11 +25,24 @@ func start_control() -> void:
 	_update_debug_color()
 
 func stop_control() -> void:
-	super()
+	# Actualizamos is_pressed ANTES de super(): ahí la base transmite el estado final por red.
 	if not is_toggle and is_pressed:
 		is_pressed = false
 		_emit_if_changed(0.0)
 		released.emit()
+	_update_debug_color()
+	super()
+
+func get_sync_state() -> Variant:
+	return 1.0 if is_pressed else 0.0
+
+func apply_sync_state(state: Variant) -> void:
+	var now_pressed: bool = state >= 0.5
+	if now_pressed != is_pressed:
+		is_pressed = now_pressed
+		if is_pressed: pressed.emit()
+		else:          released.emit()
+	_emit_if_changed(state)
 	_update_debug_color()
 
 func _create_debug_meshes(size: Vector3) -> void:

@@ -25,7 +25,7 @@ var jump_squat_t: float = 0.0
 var head_pitch: float = 0.0
 
 # ── Agarre ──
-## El GrabbableInteractable que este personaje está agarrando (o null). El resto (handles, grab
-## point, origen del pecho) se deriva local del objeto y del propio esqueleto. En un proxy lo llena
-## la red (CharacterNetSync); en el jugador local, su InteractionController.
+## El interactuable cuyos handle/grab points alcanzan los brazos: un GrabbableInteractable agarrado o
+## un ControllableInteractable que se maneja (o null). El resto (handles, grab point, origen del
+## pecho) se deriva local. En un proxy lo llena la red (CharacterNetSync); local, su InteractionController.
 var grab_target: Node = null

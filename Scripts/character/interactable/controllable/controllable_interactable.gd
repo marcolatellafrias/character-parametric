@@ -19,10 +19,17 @@ var grid_size:            Vector2i              = Vector2i(1, 1)
 var visual_value:         float                 = 0.0
 var _network_state:       float                 = 0.0
 var _is_being_controlled: bool                  = false
+## True en las demás máquinas mientras OTRO jugador lo manipula: suprime la dinámica local
+## (auto-return/lerp) para que no pelee con el valor sincronizado que fija apply_sync_state.
+var _remote_controlled:   bool                  = false
+## Propiedad exclusiva (un solo controlador a la vez), arbitrada por el host. Ver ExclusiveClaim.
+var _claim:               ExclusiveClaim        = null
 var _debug_meshes:        Array[MeshInstance3D] = []
 var _debug_primary_mat:   StandardMaterial3D    = null
 
 signal state_changed(value: float)
+## El host me quitó el control (perdí una carrera por el mismo control): el InteractionController suelta.
+signal control_lost()
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
@@ -45,12 +52,64 @@ func build_debug_visuals(control_size: Vector3) -> void:
 
 func _physics_process(delta: float) -> void:
 	if _is_being_controlled:
+		# Solo el controlador CONFIRMADO por el host streamea (evita que dos peleen en una carrera).
+		if multiplayer.has_multiplayer_peer() and is_instance_valid(_claim) and _claim.is_mine():
+			_sync_state.rpc(get_sync_state())
 		return
+	if _remote_controlled:
+		return  # lo maneja otro jugador: el visual lo fija apply_sync_state, no corras dinámica local
 	if auto_return:
 		_do_auto_return(delta)
 	elif positions.size() > 0:
 		visual_value = lerp(visual_value, _network_state, clamp(delta * snap_lerp_speed, 0.0, 1.0))
 		_apply_visual()
+
+# ── Sincronización + propiedad exclusiva ──────────────────────────────────────
+# Un solo controlador a la vez vía ExclusiveClaim (host-arbitrado); can_interact bloquea el caso
+# común y el claim cubre la carrera simultánea (el perdedor suelta vía control_lost). El controlador
+# confirmado streamea su estado; los demás lo aplican y suprimen su dinámica local (_remote_controlled).
+# El ruteo va por el path del nodo, estable porque el dashboard se genera determinístico por seed y
+# nombra sus controles (ver ProceduralDashboard). Ver conceptual/multiplayer.md.
+# (Falta: el estado en reposo no viaja en el snapshot de join — lo trae _request_control_states.)
+
+func _ready() -> void:
+	_claim = ExclusiveClaim.new()
+	_claim.name = "Claim"  # nombre estable → mismo path en todas las máquinas
+	add_child(_claim)
+	_claim.granted.connect(_on_claim_granted)
+	_claim.released.connect(_on_claim_released)
+	_claim.revoked.connect(_on_claim_revoked)
+
+func _on_claim_granted(_peer: int) -> void:
+	_remote_controlled = not _claim.is_mine()  # otro lo maneja → suprimo mi dinámica local
+
+func _on_claim_released() -> void:
+	_remote_controlled = false
+
+func _on_claim_revoked() -> void:
+	control_lost.emit()  # perdí la carrera por el mismo control: el IC suelta
+
+func can_interact() -> bool:
+	return _claim == null or _claim.is_free() or _claim.is_mine()
+
+## Estado a replicar (float por defecto; two-axis = Vector2, touch = bool, override en subclases).
+func get_sync_state() -> Variant:
+	return visual_value
+
+## Aplica un estado recibido: fija el visual y emite el cambio SIN re-transmitir.
+func apply_sync_state(state: Variant) -> void:
+	visual_value = state
+	_apply_visual()
+	_emit_if_changed(state)
+
+@rpc("any_peer", "unreliable_ordered", "call_remote")
+func _sync_state(state: Variant) -> void:
+	apply_sync_state(state)
+
+## Estado final al soltar (reliable, para no perder la posición de reposo por un paquete tirado).
+@rpc("any_peer", "reliable", "call_remote")
+func _sync_final(final_state: Variant) -> void:
+	apply_sync_state(final_state)
 
 # ── API ───────────────────────────────────────────────────────────────────────
 
@@ -63,12 +122,18 @@ func get_prompt() -> String:
 func start_control() -> void:
 	_is_being_controlled = true
 	_set_debug_emit(true)
+	if is_instance_valid(_claim):
+		_claim.request()  # pedir el control (offline concede al toque; online arbitra el host)
 
 func stop_control() -> void:
 	_is_being_controlled = false
 	_set_debug_emit(false)
 	if not auto_return and positions.size() > 0:
 		_snap_to_nearest()
+	if is_instance_valid(_claim) and _claim.is_mine():
+		if multiplayer.has_multiplayer_peer():
+			_sync_final.rpc(get_sync_state())  # estado final de reposo (reliable)
+		_claim.release()
 
 func handle_mouse_motion(_delta: Vector2) -> void:
 	pass

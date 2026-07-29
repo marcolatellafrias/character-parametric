@@ -13,6 +13,8 @@ var _body:          RigidBody3D = null
 var _spawn_point:   Node3D      = null
 var _seated_bi:     Node        = null
 var _borrowed_mesh: Node3D      = null
+## Ocupación exclusiva (un solo jugador por asiento), arbitrada por el host. Ver ExclusiveClaim.
+var _claim:         ExclusiveClaim = null
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
@@ -21,6 +23,11 @@ func _ready() -> void:
 	_build_visual()
 	_build_collider()
 	_build_spawn_point()
+	_claim = ExclusiveClaim.new()
+	_claim.name = "Claim"  # nombre estable → mismo path en todas las máquinas
+	add_child(_claim)
+	_claim.granted.connect(_on_claim_granted)
+	_claim.released.connect(_on_claim_released)
 
 func _build_visual() -> void:
 	if not is_instance_valid(seat_scene):
@@ -80,21 +87,54 @@ func get_prompt() -> String:
 	return "[E] Sit"
 
 func can_interact() -> bool:
-	return not is_instance_valid(_seated_bi)
+	return _claim == null or _claim.is_free() or _claim.is_mine()
 
 func activate(actor: Node = null) -> void:
-	if not is_instance_valid(actor):
+	if not is_instance_valid(actor) or _claim == null:
 		return
-	if is_instance_valid(_seated_bi):
-		if _seated_bi == actor:
-			_stand_up()
-	else:
-		_sit(actor)
+	if _claim.is_mine():
+		_claim.release()      # ya estoy sentado → pararme
+	elif _claim.is_free():
+		_claim.request()      # libre → sentarme (offline concede al toque; online arbitra el host)
+	# ocupado por otro → nada (can_interact ya lo bloquea)
 
-func update_borrowed_mesh() -> void:
-	if is_instance_valid(_borrowed_mesh) and is_instance_valid(_visual_root):
-		_borrowed_mesh.global_position = _visual_root.global_position
-		_borrowed_mesh.rotation        = Vector3.ZERO
+## El asiento pasó a ser mío: sentar al jugador local (en las demás máquinas es un proxy y el pose
+## llega aparte por CharacterNetSync.seat_target, que setea _sit).
+func _on_claim_granted(_peer: int) -> void:
+	if not _claim.is_mine():
+		return
+	var local := _local_player()
+	if is_instance_valid(local):
+		_sit(local)
+
+## El asiento se liberó: si yo era el ocupante, pararme.
+func _on_claim_released() -> void:
+	if is_instance_valid(_seated_bi):
+		_stand_up()
+
+func _local_player() -> Node:
+	var spawner := get_tree().get_first_node_in_group("character_spawner")
+	return spawner.get("local_player") if is_instance_valid(spawner) else null
+
+## Libera el asiento localmente e informa al host, sin esperar el round-trip. Para el respawn con
+## alguien sentado: hay que soltarlo YA (sincrónico) antes de reconstruir el esqueleto.
+func release_occupant_for_teardown() -> void:
+	if not is_instance_valid(_seated_bi):
+		return
+	if is_instance_valid(_claim):
+		_claim.release()          # que el host libere la ocupación (async, no importa el orden)
+	_release_occupant(false, true)  # revert local ya, sin teleport pero avisando a los proxies
+
+## El asiento gira con el ocupante (mismo yaw) — sin sincronizar nada extra: el yaw ya viaja en el
+## transform del personaje. Owner: la malla prestada (hija de la cápsula, para esconderse en primera
+## persona con el cuerpo); proxy remoto: el visual propio del asiento (a la vista, porque ahí nunca
+## se corrió _sit). Lo llama BoneInstantiator._solve_seated_frame cada frame del que está sentado.
+func update_seated_visual(occupant_yaw: float) -> void:
+	var mesh: Node3D = _borrowed_mesh if is_instance_valid(_borrowed_mesh) else _visual_root
+	if not is_instance_valid(mesh):
+		return
+	mesh.global_position = _visual_root.global_position
+	mesh.global_rotation = Vector3(0.0, occupant_yaw, 0.0)
 
 func _sit(bi: Node) -> void:
 	_seated_bi = bi
@@ -145,14 +185,33 @@ func _sit(bi: Node) -> void:
 		if is_instance_valid(bu):
 			proc_anim.set("_seated_locked_bone", bu.lower_spine)
 
+	# Multiplayer: avisar a los demás en qué asiento me senté (arman el pose sentado del proxy).
+	var ns: CharacterNetSync = bi.get("net_sync")
+	if is_instance_valid(ns):
+		ns.set_seat_target(self)
+
 
 func _stand_up() -> void:
+	_release_occupant(true, true)
+
+## Si el asiento se destruye (despawn) con alguien sentado, hay que liberarlo o queda trabado: en la
+## máquina del ocupante _sit dejó la cápsula inactiva + colisión off + axis lock, y sin _stand_up eso
+## nunca se revierte. Solo corre donde _seated_bi está seteado (el ocupante); en las demás máquinas el
+## proxy se auto-cura (el productor ve el asiento inválido y limpia los flags). Ver multiplayer.md.
+func _exit_tree() -> void:
+	if Engine.is_editor_hint():
+		return
+	_release_occupant(false, false)  # sin broadcast: el asiento ya se borró en todas las máquinas
+
+## Revierte el estado de "sentado" del ocupante: flags (bi/anim/proc) + física de la cápsula. Con
+## teleport=true lo reubica en el spawn point del asiento (pararse normal); con false lo deja donde
+## está y no hace RPC — el asiento se está destruyendo y ya no existe en ninguna máquina.
+func _release_occupant(teleport: bool, broadcast: bool) -> void:
 	if not is_instance_valid(_seated_bi):
 		return
 	var bi      := _seated_bi
 	var char_rb := bi.get("char_rigidbody") as CharacterRigidBody3D
-	if not is_instance_valid(char_rb):
-		return
+	_seated_bi = null
 
 	if is_instance_valid(_borrowed_mesh):
 		_borrowed_mesh.queue_free()
@@ -172,12 +231,19 @@ func _stand_up() -> void:
 		proc_anim.set("is_seated", false)
 		proc_anim.set("_seated_locked_bone", null)
 
+	var ns: CharacterNetSync = bi.get("net_sync")
+	if is_instance_valid(ns):
+		if broadcast:
+			ns.set_seat_target(null)  # avisar a los proxies (vuelven al solve de parado)
+		else:
+			ns.seat_target = null     # destrucción: el asiento ya se borró en todas las máquinas
+
 	var pc: PlayerController = bi.get("player_controller")
 	if is_instance_valid(pc):
 		pc.call("apply_camera_pitch", 0.0)
 
-	_seated_bi = null
-
+	if not is_instance_valid(char_rb):
+		return
 	char_rb.axis_lock_linear_y = false
 	char_rb.collider.disabled  = false
 	char_rb.linear_velocity    = Vector3.ZERO
@@ -186,7 +252,8 @@ func _stand_up() -> void:
 	char_rb.is_snapshot_active = true
 	char_rb.is_active          = true
 
-	var target_pos   := _spawn_point.global_position
-	var target_rot_y := char_rb.global_rotation.y
-	char_rb.call_deferred("set", "global_position", target_pos)
-	char_rb.call_deferred("set", "global_rotation", Vector3(0.0, target_rot_y, 0.0))
+	if teleport and is_instance_valid(_spawn_point):
+		var target_pos   := _spawn_point.global_position
+		var target_rot_y := char_rb.global_rotation.y
+		char_rb.call_deferred("set", "global_position", target_pos)
+		char_rb.call_deferred("set", "global_rotation", Vector3(0.0, target_rot_y, 0.0))

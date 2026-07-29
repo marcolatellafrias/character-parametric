@@ -23,6 +23,9 @@ var _buffer: Array = []
 var _intents: Dictionary = {}
 ## Solo en el host: peers que están agarrando este cuerpo (para promover autoridad al soltar).
 var _grabbers: Array = []
+## Dormancy: true cuando el cuerpo está dormido (quieto) y dejamos de transmitir. La autoridad lo
+## maneja desde body.sleeping; los remotos ni lo miran (ya asentaron en el último estado recibido).
+var _dormant: bool = false
 
 # ── Autoridad / freeze ────────────────────────────────────────────────────────
 
@@ -30,6 +33,7 @@ var _grabbers: Array = []
 func set_body_authority(peer_id: int) -> void:
 	set_multiplayer_authority(peer_id)
 	_intents.clear()  # las intenciones eran para la autoridad anterior
+	_dormant = false  # al (re)tomar autoridad arrancamos despiertos hasta que la física duerma el cuerpo
 	_configure()
 	# Al TOMAR la autoridad, arrancamos con la última velocidad conocida, así un throw no se
 	# pierde al cambiar de autoridad (los cuerpos freeze reportan velocidad 0).
@@ -52,11 +56,27 @@ func _physics_process(_delta: float) -> void:
 		return  # offline: el cuerpo simula normal, nada que sincronizar.
 	if is_multiplayer_authority():
 		_apply_intents()  # co-grabbers empujando este cuerpo
-		_send_state()
+		_stream_if_awake()
 	else:
 		_apply_interpolation()
 
 # ── Transmisión / interpolación ───────────────────────────────────────────────
+
+## Dormancy: mientras el cuerpo se mueve o lo agarran, transmitimos cada tick; cuando la física lo
+## duerme (quieto), mandamos UN último estado en reposo (vel ~0, así los remotos asientan y no
+## extrapolan) y dejamos de transmitir — 0 bytes. Al despertar (choque, empuje, agarre) volvemos a
+## streamear. Es lo que escala a cientos de objetos: los estáticos no cuestan ancho de banda.
+func _stream_if_awake() -> void:
+	var body := get_parent() as RigidBody3D
+	if body == null:
+		return
+	if body.sleeping:
+		if not _dormant:
+			_dormant = true
+			_send_state()
+		return
+	_dormant = false
+	_send_state()
 
 func _send_state() -> void:
 	var body := get_parent() as RigidBody3D
