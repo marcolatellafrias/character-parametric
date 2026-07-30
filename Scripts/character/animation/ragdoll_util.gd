@@ -259,7 +259,17 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
 	if is_instance_valid(_lower_spine_body):
 		var vel: Vector3     = char_rb.linear_velocity
 		var speed: float     = max(vel.length(), 3.0)
-		var forward: Vector3 = vel.normalized() if vel.length() > 0.1 else -char_rb.global_basis.z
+		# Dirección de la caída. Si venimos de un impacto/empujón, _momentum_dir ya trae la dirección
+		# real (la del empujón) — es más confiable que linear_velocity, que a veces todavía no integró
+		# el impulso y deja al personaje cayendo hacia su propio frente (o en el lugar). Sin impacto
+		# (ragdoll manual con G), _momentum_dir está en cero → usamos velocidad o el frente.
+		var forward: Vector3
+		if _momentum_dir.length() > 0.01:
+			forward = _momentum_dir.normalized()
+		elif vel.length() > 0.1:
+			forward = vel.normalized()
+		else:
+			forward = -char_rb.global_basis.z
 
 		var base_y: float = _lower_spine_body.global_position.y
 		var top_y: float  = head_body.global_position.y if is_instance_valid(head_body) else base_y + 1.5
@@ -366,15 +376,19 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
 			if _parent_bone[child_bone] == current and _bodies.has(child_bone):
 				queue.append(child_bone)
 
-	# No reposicionamos: la cápsula ya sigue a la pelvis (via _update_active) y arranca sin velocidad,
-	# así que te parás donde está tu cuerpo, a ras del piso. El ragdoll colisiona con el mundo → nunca
-	# queda encerrado; un solape parcial lo separa el resolvedor de spawn-overlap (personajes) o la
-	# recuperación de penetración acotada de Jolt (mundo). Ver multiplayer.md (Causa A).
+	# Te parás donde quedó tu cuerpo, pero apoyando los pies en el piso: durante el ragdoll la cápsula
+	# siguió a la pelvis (via _update_active) con su Y a ras del suelo → descongelarla ahí la dejaría
+	# ENTERRADA y Jolt la eyectaría por el aire (y el blend de recuperación perseguiría un esqueleto
+	# volando → huesos desarmados). El ground-snap la baja al piso en el XZ de la pelvis. Ver
+	# multiplayer.md (Causa A) y technical/characters.md.
+	if is_instance_valid(_lower_spine_body):
+		char_rb.snap_feet_to_ground(_lower_spine_body.global_position, _ragdoll_rids)
 	char_rb.linear_velocity   = Vector3.ZERO
 	char_rb.angular_velocity  = Vector3.ZERO
 	char_rb.collider.disabled = false
 	char_rb.freeze            = false
 	char_rb.is_active         = false
+	_momentum_dir             = Vector3.ZERO  # el próximo ragdoll (p.ej. manual) arranca sin dirección heredada
 
 	if is_instance_valid(_skeleton_root):
 		_skeleton_root.visible = false
@@ -384,6 +398,20 @@ func update(delta: float) -> void:
 		_update_active(delta)
 	elif is_recovering:
 		_update_recovery(delta)
+
+## Traslada el ragdoll entero (rígido) para que la pelvis coincida con world_pos. Lo usa el PROXY:
+## la física local da la pose (el cuerpo flojo), la red da la posición global. Así el proxy no
+## deriva de la posición real por más que el sim local no sea determinístico. Ver multiplayer.md (C).
+func anchor_pelvis_to(world_pos: Vector3) -> void:
+	if not is_instance_valid(_lower_spine_body):
+		return
+	var offset := world_pos - _lower_spine_body.global_position
+	if offset.length() < 0.0001:
+		return
+	for bone: CustomBone in _bodies:
+		var rb: RigidBody3D = _bodies[bone]
+		if is_instance_valid(rb):
+			rb.global_position += offset
 
 func _update_active(_delta: float) -> void:
 	if is_instance_valid(_char_rb) and is_instance_valid(_lower_spine_body):

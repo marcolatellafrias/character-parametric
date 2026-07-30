@@ -388,6 +388,27 @@ static func create(root_size: Vector3, distance_from_ground: float, leg_height: 
 	rb._capsule_radius = radius
 	return rb
 
+## Reubica la cápsula en el XZ dado y baja el Y hasta apoyar los pies en el piso (raycast hacia
+## abajo, solo mundo). Se usa al pararse de un ragdoll: el cuerpo quedó tirado con la pelvis a ras
+## del piso; descongelar la cápsula ahí la dejaría enterrada y Jolt la eyectaría por el aire.
+## exclude = RIDs a ignorar. Devuelve true si encontró piso (si no, solo alinea el XZ).
+func snap_feet_to_ground(xz: Vector3, exclude: Array[RID] = []) -> bool:
+	var shape := collider.shape as CapsuleShape3D
+	var feet_offset := collider.position.y - shape.height / 2.0  # pies respecto al origen del cuerpo
+	var from := Vector3(xz.x, xz.y + 2.0, xz.z)
+	var to   := Vector3(xz.x, xz.y - 3.0, xz.z)
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.collision_mask = 1  # solo el mundo (la capa 2 es el ragdoll)
+	var ex: Array[RID] = [get_rid()]
+	ex.append_array(exclude)
+	query.exclude = ex
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		global_position = Vector3(xz.x, global_position.y, xz.z)
+		return false
+	global_position = Vector3(xz.x, (hit["position"] as Vector3).y - feet_offset, xz.z)
+	return true
+
 func _apply_braking_force() -> void:
 	var horizontal_vel := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
 	if horizontal_vel.length() > 0.0:

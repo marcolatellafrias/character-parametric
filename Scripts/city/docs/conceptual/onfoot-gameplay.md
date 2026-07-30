@@ -20,6 +20,12 @@ The **grip cone** is a cone of `120°` half-angle around the camera's forward ax
 
 A player can fall due to environmental static or dynamic obstacles. Balance is governed by the person's **equilibrium** stat, acting as a PD controller (see [people.md](people.md)). *(Note: equilibrium is currently frame-dependent — subject to change for online sync.)*
 
+#### Standing up
+
+While ragdolled a player runs a short recovery blend (`RagdollUtil.recovery_duration`) that lerps the loose bones back to the standing pose, then the capsule is grounded (feet snapped to the floor, no launch) and control returns. **You cannot re-ragdoll while standing up** — inputs to fall again are ignored during recovery (no spam). Interacting with, pushing or throwing at a downed/recovering player is also blocked ([multiplayer.md](multiplayer.md), Cause C).
+
+*Planned:* standing up is currently a debug toggle (**G**). It will become **automatic on a timer keyed to the archetype** — `EntityArchetype.time_to_standup` (e.g. the old man is slow, ~longer; the kid pops up fast) — so heavier/frailer people are more punished by a knockdown. The recovery-lock above already models "you're committed to getting up once you start."
+
 ### Health system
 
 A person spawns with **100 health**. Health is lost by:

@@ -92,7 +92,7 @@ static func create(archetype: Archetype) -> EntityArchetype:
 
 static func fat_man_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
-	arch.strenght = 1.0
+	arch.strenght = 0.9
 	arch.weight = 120.0
 	arch.speed = 0.3
 	arch.back_speed_factor = 1.0
@@ -105,9 +105,9 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.stability_spring = 0.7
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 2.0
-	arch.throw_strenght = 0.35
+	arch.throw_strenght = 0.5
 	arch.reach = 0.65
-	arch.reach_multiplier = 2.3
+	arch.reach_multiplier = 2.4
 	arch.jump_strenght = 0.5
 	arch.time_to_max_jump = 0.3
 	arch.min_age = 1
@@ -165,9 +165,9 @@ static func kid_arch() -> EntityArchetype:
 	arch.stability_spring = 0.7
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 1.0
-	arch.throw_strenght = 0.2
+	arch.throw_strenght = 0.3
 	arch.reach = 0.38
-	arch.reach_multiplier = 1.0
+	arch.reach_multiplier = 3.6
 	arch.jump_strenght = 0.3
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 1
@@ -211,7 +211,7 @@ static func kid_arch() -> EntityArchetype:
 
 static func tall_lanky_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
-	arch.strenght = 0.55
+	arch.strenght = 0.5
 	arch.weight = 80.0
 	arch.speed = 0.3
 	arch.back_speed_factor = 1.0
@@ -224,7 +224,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.stability_spring = 0.7
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 1.0
-	arch.throw_strenght = 0.4
+	arch.throw_strenght = 0.5
 	arch.reach = 0.75
 	arch.reach_multiplier = 2.5
 	arch.jump_strenght = 0.25
@@ -270,7 +270,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 
 static func giga_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
-	arch.strenght = 0.55
+	arch.strenght = 1.2
 	arch.weight = 120.0
 	arch.speed = 0.2
 	arch.back_speed_factor = 1.0
@@ -283,9 +283,9 @@ static func giga_arch() -> EntityArchetype:
 	arch.stability_spring = 0.7
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 1.0
-	arch.throw_strenght = 0.8
+	arch.throw_strenght = 0.9
 	arch.reach = 0.75
-	arch.reach_multiplier = 1.0
+	arch.reach_multiplier = 2.3
 	arch.jump_strenght = 0.2
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 20
@@ -330,7 +330,7 @@ static func giga_arch() -> EntityArchetype:
 
 static func old_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
-	arch.strenght = 0.55
+	arch.strenght = 0.4
 	arch.weight = 120.0
 	arch.speed = 0.15
 	arch.back_speed_factor = 0.6
@@ -343,9 +343,9 @@ static func old_arch() -> EntityArchetype:
 	arch.stability_spring = 0.7
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 1.0
-	arch.throw_strenght = 0.8
+	arch.throw_strenght = 0.35
 	arch.reach = 0.5
-	arch.reach_multiplier = 1.0
+	arch.reach_multiplier = 3.0
 	arch.jump_strenght = 0.6
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 50

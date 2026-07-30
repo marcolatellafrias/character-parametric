@@ -445,7 +445,8 @@ func set_first_person_visibility(first_person: bool) -> void:
 		bone.set_mesh_visible(first_person == false or visible_bones.has(bone))
 
 func _setup_char_grabbable() -> void:
-	var grabbable := GrabbableInteractable.new()
+	var grabbable := CharacterGrabbable.new()
+	grabbable.owner_bi = self  # para apagarse cuando este personaje ragdolea (no se agarra a un caído)
 	grabbable.name = "Grabbable"  # nombre estable para el grab sync entre máquinas
 	char_rigidbody.add_child(grabbable)
 

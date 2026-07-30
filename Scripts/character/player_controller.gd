@@ -411,6 +411,9 @@ func _toggle_ragdoll() -> void:
 		bi.ragdoll_util.deactivate(char_rigidbody, bi.custom_bones_util.lower_spine)
 		char_rigidbody.rotation.y = camera_yaw
 		camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
+	elif bi.ragdoll_util.is_recovering:
+		return  # ya te estás levantando: no se puede re-ragdollear (nada de G-spam). En el futuro el
+				 # levantarse será por timer según arch.time_to_standup, no con G. Ver onfoot-gameplay.md.
 	else:
 		char_rigidbody.is_snapshot_active = false
 		bi.ragdoll_util.activate(char_rigidbody, bi.custom_bones_util.lower_spine)

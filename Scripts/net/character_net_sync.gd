@@ -81,12 +81,13 @@ func apply_to_puppet() -> void:
 	var s := _sample_at(float(Time.get_ticks_msec()) - INTERP_DELAY_MS)
 
 	# Ragdoll: replicamos el estado y el proxy corre su PROPIO ragdoll local. La física no es
-	# determinística entre máquinas → es una aproximación (un cuerpo flojo cerca de la posición
-	# correcta), no un calco. Durante el ragdoll ACTIVO el sim local maneja la cápsula/pose, así que
-	# no pisamos con el transform sincronizado; en la recuperación sí (para volver a la pos del dueño).
-	# Ver conceptual/multiplayer.md (Causa C).
+	# determinística entre máquinas → es una aproximación (un cuerpo flojo con pose creíble), no un
+	# calco. Durante el ragdoll ACTIVO el sim local da la POSE, pero anclamos la POSICIÓN global a la
+	# del dueño (s["pos"] = su cápsula = su pelvis) para que el proxy no derive — más se nota cuanto
+	# más lejos ragdolea. En la recuperación aplicamos el transform normal. Ver multiplayer.md (Causa C).
 	_drive_proxy_ragdoll(bi, rb, s["ragdoll"])
 	if is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active:
+		bi.ragdoll_util.anchor_pelvis_to(s["pos"])
 		return
 
 	rb.global_position = s["pos"]
@@ -196,8 +197,13 @@ func _receive_push(impulse: Vector3) -> void:
 
 func _apply_push(impulse: Vector3) -> void:
 	var rb := _rigidbody()
-	if is_instance_valid(rb) and not rb.is_puppet:
-		rb.apply_central_impulse(impulse)
+	if not is_instance_valid(rb) or rb.is_puppet:
+		return
+	var bi := get_parent() as BoneInstantiator
+	if is_instance_valid(bi) and is_instance_valid(bi.ragdoll_util) \
+			and (bi.ragdoll_util.is_active or bi.ragdoll_util.is_recovering):
+		return  # no empujar a un jugador ya caído/levantándose
+	rb.apply_central_impulse(impulse)
 
 # ── Sentado: sincronizar en qué asiento está cada jugador ──────────────────────
 # Análogo al grab: solo viaja la REFERENCIA al asiento (mismo path en todas las máquinas, spawn con

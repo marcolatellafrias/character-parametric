@@ -20,10 +20,10 @@ const SCENES := {
 
 ## Variantes de caja: tamaño (m), masa (kg) y color.
 const BOX_VARIANTS := {
-	"box_light_square": {"size": Vector3(0.5, 0.5, 0.5), "mass": 2.0,  "color": Color(0.45, 0.7, 1.0),  "label": "liviana ▪"},
-	"box_heavy_square": {"size": Vector3(0.5, 0.5, 0.5), "mass": 30.0, "color": Color(0.7, 0.2, 0.2),   "label": "pesada ▪"},
-	"box_light_long":   {"size": Vector3(0.4, 0.4, 1.2), "mass": 3.0,  "color": Color(0.5, 0.85, 0.5),  "label": "liviana ▬"},
-	"box_heavy_long":   {"size": Vector3(0.4, 0.4, 1.2), "mass": 40.0, "color": Color(0.85, 0.5, 0.2),  "label": "pesada ▬"},
+	"box_light_square": {"size": Vector3(0.9, 0.9, 0.9), "mass": 4.0,  "color": Color(0.45, 0.7, 1.0),  "label": "liviana ▪"},
+	"box_heavy_square": {"size": Vector3(0.9, 0.9, 0.9), "mass": 40.0, "color": Color(0.7, 0.2, 0.2),   "label": "pesada ▪"},
+	"box_light_long":   {"size": Vector3(0.9, 0.9, 1.8), "mass": 8.0,  "color": Color(0.5, 0.85, 0.5),  "label": "liviana ▬"},
+	"box_heavy_long":   {"size": Vector3(0.9, 0.9, 1.8), "mass": 80.0, "color": Color(0.85, 0.5, 0.2),  "label": "pesada ▬"},
 }
 
 var _next_id: int = 0

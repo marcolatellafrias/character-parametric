@@ -1,6 +1,14 @@
 class_name InteractionController
 extends Node
 
+## Impulso de throw a carga completa = arch.throw_strenght · esto (N·s). Con throw_strenght ~0.5 y
+## una caja liviana de ~3kg → ~12 m/s (vuela lejos pero sano); una pesada de ~40kg cae cerca.
+const THROW_IMPULSE_SCALE := 70.0
+## Velocidad de knockback al empujar a un compañero, a carga completa = arch.throw_strenght · esto.
+## A ~2.8 m/s el impacto cruza ragdoll_threshold y lo tira; un arquetipo medio (0.5) a full charge
+## llega a 3.5 m/s → lo voltea. Los débiles (kid/old) solo lo hacen trastabillar.
+const PUSH_SPEED_SCALE := 7.0
+
 var char_rigidbody: CharacterRigidBody3D
 var player_camera:  Camera3D
 var arms_controller: ArmsController
@@ -14,7 +22,13 @@ var grab_rotation_damping:    float = 8.0
 var grab_angular_damp:        float = 4.0
 var show_grab_curve:          bool  = true
 var grab_cone_half_angle:     float = 120.0
-var throw_strength:           float = 500.0
+## Impulso de lanzamiento (N·s) a carga completa para OBJETOS. Impulso fijo → Δv = impulso/masa:
+## lo liviano vuela, lo pesado apenas se despega. Se sobreescribe por arquetipo
+## (arch.throw_strenght · THROW_IMPULSE_SCALE) en _update_grab_strength.
+var throw_impulse_max:        float = 35.0
+## Velocidad de knockback (m/s) a carga completa al EMPUJAR a un compañero. Basado en velocidad
+## (impulso = masa·vel) para que trastabille parecido sin importar cuánto pese.
+var push_speed_max:           float = 2.5
 var throw_max_charge_time:    float = 0.5
 var scroll_sensitivity:       float = 0.15
 var effort_cone_fraction:     float = 0.6
@@ -275,7 +289,6 @@ func _apply_grab_torque() -> void:
 func _release_throw() -> void:
 	var dir := -player_camera.global_transform.basis.z
 	var t   := _throw_charge / throw_max_charge_time
-	var impulse := dir * throw_strength * t
 
 	# Objetivo: lo que tengo agarrado (throw), o si no lo hovereado (push sin objeto).
 	var target: RigidBody3D = _grabbed
@@ -285,7 +298,17 @@ func _release_throw() -> void:
 			target = h.get_parent() as RigidBody3D
 
 	_stop_grab()  # soltar el grab (si había): la autoridad de la caja vuelve al host antes de lanzar
-	_launch(target, impulse)
+	if is_instance_valid(target):
+		var impulse: Vector3
+		if target is CharacterRigidBody3D:
+			# Empujar a un compañero: knockback por VELOCIDAD (impulso = masa·vel) → trastabilla
+			# parecido sin importar su peso. Un empujón lo despide un poco para atrás.
+			impulse = dir * target.mass * push_speed_max * t
+		else:
+			# Lanzar un OBJETO: impulso FIJO (esfuerzo del brazo). Δv = impulso/masa → lo liviano
+			# vuela lejos, lo pesado apenas se despega y cae cerca. throw_strenght lo escala.
+			impulse = dir * throw_impulse_max * t
+		_launch(target, impulse)
 
 	if is_instance_valid(anim_mod):
 		anim_mod.trigger_throw_push(dir)
@@ -387,6 +410,8 @@ func _update_grab_strength() -> void:
 	var arch       := _entity_instantiation.arch_final
 	grab_stiffness = arch.strenght * arch.weight * 9.8
 	grab_damping   = grab_stiffness * 0.1
+	throw_impulse_max = arch.throw_strenght * THROW_IMPULSE_SCALE
+	push_speed_max    = arch.throw_strenght * PUSH_SPEED_SCALE
 
 func _is_outside_cone(world_pos: Vector3) -> bool:
 	var origin  := _get_interaction_origin()
