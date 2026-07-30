@@ -14,6 +14,16 @@ var trip_twist_multiplier: float = 0.5
 
 var impact_fall_linear: float = 1.5
 
+# ── Recuperación (levantarse): ilusión de empujar el cuerpo hacia arriba con las piernas ──────────
+## Si true, durante la recuperación las piernas se resuelven por IK (pies plantados en el piso) y la
+## pelvis sube de a poco: los pies quedan fijos mientras la cadera sube → las piernas se estiran de
+## cuclillas a parado, como si empujaran. El torso para arriba mantiene el blend normal.
+var recovery_leg_ik: bool = true
+## Altura de la pelvis sobre el piso al ARRANCAR la recuperación (t=0). Bien bajo = arranca agachado.
+var recovery_rise_start_height: float = 0.15
+## Fracción de la recuperación en la que los pies terminan de plantarse bajo la cadera (0..1).
+var recovery_plant_fraction: float = 0.45
+
 var _recovery_timer: float = 0.0
 var _skeleton_root: CustomBone = null
 var _recovery_start_transforms: Dictionary = {}
@@ -23,6 +33,9 @@ var head_body: RigidBody3D = null
 var _skel_rb_node: Node3D
 var _joints_node: Node3D
 var _bones_util: CustomBonesUtil
+## Referencia al IkUtil del mismo personaje: la usa el IK de recuperación para tomar el MISMO pole de
+## rodilla que la locomoción, y que la pierna no pegue un salto de flexión al terminar de levantarse.
+var ik_util: IkUtil = null
 var _bodies: Dictionary = {}
 var _ragdoll_rids: Array[RID] = []
 var _joints: Array[Generic6DOFJoint3D] = []
@@ -444,14 +457,33 @@ func _update_recovery(delta: float) -> void:
 	var root_bone: CustomBone  = _bones_util.lower_spine
 	var root_body: RigidBody3D = _lower_spine_body
 
+	# ¿Podemos hacer el IK de piernas (pies plantados + cadera que sube)? Necesitamos raíz válida y
+	# encontrar el piso bajo la pelvis. Si no, caemos al blend uniforme de siempre.
+	var do_leg_ik := recovery_leg_ik and is_instance_valid(root_body) and is_instance_valid(root_bone)
+	var floor_y := 0.0
+	if do_leg_ik:
+		var fy := _recovery_floor_y(root_bone.global_position)
+		if is_inf(fy):
+			do_leg_ik = false
+		else:
+			floor_y = fy
+
 	if is_instance_valid(root_body) and is_instance_valid(root_bone):
-		var start: Transform3D    = _recovery_start_transforms.get(root_bone, root_body.global_transform)
-		root_body.global_position = start.origin.lerp(root_bone.global_position, t_eased)
+		var start: Transform3D = _recovery_start_transforms.get(root_bone, root_body.global_transform)
+		var pos := start.origin.lerp(root_bone.global_position, t_eased)
+		if do_leg_ik:
+			# La pelvis NO interpola su Y a la pose parado: arranca apenas sobre el piso y sube a su Y
+			# final a lo largo de la recuperación. Con los pies plantados, esto estira las piernas.
+			var start_y := floor_y + recovery_rise_start_height
+			pos.y = lerpf(start_y, root_bone.global_position.y, t_eased)
+		root_body.global_position = pos
 		root_body.global_basis    = start.basis.slerp(root_bone.global_transform.basis, t_eased)
 
 	for bone: CustomBone in _ordered_bones:
 		if bone == root_bone:
 			continue
+		if do_leg_ik and _is_recovery_leg_bone(bone):
+			continue  # las piernas las maneja el IK abajo, no el blend uniforme
 		var rb: RigidBody3D = _bodies.get(bone, null)
 		if not is_instance_valid(rb) or not is_instance_valid(bone):
 			continue
@@ -474,8 +506,111 @@ func _update_recovery(delta: float) -> void:
 				var local_anim_pos: Vector3 = root_bone.to_local(bone.global_position)
 				rb.global_position = root_body.to_global(local_anim_pos)
 
+	if do_leg_ik:
+		_solve_recovery_leg(true,  root_body, root_bone, floor_y, t)
+		_solve_recovery_leg(false, root_body, root_bone, floor_y, t)
+
 	if _recovery_timer <= 0.0:
 		_finish_recovery()
+
+## Bones de pierna que resuelve el IK de recuperación (los hips quedan en el blend normal, cerca de
+## la pelvis). upper_leg → lower_leg → feet, ambos lados.
+func _is_recovery_leg_bone(bone: CustomBone) -> bool:
+	return bone == _bones_util.left_upper_leg  or bone == _bones_util.left_lower_leg  or bone == _bones_util.left_upper_feet \
+		or bone == _bones_util.right_upper_leg or bone == _bones_util.right_lower_leg or bone == _bones_util.right_upper_feet
+
+## Piso bajo world_pos (raycast hacia abajo, solo mundo). INF si no hay.
+func _recovery_floor_y(world_pos: Vector3) -> float:
+	if not is_instance_valid(_skel_rb_node):
+		return INF
+	var from := world_pos + Vector3.UP * 2.0
+	var to   := world_pos - Vector3.UP * 3.0
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.collision_mask = 1  # mundo (la capa 2 es el propio ragdoll)
+	query.exclude = _make_exclude()
+	var hit := _skel_rb_node.get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return INF
+	return (hit["position"] as Vector3).y
+
+## IK de 2 huesos para una pierna durante la recuperación. Ancla la cadera a la pelvis (que sube) y
+## planta el pie en el piso; el pie interpola desde donde quedó tirado hasta bajo la cadera al
+## principio de la recuperación (para no dar un salto). Misma matemática que IkUtil.solve_two_bone_ik,
+## pero aplicada a los CUERPOS del ragdoll (que es lo visible), con la convención cuerpo≡hueso.
+func _solve_recovery_leg(left: bool, root_body: RigidBody3D, root_bone: CustomBone, floor_y: float, t: float) -> void:
+	var upper_bone: CustomBone = _bones_util.left_upper_leg  if left else _bones_util.right_upper_leg
+	var lower_bone: CustomBone = _bones_util.left_lower_leg  if left else _bones_util.right_lower_leg
+	var foot_bone:  CustomBone = _bones_util.left_upper_feet if left else _bones_util.right_upper_feet
+	var upper_body: RigidBody3D = _bodies.get(upper_bone, null)
+	var lower_body: RigidBody3D = _bodies.get(lower_bone, null)
+	var foot_body:  RigidBody3D = _bodies.get(foot_bone,  null)
+	if not (is_instance_valid(upper_body) and is_instance_valid(lower_body) \
+			and is_instance_valid(upper_bone) and is_instance_valid(lower_bone)):
+		return
+
+	# Cadera relativa a la pelvis que sube (offset de la pose parada, aplicado sobre el root_body).
+	var hip_world := root_body.to_global(root_bone.to_local(upper_bone.global_position))
+
+	# Objetivo del IK: leg.NEXT_target — el punto de piso vivo bajo el stance neutral, recalculado cada
+	# frame incluso en recuperación. NO current_target: durante la recuperación (recovery_targets_locked)
+	# el sistema de pasos está apagado y current_target queda CONGELADO donde estaba antes de caer (puede
+	# quedar a metros → la pierna se estira derecha). next_target sigue vivo bajo la cápsula ya apoyada,
+	# así que es el "dónde va el pie parado" correcto. Ver technical/character-animation.md.
+	var plant_t: float = smoothstep(0.0, 1.0, clamp(t / max(recovery_plant_fraction, 0.001), 0.0, 1.0))
+	var ankle_target := Vector3(hip_world.x, floor_y, hip_world.z)  # fallback: bajo la cadera, en el piso
+	if is_instance_valid(ik_util):
+		var nt: Node3D = ik_util.left_leg_next_target if left else ik_util.right_leg_next_target
+		if is_instance_valid(nt):
+			ankle_target = nt.global_position
+	elif is_instance_valid(foot_bone):
+		ankle_target = foot_bone.global_position
+	var foot_world := ankle_target
+	if is_instance_valid(foot_body) and is_instance_valid(foot_bone):
+		var foot_start := _recovery_start_transforms.get(foot_bone, foot_body.global_transform) as Transform3D
+		foot_world = foot_start.origin.lerp(ankle_target, plant_t)
+
+	# IK de 2 huesos (ley de cosenos). El pole (hacia dónde flexiona la rodilla) es el MISMO nodo que
+	# usa la locomoción, así la flexión coincide con la pose parada y no hay salto al terminar. Si no
+	# hay ik_util, caemos al frente parado.
+	var pole_world := hip_world - root_bone.global_transform.basis.z
+	if is_instance_valid(ik_util):
+		var pole_node: Node3D = ik_util.left_leg_pole if left else ik_util.right_leg_pole
+		if is_instance_valid(pole_node):
+			pole_world = pole_node.global_position
+	var upper_len: float = upper_bone.length
+	var lower_len: float = lower_bone.length
+	var root_to_target := foot_world - hip_world
+	var reach: float = clamp(root_to_target.length(), 0.001, upper_len + lower_len)
+	var dir := root_to_target.normalized()
+	var right_vec := dir.cross((pole_world - hip_world).normalized())
+	if right_vec.length() < 1e-6:
+		right_vec = IkUtil.get_orthogonal(dir)
+	var bend_plane_normal := right_vec.normalized()
+	var pole_on_plane := bend_plane_normal.cross(dir).normalized()
+	var cosA: float = clamp((upper_len * upper_len + reach * reach - lower_len * lower_len) / (2.0 * upper_len * reach), -1.0, 1.0)
+	var sinA: float = sqrt(max(0.0, 1.0 - cosA * cosA))
+	var knee := hip_world + dir * (cosA * upper_len) + pole_on_plane * (sinA * upper_len)
+
+	# Aplicar a los cuerpos (convención cuerpo≡hueso: global_position = junta proximal, base con
+	# pose_from_rest_to — igual que solve_two_bone_ik, que usa upper_bone para ambos segmentos).
+	upper_body.global_position = hip_world
+	upper_body.global_basis    = upper_bone.pose_from_rest_to((knee - hip_world).normalized(), pole_on_plane)
+	lower_body.global_position = knee
+	lower_body.global_basis    = upper_bone.pose_from_rest_to((foot_world - knee).normalized(), pole_on_plane)
+	# El pie va SIEMPRE colgado rígido de la tibia (nunca se interpola su posición suelta → nada de
+	# flips). Lo que interpolamos es su ÁNGULO relativo a la tibia: arranca en el que tenía tirado
+	# (para no pegar un salto al apretar G) y va al de la pose base (~90°). Al terminar coincide con la
+	# pose parada (incluido que "clave" en el piso igual que parado; eso es de la pose base).
+	if is_instance_valid(foot_body) and is_instance_valid(foot_bone) and is_instance_valid(lower_bone):
+		var rest_foot_local := lower_bone.global_transform.affine_inverse() * foot_bone.global_transform
+		var fallen_lower := _recovery_start_transforms.get(lower_bone, lower_body.global_transform) as Transform3D
+		var fallen_foot  := _recovery_start_transforms.get(foot_bone,  foot_body.global_transform)  as Transform3D
+		var fallen_foot_local := fallen_lower.affine_inverse() * fallen_foot
+		var foot_local := fallen_foot_local.interpolate_with(rest_foot_local, plant_t)
+		foot_body.global_transform = lower_body.global_transform * foot_local
+	elif is_instance_valid(foot_body):
+		foot_body.global_position = foot_world
+		foot_body.global_basis    = lower_body.global_basis
 
 func _finish_recovery() -> void:
 	is_recovering = false

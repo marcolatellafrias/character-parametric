@@ -143,6 +143,7 @@ func initialize_skeleton() -> void:
 	bone_animations.register_all()
 
 	ragdoll_util = RagdollUtil.create(custom_bones_util, skel_rigidbodies, joints)
+	ragdoll_util.ik_util = ik_util  # para que el IK de recuperación use el mismo pole que la locomoción
 
 	jump_squat_t = 0.0
 	crouch_t     = 0.0

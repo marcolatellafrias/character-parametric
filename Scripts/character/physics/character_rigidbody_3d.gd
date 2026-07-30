@@ -15,6 +15,12 @@ const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
 const JUMP_SCALE := 30.0
 
+## Resistencia a voltearse (ragdoll por choque). El umbral de impacto escala con el PESO relativo a
+## este peso de referencia: un pesado necesita un golpe mucho más fuerte para caerse que un liviano.
+## Ver technical/characters.md (topple resistance).
+const REFERENCE_WEIGHT := 60.0
+const BASE_IMPACT_XZ_THRESHOLD := 1.5
+
 @export var show_mesh := false
 
 var is_active: bool = false
@@ -29,10 +35,11 @@ var _ground_ray: RayCast3D
 var is_puppet: bool = false
 var puppet_velocity: Vector3 = Vector3.ZERO
 
-## Grupo de todas las cápsulas de personaje, para resolver overlaps de spawn entre sí (Causa A).
+## Grupo de todas las cápsulas de personaje, para la colisión blanda jugador-jugador. Ver characters.md.
 const CHARACTER_GROUP := "character_capsule"
 var _capsule_radius: float = 0.5
-var _overlap_ignored: Array = []  # cápsulas con las que ignoramos colisión por solaparse al spawnear
+var _player_excepted: Array = []  # jugadores con los que ya NO chocamos rígido (excepción permanente)
+var _player_contacts: Array = []  # choques ya resueltos este contacto (para eyectar una vez, no por frame)
 
 var _capsule_stand_height: float = 0.0
 var _capsule_stand_y_offset: float = 0.0
@@ -61,6 +68,13 @@ var impact_xz_threshold: float = 1.5
 var impact_y_threshold: float = 2.0
 
 var ragdoll_threshold: float = 0.85
+
+## Estabilidad direccional (de EntityArchetype): multiplican el umbral de impacto según de dónde
+## venga el golpe. >1 = más difícil de voltear en esa dirección; <1 = más fácil. Se setean por
+## arquetipo en create(). Ver technical/characters.md.
+var stability_forward: float = 1.0
+var stability_backward: float = 1.0
+var stability_sideways: float = 1.0
 
 var velocity_indicator: Vector2 = Vector2.ZERO
 var impact_xz: Vector2 = Vector2.ZERO
@@ -120,23 +134,45 @@ func _ready() -> void:
 	axis_lock_angular_y = true
 	add_to_group(CHARACTER_GROUP)
 
-## Evita que la cápsula salga despedida si spawnea/teleporta DENTRO de otro personaje: mientras dos
-## cápsulas se solapan PROFUNDO (un centro dentro del otro — solo pasa al spawnear), ignoran su
-## colisión; al separarse a contacto normal, vuelven a chocar. Ver multiplayer.md (Causa A).
-func _resolve_spawn_overlaps() -> void:
-	_overlap_ignored = _overlap_ignored.filter(func(b): return is_instance_valid(b))
+## Colisión BLANDA jugador-jugador. Los jugadores NO se bloquean rígido entre sí (nos atravesamos):
+## el solver no sirve acá — el otro es un puppet KINEMÁTICO (una pared en su posición VIEJA por el
+## delay de red), que frena al que corre sin respetar masas. En su lugar resolvemos la colisión a
+## mano por momento: cuando me acerco a otro y nos tocamos, me eyecto ALEJÁNDOME ∝ mi velocidad de
+## acercamiento · masa_del_otro/(mi+suya) — el liviano sale volando (y se cae si supera su umbral, lo
+## mide _detect_external_impact), el pesado apenas se frena y sigue de largo. Una sola vez por choque
+## (si no, cada frame de solape lo frenaría). Cada máquina lo hace para SU jugador local → simétrico.
+## Ver technical/characters.md.
+func _resolve_player_collisions() -> void:
+	if collider == null or collider.disabled:
+		return  # yo estoy ragdolleando / sin colisión
+	_player_excepted = _player_excepted.filter(func(b): return is_instance_valid(b))
+	_player_contacts = _player_contacts.filter(func(b): return is_instance_valid(b))
 	for node in get_tree().get_nodes_in_group(CHARACTER_GROUP):
 		var other := node as CharacterRigidBody3D
 		if other == null or other == self:
 			continue
-		var deep := global_position.distance_to(other.global_position) < _capsule_radius
-		var ignoring: bool = _overlap_ignored.has(other)
-		if deep and not ignoring:
-			add_collision_exception_with(other)
-			_overlap_ignored.append(other)
-		elif not deep and ignoring:
-			remove_collision_exception_with(other)
-			_overlap_ignored.erase(other)
+		if not _player_excepted.has(other):
+			add_collision_exception_with(other)  # nunca bloquear rígido entre jugadores
+			_player_excepted.append(other)
+		if other.collider == null or other.collider.disabled:
+			continue  # el otro ragdollea / sin colisión
+		var to_other := other.global_position - global_position
+		var normal := Vector3(to_other.x, 0.0, to_other.z)
+		var dist := normal.length()
+		if dist < 0.001:
+			continue
+		normal /= dist
+		if dist > _capsule_radius + other._capsule_radius:
+			_player_contacts.erase(other)  # separados → el choque se puede re-armar
+			continue
+		if _player_contacts.has(other):
+			continue  # ya resolví este choque
+		var v_closing := (_prev_velocity - other.get_motion_velocity()).dot(normal)
+		if v_closing <= 0.0:
+			continue  # no me estoy acercando a este
+		_player_contacts.append(other)
+		var mass_frac := other.mass / (mass + other.mass)
+		linear_velocity += -normal * v_closing * mass_frac
 
 func _physics_process(delta: float) -> void:
 	# Puppet (proxy remoto): la posición la maneja la red y no simulamos, pero SÍ actualizamos el
@@ -146,9 +182,6 @@ func _physics_process(delta: float) -> void:
 		_ground_ray.force_raycast_update()
 		is_grounded = _ground_ray.is_colliding()
 		return
-
-	if is_active:
-		_resolve_spawn_overlaps()  # no salir despedido si spawneé dentro de otro personaje (Causa A)
 
 	# El movimiento lee Input directo, así que se congela mientras haya un overlay
 	# abierto (pausa/menú/consola/debug). El mundo sigue simulando igual.
@@ -170,6 +203,7 @@ func _physics_process(delta: float) -> void:
 		_apply_movement_force()
 	_apply_braking_force()
 
+	_resolve_player_collisions()  # colisión blanda contra otros jugadores (setea velocidad, antes de medir el impacto)
 	_update_velocity_indicator()
 	_detect_external_impact(delta)
 	_update_impact_pd(delta)
@@ -187,10 +221,16 @@ func _detect_external_impact(delta: float) -> void:
 	var actual_dv   := linear_velocity - _prev_velocity
 	var impact_dv   := actual_dv - expected_dv
 
+	# La eyección jugador-jugador (_resolve_player_collisions) ya modificó linear_velocity ANTES de este
+	# frame, así que entra acá como un impacto normal: al liviano lo tumba, al pesado no le llega al
+	# umbral. Mundo/autos entran igual (medidos). No hay nada especial que hacer con jugadores acá.
 	var local_impact := global_transform.basis.inverse() * impact_dv
 
 	var xz := Vector2(local_impact.x, local_impact.z)
-	if xz.length() > impact_xz_threshold:
+	# Umbral efectivo = umbral (∝ peso) · estabilidad en la dirección del golpe. El vector xz queda
+	# CRUDO (la dirección de la caída y el stagger siguen siendo físicos); solo modulamos la barra.
+	var effective_threshold := impact_xz_threshold * _directional_stability(local_impact)
+	if xz.length() > effective_threshold:
 		var impact_dir_world := (global_transform.basis * Vector3(local_impact.x, 0.0, local_impact.z)).normalized()
 
 		if is_snapshot_active:
@@ -213,6 +253,19 @@ func _detect_external_impact(delta: float) -> void:
 		impact_y_signed = local_impact.y  # agregá esta línea
 		impact_y = clamp(impact_y + local_impact.y * impact_y_scale, -1.0, 1.0)
 		_impact_y_vel = 0.0
+
+## Estabilidad en la dirección del impacto (mezcla lateral / adelante / atrás según el vector local).
+## En Godot -z es el frente, así que z<0 = empujado hacia adelante. Multiplica el umbral de caída:
+## >1 cuesta más voltearte por ahí, <1 menos.
+func _directional_stability(local_impact: Vector3) -> float:
+	var ax := absf(local_impact.x)
+	var az := absf(local_impact.z)
+	var total := ax + az
+	if total < 0.001:
+		return stability_sideways
+	var side_frac := ax / total
+	var z_stab := stability_forward if local_impact.z < 0.0 else stability_backward
+	return stability_sideways * side_frac + z_stab * (1.0 - side_frac)
 
 func _update_velocity_indicator() -> void:
 	var local_vel := global_transform.basis.inverse() * linear_velocity
@@ -335,6 +388,15 @@ static func create(root_size: Vector3, distance_from_ground: float, leg_height: 
 	var spec := inst.spec
 	rb.mass = arch.weight
 	rb.sprint_multiplier = arch.sprint_multiplier
+
+	# Resistencia a voltearse: los pesados necesitan un golpe mucho más fuerte (umbral ∝ peso), y las
+	# estabilidades direccionales del arquetipo modulan según de dónde venga. Así un chico rápido NO
+	# tumba a un gordo (el gordo recibe poco Δv por su masa Y tiene el umbral alto), pero el gordo sí
+	# tumba al chico. Ver technical/characters.md.
+	rb.impact_xz_threshold = BASE_IMPACT_XZ_THRESHOLD * (arch.weight / REFERENCE_WEIGHT)
+	rb.stability_forward   = arch.foward_stability
+	rb.stability_backward  = arch.backwards_stability
+	rb.stability_sideways  = arch.sideways_stability
 
 	rb.max_speed_forward = arch.speed * spec.speed_forw_multiplier * SPEED_SCALE
 	rb.max_speed_back    = arch.speed * arch.back_speed_factor    * spec.speed_back_multiplier  * SPEED_SCALE

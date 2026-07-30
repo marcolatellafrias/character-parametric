@@ -54,6 +54,43 @@ For the **active** player every frame; for **NPCs/proxies** (`is_active=false`) 
 
 ---
 
+## Leg IK, stepping & the resting stance
+
+The legs are the one part with **state that persists between frames** (the foot targets), so they deserve their own map. Everything lives on `IkUtil`, per leg.
+
+### The four foot nodes (per leg)
+
+| Node | What it is |
+|---|---|
+| `neutral_local` | the foot raycast's **rest local origin** — `x = ±raycast_stance_offset` (stance width), `y = −raycast_start_y_offset` (up near the hip). Where the foot wants to be when idle. |
+| `next_target` | the **live ground hit**: the foot raycast (cast down from `neutral_local` + a velocity **lead** offset) resolved against the world **this frame**. "Where the foot would land." Updated every frame. |
+| `current_target` | where the foot **actually is** now. `solve_two_bone_ik(upper_leg, lower_leg, current_target, pole)` bends the leg to it. It only moves via a **step** (below). Idle ⇒ it holds still. |
+| `airborne_target` | foot **tucked up**; used instead of the ground when `is_grounded` is false. |
+| `pole` | knee-bend direction — a node in front of the leg (offset by `pole_distance` + hip width). |
+
+### Stepping
+
+A leg **steps** only when its foot has drifted beyond `current_step_radius` from neutral (`wants_step`). Then `_try_start_farther_leg` picks the farther foot and **tweens `current_target` → `next_target`** in an arc (`step_height`, `_update_stepping_foot`). `current_step_radius` lerps min↔max on speed (longer strides when faster). Idle ⇒ no step ⇒ `current_target` sits put. So **the foot lags its `next_target` by up to a step radius** — that's the deliberate "plant, then step" feel, not a bug.
+
+### The resting stance (why the foot clips)
+
+The capsule holds the pelvis at `leg_height − distance_from_ground` above the ground (`y_offset` in `CharacterRigidBody3D.create`), so **idle legs are slightly bent**, not locked straight. The foot IK targets the **raw ground point**, and the foot bone (`upper_feet`) is **rigidly ~90° to the shin** — foot roll is *not* animated. Net effect: the un-animated foot dips a little into the floor at rest. Known cosmetic quirk; harmless, and any leg animation must reproduce it (rather than fight it) to avoid a pop.
+
+### Standing up from a ragdoll (recovery)
+
+While `RagdollUtil.is_recovering`, `BoneInstantiator` sets `ik_util.recovery_targets_locked = true`, which **bypasses the step machinery**: no `_update_stepping_foot`, no `_try_start_farther_leg`. Consequence — and this is the trap — **`current_target` is frozen** at wherever it was when the fall began (stale; possibly meters away if the body slid). **`next_target` keeps updating** (its assignment sits *outside* the lock guard), so it's the live resting ground point under the now-grounded capsule.
+
+`RagdollUtil._update_recovery` rebuilds the **visible ragdoll-body** pose (the skeleton is hidden; bodies are shown) as a deliberate "get up" motion — see [characters.md](characters.md) for the ragdoll/recovery lifecycle:
+
+- **Upper body** (root and above) blends from the fallen pose toward the standing skeleton, as before.
+- **Pelvis** rises from `floor + recovery_rise_start_height` to the standing Y over the recovery, instead of snapping.
+- **Legs** are IK-solved (`_solve_recovery_leg`, same law-of-cosines + the same `leg.pole` as locomotion) with the hip on the rising pelvis and the foot planted at **`next_target`** — the live resting point, **not** the frozen `current_target`. With feet planted and hip rising, the knees straighten from a crouch → the "legs pushing up" look.
+- **The foot is never interpolated on its own** — it's hung *rigidly off the shin* every frame (`foot_body = lower_body · foot_local`). Interpolating its world transform directly makes it **flip** at the start of recovery. What *does* ease is its **angle relative to the shin**: `foot_local` blends from the **fallen** ankle angle (`fallen_shin⁻¹ · fallen_foot`, from `_recovery_start_transforms`) to the **rest** angle (`lower_bone⁻¹ · foot_bone`, ~90°) over `recovery_plant_fraction`. So it starts at the angle it settled into on the ground (no snap) and rolls to the standing angle — landing on the standing pose exactly (same ~90°, same floor clip), no seam when locomotion resumes.
+
+Tunables live at the top of `RagdollUtil`: `recovery_leg_ik` (toggle the whole effect), `recovery_rise_start_height` (how crouched the pelvis starts), `recovery_plant_fraction` (how fast feet + ankle angle commit), `recovery_duration` (overall speed). If a foot/knee issue ever reappears, the failure is almost always **wrong target** (using `current_target` instead of `next_target`) or **interpolating the foot's world transform** instead of its shin-relative angle.
+
+---
+
 ## The inputs that determine the pose
 
 Everything the pipeline reads to produce a pose:
