@@ -48,6 +48,8 @@ var crouch_t:     float = 0.0
 ## (lo setea CharacterNetSync.apply_to_puppet). El yaw no va acá: lo maneja la cápsula entera.
 var head_pitch:   float = 0.0
 var _npc_skip_frame: bool = false
+var _reset_feet_after_recovery: bool = false  # plantar los pies el primer frame tras recuperarse
+var _dbg_leg_countdown: int = 0  # TEMPORAL: loguear estado de pasos tras recuperarse (feet-lag proxy)
 
 var grab_cone_mesh: MeshInstance3D = null
 var show_grab_cone: bool = false
@@ -144,6 +146,7 @@ func initialize_skeleton() -> void:
 
 	ragdoll_util = RagdollUtil.create(custom_bones_util, skel_rigidbodies, joints)
 	ragdoll_util.ik_util = ik_util  # para que el IK de recuperación use el mismo pole que la locomoción
+	ragdoll_util._dbg_tag = "proxy" if is_puppet else "local"  # TEMPORAL: diagnóstico
 
 	jump_squat_t = 0.0
 	crouch_t     = 0.0
@@ -151,7 +154,10 @@ func initialize_skeleton() -> void:
 func _on_fall_triggered(world_dir: Vector3) -> void:
 	if is_seated:
 		return
-	if not is_instance_valid(ragdoll_util) or ragdoll_util.is_active:
+	# No re-disparar si ya estoy ragdolleando NI levantándome: un impacto espurio durante la
+	# recuperación (p.ej. la cápsula asentándose) reiniciaría el ragdoll a mitad de camino y dejaría
+	# los huesos desarmados. Ver technical/characters.md.
+	if not is_instance_valid(ragdoll_util) or ragdoll_util.is_active or ragdoll_util.is_recovering:
 		return
 	char_rigidbody.is_snapshot_active = false
 	ragdoll_util.activate_with_impact(char_rigidbody, custom_bones_util.lower_spine, world_dir)
@@ -191,7 +197,15 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(net_sync):
 		net_sync.apply_to_puppet()
 
-	if not is_active:
+	# NPCs/proxies resuelven a MEDIA TASA por performance (el solve procedural es caro). ⚠️ Cuidado: eso
+	# hace que en proxies el esqueleto/cuerpos queden 1-2 frames atrasados de la física (que sí corre
+	# cada frame) → cualquier cosa que "saque una foto" de ellos hay que sincronizarla antes (ver el
+	# bug de las juntas desarmadas, arreglado con sync_to_bones antes de _build_joints). NO salteamos
+	# mientras ragdollea/recupera: si no, el blend de recuperación tarda el doble y _update_active se
+	# atrasa. El solve pesado ya se saltea solo al ragdollear, así que full-rate acá no cuesta.
+	# Ver technical/character-animation.md ("half-rate trap").
+	var _ragdolling := is_instance_valid(ragdoll_util) and (ragdoll_util.is_active or ragdoll_util.is_recovering)
+	if not is_active and not _ragdolling:
 		_npc_skip_frame = not _npc_skip_frame
 		if _npc_skip_frame:
 			return
@@ -211,6 +225,8 @@ func _physics_process(delta: float) -> void:
 		elif not ragdoll_util.is_recovering and ik_util.recovery_targets_locked:
 			ik_util.recovery_targets_locked = false
 			char_rigidbody.is_snapshot_active = true
+			_reset_feet_after_recovery = true  # plantar los pies bajo el cuerpo, sin catch-up a los pasos
+			_dbg_leg_countdown = 0  # (deshabilitado mientras cazamos la explosión; poner 200 para el feet-lag)
 
 	skel_sizes_util.update(delta, animation_inputs, entity_instantiation, ik_util)
 
@@ -247,6 +263,21 @@ func _solve_standing_frame(delta: float) -> void:
 
 	ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, animation_inputs)
 	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, animation_inputs)
+
+	if _reset_feet_after_recovery:
+		# Ya corrió el raycast (next_target fresco bajo el cuerpo): plantamos ahí el pie, sin catch-up.
+		ik_util.reset_step_targets_to_ground()
+		_reset_feet_after_recovery = false
+
+	if _dbg_leg_countdown > 0:
+		_dbg_leg_countdown -= 1
+		if _dbg_leg_countdown % 12 == 0:  # cada ~12 frames, para no spamear
+			var cap := char_rigidbody.global_position
+			var lf := ik_util.left_leg_current_target.global_position
+			var foot_lag := Vector2(lf.x - cap.x, lf.z - cap.z).length()
+			print("[LEGS %s f=%d] vel=%.2f foot_lag=%.2f %s" % [
+				"proxy" if is_puppet else "local", Engine.get_physics_frames(),
+				char_rigidbody.get_motion_velocity().length(), foot_lag, ik_util.debug_step_state()])
 
 	# procedural primero, anim_mod encima — mismo orden que antes
 	procedural_animator.update()

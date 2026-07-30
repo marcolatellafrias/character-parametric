@@ -36,7 +36,15 @@ A `Node3D` per bone with `capsule_dimensions` (x/z = radius, y = length) and a `
 
 ## Per-frame pose (rebuilt every physics tick)
 
-For the **active** player every frame; for **NPCs/proxies** (`is_active=false`) every *other* frame (`_npc_skip_frame`). Order in `BoneInstantiator._physics_process` → `_solve_standing_frame`:
+For the **active** player every frame; for **NPCs/proxies** (`is_active=false`) every *other* frame (`_npc_skip_frame`). This half-rate is a **performance** measure — the full procedural solve is expensive, and a crowd of NPCs/proxies doesn't need it every tick. Order in `BoneInstantiator._physics_process` → `_solve_standing_frame`:
+
+> ### ⚠️ The half-rate trap (read this — it has bitten twice)
+> Because the solve (and its `sync_to_bones`, foot targets, IK) runs **every other frame** on NPCs/proxies while the **physics and the capsule move every frame**, the skeleton/bodies and the live physics **drift a frame or two apart** on those characters. Any code that **snapshots** the skeleton or the ragdoll bodies and assumes they're current will be wrong *only on proxies*, and confusingly not on the local player. **Rule: sync/refresh right before you snapshot.** Two bugs came from ignoring this:
+> - **Ragdoll limbs detached on proxies** — `activate()` built the joints from **stale** body positions (a frame behind the skeleton), pinning the arms/feet offset from their sockets. Fix: `sync_to_bones()` immediately before `_build_joints()`. See [characters.md](characters.md).
+> - **Feet lag / catch-up after standing up on proxies** — the leg step targets re-establish at half rate, so the feet trail. Mitigated by re-planting targets on recovery exit (`reset_step_targets_to_ground`); the residual is the half-rate itself.
+>
+> When a proxy is **ragdolling or recovering**, `BoneInstantiator` deliberately drops the skip and runs **full rate** (the heavy solve early-returns during ragdoll anyway, so it's cheap) — otherwise the recovery blend takes 2× real time and `_update_active` lags. If you add anything that needs current transforms on a proxy, either force a sync first or exempt it from the skip.
+
 
 1. **`locomotion_signals.update(delta)`** — computes smoothed signals from the capsule + current foot targets:
    - `_update_velocity_signals`: `horizontal_velocity_smooth`, `speed_norm`, `vertical_velocity_smooth`, `impact_*_smooth` — read from **`char_rigidbody.get_motion_velocity()`** and `impact_xz/impact_y`.

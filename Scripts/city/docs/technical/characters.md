@@ -28,14 +28,31 @@ The head bone drives the camera height; yaw is written onto the capsule (`char_r
 
 ## Ragdoll — `RagdollUtil`
 
-A pool of per-bone `RigidBody3D`s (one capsule each, sized from the bone's `capsule_dimensions`), built once and kept in sync with the animated bones (`sync_to_bones`). On **`activate`**:
+It's an **active ragdoll**: a pool of per-bone `RigidBody3D`s (one capsule each, sized from the bone's `capsule_dimensions`, on `RAGDOLL_LAYER=2` / `RAGDOLL_MASK=1`), built once. The bodies are wired parent→child by `Generic6DOFJoint3D`s whose **angular springs** (per-joint `stiffness`/`damping`, equilibrium = the bone's rest angle relative to its parent) act as **muscles** — they pull the body back toward a standing pose, so the ragdoll *settles* instead of going fully limp. `sync_to_bones` copies the animated bone transforms onto the bodies while **not** ragdolling, so activation starts from the current pose.
 
-- the capsule goes **inert** — `is_active = false`, collider **disabled**, frozen **static**;
-- the skeleton is hidden and the **bone-bodies go dynamic**, seeded with the capsule's velocity + **trip impulses** (upper body forward, legs back, a twist);
-- bodies that spawn **overlapping** something are held collision-less until they clear (`_pending_bodies`);
-- while active, the **capsule follows** the ragdoll's lower spine (`char_rb.global_position = lower_spine_body.global_position`).
+**States.** `is_active` (simulating) and `is_recovering` (blending back), mutually exclusive; `update(delta)` dispatches to `_update_active` / `_update_recovery`.
 
-`activate_with_impact` adds momentum from the recorded impact direction. **`deactivate` → recovery**: joints cleared, each bone-body eased back toward its animated bone transform over `recovery_duration`, the capsule teleported to a **collision-free `_find_safe_spawn`** above the lower spine and re-enabled; the skeleton reappears.
+**`activate`:** capsule goes inert (`is_active=false`, collider disabled, frozen static); the skeleton is hidden and the bodies go dynamic; joints are built; the bodies are seeded with the capsule's velocity + **trip impulses** (upper body along the fall direction, legs opposite, a twist) — `activate_with_impact` sets that fall direction from the recorded impact (`_momentum_dir`). Bodies that start **overlapping** the world are held collision-less until they clear (`_pending_bodies`). While active, the **capsule follows the lower-spine body** (`_update_active`) so the capsule = pelvis position.
+
+**`deactivate` → recovery:** joints cleared; the capsule is **grounded** at the pelvis's XZ (`snap_feet_to_ground`, a downward ray — *not* the old upward `_find_safe_spawn`, which is deleted) and **kept frozen** for the whole recovery. Over `recovery_duration` each body eases from where it fell toward the standing skeleton pose, with the **pelvis rising** and the **legs IK-solved** (feet planted) — the "getting up" motion; see [character-animation.md](character-animation.md). `_finish_recovery` snaps the bodies onto the skeleton, shows it, and **unfreezes** the capsule (local player only — a proxy stays a kinematic puppet).
+
+Two robustness rules keep recovery from failing (the old "bones disjoint, press G again"):
+- **The capsule stays frozen through recovery**, so even if the ground-snap ever misses, physics can't *eject* it mid-blend (an ejection would fling the skeleton the bodies are easing toward → disjoint). It only goes dynamic once recovery finishes.
+- **`_on_fall_triggered` ignores impacts while `is_active` *or* `is_recovering`** — a spurious impact during getting-up can't restart the ragdoll halfway.
+- On recovery exit the leg IK targets are **re-planted** under the body (`ik_util.reset_step_targets_to_ground`) so the feet don't lag while stepping to catch up — most visible on a proxy, whose solve runs at half rate.
+
+### Replication (proxies) — root synced, ragdoll local
+
+Only a `ragdoll` **flag**, the **capsule (= pelvis) position**, and the **pelvis rotation** (`ragdoll_rot`, a quaternion, in the per-tick state) travel — never per-bone state. On the flag edge each proxy runs its **own local active ragdoll** (`CharacterNetSync._drive_proxy_ragdoll` → `activate`/`deactivate`). The model:
+
+- **The pelvis (root) is kinematic and network-driven; every other bone simulates locally.** Each frame while the proxy ragdoll is active, `drive_pelvis_to(pos, rot)` sets the lower-spine body's transform to the synced pose (`pos` = `s["pos"]`, `rot` = `s["ragdoll_rot"]`); `set_pelvis_kinematic(true)` (on activate) makes it a frozen **kinematic anchor**. Because it moves smoothly (interpolated), the joints **drag the hips/limbs along** without being slammed, and the limbs flail on their own gravity+springs. So the ragdoll is in the **right place** (no drift, authoritative) with the bones **in their sockets** — the pose is an approximation, the position is exact.
+- **Why this is the model that works (after several that didn't):** driving the pelvis *dynamically* (velocity or force) makes it fight its own joints and separate the seams; teleporting *every* body spazzes the solver; a *pure* local sim looks right but drifts. A **kinematic root + local limbs** avoids all three — but it only works because the **joints are built from correct positions** (see below); before that fix the limbs looked detached no matter how the root was driven.
+- **Seed + timing:** on activation the proxy seeds all bodies with the owner's `puppet_velocity` (the fall momentum, still held from just before the ragdoll) so the limbs start with the right energy.
+
+> ### ⚠️ Joints must be built from a fresh pose
+> `activate()` snapshots each bone's position to pin its joint, so **`sync_to_bones()` runs immediately before `_build_joints()`**. Without it, a proxy (half-rate solve → bodies a frame or two stale, see [character-animation.md](character-animation.md)) builds the joints from stale positions and **rigidly pins the arms/feet offset from their sockets** — attached (`maxgap≈0`) but visibly detached, worst on the fast-moving extremities. This was the "proxy ragdoll is dislocated" bug; the fix is that one sync.
+
+> **Watch / open:** a **rare** joint separation on the **local** ragdoll (genuine sim instability under a hard landing) was reported but isn't reliably reproducible. `RagdollUtil` keeps diagnostic instrumentation behind `debug_log` (default off): it prints activate/deactivate/finish transitions with the peak joint gap (`_max_joint_gap`) and the worst joint. If it resurfaces, likely fixes: raise Jolt's position-solver iterations, add linear damping / velocity cap on the bodies, or soften the joints' linear limits.
 
 ---
 

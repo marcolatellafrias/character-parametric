@@ -47,19 +47,22 @@ func _send_state() -> void:
 		throw_push = bi.anim_mod.throw_push_t
 		throw_dir = bi.anim_mod.throw_world_dir
 	var ragdoll := is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active
+	# En ragdoll mandamos la ROTACIÓN de la pelvis (raíz) para manejar la pelvis kinemática del proxy.
+	# La posición ya viaja como rb.global_position (la cápsula sigue a la pelvis via _update_active).
+	var ragdoll_rot := bi.ragdoll_util.pelvis_rotation() if ragdoll else Quaternion.IDENTITY
 	_receive_state.rpc(rb.global_position, rb.rotation.y, rb.linear_velocity, rb.impact_xz, rb.impact_y,
-		bi.crouch_t, bi.jump_squat_t, throw_t, throw_push, throw_dir, bi.head_pitch, ragdoll)
+		bi.crouch_t, bi.jump_squat_t, throw_t, throw_push, throw_dir, bi.head_pitch, ragdoll, ragdoll_rot)
 
 @rpc("authority", "unreliable_ordered", "call_remote")
 func _receive_state(pos: Vector3, yaw: float, vel: Vector3, impact_xz: Vector2, impact_y: float,
 		crouch: float, jump: float, throw_t: float, throw_push: float, throw_dir: Vector3,
-		pitch: float, ragdoll: bool) -> void:
+		pitch: float, ragdoll: bool, ragdoll_rot: Quaternion) -> void:
 	_buffer.append({
 		"t": Time.get_ticks_msec(), "pos": pos, "yaw": yaw, "vel": vel,
 		"impact_xz": impact_xz, "impact_y": impact_y,
 		"crouch": crouch, "jump": jump,
 		"throw_t": throw_t, "throw_push": throw_push, "throw_dir": throw_dir,
-		"pitch": pitch, "ragdoll": ragdoll})
+		"pitch": pitch, "ragdoll": ragdoll, "ragdoll_rot": ragdoll_rot})
 	while _buffer.size() > BUFFER_MAX:
 		_buffer.pop_front()
 
@@ -80,14 +83,14 @@ func apply_to_puppet() -> void:
 
 	var s := _sample_at(float(Time.get_ticks_msec()) - INTERP_DELAY_MS)
 
-	# Ragdoll: replicamos el estado y el proxy corre su PROPIO ragdoll local. La física no es
-	# determinística entre máquinas → es una aproximación (un cuerpo flojo con pose creíble), no un
-	# calco. Durante el ragdoll ACTIVO el sim local da la POSE, pero anclamos la POSICIÓN global a la
-	# del dueño (s["pos"] = su cápsula = su pelvis) para que el proxy no derive — más se nota cuanto
-	# más lejos ragdolea. En la recuperación aplicamos el transform normal. Ver multiplayer.md (Causa C).
+	# Ragdoll: RAÍZ sincronizada, resto local. El proxy corre su propio ragdoll, pero la PELVIS es
+	# kinemática y la manejamos a la pose del dueño (posición = s["pos"], rotación = s["ragdoll_rot"]);
+	# los demás huesos simulan local colgados de ella. Así el ragdoll queda en el lugar correcto (no
+	# deriva) y con los huesos en su sitio (las joints se armaron bien, ver activate → sync_to_bones).
+	# En la recuperación volvemos al transform normal. Ver characters.md (Causa C).
 	_drive_proxy_ragdoll(bi, rb, s["ragdoll"])
 	if is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active:
-		bi.ragdoll_util.anchor_pelvis_to(s["pos"])
+		bi.ragdoll_util.drive_pelvis_to(s["pos"], s["ragdoll_rot"])
 		return
 
 	rb.global_position = s["pos"]
@@ -112,6 +115,8 @@ func _drive_proxy_ragdoll(bi: BoneInstantiator, rb: CharacterRigidBody3D, want: 
 		return
 	if want and not rd.is_active:
 		rd.activate(rb, bi.custom_bones_util.lower_spine)
+		rd.seed_velocity(rb.puppet_velocity)  # arrancar con el momento del dueño (puppet_velocity quedó en el último de antes del ragdoll)
+		rd.set_pelvis_kinematic(true)          # la pelvis la maneja la red; el resto simula local
 	elif not want and rd.is_active:
 		rd.deactivate(rb, bi.custom_bones_util.lower_spine)
 		rb.setup_as_puppet()  # restaurar puppet (kinemático, sin gravedad): deactivate lo des-congeló
@@ -149,7 +154,8 @@ func _lerp_state(a: Dictionary, b: Dictionary, f: float) -> Dictionary:
 		"throw_push": lerpf(a["throw_push"], b["throw_push"], f),
 		"throw_dir": (a["throw_dir"] as Vector3).lerp(b["throw_dir"], f),
 		"pitch": lerpf(a["pitch"], b["pitch"], f),
-		"ragdoll": a["ragdoll"]}  # bool: tomamos el del estado más viejo (mismo delay que la posición)
+		"ragdoll": a["ragdoll"],  # bool: tomamos el del estado más viejo (mismo delay que la posición)
+		"ragdoll_rot": (a["ragdoll_rot"] as Quaternion).slerp(b["ragdoll_rot"], f)}
 
 func _rigidbody() -> CharacterRigidBody3D:
 	var bi := get_parent() as BoneInstantiator

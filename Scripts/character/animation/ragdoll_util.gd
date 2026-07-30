@@ -4,6 +4,38 @@ extends RefCounted
 const RAGDOLL_LAYER := 2
 const RAGDOLL_MASK  := 1
 
+
+## Diagnóstico del bug de "huesos desarmados": loguea transiciones (activate/deactivate/finish) y el
+## flanco de separación de juntas con el gap máximo (_max_joint_gap). Default APAGADO; prenderlo si
+## reaparece la separación rara en LOCAL. Ver technical/characters.md ("Watch / open").
+var debug_log: bool = false
+var _was_exploded: bool = false
+var _dbg_tag: String = "?"  # "local" / "proxy", lo setea el que lo maneja
+## Por junta: {a, b, la, lb} — el anchor guardado en el frame local de cada cuerpo. La separación
+## (gap) entre ambos anchors en world = cuánto se "salió" la junta (debería ser ~0). Lo llena _create_joint.
+var _joint_dbg: Array = []
+
+## Gap máximo de junta (m): distancia entre los dos anchors que deberían coincidir. >0 = huesos separándose.
+## Deja en _dbg_worst el nombre de la peor junta.
+func _max_joint_gap() -> float:
+	var mx := 0.0
+	_dbg_worst = ""
+	for jd in _joint_dbg:
+		var a: RigidBody3D = jd["a"]
+		var b: RigidBody3D = jd["b"]
+		if is_instance_valid(a) and is_instance_valid(b):
+			var g: float = (a.to_global(jd["la"]) - b.to_global(jd["lb"])).length()
+			if g > mx:
+				mx = g
+				_dbg_worst = jd["name"]
+	return mx
+
+func _dbg(msg: String) -> void:
+	if debug_log:
+		print("[RAGDOLL %s f=%d] %s maxgap=%.3f phasePEAK=%.3f(%s) active=%s recovering=%s" % [
+			_dbg_tag, Engine.get_physics_frames(), msg, _max_joint_gap(),
+			_dbg_phase_peak, _dbg_phase_worst, is_active, is_recovering])
+
 var is_active: bool = false
 var is_recovering: bool = false
 var recovery_duration: float = 0.8
@@ -49,6 +81,30 @@ var _parent_bone: Dictionary = {}
 var _ordered_bones: Array[CustomBone] = []
 
 var _momentum_dir: Vector3 = Vector3.ZERO
+
+var _dbg_worst: String = ""      # nombre de la junta con más gap (diagnóstico)
+var _dbg_active_frames: int = 0  # contador para loguear el gap cada tanto durante el ragdoll activo
+var _dbg_peak_gap: float = 0.0   # pico de gap en la ventana (para no perder un spike de 1 frame)
+var _dbg_peak_worst: String = ""
+var _dbg_phase_peak: float = 0.0 # pico de gap en TODA la fase activa (se resetea al activar, se loguea al desactivar)
+var _dbg_phase_worst: String = ""
+
+func _bone_label(bone: CustomBone) -> String:
+	var bu := _bones_util
+	if bone == bu.lower_spine: return "pelvis"
+	if bone == bu.middle_spine: return "midspine"
+	if bone == bu.upper_spine: return "upspine"
+	if bone == bu.chest: return "chest"
+	if bone == bu.left_hip or bone == bu.right_hip: return "hip"
+	if bone == bu.left_upper_leg or bone == bu.right_upper_leg: return "upleg"
+	if bone == bu.left_lower_leg or bone == bu.right_lower_leg: return "lowleg"
+	if bone == bu.left_upper_feet or bone == bu.right_upper_feet: return "foot"
+	if bone == bu.neck: return "neck"
+	if bone == bu.head: return "head"
+	if bone == bu.left_shoulder or bone == bu.right_shoulder: return "shoulder"
+	if bone == bu.left_upper_arm or bone == bu.right_upper_arm: return "uparm"
+	if bone == bu.left_lower_arm or bone == bu.right_lower_arm: return "lowarm"
+	return "?"
 
 static func create(bones_util: CustomBonesUtil, skel_rb_node: Node3D, joints_node: Node3D) -> RagdollUtil:
 	var ru := RagdollUtil.new()
@@ -115,6 +171,7 @@ func _make_body(bone: CustomBone) -> RigidBody3D:
 
 func _build_joints() -> void:
 	_parent_bone.clear()
+	_joint_dbg.clear()
 	var bu := _bones_util
 
 	var pairs: Array = [
@@ -210,6 +267,12 @@ func _create_joint(
 	j.set_param_z(AEQ, offset_euler.z)
 
 	_joints.append(j)
+	if debug_log:
+		_joint_dbg.append({
+			"a": body_a, "b": body_b,
+			"la": body_a.global_transform.affine_inverse() * anchor,
+			"lb": body_b.global_transform.affine_inverse() * anchor,
+			"name": "%s-%s" % [_bone_label(bone_a), _bone_label(bone_b)]})
 
 func sync_to_bones() -> void:
 	for bone in _bodies:
@@ -229,6 +292,9 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
 	_char_rid      = char_rb.get_rid()
 	_char_rb       = char_rb
 	_skeleton_root = skeleton_root
+	_dbg_phase_peak = 0.0
+	_dbg_phase_worst = ""
+	_dbg("activate")
 
 	char_rb.is_active         = false
 	char_rb.collider.disabled = true
@@ -239,6 +305,13 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
 		skeleton_root.visible = false
 
 	_set_meshes_visible(true)
+	# Poner los cuerpos EN los huesos justo antes de armar las joints. Las joints capturan la posición
+	# relativa de cada hueso en ESTE instante y la fijan rígido. Si los cuerpos venían desfasados de los
+	# huesos (en un PROXY el solve corre a media tasa → sync_to_bones va atrasado 1-2 frames mientras el
+	# esqueleto se movió cada frame), la junta congela el brazo/pie en su lugar VIEJO → queda "pegado
+	# pero corrido del hombro/tobillo". Con este sync las juntas arrancan de la pose correcta. Ver
+	# technical/characters.md.
+	sync_to_bones()
 	_build_joints()
 
 	var space: PhysicsDirectSpaceState3D = _skel_rb_node.get_world_3d().direct_space_state
@@ -357,6 +430,7 @@ func _apply_impact_fall_impulses(speed: float) -> void:
 		rb.apply_central_impulse(_momentum_dir * speed * impact_fall_linear * rb.mass)
 
 func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
+	_dbg("deactivate (start recovery)")
 	is_active            = false
 	is_recovering        = true
 	_recovery_timer      = recovery_duration
@@ -389,42 +463,68 @@ func deactivate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> voi
 			if _parent_bone[child_bone] == current and _bodies.has(child_bone):
 				queue.append(child_bone)
 
-	# Te parás donde quedó tu cuerpo, pero apoyando los pies en el piso: durante el ragdoll la cápsula
-	# siguió a la pelvis (via _update_active) con su Y a ras del suelo → descongelarla ahí la dejaría
-	# ENTERRADA y Jolt la eyectaría por el aire (y el blend de recuperación perseguiría un esqueleto
-	# volando → huesos desarmados). El ground-snap la baja al piso en el XZ de la pelvis. Ver
-	# multiplayer.md (Causa A) y technical/characters.md.
+	# Te parás donde quedó tu cuerpo, apoyando los pies en el piso (ground-snap en el XZ de la pelvis).
+	# La cápsula queda CONGELADA (estática, como en el ragdoll) durante toda la recuperación: antes se
+	# descongelaba acá y, si el ground-snap fallaba, Jolt la eyectaba por el aire → ese impacto
+	# re-disparaba el ragdoll a mitad de recuperación y los huesos quedaban desarmados. Frozen no se
+	# puede eyectar; el esqueleto (hijo de la cápsula) queda quieto y el blend converge limpio. La
+	# descongela _finish_recovery al terminar. Ver technical/characters.md.
 	if is_instance_valid(_lower_spine_body):
 		char_rb.snap_feet_to_ground(_lower_spine_body.global_position, _ragdoll_rids)
 	char_rb.linear_velocity   = Vector3.ZERO
 	char_rb.angular_velocity  = Vector3.ZERO
 	char_rb.collider.disabled = false
-	char_rb.freeze            = false
 	char_rb.is_active         = false
 	_momentum_dir             = Vector3.ZERO  # el próximo ragdoll (p.ej. manual) arranca sin dirección heredada
 
 	if is_instance_valid(_skeleton_root):
 		_skeleton_root.visible = false
 
+## Semilla de velocidad para el ragdoll PROXY: arrancar con el momento del dueño (su velocidad de
+## caída), si no el proxy cae de CERO (cápsula puppet congelada) mientras el dueño sale volando →
+## el ragdoll queda "offseteado" del lugar donde debería. Los huesos siguen conectados; sólo iguala
+## el impulso inicial. Ver technical/characters.md.
+func seed_velocity(vel: Vector3) -> void:
+	for bone in _bodies:
+		var rb: RigidBody3D = _bodies[bone]
+		if is_instance_valid(rb):
+			rb.linear_velocity = vel
+
+# ── Replicación proxy: raíz sincronizada, resto local ─────────────────────────
+## En el PROXY la pelvis (raíz) es KINEMÁTICA: la maneja la red. Los demás cuerpos quedan dinámicos y
+## simulan LOCAL colgados de ella por las joints. La pelvis kinemática es un ancla de masa infinita:
+## se mueve donde se le dice y, al moverse suave (interp), arrastra a las caderas por las joints sin
+## reventarlas (siempre que las joints se hayan armado bien — ver el sync_to_bones antes de _build_joints).
+func set_pelvis_kinematic(enabled: bool) -> void:
+	if is_instance_valid(_lower_spine_body):
+		_lower_spine_body.freeze = enabled  # freeze_mode ya es KINEMATIC (de _make_body); activate lo puso dynamic
+
+## Rotación actual de la pelvis (para que el dueño la sincronice). La POSICIÓN ya viaja como la cápsula
+## (que en ragdoll sigue a la pelvis via _update_active).
+func pelvis_rotation() -> Quaternion:
+	if is_instance_valid(_lower_spine_body):
+		return _lower_spine_body.global_transform.basis.get_rotation_quaternion()
+	return Quaternion.IDENTITY
+
+## Proxy: pone la pelvis kinemática en la pose sincronizada (posición + rotación). El resto la sigue.
+func drive_pelvis_to(world_pos: Vector3, world_rot: Quaternion) -> void:
+	if is_instance_valid(_lower_spine_body):
+		_lower_spine_body.global_transform = Transform3D(Basis(world_rot), world_pos)
+
 func update(delta: float) -> void:
 	if is_active:
 		_update_active(delta)
 	elif is_recovering:
 		_update_recovery(delta)
+	# Diagnóstico "huesos desarmados": guardamos el PICO de gap de junta sobre TODA la fase (activo Y
+	# recuperación). Sin prints acá — se loguean en las transiciones (activate/deactivate/finish), 3
+	# líneas por caída. Así vemos si el gap se dispara al caer o al levantarse.
+	if debug_log and (is_active or is_recovering):
+		var gap := _max_joint_gap()
+		if gap > _dbg_phase_peak:
+			_dbg_phase_peak = gap
+			_dbg_phase_worst = _dbg_worst
 
-## Traslada el ragdoll entero (rígido) para que la pelvis coincida con world_pos. Lo usa el PROXY:
-## la física local da la pose (el cuerpo flojo), la red da la posición global. Así el proxy no
-## deriva de la posición real por más que el sim local no sea determinístico. Ver multiplayer.md (C).
-func anchor_pelvis_to(world_pos: Vector3) -> void:
-	if not is_instance_valid(_lower_spine_body):
-		return
-	var offset := world_pos - _lower_spine_body.global_position
-	if offset.length() < 0.0001:
-		return
-	for bone: CustomBone in _bodies:
-		var rb: RigidBody3D = _bodies[bone]
-		if is_instance_valid(rb):
-			rb.global_position += offset
 
 func _update_active(_delta: float) -> void:
 	if is_instance_valid(_char_rb) and is_instance_valid(_lower_spine_body):
@@ -613,6 +713,7 @@ func _solve_recovery_leg(left: bool, root_body: RigidBody3D, root_bone: CustomBo
 		foot_body.global_basis    = lower_body.global_basis
 
 func _finish_recovery() -> void:
+	_dbg("finish_recovery")
 	is_recovering = false
 	_recovery_start_transforms.clear()
 	_set_meshes_visible(false)
@@ -628,6 +729,11 @@ func _finish_recovery() -> void:
 
 	if is_instance_valid(_recovering_char_rb):
 		_recovering_char_rb.is_active = true
+		# Descongelamos ACÁ (no en deactivate): la cápsula estuvo estática toda la recuperación, apoyada
+		# en el piso, así no la eyecta la física a mitad de blend. Sólo el jugador local (no un puppet,
+		# que debe seguir kinemático manejado por la red).
+		if not _recovering_char_rb.is_puppet:
+			_recovering_char_rb.freeze = false
 
 	_recovering_char_rb = null
 
