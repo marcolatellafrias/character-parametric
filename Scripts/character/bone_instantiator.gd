@@ -49,7 +49,6 @@ var crouch_t:     float = 0.0
 var head_pitch:   float = 0.0
 var _npc_skip_frame: bool = false
 var _reset_feet_after_recovery: bool = false  # plantar los pies el primer frame tras recuperarse
-var _dbg_leg_countdown: int = 0  # TEMPORAL: loguear estado de pasos tras recuperarse (feet-lag proxy)
 
 var grab_cone_mesh: MeshInstance3D = null
 var show_grab_cone: bool = false
@@ -146,7 +145,6 @@ func initialize_skeleton() -> void:
 
 	ragdoll_util = RagdollUtil.create(custom_bones_util, skel_rigidbodies, joints)
 	ragdoll_util.ik_util = ik_util  # para que el IK de recuperación use el mismo pole que la locomoción
-	ragdoll_util._dbg_tag = "proxy" if is_puppet else "local"  # TEMPORAL: diagnóstico
 
 	jump_squat_t = 0.0
 	crouch_t     = 0.0
@@ -226,7 +224,6 @@ func _physics_process(delta: float) -> void:
 			ik_util.recovery_targets_locked = false
 			char_rigidbody.is_snapshot_active = true
 			_reset_feet_after_recovery = true  # plantar los pies bajo el cuerpo, sin catch-up a los pasos
-			_dbg_leg_countdown = 0  # (deshabilitado mientras cazamos la explosión; poner 200 para el feet-lag)
 
 	skel_sizes_util.update(delta, animation_inputs, entity_instantiation, ik_util)
 
@@ -268,16 +265,6 @@ func _solve_standing_frame(delta: float) -> void:
 		# Ya corrió el raycast (next_target fresco bajo el cuerpo): plantamos ahí el pie, sin catch-up.
 		ik_util.reset_step_targets_to_ground()
 		_reset_feet_after_recovery = false
-
-	if _dbg_leg_countdown > 0:
-		_dbg_leg_countdown -= 1
-		if _dbg_leg_countdown % 12 == 0:  # cada ~12 frames, para no spamear
-			var cap := char_rigidbody.global_position
-			var lf := ik_util.left_leg_current_target.global_position
-			var foot_lag := Vector2(lf.x - cap.x, lf.z - cap.z).length()
-			print("[LEGS %s f=%d] vel=%.2f foot_lag=%.2f %s" % [
-				"proxy" if is_puppet else "local", Engine.get_physics_frames(),
-				char_rigidbody.get_motion_velocity().length(), foot_lag, ik_util.debug_step_state()])
 
 	# procedural primero, anim_mod encima — mismo orden que antes
 	procedural_animator.update()

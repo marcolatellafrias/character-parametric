@@ -509,13 +509,6 @@ func reset_raycast_offset() -> void:
 ## curso. Se llama al SALIR de la recuperación: durante ella los targets están congelados
 ## (recovery_targets_locked), y sin esto los pies tienen que "alcanzar" al cuerpo a los pasos —
 ## lento, y peor en un proxy que corre el solve a media tasa (feet lag por unos segundos).
-## TEMPORAL: estado de pasos para diagnosticar el feet-lag del proxy tras recuperarse.
-func debug_step_state() -> String:
-	return "step_radius=%.2f  L(wants=%s dist=%.2f stepping=%s)  R(wants=%s dist=%.2f stepping=%s)" % [
-		current_step_radius,
-		_left_wants_step,  sqrt(_left_dist2),  _is_stepping(left_leg_current_target),
-		_right_wants_step, sqrt(_right_dist2), _is_stepping(right_leg_current_target)]
-
 func reset_step_targets_to_ground() -> void:
 	for pair in [[left_leg_current_target, left_leg_next_target], [right_leg_current_target, right_leg_next_target]]:
 		var cur: Node3D = pair[0]
