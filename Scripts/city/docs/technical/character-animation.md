@@ -11,7 +11,7 @@ It documents the pipeline explicitly — the per-frame inputs, and how a remote 
 `BoneInstantiator.initialize_skeleton()` builds everything, deterministically from `master_seed`:
 
 1. **`EntityInstantiation.create(seed)`** → `arch_final` (an `EntityArchetype`: height, weight, reach, fatness, muscularity, proportions, slouch, arm/leg factors, step params…). This is the stat block.
-2. **`SkeletonSizesUtil.create(inst)`** → every bone's **size / offset / rest data** as a pure function of the archetype stats (e.g. `middle_spine` radius `lerp(0.1, 0.55, fatness)`, arm segment lengths from `reach`, leg heights from proportions). Also derives locomotion params: `step_radius_min/max`, `step_height`, `distance_from_ground`, `raycast_leg_lenght`, arm rest targets/poles, etc.
+2. **`SkeletonSizesUtil.create(inst)`** → every bone's **size / offset / rest data** as a pure function of the archetype stats (e.g. `middle_spine` radius `lerp(0.1, 0.55, fatness)`, arm segment lengths from `reach`, leg heights from proportions). Also derives the gait: `foot_reach`, `distance_from_ground`, `step_height`, `raycast_leg_lenght`, arm rest targets/poles, etc. — all of it out of the archetype's single `stride` knob (see [the gait model](#the-gait-model)).
 
 **What the seed actually varies.** Only three things: the **archetype**, whether a **second archetype blends** in at 0.5, and the **specie** (today pinned to human by `EntityInstantiation.FORCE_HUMAN_SPECIE`). There is **no per-instance random roll on animation parameters** — `_resolve` computes each one as `archetype value × specie multiplier`. Two characters of the same archetype and specie animate identically; the variety is meant to come from the archetype set and the blends, not from jitter. (`age` and `skin_color` are still rolled, and neither feeds the pose.)
 3. **`CustomBonesUtil.create(sizes, inst)`** → builds the **bone hierarchy** of `CustomBone`s (parents, rest rotations, offsets) from those sizes.
@@ -55,10 +55,10 @@ Anything new that reads current transforms on a proxy follows the same rule: syn
 1. **`locomotion_signals.update(delta)`** — computes smoothed signals from the capsule + current foot targets:
    - `_update_velocity_signals`: `horizontal_velocity_smooth`, `speed_norm`, `vertical_velocity_smooth`, `impact_*_smooth` — read from **`char_rigidbody.get_motion_velocity()`** and `impact_xz/impact_y`.
    - `_update_step_signals`: `step_progress`, `step_length_norm`, `foot_spread_*` — read from the IK leg targets' current positions.
-2. **`skel_sizes_util.update()`** → `_update_step_radius`: sets `ik_util.current_step_radius` by lerping min↔max on **speed** (bigger strides when faster).
+2. **`skel_sizes_util.update()`** → `_update_gait`: sets `current_excursion`, `current_duty` and `current_stride` from **speed**, then `ik_util.advance_gait` advances the gait phase.
 3. **Leg IK** (`ik_util`), per leg:
-   - `update_leg_raycast_offsets`: leads the foot raycast in the movement direction (from velocity) so steps land ahead.
-   - `update_ik_raycast`: **if `char_rigidbody.is_grounded` is false → foot goes to the *airborne* target** (tucked up), else casts down (several candidate origins) to find the ground, decides whether the foot is out of its `step_radius` (→ **wants_step**), and `_try_start_farther_leg` tweens the farther foot to its new spot (`_tween_foot_to`, arced by `step_height`). Then `solve_two_bone_ik` bends the leg to the current foot target.
+   - `update_airborne_target`: how far the leg tucks up while off the ground (scales with vertical speed).
+   - `update_ik_raycast`: **if `is_grounded` is false → foot goes to the *airborne* target** (tucked up), else casts down (several candidate origins) to find the ground, and places the foot according to the leg's **gait phase** — planted during stance, interpolated to the predicted landing point during swing. Then `solve_two_bone_ik` bends the leg to the foot target.
 4. **`procedural_animator.update()`** (`ProceduralBoneAnimator`) — re-poses each registered bone/node from the locomotion signals. Registrations live in `BoneAnimations` (`register_all`): each entry maps a **signal** (step progress, h-velocity, foot spread…) to a **bone axis** (rot/pos) × weight × optional curve. This is the "walk/idle look" — spine sway, hip drive, arm swing, etc. All additive on top of rest.
 5. **`anim_mod.apply(delta)`** (`AnimationModifiers`) — root offsets on `lower_spine` for **crouch** (`crouch_t`), **jump squat** (`jump_squat_t`) and **throw** tilt (`throw_t`/`throw_push_t`).
 6. **Arm IK** — arm rest targets are placed relative to the chest, then **`arms_controller.apply_world_overrides`** blends in **grab** (arms reach the interactable's *handle points*, body/shoulder adjust) and **throw** poses; finally `solve_two_bone_ik` bends each arm to its target.
@@ -68,35 +68,137 @@ Anything new that reads current transforms on a proxy follows the same rule: syn
 
 ---
 
-## Leg IK, stepping & the resting stance
+## The gait model
 
-The legs are the one part with **state that persists between frames** (the foot targets), so they deserve their own map. Everything lives on `IkUtil`, per leg.
+The legs are the one part with **state that persists between frames**, so they get their own map. Everything lives on `IkUtil` (per-frame placement) and `SkeletonSizesUtil` (the derivation). There is **one authored number**, `EntityArchetype.stride` ∈ 0..1 — "how much of its usable reach this character spends on each step". Everything else below is derived.
 
 ### The four foot nodes (per leg)
 
 | Node | What it is |
 |---|---|
-| `neutral_local` | the foot raycast's **rest local origin** — `x = ±raycast_stance_offset` (stance width), `y = −raycast_start_y_offset` (up near the hip). Where the foot wants to be when idle. |
-| `next_target` | the **live ground hit**: the foot raycast (cast down from `neutral_local` + a velocity **lead** offset) resolved against the world **this frame**. "Where the foot would land." Updated every frame. |
-| `current_target` | where the foot **actually is** now. `solve_two_bone_ik(upper_leg, lower_leg, current_target, pole)` bends the leg to it. It only moves via a **step** (below). Idle ⇒ it holds still. |
+| `neutral_local` | the foot raycast's **rest local origin** — `x = ±raycast_stance_offset` (stance width), `y = −raycast_start_y_offset` (up near the hip). The hip's ground projection. |
+| `next_target` | the **live ground hit** this frame, at the probe position (below). |
+| `current_target` | where the foot **actually is**. `solve_two_bone_ik(upper_leg, lower_leg, current_target, pole)` bends the leg to it. |
 | `airborne_target` | foot **tucked up**; used instead of the ground when `is_grounded` is false. |
 | `pole` | knee-bend direction — a node in front of the leg (offset by `pole_distance` + hip width). |
 
-### Stepping
+**Debug lines.** Three per leg, one per raycast candidate: **A** = the predicted-landing probe, **B** = plain neutral, **C** = the capsule's ground point. Blue = the candidate that resolved this frame, grey = the others. All three are children of the raycast, whose origin is always restored to neutral after probing, so each indicator must be offset by hand to the candidate it stands for — miss that on A and it sits on top of B and the lead becomes invisible.
 
-A leg **steps** only when its foot has drifted beyond `current_step_radius` from neutral (`wants_step`). Then `_try_start_farther_leg` picks the farther foot and **tweens `current_target` → `next_target`** in an arc (`step_height`, `_update_stepping_foot`). `current_step_radius` lerps min↔max on speed (longer strides when faster). Idle ⇒ no step ⇒ `current_target` sits put. So **the foot lags its `next_target` by up to a step radius** — that's the deliberate "plant, then step" feel, not a bug.
+**A moves per-leg and per-phase now, and that is expected.** It is not the old constant lead line. It answers "where will *this* foot land", a question that only has an answer while the foot is in flight:
 
-**The step radius is the stride knob.** `EntityArchetype.step_radius_min/max` are **fractions of `leg_height`**, so the same value means "the same gait" on a kid and on a giga; `SkeletonSizesUtil.create` turns them into metres (`leg_height × value`) and `_update_step_radius` lerps between them on speed — `min` at a standstill, `max` at full sprint. It's a single knob with two effects: it's the **threshold** to step, *and* (via `update_leg_raycast_offsets`, which leads the raycast by `current_step_radius` × the axis weights, ~0.8 forward) it's how far ahead of the hip the foot **lands**. Raise it → fewer, longer steps; lower it → shorter, more frequent ones.
+- **Stance** — no prediction term, so A sits at `neutral + Â·A`. The planted foot drifts backwards away from it as the body advances.
+- **Lift-off** — the prediction term `v⃗·t_remaining` appears at full size, so A **jumps forward** by about `(1−D)·S`. This is the one visible discontinuity and it is inherent: a foot that isn't moving has no landing point to predict.
+- **Swing** — `t_remaining` decays to 0, so A sweeps back in and **converges on the foot** exactly at touchdown. No snap on landing; the convergence is what makes the plant seamless.
 
-Its ceiling is **leg reach**, and that ceiling is tight. The pelvis sits at `leg_height − distance_from_ground` and the IK chain (upper + lower leg) is exactly `leg_height`, so with the current `distance_from_ground_factor` (0.03–0.06 in all five archetypes, versus the class default of 0.15) the foot can only get ≈`0.3 × leg_height` **horizontally** from the hip before the leg locks straight, and about `0.2 ×` before the knee stops reading as bent. The forward lead of ~`0.8 × step_radius` is what consumes that budget. **So the lever for genuinely longer strides is lowering the pelvis** (a larger `distance_from_ground_factor`, or a stride-driven dip), not just a bigger radius — past the budget the two-bone solve clamps and the foot stops reaching its target instead of striding further.
+So "it snaps out at each step and then meets the foot" is the mechanism working. Watching A during swing is the way to see whether the prediction is aiming correctly.
+
+### 1. Geometry: the pelvis height *is* the stride budget
+
+The IK chain (upper + lower leg) is exactly `leg_height` (`0.45 + 0.55`), and the hip sits at `h = leg_height − distance_from_ground`. With the foot on the ground the chain has to span `h` vertically and `A` horizontally, so the reach is
+
+```
+A_max = √((e·L)² − h²)          e = MAX_EXTENSION = 0.95, L = leg_height
+```
+
+**The higher the pelvis, the shorter the possible step** — and it collapses fast. At `h = 0.95 L` (what all five archetypes used to author via `distance_from_ground_factor`) the leg is *already* at 95 % extension standing still: `A_max = 0`. Any step at all had to clamp in `solve_two_bone_ik`, locking the knee straight.
+
+So the direction is inverted: **pick the stride, derive the pelvis height it needs.**
+
+```
+h      = L · lerp(HIP_HEIGHT_HIGH, HIP_HEIGHT_LOW, stride)     # 0.93 → 0.80
+A_max  = √((e·L)² − h²)                                        # foot_reach
+```
+
+`distance_from_ground` is now an *output* (`L − h`), not an authored field. Raising `stride` lowers the hips and buys reach; that trade is the whole point and it is not optional — it is geometry.
+
+### 2. Per frame: excursion, duty, stride
+
+```
+t   = speed / max_speed
+D   = lerp(DUTY_WALK, DUTY_RUN, t)                 # 0.62 → 0.40, the duty factor
+A   = A_max · √t                                   # foot excursion actually used
+S   = 2A / D                                       # stride: body travel per full cycle
+```
+
+**`A` must reach zero at zero speed**, hence `√t` rather than a lerp off some idle floor. The step direction is a *normalised* vector, so a floor means the foot still aims a full excursion ahead at 0.001 m/s — the settling step then targets a point outside its own trigger threshold, lands, re-triggers, and mini-steps forever. `√t` also rises steeply off zero, so a slow walk gets real steps rather than a scurry; with a linear `t` the cadence `v/S` comes out *constant* at every speed, which is wrong.
+
+**`S = 2A/D` is forced, not chosen.** The foot plants at `+A` and lifts at `−A`, so it travels `2A` backwards in the body frame; during stance it is world-fixed, so that travel equals `D·S`. Cadence then falls out as `f = v/S` — no cadence parameter exists, and it scales correctly with leg length and speed on its own.
+
+`D` is the fraction of the cycle a foot is **planted**. `D > 0.5` ⇒ there is always a foot down and a double-support window (a walk). `D < 0.5` ⇒ a flight phase (a run). The old code had an *effective* `D = 0.2`: each foot airborne 80 % of the time, so two legs needed 1.6 cycles of swing per 1 cycle available — alternation was arithmetically impossible, steps queued behind each other, and the blocked leg kept drifting backwards. That is what "the legs lag behind" was.
+
+### 3. Phase, not thresholds
+
+One accumulator drives both feet — `gait_phase` advances by `rate·delta`, left leg at `phase`, right at `phase + 0.5`:
+
+- `phase < D` → **stance**: the foot is world-planted and simply not touched.
+- `phase ≥ D` → **swing**: `swing_t = (phase − D)/(1 − D)`, and the foot eases from its lift-off point to the landing point.
+
+Alternation is exact by construction. There is no step radius, no cooldown, no "which leg is farther", no `_try_start_farther_leg`. When the character starts moving, `_sync_phase_to_feet` seeds the phase so the foot that is furthest *behind* swings first (otherwise the first step reads as a stumble).
+
+**The rate is distance-driven, with a floor while a step is committed:**
+
+```
+rate = v / S                                  # cycles/s — stride locked to travel, no sliding
+if either leg is swinging:
+    rate = max(rate, MIN_SWING_RATE)
+```
+
+Distance-driven is what keeps the stride tied to how far the body actually moved. The one case it doesn't cover is **braking with a foot in the air**: at `v → 0` the phase stalls and the airborne foot would never land. The floor covers exactly that, and only that — it applies solely while a leg is mid-swing, so once the foot touches down nothing is swinging, the floor lapses, and the phase freezes. No marching in place.
+
+Note the floor is *not* a captured duration. `rate` is re-derived from live speed every frame, so accelerating hard mid-step speeds that step up too; freezing a swing duration at lift-off would desync from travel exactly the way a frozen landing point does.
+
+A leg that has started a step also **stays committed** until its phase leaves `[D, 1)`:
+
+```gdscript
+swinging = phase ≥ D and (moving or already_swinging)
+```
+
+Without the `already_swinging` term, releasing the stick mid-swing flips the leg out of swing that frame and the foot **teleports** to the ground. With it, the step plays out; and the `moving` term still stops a planted leg from starting a *new* step while stationary.
+
+### 4. The landing prediction — the part that actually fixes the lag
+
+The foot must land half a step ahead of where the hip **will be at touchdown**, not where it is now. So the ground probe is
+
+```
+probe = neutral + Â·A + v⃗ · t_remaining        t_remaining = (1 − swing_t)·(1 − D)/rate
+```
+
+(`t_remaining` comes off the **effective rate**, not `v/S` — the latter blows up as `v → 0`. Off the rate it stays finite everywhere, and `v⃗ · t_remaining` decays to zero on its own as you stop, so the landing point walks back under the hip instead of jumping.)
+
+Without that `v⃗ · t_remaining` term the body advances during the swing by exactly as much as the foot was led forward, and the two cancel: **the foot lands directly under the hip every single step, and can never get in front of the body.** That was the old behaviour — and it was independent of the step radius, which is why re-tuning the radius never fixed it.
+
+The term is also self-correcting: as `swing_t → 1`, `t_remaining → 0` and the probe converges on the exact plant point, so velocity noise mid-swing washes out by touchdown. That is why no smoothing filter is needed on the lead any more (the old `raycast_offset` lerp is gone).
+
+Lateral/backward steps are shortened by `axis_weight_lateral` / `axis_weight_backward` on the placement term only — the prediction term is pure physics and is never weighted.
+
+### 5. Edge cases
+
+- **Idle** (`speed < GAIT_MIN_SPEED`): the phase freezes and feet stay planted.
+- **The settling step.** Stopping cuts the cycle wherever it happened, so the feet are left asymmetric — one ahead, one behind. `_settle_step_if_needed` gives the more displaced foot one short step back under the hip once it passes `SETTLE_EXCURSION_FRACTION × foot_reach`. This is the little shuffle you get when you halt, and it also covers turning in place and being shoved. It's the **only** step not driven by phase (there's no cycle to advance at zero speed), and it's one foot at a time — the `_is_stepping` guard covers *both* feet, and the larger displacement wins the tie.
+- **Airborne / no ground / ground out of reach**: the foot snaps to `airborne_target` (or a blend toward it near ledges) and the swing state clears, so landing re-plants cleanly instead of "flying" to the new spot.
+- **Half-rate solve**: NPCs and proxies solve every other frame, so `BoneInstantiator` passes `solve_delta = delta · 2`. The gait phase and every smoothing filter are functions of delta; feeding them the raw physics delta makes them advance at half real-time speed while the capsule keeps moving every frame — feet trailing the body, on proxies only.
+
+### Tuning
+
+| Knob | Where | Effect |
+|---|---|---|
+| `stride` | `EntityArchetype` | the character's gait: hips lower, reach and step longer |
+| `MAX_EXTENSION` | `SkeletonSizesUtil` | how straight the leg is allowed to get at the extremes |
+| `HIP_HEIGHT_HIGH/LOW` | `SkeletonSizesUtil` | the pelvis range `stride` maps onto |
+| `DUTY_WALK/RUN` | `SkeletonSizesUtil` | walk-vs-run character; below 0.5 gives a flight phase |
+| `MIN_SWING_RATE` | `IkUtil` | how fast a step in progress finishes when you brake mid-stride |
+| `SETTLE_EXCURSION_FRACTION` | `IkUtil` | how far off-centre a foot must be before the settling step fires |
+| `SETTLE_DURATION` | `IkUtil` | how snappy that settling step is |
+
+**Cadence is not tunable directly** — it is `v/S`. If the feet look like they are scurrying, the cause is that `EntityArchetype.speed` is high relative to what the legs can stride: with `speed = 0.3` (⇒ 3 m/s, `SPEED_SCALE = 10`) on `leg_height ≈ 0.88 m`, `f` lands around 3 Hz where a human would be near 1.5. Fix it by raising `stride` (longer steps) or lowering `speed` — not by adding a cadence multiplier, which would re-break the `S = 2A/D` identity and bring the foot-sliding back.
 
 ### The resting stance (why the foot clips)
 
-The capsule holds the pelvis at `leg_height − distance_from_ground` above the ground (`y_offset` in `CharacterRigidBody3D.create`), so **idle legs are slightly bent**, not locked straight. The foot IK targets the **raw ground point**, and the foot bone (`upper_feet`) is **rigidly ~90° to the shin** — foot roll is *not* animated. Net effect: the un-animated foot dips a little into the floor at rest. Known cosmetic quirk; harmless, and any leg animation must reproduce it (rather than fight it) to avoid a pop.
+The capsule holds the pelvis at `leg_height − distance_from_ground` above the ground (`y_offset` in `CharacterRigidBody3D.create`), so **idle legs are visibly bent** — more so now that the pelvis is derived from the stride. The foot IK targets the **raw ground point**, and the foot bone (`upper_feet`) is **rigidly ~90° to the shin** — foot roll is *not* animated. Net effect: the un-animated foot dips a little into the floor at rest. Known cosmetic quirk; harmless, and any leg animation must reproduce it (rather than fight it) to avoid a pop.
 
 ### Standing up from a ragdoll (recovery)
 
-While `RagdollUtil.is_recovering`, `BoneInstantiator` sets `ik_util.recovery_targets_locked = true`, which **bypasses the step machinery**: no `_update_stepping_foot`, no `_try_start_farther_leg`. Consequence — and this is the trap — **`current_target` is frozen** at wherever it was when the fall began (stale; possibly meters away if the body slid). **`next_target` keeps updating** (its assignment sits *outside* the lock guard), so it's the live resting ground point under the now-grounded capsule.
+While `RagdollUtil.is_recovering`, `BoneInstantiator` sets `ik_util.recovery_targets_locked = true`, which **bypasses the placement block entirely**: the gait phase keeps running but nothing writes `current_target`. Consequence — and this is the trap — **`current_target` is frozen** at wherever it was when the fall began (stale; possibly meters away if the body slid). **`next_target` keeps updating** (its assignment sits *outside* the lock guard), so it's the live resting ground point under the now-grounded capsule.
 
 `RagdollUtil._update_recovery` rebuilds the **visible ragdoll-body** pose (the skeleton is hidden; bodies are shown) as a deliberate "get up" motion — see [characters.md](characters.md) for the ragdoll/recovery lifecycle:
 

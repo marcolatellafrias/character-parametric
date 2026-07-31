@@ -43,16 +43,14 @@ var arm_swing : float = 0.5
 var root_bounciness : float = 0.5
 ## Altura del arco del paso, en fracción del largo de pierna.
 var step_height : float = 0.5
-## Radio de paso: cuánto puede alejarse el pie plantado de donde el raycast lo quiere antes de dar un
-## paso. En **fracción del largo de pierna** (leg_height), así un chico y un giga con el mismo valor
-## caminan "igual de largo" para su tamaño. Se interpola min↔max según la velocidad actual
-## (SkeletonSizesUtil._update_step_radius): min = quieto/lento, max = sprint a fondo.
+## ZANCADA — el único knob del andar, 0..1. No está en metros ni en fracción de pierna: es "cuánto
+## de su alcance útil usa este personaje al caminar". 0 = pasitos cortos, 1 = zancada máxima.
 ##
-## El radio también fija cuánto se adelanta el raycast del pie en la dirección del movimiento
-## (IkUtil.update_leg_raycast_offsets, ~0.8·radio hacia adelante), así que es el parámetro que decide
-## el LARGO de la zancada y, con la velocidad, la cadencia. Subirlo = menos pasos, más largos.
-var step_radius_min : float = 0.2
-var step_radius_max : float = 1.0
+## De acá sale TODO lo demás (SkeletonSizesUtil.create): la altura de pelvis que hace falta para que
+## el pie llegue a esa zancada con la rodilla flexionada, y de ahí el alcance y la zancada en metros.
+## Por eso `distance_from_ground_factor` ya no se escribe a mano — se deriva. Ver
+## technical/character-animation.md (el modelo de marcha).
+var stride : float = 0.6
 var leg_cripple_chance : float = 0.0
 var stance_width: float = 1.0
 
@@ -75,13 +73,10 @@ var chest_to_low_spine_proportion : float = 1.0
 var legs_to_feet_proportion : float = 1.0
 var hips_width_proportion : float = 1.0
 var shoulder_width_proportion : float = 1.0
-var distance_from_ground_factor := 0.15
 var head_neck_ratio: float = 0.4
 
 var uncompatible_archetypes : Array[Archetype] = []
 var archetype_frequency : float = 1.0
-
-var step_duration_scale: float = 1.0
 
 static func create(archetype: Archetype) -> EntityArchetype:
 	if(archetype == Archetype.fat_man):
@@ -129,8 +124,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.root_bounciness = 0.8
 	arch.step_height = 0.4
 	# Camina "corto para lo que mide": pasitos rápidos bajo un cuerpo pesado, base ancha.
-	arch.step_radius_min = 0.22
-	arch.step_radius_max = 1.00
+	arch.stride = 0.45
 	arch.leg_cripple_chance = 0.1
 	arch.slouch = 0.0
 	arch.shoulders_height = 0.15
@@ -146,10 +140,8 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.legs_to_feet_proportion = 0.42
 	arch.hips_width_proportion = 0.08
 	arch.shoulder_width_proportion = 0.13
-	arch.distance_from_ground_factor = 0.05
 	arch.head_neck_ratio = 0.4
 	arch.stance_width = 1.4
-	arch.step_duration_scale = 1.3
 	return arch
 
 static func kid_arch() -> EntityArchetype:
@@ -185,10 +177,8 @@ static func kid_arch() -> EntityArchetype:
 	arch.hip_swing = 0.5
 	arch.root_bounciness = 0.7
 	arch.step_height = 0.4
-	# Trotecito: piernas cortas, muchos pasos chicos. Antes tenía 1.8 (el más largo de todos) con las
-	# piernas más cortas de todas → zancadas de 1.2 m con piernas de 0.69 m. Corregido.
-	arch.step_radius_min = 0.20
-	arch.step_radius_max = 0.95
+	# Trotecito: piernas cortas, muchos pasos chicos.
+	arch.stride = 0.40
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.1
 	arch.shoulders_height = 0.0
@@ -204,7 +194,6 @@ static func kid_arch() -> EntityArchetype:
 	arch.legs_to_feet_proportion = 0.48
 	arch.hips_width_proportion = 0.07
 	arch.shoulder_width_proportion = 0.15
-	arch.distance_from_ground_factor = 0.06
 	arch.head_neck_ratio = 0.25
 	arch.stance_width = 1.4
 	return arch
@@ -243,8 +232,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.root_bounciness = 0.8
 	arch.step_height = 0.4
 	# Zancada larga y suelta: el que más estira el paso para su pierna (que además es la más larga).
-	arch.step_radius_min = 0.26
-	arch.step_radius_max = 1.30
+	arch.stride = 0.85
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.5
 	arch.shoulders_height = 0.0
@@ -260,7 +248,6 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.legs_to_feet_proportion = 0.52
 	arch.hips_width_proportion = 0.05
 	arch.shoulder_width_proportion = 0.13
-	arch.distance_from_ground_factor = 0.04
 	arch.head_neck_ratio = 0.45
 	arch.stance_width = 1.4
 	return arch
@@ -298,9 +285,8 @@ static func giga_arch() -> EntityArchetype:
 	arch.hip_swing = 0.5
 	arch.root_bounciness = 1.0
 	arch.step_height = 0.45
-	# Pisotones: pocos pasos, largos y lentos (es el más lento, así que la cadencia baja igual).
-	arch.step_radius_min = 0.28
-	arch.step_radius_max = 1.35
+	# Pisotones: pocos pasos, largos y lentos (es de los más lentos, así que la cadencia baja igual).
+	arch.stride = 0.75
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.0
 	arch.shoulders_height = 0.25
@@ -316,10 +302,8 @@ static func giga_arch() -> EntityArchetype:
 	arch.legs_to_feet_proportion = 0.47
 	arch.hips_width_proportion = 0.07
 	arch.shoulder_width_proportion = 0.14
-	arch.distance_from_ground_factor = 0.03
 	arch.head_neck_ratio = 0.5
 	arch.stance_width = 1.3
-	arch.step_duration_scale = 1.6
 	return arch
 
 static func old_arch() -> EntityArchetype:
@@ -355,9 +339,8 @@ static func old_arch() -> EntityArchetype:
 	arch.hip_swing = 0.5
 	arch.root_bounciness = 0.5
 	arch.step_height = 0.3
-	# Arrastra los pies: la zancada más corta de todas, y casi no crece con la velocidad.
-	arch.step_radius_min = 0.16
-	arch.step_radius_max = 0.80
+	# Arrastra los pies: la zancada más corta de todas.
+	arch.stride = 0.25
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 1.0
 	arch.shoulders_height = 0.5
@@ -373,7 +356,6 @@ static func old_arch() -> EntityArchetype:
 	arch.legs_to_feet_proportion = 0.55
 	arch.hips_width_proportion = 0.052
 	arch.shoulder_width_proportion = 0.11
-	arch.distance_from_ground_factor = 0.03
 	arch.head_neck_ratio = 0.45
 	arch.stance_width = 1.4
 	return arch
@@ -413,8 +395,7 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.hip_swing                     = lerpf(hip_swing, b.hip_swing, t)
 	r.root_bounciness               = lerpf(root_bounciness, b.root_bounciness, t)
 	r.step_height                   = lerpf(step_height, b.step_height, t)
-	r.step_radius_min               = lerpf(step_radius_min, b.step_radius_min, t)
-	r.step_radius_max               = lerpf(step_radius_max, b.step_radius_max, t)
+	r.stride                        = lerpf(stride, b.stride, t)
 	r.leg_cripple_chance            = lerpf(leg_cripple_chance, b.leg_cripple_chance, t)
 	r.slouch                        = lerpf(slouch, b.slouch, t)
 	r.shoulders_height              = lerpf(shoulders_height, b.shoulders_height, t)
@@ -427,11 +408,9 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.legs_to_feet_proportion       = lerpf(legs_to_feet_proportion, b.legs_to_feet_proportion, t)
 	r.hips_width_proportion         = lerpf(hips_width_proportion, b.hips_width_proportion, t)
 	r.shoulder_width_proportion     = lerpf(shoulder_width_proportion, b.shoulder_width_proportion, t)
-	r.distance_from_ground_factor   = lerpf(distance_from_ground_factor, b.distance_from_ground_factor, t)
 	r.head_neck_ratio = lerpf(head_neck_ratio, b.head_neck_ratio, t)
 	r.stance_width = lerpf(stance_width, b.stance_width, t)
 	r.arm_openness          = lerpf(arm_openness, b.arm_openness, t)
 	r.arm_bentness          = lerpf(arm_bentness, b.arm_bentness, t)
 	r.arm_elbow_openness = lerpf(arm_elbow_openness, b.arm_elbow_openness, t)
-	r.step_duration_scale = lerpf(step_duration_scale, b.step_duration_scale, t)
 	return r

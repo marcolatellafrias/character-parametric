@@ -201,18 +201,25 @@ func _physics_process(delta: float) -> void:
 	# primera línea). NO salteamos mientras ragdollea/recupera: si no, el blend de recuperación tarda el
 	# doble y _update_active se atrasa. El solve pesado ya se saltea solo al ragdollear, así que full-rate
 	# acá no cuesta. Ver technical/character-animation.md (solve a media tasa).
+	#
+	# Los frames que SÍ resuelven cubren el DOBLE de tiempo real. Todo el suavizado (locomotion,
+	# brazos, anim_mod) y la fase de marcha son función de delta, así que hay que pasarles el delta
+	# EFECTIVO: con el delta crudo esos sistemas avanzan a la mitad de velocidad en tiempo real y los
+	# pies se quedan atrás del cuerpo (el cuerpo sí se mueve todos los frames).
 	var _ragdolling := is_instance_valid(ragdoll_util) and (ragdoll_util.is_active or ragdoll_util.is_recovering)
+	var solve_delta := delta
 	if not is_active and not _ragdolling:
 		_npc_skip_frame = not _npc_skip_frame
 		if _npc_skip_frame:
 			return
+		solve_delta = delta * 2.0
 
 	_update_ragdoll_ext_state()
 	_update_animation_inputs()          # productor: llena animation_inputs desde la cápsula
 	_update_local_targets_positions()   # consumidor: lee animation_inputs (ya no la cápsula)
 
 	if is_instance_valid(ragdoll_util):
-		ragdoll_util.update(delta)
+		ragdoll_util.update(solve_delta)
 		if ragdoll_util.is_active:
 			ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, animation_inputs)
 			ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, animation_inputs)
@@ -224,20 +231,20 @@ func _physics_process(delta: float) -> void:
 			char_rigidbody.is_snapshot_active = true
 			_reset_feet_after_recovery = true  # plantar los pies bajo el cuerpo, sin catch-up a los pasos
 
-	skel_sizes_util.update(delta, animation_inputs, entity_instantiation, ik_util)
+	skel_sizes_util.update(solve_delta, animation_inputs, entity_instantiation, ik_util)
 
 	if is_instance_valid(arms_controller):
 		arms_controller.update_arm_compress(jump_squat_t, 1.0 if is_seated else crouch_t)
 
-	locomotion_signals.update(delta)
+	locomotion_signals.update(solve_delta)
 
 	ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
 	ik_util.right_arm_ik_target.position = skel_sizes_util.right_arm_tip_rest_local
 
 	if is_seated and is_instance_valid(current_seat):
-		_solve_seated_frame(delta)
+		_solve_seated_frame(solve_delta)
 	else:
-		_solve_standing_frame(delta)
+		_solve_standing_frame(solve_delta)
 
 	_update_grab_cone()
 
@@ -254,8 +261,8 @@ func _update_ragdoll_ext_state() -> void:
 
 
 func _solve_standing_frame(delta: float) -> void:
-	ik_util.update_leg_raycast_offsets(animation_inputs, delta, true,  skel_sizes_util, entity_archetype)
-	ik_util.update_leg_raycast_offsets(animation_inputs, delta, false, skel_sizes_util, entity_archetype)
+	ik_util.update_airborne_target(animation_inputs, true,  skel_sizes_util)
+	ik_util.update_airborne_target(animation_inputs, false, skel_sizes_util)
 
 	ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, animation_inputs)
 	ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, animation_inputs)

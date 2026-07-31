@@ -26,8 +26,7 @@ var shoulder_swing: float
 var hip_swing: float
 var root_bounciness: float
 var step_height: float
-var step_radius_min: float
-var step_radius_max: float
+var stride: float
 var side_swing: float
 
 
@@ -83,8 +82,7 @@ func _resolve(rng: RandomNumberGenerator) -> void:
 	side_swing      = arch_final.side_swing      * spec.side_swing_multiplier
 	root_bounciness = arch_final.root_bounciness * spec.root_bounciness_multiplier
 	step_height     = arch_final.step_height     * spec.step_height_multiplier
-	step_radius_min = arch_final.step_radius_min * spec.step_radius_multiplier
-	step_radius_max = arch_final.step_radius_max * spec.step_radius_multiplier
+	stride          = clampf(arch_final.stride   * spec.stride_multiplier, 0.0, 1.0)
 	skin_color      = spec.skin_colors[rng.randi() % spec.skin_colors.size()]
 
 

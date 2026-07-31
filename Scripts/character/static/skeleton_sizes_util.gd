@@ -36,24 +36,42 @@ var hip_size: Vector3
 var hip_offset: Vector3
 var raycast_stance_offset: float
 
-## Extremos del radio de paso YA en metros (arquetipo × leg_height). Se interpolan según velocidad en
-## _update_step_radius: min = quieto, max = sprint a fondo.
-var step_radius_min: float
-var step_radius_max: float
+# ── MARCHA ────────────────────────────────────────────────────────────────────────────────────────
+# Todo esto se deriva del knob `stride` del arquetipo. Ver technical/character-animation.md.
+
+## Extensión máxima "cómoda" de la cadena de la pierna, en fracción de su largo. A 1.0 la pierna
+## queda trabada recta (la IK clampea y el pie deja de llegar al target); 0.95 deja la rodilla
+## visiblemente flexionada incluso en el punto más estirado del paso.
+const MAX_EXTENSION := 0.95
+## Extremos de la altura de pelvis, en fracción del largo de pierna. stride=0 → pelvis alta (poco
+## alcance, pasitos), stride=1 → pelvis baja (mucho alcance, zancada larga).
+const HIP_HEIGHT_HIGH := 0.93
+const HIP_HEIGHT_LOW  := 0.80
+## Duty factor: fracción del ciclo que el pie pasa APOYADO. Caminando >0.5 (siempre hay un pie en el
+## piso, y hay doble apoyo); corriendo <0.5 (hay fase de vuelo con los dos pies en el aire).
+const DUTY_WALK := 0.62
+const DUTY_RUN  := 0.40
+
+## Alcance horizontal del pie desde la cadera, en metros, con el pie en el piso y la rodilla todavía
+## flexionada: A_max = √((e·L)² − h²). Es el techo duro de la excursión del pie.
+var foot_reach: float
+## EXCURSIÓN del pie de este frame (A, metros): cuánto se adelanta/atrasa el pie respecto de la
+## cadera. El pie pisa en +A y despega en −A, así que su recorrido en el marco del cuerpo es 2A.
+var current_excursion: float
+## ZANCADA de este frame (S, metros): lo que avanza el cuerpo en un ciclo completo de un pie.
+## Durante el apoyo (fracción D del ciclo) el pie está fijo en el mundo, o sea que en el marco del
+## cuerpo retrocede D·S; y ese recorrido tiene que ser exactamente 2A ⇒ **S = 2A/D**. De ahí sale la
+## cadencia: f = v/S. No es un parámetro libre — se deriva de la geometría y del duty.
+var current_stride: float
+var current_duty: float
+
 var step_height: float
 var distance_from_ground: float
 var raycast_leg_lenght: float
 var pole_distance: float
-var raycast_max_offset: float
-var raycast_amount := 11.5
-var speed_for_max := 10.0
 var axis_weight_lateral:  float = 0.6
 var axis_weight_forward:  float = 0.8
 var axis_weight_backward: float = 1.0
-var speed_curve: Curve
-const raycast_accel_gain := 0.06
-const raycast_vel_gain   := 0.02
-const raycast_smooth     := 8.0 
 
 var slouchiness_chest: float
 var slouchiness_center_spine: float
@@ -72,7 +90,6 @@ var right_arm_pole_rest_local: Vector3
 var left_arm_shoulder_rest_local: Vector3
 var right_arm_shoulder_rest_local: Vector3
 
-var step_duration_scale: float = 1.0
 
 var raycast_start_y_offset: float = 0.0
 
@@ -162,15 +179,22 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.hip_offset = Vector3(1.0, 1.0, 0.0)
 
 	skelSizes.raycast_leg_lenght = new_leg_height
-	skelSizes.distance_from_ground = new_leg_height * entityStats.distance_from_ground_factor
-	# El radio de paso viene del arquetipo en fracción de pierna; acá se pasa a metros. min y max son
-	# los extremos del lerp por velocidad (quieto ↔ sprint), no un rango de sorteo.
-	skelSizes.step_radius_min = new_leg_height * inst.step_radius_min
-	skelSizes.step_radius_max = new_leg_height * inst.step_radius_max
+
+	# ── Marcha: de la zancada deseada sale la altura de pelvis, y de ahí el alcance ───────────────
+	# La cadena de la pierna (fémur 0.45 + tibia 0.55) mide exactamente new_leg_height. Con la cadera
+	# a altura h y el pie en el piso, el alcance horizontal es √((e·L)² − h²): cuanto MÁS ALTA la
+	# pelvis, MENOS puede adelantar el pie sin trabar la rodilla. Por eso la zancada no se puede
+	# pedir libre — se elige h para que la zancada pedida entre. Ver character-animation.md.
+	var hip_height: float = new_leg_height * lerp_range(HIP_HEIGHT_HIGH, HIP_HEIGHT_LOW, inst.stride)
+	skelSizes.distance_from_ground = new_leg_height - hip_height
+	var max_extension: float = MAX_EXTENSION * new_leg_height
+	skelSizes.foot_reach = sqrt(max(0.0, max_extension * max_extension - hip_height * hip_height))
+	skelSizes.current_duty = DUTY_WALK
+	skelSizes.current_excursion = 0.0
+	skelSizes.current_stride = 0.0
+
 	skelSizes.step_height = new_leg_height * inst.step_height
 	skelSizes.pole_distance = new_leg_height
-	skelSizes.step_duration_scale    = entityStats.step_duration_scale
-	skelSizes.raycast_max_offset     = new_leg_height * 0.20 * entityStats.step_duration_scale
 	skelSizes.raycast_start_y_offset = new_leg_height * 0.35
 
 	skelSizes.slouchiness_chest        = lerp_range(0.0, 0.6, entityStats.slouch)
@@ -236,17 +260,28 @@ static func _compute_arm_pole_local(left: bool, s: SkeletonSizesUtil) -> Vector3
 	return elbow + pole_dir * s.upper_arm_size.y * 0.8 + Vector3(0, 0, 0.5)
 
 
-func update(_delta: float, inputs: AnimationInputs, inst: EntityInstantiation, ik_util: IkUtil) -> void:
-	_update_step_radius(inputs, inst.arch_final, ik_util)
+func update(delta: float, inputs: AnimationInputs, inst: EntityInstantiation, ik_util: IkUtil) -> void:
+	_update_gait(inputs, inst.arch_final)
+	ik_util.advance_gait(delta, self, inputs)
 
-func _update_step_radius(inputs: AnimationInputs, entity_stats: EntityArchetype, ik_util: IkUtil) -> void:
-	var dxz := Vector2(inputs.velocity.x, inputs.velocity.z)
-	var instant_speed = dxz.length()
-	var min_speed = 0.01
+## Excursión, duty y zancada de este frame, en función de la velocidad. La excursión crece con la
+## velocidad (pasos más largos al correr) pero SIEMPRE acotada por foot_reach, que ya viene del
+## alcance real de la pierna — así nunca se le pide al pie un punto al que la IK no llega. El duty
+## baja de caminata a carrera: >0.5 hay doble apoyo, <0.5 hay fase de vuelo. La zancada (y con ella
+## la cadencia) es consecuencia de los otros dos, no un parámetro.
+func _update_gait(inputs: AnimationInputs, entity_stats: EntityArchetype) -> void:
+	var instant_speed := Vector2(inputs.velocity.x, inputs.velocity.z).length()
 	var max_speed: float = entity_stats.speed * entity_stats.sprint_multiplier * CharacterRigidBody3D.SPEED_SCALE
-	var speed_range = max(max_speed - min_speed, 0.01)
-	var t = clamp((instant_speed - min_speed) / speed_range, 0.0, 1.0)
-	ik_util.current_step_radius = lerp(step_radius_min, step_radius_max, t)
+	var t: float = clamp(instant_speed / max(max_speed, 0.01), 0.0, 1.0)
+	current_duty      = lerp_range(DUTY_WALK, DUTY_RUN, t)
+	# √t, no un lerp con piso: la excursión tiene que llegar a CERO parado. Con un piso (antes 0.35)
+	# el pie apuntaba a un objetivo adelantado incluso a velocidad ~0 — la dirección está normalizada,
+	# así que a 0.001 m/s la colocación seguía siendo la excursión entera. El paso de asentamiento
+	# apuntaba ahí, aterrizaba fuera de su propio umbral y volvía a dispararse: pasitos infinitos.
+	# La raíz además sube rápido al arrancar, así que caminar despacio no queda en pasitos ínfimos
+	# (con `t` lineal la cadencia sale constante; con √t crece con la velocidad, que es lo real).
+	current_excursion = foot_reach * sqrt(t)
+	current_stride    = 2.0 * current_excursion / max(current_duty, 0.05)
 
 static func lerp_range(min_val: float, max_val: float, t: float) -> float:
 	return min_val + (max_val - min_val) * clamp(t, 0.0, 1.0)

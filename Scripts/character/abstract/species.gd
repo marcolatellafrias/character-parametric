@@ -27,7 +27,7 @@ var shoulder_swing_multiplier : float = 1.0
 var hip_swing_multiplier : float = 1.0
 var root_bounciness_multiplier  : float = 1.0
 var step_height_multiplier : float = 1.0
-var step_radius_multiplier : float = 1.0
+var stride_multiplier : float = 1.0
 var leg_cripple_chance_multiplier : float = 1.0
 
 var skin_colors : Array # array of possible skin colors
@@ -52,7 +52,7 @@ static func human_specie() -> EntitySpecie:
 	specie.hip_swing_multiplier = 1.0
 	specie.root_bounciness_multiplier = 1.0
 	specie.step_height_multiplier = 1.0
-	specie.step_radius_multiplier = 1.0
+	specie.stride_multiplier = 1.0
 	specie.leg_cripple_chance_multiplier = 1.0
 	specie.side_swing_multiplier = 1.0
 	specie.skin_colors = [
@@ -83,7 +83,7 @@ static func alien_specie() -> EntitySpecie:
 	specie.hip_swing_multiplier = 1.0
 	specie.root_bounciness_multiplier = 1.0
 	specie.step_height_multiplier = 1.0
-	specie.step_radius_multiplier = 1.0
+	specie.stride_multiplier = 1.0
 	specie.side_swing_multiplier = 1.0
 	specie.leg_cripple_chance_multiplier = 0.0
 	specie.skin_colors = [
@@ -113,7 +113,7 @@ static func robot_specie() -> EntitySpecie:
 	specie.hip_swing_multiplier = 1.0
 	specie.root_bounciness_multiplier = 1.0
 	specie.step_height_multiplier = 0.5
-	specie.step_radius_multiplier = 0.6
+	specie.stride_multiplier = 0.6
 	specie.side_swing_multiplier = 1.0
 	specie.leg_cripple_chance_multiplier = 0.0
 	specie.skin_colors = [
