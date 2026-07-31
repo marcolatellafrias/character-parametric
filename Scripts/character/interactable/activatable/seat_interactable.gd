@@ -128,7 +128,7 @@ func release_occupant_for_teardown() -> void:
 ## El asiento gira con el ocupante (mismo yaw) — sin sincronizar nada extra: el yaw ya viaja en el
 ## transform del personaje. Owner: la malla prestada (hija de la cápsula, para esconderse en primera
 ## persona con el cuerpo); proxy remoto: el visual propio del asiento (a la vista, porque ahí nunca
-## se corrió _sit). Lo llama BoneInstantiator._solve_seated_frame cada frame del que está sentado.
+## se corrió _sit). Lo llama BoneInstantiator._pose_root cada frame del que está sentado.
 func update_seated_visual(occupant_yaw: float) -> void:
 	var mesh: Node3D = _borrowed_mesh if is_instance_valid(_borrowed_mesh) else _visual_root
 	if not is_instance_valid(mesh):

@@ -38,7 +38,7 @@ A `Node3D` per bone with `capsule_dimensions` (x/z = radius, y = length) and a `
 
 ## Per-frame pose (rebuilt every physics tick)
 
-For the **active** player every frame; for **NPCs/proxies** (`is_active=false`) every *other* frame (`_npc_skip_frame`). This half-rate is a **performance** measure — the full procedural solve is expensive, and a crowd of NPCs/proxies doesn't need it every tick. Order in `BoneInstantiator._physics_process` → `_solve_standing_frame`:
+For the **active** player every frame; for **NPCs/proxies** (`is_active=false`) every *other* frame (`_npc_skip_frame`). This half-rate is a **performance** measure — the full procedural solve is expensive, and a crowd of NPCs/proxies doesn't need it every tick. Order in `BoneInstantiator._physics_process` → `_solve_frame`:
 
 ### The half-rate solve and the sync-before-snapshot rule
 
@@ -65,6 +65,22 @@ Anything new that reads current transforms on a proxy follows the same rule: syn
 7. **Ragdoll sync** (`ragdoll_util.sync_to_bones`) when not ragdolling. During ragdoll the flow is bypassed and the capsule follows the bone-bodies ([characters.md](characters.md)).
 
 `ProceduralBoneAnimator.update()` first **resets every registered bone to its rest** and then re-applies — so the pose is genuinely `f(inputs)` each frame, not accumulated.
+
+### Seated is the same frame — only the root and the legs change
+
+There is **one** solve path (`_solve_frame`), not a standing one and a seated one. Sitting down changes exactly two things:
+
+1. **The root** (`_pose_root`) — standing, `lower_spine` rides the capsule; seated, it's **pinned to the seat** (and the capsule is pinned in XZ, and the seat mesh yaws with the occupant). It is idempotent and called **twice**, before and after the procedural layer, because the procedural moves the spine and it has to be re-anchored.
+2. **The legs** — standing, the gait (`_pose_legs_standing`: airborne target → ground raycast → IK); seated, a fixed forward tuck (`_pose_legs_seated`).
+
+Everything else — the procedural layer + `anim_mod`, the **arms** (rest targets, a proxy's synced grab via `drive_grab`, throw/grab world overrides, arm IK) and the ragdoll-body sync — is **shared and written once**. This is structural, not stylistic: the two paths used to be copy-pasted forks and drifted apart, so a **seated proxy operating a dashboard never got `drive_grab` and its arms stayed at rest** while everyone else saw them on the handles. If you add a step, it goes in the shared block; if you branch, it has to be root or legs.
+
+**The one thing that legitimately differs is *when* the legs run**, and it is not negotiable in either direction:
+
+- **Standing: legs run *before* the procedural.** The foot raycasts originate at the hips, and the procedural animates the hips from foot signals (`FOOT_SPREAD_*`). Solving the legs afterwards feeds hip swing back into foot placement.
+- **Seated: legs run *after*.** They hang off a root that must already be anchored to the seat.
+
+Seated also re-pins the legs **once more after the arms** (`_repin_legs_seated`), because the grab overrides tilt the spine. That re-pin reuses the **cached** foot/pole targets — recomputing them post-tilt would drag the feet along with the torso.
 
 ---
 

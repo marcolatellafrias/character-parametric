@@ -31,7 +31,7 @@ godotsteam.gdextension::GDExtension::7217876115720920266::1784849212::0::1::::<>
 ::res://addons/godotsteam/linux64/::1774846319
 ::res://addons/godotsteam/linuxarm64/::1774846319
 ::res://addons/godotsteam/win32/::1774846319
-::res://addons/godotsteam/win64/::1785510951
+::res://addons/godotsteam/win64/::1785511788
 ::res://addons/Mirror3D/::1785304395
 Mirror3D.gd::GDScript::6114414996668009307::1773170702::0::1::::Mirror3D<>Node3D<><>0<>1<><>::
 Mirror3D.gdshader::Shader::3030333951447338880::1785304394::0::1::::<><><>0<>0<><>::
@@ -151,8 +151,8 @@ marco textura.png::CompressedTexture2D::4521124324136316203::1762725894::1771448
 character_test.gd::GDScript::3215434434459665187::1784879289::0::1::::<>CharacterBody3D<><>0<>0<><>::
 world_seeds.gd::GDScript::5589243996452502094::1784849098::0::1::::WorldSeeds<>RefCounted<><>0<>0<><>::
 world_settings.gd::GDScript::4157253141975604989::1782303363::0::1::::<>Node<><>0<>0<><>::
-::res://Scripts/character/::1785494128
-bone_instantiator.gd::GDScript::1226092283612256082::1785494128::0::1::::BoneInstantiator<>Node3D<><>0<>0<><>::
+::res://Scripts/character/::1785511749
+bone_instantiator.gd::GDScript::1226092283612256082::1785511749::0::1::::BoneInstantiator<>Node3D<><>0<>0<><>::
 player_controller.gd::GDScript::435046117816229089::1785410551::0::1::::PlayerController<>Node<><>0<>0<><>::
 ::res://Scripts/character/abstract/::1785493886
 archetypes.gd::GDScript::8027365844528752703::1785493876::0::1::::EntityArchetype<>RefCounted<><>0<>0<><>::
@@ -177,9 +177,9 @@ stability_hud.gd::GDScript::4076658641964936561::1773928258::0::1::::StabilityHU
 interactable.gd::GDScript::7434787026348580714::1785322914::0::1::::Interactable<>Node3D<><>0<>0<><>::
 interaction_controller.gd::GDScript::1844562112461466078::1785341289::0::1::::InteractionController<>Node<><>0<>0<><>::
 interaction_detector.gd::GDScript::1850196705635259005::1785510930::0::1::::InteractionDetector<>Node<><>0<>0<><>::
-::res://Scripts/character/interactable/activatable/::1785333475
+::res://Scripts/character/interactable/activatable/::1785511754
 activatable_interactable.gd::GDScript::8887291823030379146::1774753171::0::1::::ActivatableInteractable<>Interactable<><>0<>0<><>::
-seat_interactable.gd::GDScript::1438008413965525493::1785333475::0::1::::SeatInteractable<>ActivatableInteractable<><>0<>1<><>::
+seat_interactable.gd::GDScript::1438008413965525493::1785511754::0::1::::SeatInteractable<>ActivatableInteractable<><>0<>1<><>::
 ::res://Scripts/character/interactable/controllable/::1785333434
 controllable_interactable.gd::GDScript::6870678610592690210::1785333434::0::1::::ControllableInteractable<>Interactable<><>0<>0<><>::
 control_definition.gd::GDScript::6768040591482493246::1774826608::0::1::::ControlDefinition<>Resource<><>0<>0<><>::
@@ -239,9 +239,9 @@ people.md::TextFile::-1::1784844605::0::1::::<><><>0<>0<><>::
 run-setup.md::TextFile::-1::1784844259::0::1::::<><><>0<>0<><>::
 ship-gameplay.md::TextFile::-1::1784842880::0::1::::<><><>0<>0<><>::
 world.md::TextFile::-1::1784710086::0::1::::<><><>0<>0<><>::
-::res://Scripts/city/docs/technical/::1785495973
+::res://Scripts/city/docs/technical/::1785511780
 bridges.md::TextFile::-1::1784709907::0::1::::<><><>0<>0<><>::
-character-animation.md::TextFile::-1::1785495973::0::1::::<><><>0<>0<><>::
+character-animation.md::TextFile::-1::1785511780::0::1::::<><><>0<>0<><>::
 characters.md::TextFile::-1::1785473360::0::1::::<><><>0<>0<><>::
 city-generation.md::TextFile::-1::1784710038::0::1::::<><><>0<>0<><>::
 sidewalks.md::TextFile::-1::1784709937::0::1::::<><><>0<>0<><>::
@@ -266,8 +266,8 @@ neighborhood_types.gd::GDScript::4542700076244010305::1783019324::0::1::::Neighb
 ::res://Scripts/common/::1782943957
 debug_util.gd::GDScript::854740124712231484::1782943957::0::1::::DebugUtil<>RefCounted<><>0<>0<><>::
 fps_graph.gd::GDScript::2507802507010186342::1781681409::0::1::::FPSGraph<>CanvasLayer<><>0<>0<><>::
-::res://Scripts/net/::1785473249
-character_net_sync.gd::GDScript::2914311118295599072::1785473249::0::1::::CharacterNetSync<>Node<><>0<>0<><>::
+::res://Scripts/net/::1785511757
+character_net_sync.gd::GDScript::2914311118295599072::1785511757::0::1::::CharacterNetSync<>Node<><>0<>0<><>::
 character_spawner.gd::GDScript::6857612891202891527::1785329460::0::1::::CharacterSpawner<>Node<><>0<>0<><>::
 exclusive_claim.gd::GDScript::19065761293637027::1785333571::0::1::::ExclusiveClaim<>Node<><>0<>0<><>::
 name_tag.gd::GDScript::1889038229734453992::1784888545::0::1::::NameTag<>Label3D<><>0<>0<><>::

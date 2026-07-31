@@ -56,6 +56,12 @@ var grab_cone_half_angle: float = 120.0
 
 var is_seated:    bool = false
 var current_seat: Node = null
+## Targets de las piernas sentadas, cacheados por _pose_legs_seated para que _repin_legs_seated
+## re-resuelva contra los MISMOS. Ver _solve_frame.
+var _seated_left_foot:  Vector3 = Vector3.ZERO
+var _seated_right_foot: Vector3 = Vector3.ZERO
+var _seated_left_pole:  Vector3 = Vector3.ZERO
+var _seated_right_pole: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	if is_active:
@@ -241,10 +247,7 @@ func _physics_process(delta: float) -> void:
 	ik_util.left_arm_ik_target.position  = skel_sizes_util.left_arm_tip_rest_local
 	ik_util.right_arm_ik_target.position = skel_sizes_util.right_arm_tip_rest_local
 
-	if is_seated and is_instance_valid(current_seat):
-		_solve_seated_frame(solve_delta)
-	else:
-		_solve_standing_frame(solve_delta)
+	_solve_frame(solve_delta)
 
 	_update_grab_cone()
 
@@ -260,7 +263,58 @@ func _update_ragdoll_ext_state() -> void:
 		char_rigidbody._ext_ragdoll_state = 0
 
 
-func _solve_standing_frame(delta: float) -> void:
+# ── Solve del pose: UN solo camino ────────────────────────────────────────────
+# Sentado y parado NO son dos pipelines. Es el mismo frame, y lo único que cambia es:
+#   1. la RAÍZ    — parado la manda la cápsula; sentado se ancla al asiento.
+#   2. las PIERNAS — parado, la marcha con IK contra el piso; sentado, plegadas fijas.
+# Todo lo demás (procedural + anim_mod, brazos, sync de los cuerpos del ragdoll) es COMPARTIDO y
+# existe una sola vez. Antes eran dos funciones copiadas y derivaron: al sentado le faltaba
+# `drive_grab` — los brazos de un proxy sentado nunca llegaban al controllable que manejaba — y
+# `sync_to_bones`. Regla: un paso nuevo va al bloque compartido; si ramificás, tiene que ser raíz o
+# piernas. Ver technical/character-animation.md.
+#
+# El ORDEN de las piernas es lo único que difiere entre modos, y no es negociable:
+#   - Parado van ANTES del procedural: los raycasts de pie salen de las caderas, y el procedural
+#     anima las caderas con señales de pie (FOOT_SPREAD_*) → resolverlas después realimenta la marcha.
+#   - Sentado van DESPUÉS, porque cuelgan de la raíz ya anclada al asiento.
+func _solve_frame(delta: float) -> void:
+	var seated := is_seated and is_instance_valid(current_seat)
+
+	if not seated:
+		_pose_legs_standing()
+
+	_pose_root(seated)
+	_pose_procedural(delta)
+	_pose_root(seated)         # el procedural mueve el spine: re-anclarlo al asiento
+
+	if seated:
+		_pose_legs_seated()
+
+	_pose_arms(delta)
+
+	if seated:
+		_repin_legs_seated()   # los overrides de brazos inclinan el spine: volver a los MISMOS targets
+
+	_sync_ragdoll_bodies()
+
+## Raíz. Sentado: clava el spine en el asiento, fija la cápsula en XZ y gira la malla del asiento con
+## el ocupante. Parado: nada, la raíz la manda la cápsula. Es idempotente a propósito (se llama antes
+## y después del procedural, y sus entradas —asiento + yaw de la cápsula— no cambian entre medio).
+func _pose_root(seated: bool) -> void:
+	if not seated:
+		return
+	current_seat.update_seated_visual(char_rigidbody.global_rotation.y)
+	var seat_pos : Vector3 = current_seat.global_position
+	var backward := char_rigidbody.global_transform.basis.z
+	var z_offset : float = skel_sizes_util.upper_leg_size.y - current_seat.seat_area.z * 0.5
+	custom_bones_util.lower_spine.global_position = \
+		Vector3(seat_pos.x, seat_pos.y + current_seat.height, seat_pos.z) + backward * z_offset
+	char_rigidbody.global_position.x = seat_pos.x
+	char_rigidbody.global_position.z = seat_pos.z
+
+## Piernas paradas: la marcha (target aéreo + raycast al piso + IK). Ver el modelo de gait en
+## technical/character-animation.md.
+func _pose_legs_standing() -> void:
 	ik_util.update_airborne_target(animation_inputs, true,  skel_sizes_util)
 	ik_util.update_airborne_target(animation_inputs, false, skel_sizes_util)
 
@@ -272,14 +326,49 @@ func _solve_standing_frame(delta: float) -> void:
 		ik_util.reset_step_targets_to_ground()
 		_reset_feet_after_recovery = false
 
-	# procedural primero, anim_mod encima — mismo orden que antes
-	procedural_animator.update()
+## Piernas sentadas: plegadas hacia adelante, sin piso ni marcha. Cachea los targets porque
+## _repin_legs_seated re-resuelve contra los mismos — recalcularlos después de que los overrides de
+## brazos inclinaron el spine arrastraría los pies con el torso.
+func _pose_legs_seated() -> void:
+	var forward := -char_rigidbody.global_transform.basis.z
+	forward.y = 0.0
+	forward = forward.normalized()
 
+	var left_hip_tip  := custom_bones_util.left_hip.global_position  + custom_bones_util.left_hip.global_transform.basis.y  * custom_bones_util.left_hip.capsule_dimensions.y
+	var right_hip_tip := custom_bones_util.right_hip.global_position + custom_bones_util.right_hip.global_transform.basis.y * custom_bones_util.right_hip.capsule_dimensions.y
+
+	var left_knee  := left_hip_tip  + forward * skel_sizes_util.upper_leg_size.y
+	var right_knee := right_hip_tip + forward * skel_sizes_util.upper_leg_size.y
+
+	var tuck := forward * -skel_sizes_util.lower_leg_size.y * 0.2
+	_seated_left_foot  = left_knee  + Vector3.DOWN * skel_sizes_util.lower_leg_size.y * 0.85 + tuck
+	_seated_right_foot = right_knee + Vector3.DOWN * skel_sizes_util.lower_leg_size.y * 0.85 + tuck
+	_seated_left_pole  = left_knee  + forward
+	_seated_right_pole = right_knee + forward
+
+	_repin_legs_seated()
+	ik_util.left_leg_current_target.global_position  = _seated_left_foot
+	ik_util.right_leg_current_target.global_position = _seated_right_foot
+
+## Re-resuelve el IK de las piernas sentadas contra los targets ya cacheados (los huesos se movieron
+## porque algo tocó el spine después de plantarlas).
+func _repin_legs_seated() -> void:
+	ik_util.solve_two_bone_ik(custom_bones_util.left_upper_leg,  custom_bones_util.left_lower_leg,  _seated_left_foot,  _seated_left_pole)
+	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_leg, custom_bones_util.right_lower_leg, _seated_right_foot, _seated_right_pole)
+
+## Capa procedural + modificadores de raíz. Igual en los dos modos: sentado, `anim_mod.is_seated`
+## hace que _apply_root_offsets no toque el spine y el procedural saltea POS_Y/POS_Z de la raíz, así
+## que acá no hay nada que ramificar.
+func _pose_procedural(delta: float) -> void:
+	procedural_animator.update()
 	if is_instance_valid(anim_mod):
 		anim_mod.jump_squat_t = jump_squat_t
 		anim_mod.crouch_t     = crouch_t
 		anim_mod.apply(delta)
 
+## Brazos, COMPARTIDO: recalcula targets/poles desde el spine ya posado, maneja el agarre de un proxy
+## desde el estado sincronizado, aplica los overrides (throw/grab) y resuelve el IK.
+func _pose_arms(delta: float) -> void:
 	var rb_basis := custom_bones_util.lower_spine.global_transform.basis
 	var left_anim_offset:  Vector3 = ik_util.left_arm_ik_target.position  - skel_sizes_util.left_arm_tip_rest_local
 	var right_anim_offset: Vector3 = ik_util.right_arm_ik_target.position - skel_sizes_util.right_arm_tip_rest_local
@@ -293,7 +382,8 @@ func _solve_standing_frame(delta: float) -> void:
 	ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_pole_anim_offset)
 	ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_pole_anim_offset)
 
-	# Proxy: manejar el agarre desde el estado sincronizado (el jugador local lo maneja su IC).
+	# Proxy: manejar el agarre desde el estado sincronizado (el jugador local lo maneja su IC). Vale
+	# igual sentado que parado — un proxy sentado en un dashboard también tiene que llegar al handle.
 	if not is_active and is_instance_valid(arms_controller):
 		arms_controller.drive_grab(delta, animation_inputs.grab_target)
 
@@ -305,81 +395,12 @@ func _solve_standing_frame(delta: float) -> void:
 	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_arm, custom_bones_util.right_lower_arm,
 		ik_util.right_arm_ik_target.global_position, ik_util.right_arm_pole.global_position)
 
+## Copia el pose de los huesos a los cuerpos del ragdoll mientras NO se está ragdolleando (regla
+## sync-before-snapshot). También sentado: antes solo corría parado y los cuerpos quedaban viejos
+## todo el rato que estabas en el asiento.
+func _sync_ragdoll_bodies() -> void:
 	if is_instance_valid(ragdoll_util) and not ragdoll_util.is_recovering:
 		ragdoll_util.sync_to_bones()
-
-
-func _solve_seated_frame(delta: float) -> void:
-	current_seat.update_seated_visual(char_rigidbody.global_rotation.y)
-
-	# 1. Fijar spine
-	var seat_pos : Vector3 = current_seat.global_position
-	var backward  := char_rigidbody.global_transform.basis.z
-	var z_offset  : float  = skel_sizes_util.upper_leg_size.y - current_seat.seat_area.z * 0.5
-	var spine_target := Vector3(seat_pos.x, seat_pos.y + current_seat.height, seat_pos.z) + backward * z_offset
-	custom_bones_util.lower_spine.global_position = spine_target
-	char_rigidbody.global_position.x = seat_pos.x
-	char_rigidbody.global_position.z = seat_pos.z
-
-	# 2. Procedural animator para cuello/cabeza (look up/down), anim_mod is_seated=true
-	#    así que _apply_root_offsets no mueve el spine
-	procedural_animator.update()
-	if is_instance_valid(anim_mod):
-		anim_mod.jump_squat_t = jump_squat_t
-		anim_mod.crouch_t     = crouch_t
-		anim_mod.apply(delta)
-
-	# 3. Re-fijar spine por si procedural_animator lo movió
-	custom_bones_util.lower_spine.global_position = spine_target
-
-	# 4. Calcular y fijar piernas
-	var forward := -char_rigidbody.global_transform.basis.z
-	forward.y = 0.0
-	forward = forward.normalized()
-
-	var left_hip_tip  := custom_bones_util.left_hip.global_position  + custom_bones_util.left_hip.global_transform.basis.y  * custom_bones_util.left_hip.capsule_dimensions.y
-	var right_hip_tip := custom_bones_util.right_hip.global_position + custom_bones_util.right_hip.global_transform.basis.y * custom_bones_util.right_hip.capsule_dimensions.y
-
-	var left_knee  := left_hip_tip  + forward * skel_sizes_util.upper_leg_size.y
-	var right_knee := right_hip_tip + forward * skel_sizes_util.upper_leg_size.y
-
-	var tuck       := forward * -skel_sizes_util.lower_leg_size.y * 0.2
-	var left_foot  := left_knee  + Vector3.DOWN * skel_sizes_util.lower_leg_size.y * 0.85 + tuck
-	var right_foot := right_knee + Vector3.DOWN * skel_sizes_util.lower_leg_size.y * 0.85 + tuck
-	var pole       := forward
-
-	ik_util.solve_two_bone_ik(custom_bones_util.left_upper_leg,  custom_bones_util.left_lower_leg,  left_foot,  left_knee  + pole)
-	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_leg, custom_bones_util.right_lower_leg, right_foot, right_knee + pole)
-	ik_util.left_leg_current_target.global_position  = left_foot
-	ik_util.right_leg_current_target.global_position = right_foot
-
-	# 5. Recalcular targets de brazos desde spine ya fijado
-	var rb_basis := custom_bones_util.lower_spine.global_transform.basis
-	var left_anim_offset:  Vector3 = ik_util.left_arm_ik_target.position  - skel_sizes_util.left_arm_tip_rest_local
-	var right_anim_offset: Vector3 = ik_util.right_arm_ik_target.position - skel_sizes_util.right_arm_tip_rest_local
-
-	ik_util.left_arm_ik_target.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_tip_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_anim_offset)
-	ik_util.right_arm_ik_target.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_tip_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_anim_offset)
-
-	var left_pole_anim_offset:  Vector3 = ik_util.left_arm_pole.position  - skel_sizes_util.left_arm_pole_rest_local
-	var right_pole_anim_offset: Vector3 = ik_util.right_arm_pole.position - skel_sizes_util.right_arm_pole_rest_local
-
-	ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_pole_anim_offset)
-	ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_pole_anim_offset)
-
-	# 6. World overrides de brazos (pitch de cámara)
-	if is_instance_valid(arms_controller):
-		arms_controller.apply_world_overrides(delta)
-
-	# 7. IK de brazos
-	ik_util.solve_two_bone_ik(custom_bones_util.left_upper_arm,  custom_bones_util.left_lower_arm,
-		ik_util.left_arm_ik_target.global_position, ik_util.left_arm_pole.global_position)
-	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_arm, custom_bones_util.right_lower_arm,
-		ik_util.right_arm_ik_target.global_position, ik_util.right_arm_pole.global_position)
-
-	# 8. Re-fijar piernas por si world_overrides movió el spine
-	ik_util.solve_two_bone_ik(custom_bones_util.left_upper_leg,  custom_bones_util.left_lower_leg,  left_foot,  left_knee  + pole)
-	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_leg, custom_bones_util.right_lower_leg, right_foot, right_knee + pole)
 
 ## Ubica local_targets (raycasts de pies, targets/poles de brazos) siguiendo el transform del
 ## personaje. Lee animation_inputs (no la cápsula en vivo): así el facing viene de una sola fuente

@@ -214,8 +214,8 @@ func _apply_push(impulse: Vector3) -> void:
 
 # ── Sentado: sincronizar en qué asiento está cada jugador ──────────────────────
 # Análogo al grab: solo viaja la REFERENCIA al asiento (mismo path en todas las máquinas, spawn con
-# nombre estable). El pose sentado lo arma cada proxy corriendo el mismo _solve_seated_frame con su
-# propio esqueleto. Ver technical/character-animation.md.
+# nombre estable). El pose sentado lo arma cada proxy corriendo el mismo _solve_frame con su propio
+# esqueleto (sentado solo cambia la raíz y las piernas). Ver technical/character-animation.md.
 
 ## El asiento que ocupa este personaje (o null). Local = propio, proxy = sincronizado.
 var seat_target: Node = null
