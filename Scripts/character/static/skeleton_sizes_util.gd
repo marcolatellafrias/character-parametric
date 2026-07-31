@@ -36,6 +36,8 @@ var hip_size: Vector3
 var hip_offset: Vector3
 var raycast_stance_offset: float
 
+## Extremos del radio de paso YA en metros (arquetipo × leg_height). Se interpolan según velocidad en
+## _update_step_radius: min = quieto, max = sprint a fondo.
 var step_radius_min: float
 var step_radius_max: float
 var step_height: float
@@ -161,8 +163,10 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 
 	skelSizes.raycast_leg_lenght = new_leg_height
 	skelSizes.distance_from_ground = new_leg_height * entityStats.distance_from_ground_factor
-	skelSizes.step_radius_max = new_leg_height * inst.step_radius
-	skelSizes.step_radius_min = new_leg_height * inst.step_radius * 0.2
+	# El radio de paso viene del arquetipo en fracción de pierna; acá se pasa a metros. min y max son
+	# los extremos del lerp por velocidad (quieto ↔ sprint), no un rango de sorteo.
+	skelSizes.step_radius_min = new_leg_height * inst.step_radius_min
+	skelSizes.step_radius_max = new_leg_height * inst.step_radius_max
 	skelSizes.step_height = new_leg_height * inst.step_height
 	skelSizes.pole_distance = new_leg_height
 	skelSizes.step_duration_scale    = entityStats.step_duration_scale

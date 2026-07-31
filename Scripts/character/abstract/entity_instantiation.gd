@@ -1,5 +1,10 @@
 class_name EntityInstantiation
 
+## Por ahora todas las personas que spawnean son humanas. Poner en false para volver a sortear la
+## specie por seed (alien/robot siguen definidos en EntitySpecie y sus multiplicadores se aplican
+## igual, solo que hoy son siempre los del humano = 1.0).
+const FORCE_HUMAN_SPECIE := true
+
 var blend_range := 0.5
 
 var master_seed: int
@@ -12,12 +17,17 @@ var arch_final: EntityArchetype
 var spec: EntitySpecie
 
 var age: int
+var skin_color: Color
+
+# Parámetros de animación resueltos: arquetipo (ya blendeado) × multiplicador de specie. No hay
+# sorteo por seed acá — la variación entre personajes viene del arquetipo, del blend de dos
+# arquetipos y de la specie. Ver technical/character-animation.md.
 var shoulder_swing: float
 var hip_swing: float
 var root_bounciness: float
 var step_height: float
-var step_radius: float
-var skin_color: Color
+var step_radius_min: float
+var step_radius_max: float
 var side_swing: float
 
 
@@ -38,7 +48,7 @@ static func create(seed: int) -> EntityInstantiation:
 		inst.archetype_type = debug_archetypes[seed]
 		inst.archetype_blend = 0.0
 		inst.arch_final = EntityArchetype.create(inst.archetype_type)
-		inst.specie_type = _pick_specie(rng, inst.arch_final)
+		inst.specie_type = _resolve_specie(rng, inst.arch_final)
 		inst.spec = _make_specie(inst.specie_type)
 		inst._resolve(rng)
 		return inst
@@ -60,7 +70,7 @@ static func create(seed: int) -> EntityInstantiation:
 			inst.archetype_blend = 0.0
 			inst.arch_final = arch_a
 
-	inst.specie_type = _pick_specie(rng, inst.arch_final)
+	inst.specie_type = _resolve_specie(rng, inst.arch_final)
 	inst.spec = _make_specie(inst.specie_type)
 	inst._resolve(rng)
 	return inst
@@ -68,12 +78,13 @@ static func create(seed: int) -> EntityInstantiation:
 
 func _resolve(rng: RandomNumberGenerator) -> void:
 	age             = roundi(rng.randf_range(arch_final.min_age, arch_final.max_age))
-	shoulder_swing  = rng.randf_range(arch_final.shoulder_swing_min, arch_final.shoulder_swing_max) * spec.shoulder_swing_multiplier
-	hip_swing       = rng.randf_range(arch_final.hip_swing_min, arch_final.hip_swing_max) * spec.hip_swing_multiplier
-	side_swing      = arch_final.side_swing * spec.side_swing_multiplier
-	root_bounciness = rng.randf_range(arch_final.root_bounciness_min, arch_final.root_bounciness_max) * spec.root_bounciness_multiplier
-	step_height     = rng.randf_range(arch_final.step_height_min, arch_final.step_height_max) * spec.step_height_multiplier
-	step_radius     = rng.randf_range(arch_final.step_radius_min, arch_final.step_radius_max) * spec.step_radius_multiplier
+	shoulder_swing  = arch_final.shoulder_swing  * spec.shoulder_swing_multiplier
+	hip_swing       = arch_final.hip_swing       * spec.hip_swing_multiplier
+	side_swing      = arch_final.side_swing      * spec.side_swing_multiplier
+	root_bounciness = arch_final.root_bounciness * spec.root_bounciness_multiplier
+	step_height     = arch_final.step_height     * spec.step_height_multiplier
+	step_radius_min = arch_final.step_radius_min * spec.step_radius_multiplier
+	step_radius_max = arch_final.step_radius_max * spec.step_radius_multiplier
 	skin_color      = spec.skin_colors[rng.randi() % spec.skin_colors.size()]
 
 
@@ -129,6 +140,15 @@ static func _pick_secondary_archetype(rng: RandomNumberGenerator, primary: Entit
 		if roll <= acc:
 			return candidates[i]
 	return candidates[-1]
+
+
+## Punto único donde se decide la specie. Con FORCE_HUMAN_SPECIE no se consume el rng, así que el
+## seed sigue determinando todo lo demás igual en todas las máquinas (que es lo que importa para el
+## proxy remoto); lo que cambia es que el sorteo ponderado queda en pausa, no roto.
+static func _resolve_specie(rng: RandomNumberGenerator, arch: EntityArchetype) -> EntitySpecie.Specie:
+	if FORCE_HUMAN_SPECIE:
+		return EntitySpecie.Specie.human
+	return _pick_specie(rng, arch)
 
 
 static func _pick_specie(rng: RandomNumberGenerator, arch: EntityArchetype) -> EntitySpecie.Specie:

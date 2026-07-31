@@ -36,18 +36,23 @@ var alien_chance : float = 0.3
 var human_chance : float = 1.0
 
 # ANIMATIONS
-var shoulder_swing_min : float = 0.5
-var shoulder_swing_max : float = 0.5
-var hip_swing_min : float = 0.5
-var hip_swing_max : float = 0.5
+var shoulder_swing : float = 0.5
+var hip_swing : float = 0.5
 var side_swing : float = 0.5
 var arm_swing : float = 0.5
-var root_bounciness_min  : float = 0.5
-var root_bounciness_max  : float = 0.5
-var step_height_min : float = 0.5
-var step_height_max : float = 0.5
-var step_radius_min : float = 0.5
-var step_radius_max : float = 0.5
+var root_bounciness : float = 0.5
+## Altura del arco del paso, en fracción del largo de pierna.
+var step_height : float = 0.5
+## Radio de paso: cuánto puede alejarse el pie plantado de donde el raycast lo quiere antes de dar un
+## paso. En **fracción del largo de pierna** (leg_height), así un chico y un giga con el mismo valor
+## caminan "igual de largo" para su tamaño. Se interpola min↔max según la velocidad actual
+## (SkeletonSizesUtil._update_step_radius): min = quieto/lento, max = sprint a fondo.
+##
+## El radio también fija cuánto se adelanta el raycast del pie en la dirección del movimiento
+## (IkUtil.update_leg_raycast_offsets, ~0.8·radio hacia adelante), así que es el parámetro que decide
+## el LARGO de la zancada y, con la velocidad, la cadencia. Subirlo = menos pasos, más largos.
+var step_radius_min : float = 0.2
+var step_radius_max : float = 1.0
 var leg_cripple_chance : float = 0.0
 var stance_width: float = 1.0
 
@@ -117,18 +122,15 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.human_chance = 1.0
 	arch.uncompatible_archetypes = [] as Array[Archetype]
 	arch.archetype_frequency = 1.0
-	arch.shoulder_swing_min = 0.3
-	arch.shoulder_swing_max = 0.3
+	arch.shoulder_swing = 0.3
 	arch.side_swing = 0.5
 	arch.arm_swing = 0.5
-	arch.hip_swing_min = 0.5
-	arch.hip_swing_max = 0.5
-	arch.root_bounciness_min = 0.8
-	arch.root_bounciness_max = 0.8
-	arch.step_height_min = 0.4
-	arch.step_height_max = 0.4
-	arch.step_radius_min = 1.2
-	arch.step_radius_max = 1.2
+	arch.hip_swing = 0.5
+	arch.root_bounciness = 0.8
+	arch.step_height = 0.4
+	# Camina "corto para lo que mide": pasitos rápidos bajo un cuerpo pesado, base ancha.
+	arch.step_radius_min = 0.22
+	arch.step_radius_max = 1.00
 	arch.leg_cripple_chance = 0.1
 	arch.slouch = 0.0
 	arch.shoulders_height = 0.15
@@ -177,18 +179,16 @@ static func kid_arch() -> EntityArchetype:
 	arch.human_chance = 1.0
 	arch.uncompatible_archetypes = [] as Array[Archetype]
 	arch.archetype_frequency = 1.0
-	arch.shoulder_swing_min = 0.5
-	arch.shoulder_swing_max = 0.5
+	arch.shoulder_swing = 0.5
 	arch.side_swing = 0.5
 	arch.arm_swing = 0.7
-	arch.hip_swing_min = 0.5
-	arch.hip_swing_max = 0.5
-	arch.root_bounciness_min = 0.7
-	arch.root_bounciness_max = 0.7
-	arch.step_height_min = 0.4
-	arch.step_height_max = 0.4
-	arch.step_radius_min = 1.8
-	arch.step_radius_max = 1.8
+	arch.hip_swing = 0.5
+	arch.root_bounciness = 0.7
+	arch.step_height = 0.4
+	# Trotecito: piernas cortas, muchos pasos chicos. Antes tenía 1.8 (el más largo de todos) con las
+	# piernas más cortas de todas → zancadas de 1.2 m con piernas de 0.69 m. Corregido.
+	arch.step_radius_min = 0.20
+	arch.step_radius_max = 0.95
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.1
 	arch.shoulders_height = 0.0
@@ -236,18 +236,15 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.human_chance = 1.0
 	arch.uncompatible_archetypes = [] as Array[Archetype]
 	arch.archetype_frequency = 1.0
-	arch.shoulder_swing_min = 0.5
-	arch.shoulder_swing_max = 0.5
+	arch.shoulder_swing = 0.5
 	arch.side_swing = 0.5
 	arch.arm_swing = 0.2
-	arch.hip_swing_min = 0.5
-	arch.hip_swing_max = 0.5
-	arch.root_bounciness_min = 0.8
-	arch.root_bounciness_max = 0.8
-	arch.step_height_min = 0.4
-	arch.step_height_max = 0.4
-	arch.step_radius_min = 1.5
-	arch.step_radius_max = 1.5
+	arch.hip_swing = 0.5
+	arch.root_bounciness = 0.8
+	arch.step_height = 0.4
+	# Zancada larga y suelta: el que más estira el paso para su pierna (que además es la más larga).
+	arch.step_radius_min = 0.26
+	arch.step_radius_max = 1.30
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.5
 	arch.shoulders_height = 0.0
@@ -295,18 +292,15 @@ static func giga_arch() -> EntityArchetype:
 	arch.human_chance = 1.0
 	arch.uncompatible_archetypes = [] as Array[Archetype]
 	arch.archetype_frequency = 1.0
-	arch.shoulder_swing_min = 1.0
-	arch.shoulder_swing_max = 1.0
+	arch.shoulder_swing = 1.0
 	arch.side_swing = 0.5
 	arch.arm_swing = 0.2
-	arch.hip_swing_min = 0.5
-	arch.hip_swing_max = 0.5
-	arch.root_bounciness_min = 1.0
-	arch.root_bounciness_max = 1.0
-	arch.step_height_min = 0.45
-	arch.step_height_max = 0.45
-	arch.step_radius_min = 1.0
-	arch.step_radius_max = 1.0
+	arch.hip_swing = 0.5
+	arch.root_bounciness = 1.0
+	arch.step_height = 0.45
+	# Pisotones: pocos pasos, largos y lentos (es el más lento, así que la cadencia baja igual).
+	arch.step_radius_min = 0.28
+	arch.step_radius_max = 1.35
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.0
 	arch.shoulders_height = 0.25
@@ -355,18 +349,15 @@ static func old_arch() -> EntityArchetype:
 	arch.human_chance = 1.0
 	arch.uncompatible_archetypes = [] as Array[Archetype]
 	arch.archetype_frequency = 1.0
-	arch.shoulder_swing_min = 0.5
-	arch.shoulder_swing_max = 0.5
+	arch.shoulder_swing = 0.5
 	arch.side_swing = 0.5
 	arch.arm_swing = 0.5
-	arch.hip_swing_min = 0.5
-	arch.hip_swing_max = 0.5
-	arch.root_bounciness_min = 0.5
-	arch.root_bounciness_max = 0.5
-	arch.step_height_min = 0.3
-	arch.step_height_max = 0.3
-	arch.step_radius_min = 0.8
-	arch.step_radius_max = 0.8
+	arch.hip_swing = 0.5
+	arch.root_bounciness = 0.5
+	arch.step_height = 0.3
+	# Arrastra los pies: la zancada más corta de todas, y casi no crece con la velocidad.
+	arch.step_radius_min = 0.16
+	arch.step_radius_max = 0.80
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 1.0
 	arch.shoulders_height = 0.5
@@ -416,16 +407,12 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.robot_chance                  = lerpf(robot_chance, b.robot_chance, t)
 	r.alien_chance                  = lerpf(alien_chance, b.alien_chance, t)
 	r.human_chance                  = lerpf(human_chance, b.human_chance, t)
-	r.shoulder_swing_min            = lerpf(shoulder_swing_min, b.shoulder_swing_min, t)
-	r.shoulder_swing_max            = lerpf(shoulder_swing_max, b.shoulder_swing_max, t)
+	r.shoulder_swing                = lerpf(shoulder_swing, b.shoulder_swing, t)
 	r.side_swing 					= lerpf(side_swing, b.side_swing, t)
 	r.arm_swing 					= lerpf(arm_swing, b.arm_swing, t)
-	r.hip_swing_min                 = lerpf(hip_swing_min, b.hip_swing_min, t)
-	r.hip_swing_max                 = lerpf(hip_swing_max, b.hip_swing_max, t)
-	r.root_bounciness_min           = lerpf(root_bounciness_min, b.root_bounciness_min, t)
-	r.root_bounciness_max           = lerpf(root_bounciness_max, b.root_bounciness_max, t)
-	r.step_height_min               = lerpf(step_height_min, b.step_height_min, t)
-	r.step_height_max               = lerpf(step_height_max, b.step_height_max, t)
+	r.hip_swing                     = lerpf(hip_swing, b.hip_swing, t)
+	r.root_bounciness               = lerpf(root_bounciness, b.root_bounciness, t)
+	r.step_height                   = lerpf(step_height, b.step_height, t)
 	r.step_radius_min               = lerpf(step_radius_min, b.step_radius_min, t)
 	r.step_radius_max               = lerpf(step_radius_max, b.step_radius_max, t)
 	r.leg_cripple_chance            = lerpf(leg_cripple_chance, b.leg_cripple_chance, t)

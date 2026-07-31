@@ -12,6 +12,8 @@ It documents the pipeline explicitly — the per-frame inputs, and how a remote 
 
 1. **`EntityInstantiation.create(seed)`** → `arch_final` (an `EntityArchetype`: height, weight, reach, fatness, muscularity, proportions, slouch, arm/leg factors, step params…). This is the stat block.
 2. **`SkeletonSizesUtil.create(inst)`** → every bone's **size / offset / rest data** as a pure function of the archetype stats (e.g. `middle_spine` radius `lerp(0.1, 0.55, fatness)`, arm segment lengths from `reach`, leg heights from proportions). Also derives locomotion params: `step_radius_min/max`, `step_height`, `distance_from_ground`, `raycast_leg_lenght`, arm rest targets/poles, etc.
+
+**What the seed actually varies.** Only three things: the **archetype**, whether a **second archetype blends** in at 0.5, and the **specie** (today pinned to human by `EntityInstantiation.FORCE_HUMAN_SPECIE`). There is **no per-instance random roll on animation parameters** — `_resolve` computes each one as `archetype value × specie multiplier`. Two characters of the same archetype and specie animate identically; the variety is meant to come from the archetype set and the blends, not from jitter. (`age` and `skin_color` are still rolled, and neither feeds the pose.)
 3. **`CustomBonesUtil.create(sizes, inst)`** → builds the **bone hierarchy** of `CustomBone`s (parents, rest rotations, offsets) from those sizes.
 
 Because all three are pure functions of the seed, **the same seed rebuilds the exact same skeleton on any machine** — this is what M3 leans on (a remote proxy uses a seed derived from the peer's Steam id).
@@ -83,6 +85,10 @@ The legs are the one part with **state that persists between frames** (the foot 
 ### Stepping
 
 A leg **steps** only when its foot has drifted beyond `current_step_radius` from neutral (`wants_step`). Then `_try_start_farther_leg` picks the farther foot and **tweens `current_target` → `next_target`** in an arc (`step_height`, `_update_stepping_foot`). `current_step_radius` lerps min↔max on speed (longer strides when faster). Idle ⇒ no step ⇒ `current_target` sits put. So **the foot lags its `next_target` by up to a step radius** — that's the deliberate "plant, then step" feel, not a bug.
+
+**The step radius is the stride knob.** `EntityArchetype.step_radius_min/max` are **fractions of `leg_height`**, so the same value means "the same gait" on a kid and on a giga; `SkeletonSizesUtil.create` turns them into metres (`leg_height × value`) and `_update_step_radius` lerps between them on speed — `min` at a standstill, `max` at full sprint. It's a single knob with two effects: it's the **threshold** to step, *and* (via `update_leg_raycast_offsets`, which leads the raycast by `current_step_radius` × the axis weights, ~0.8 forward) it's how far ahead of the hip the foot **lands**. Raise it → fewer, longer steps; lower it → shorter, more frequent ones.
+
+Its ceiling is **leg reach**, and that ceiling is tight. The pelvis sits at `leg_height − distance_from_ground` and the IK chain (upper + lower leg) is exactly `leg_height`, so with the current `distance_from_ground_factor` (0.03–0.06 in all five archetypes, versus the class default of 0.15) the foot can only get ≈`0.3 × leg_height` **horizontally** from the hip before the leg locks straight, and about `0.2 ×` before the knee stops reading as bent. The forward lead of ~`0.8 × step_radius` is what consumes that budget. **So the lever for genuinely longer strides is lowering the pelvis** (a larger `distance_from_ground_factor`, or a stride-driven dip), not just a bigger radius — past the budget the two-bone solve clamps and the foot stops reaching its target instead of striding further.
 
 ### The resting stance (why the foot clips)
 
