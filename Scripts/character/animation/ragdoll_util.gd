@@ -114,6 +114,13 @@ func _make_body(bone: CustomBone) -> RigidBody3D:
 	return rb
 
 func _build_joints() -> void:
+	# Primero, SIEMPRE: poner los cuerpos en los huesos. Cada joint captura la posición relativa de su
+	# par de huesos en ESTE instante y la fija rígido, así que los cuerpos tienen que reflejar la pose
+	# actual del esqueleto antes de armarlas. En un proxy el solve corre a media tasa (los cuerpos van
+	# 1-2 frames atrás de los huesos), y sin este sync la junta congelaría el brazo/pie en su lugar viejo
+	# → pegado pero corrido del hombro/tobillo. Al ser la primera línea, armar juntas desde una pose vieja
+	# es imposible por construcción. Ver technical/character-animation.md (solve a media tasa).
+	sync_to_bones()
 	_parent_bone.clear()
 	var bu := _bones_util
 
@@ -239,14 +246,7 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
 		skeleton_root.visible = false
 
 	_set_meshes_visible(true)
-	# Poner los cuerpos EN los huesos justo antes de armar las joints. Las joints capturan la posición
-	# relativa de cada hueso en ESTE instante y la fijan rígido. Si los cuerpos venían desfasados de los
-	# huesos (en un PROXY el solve corre a media tasa → sync_to_bones va atrasado 1-2 frames mientras el
-	# esqueleto se movió cada frame), la junta congela el brazo/pie en su lugar VIEJO → queda "pegado
-	# pero corrido del hombro/tobillo". Con este sync las juntas arrancan de la pose correcta. Ver
-	# technical/characters.md.
-	sync_to_bones()
-	_build_joints()
+	_build_joints()  # arma las juntas desde la pose actual (sync_to_bones corre adentro, primera línea)
 
 	var space: PhysicsDirectSpaceState3D = _skel_rb_node.get_world_3d().direct_space_state
 	var exclude: Array[RID]              = _make_exclude()
@@ -422,6 +422,26 @@ func seed_velocity(vel: Vector3) -> void:
 		var rb: RigidBody3D = _bodies[bone]
 		if is_instance_valid(rb):
 			rb.linear_velocity = vel
+
+## Encendido del ragdoll en un PROXY: una sola entrada que lo deja listo para que la red lo maneje.
+## Orienta el esqueleto al yaw AUTORITATIVO (el de la pelvis del dueño, `pelvis_world_rot`) ANTES de
+## armarlo: el ragdoll se arma desde la pose local (los huesos cuelgan de la cápsula) y en el flanco la
+## cápsula del proxy trae yaw≈0 (el dueño manda rb.rotation.y≈0 al ragdollear), así que sin esto se
+## armaría mirando al norte y la pelvis kinemática pegaría un giro instantáneo a la dirección real.
+## Después siembra el momento del dueño y fija la pelvis kinemática (la maneja la red; el resto simula
+## local). El yaw del ragdoll sale SIEMPRE de acá, nunca de la cápsula del proxy. Ver characters.md.
+func activate_as_proxy(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone,
+		pelvis_world_rot: Quaternion, seed_vel: Vector3) -> void:
+	char_rb.rotation.y = Basis(pelvis_world_rot).get_euler().y
+	activate(char_rb, skeleton_root)
+	seed_velocity(seed_vel)
+	set_pelvis_kinematic(true)
+
+## Apagado del ragdoll en un PROXY: arranca la recuperación local y restaura el estado puppet
+## (deactivate des-congela la cápsula; el proxy tiene que volver a ser kinemático sin gravedad).
+func deactivate_as_proxy(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
+	deactivate(char_rb, skeleton_root)
+	char_rb.setup_as_puppet()
 
 # ── Replicación proxy: raíz sincronizada, resto local ─────────────────────────
 ## En el PROXY la pelvis (raíz) es KINEMÁTICA: la maneja la red. Los demás cuerpos quedan dinámicos y

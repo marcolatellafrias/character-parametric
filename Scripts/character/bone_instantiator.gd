@@ -195,13 +195,12 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(net_sync):
 		net_sync.apply_to_puppet()
 
-	# NPCs/proxies resuelven a MEDIA TASA por performance (el solve procedural es caro). ⚠️ Cuidado: eso
-	# hace que en proxies el esqueleto/cuerpos queden 1-2 frames atrasados de la física (que sí corre
-	# cada frame) → cualquier cosa que "saque una foto" de ellos hay que sincronizarla antes (ver el
-	# bug de las juntas desarmadas, arreglado con sync_to_bones antes de _build_joints). NO salteamos
-	# mientras ragdollea/recupera: si no, el blend de recuperación tarda el doble y _update_active se
-	# atrasa. El solve pesado ya se saltea solo al ragdollear, así que full-rate acá no cuesta.
-	# Ver technical/character-animation.md ("half-rate trap").
+	# NPCs/proxies resuelven a MEDIA TASA por performance (el solve procedural es caro). Eso deja en
+	# proxies el esqueleto/cuerpos 1-2 frames atrás de la física (que corre cada frame), así que lo que
+	# lea esas poses las sincroniza antes (regla sync-before-snapshot; _build_joints ya lo hace en su
+	# primera línea). NO salteamos mientras ragdollea/recupera: si no, el blend de recuperación tarda el
+	# doble y _update_active se atrasa. El solve pesado ya se saltea solo al ragdollear, así que full-rate
+	# acá no cuesta. Ver technical/character-animation.md (solve a media tasa).
 	var _ragdolling := is_instance_valid(ragdoll_util) and (ragdoll_util.is_active or ragdoll_util.is_recovering)
 	if not is_active and not _ragdolling:
 		_npc_skip_frame = not _npc_skip_frame

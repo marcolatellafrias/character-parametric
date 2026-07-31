@@ -47,10 +47,10 @@ func _send_state() -> void:
 		throw_push = bi.anim_mod.throw_push_t
 		throw_dir = bi.anim_mod.throw_world_dir
 	var ragdoll := is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active
-	# Rotación de la pelvis (raíz), para manejar la pelvis kinemática del proxy en ragdoll. La mandamos
-	# SIEMPRE (no sólo en ragdoll): si no, al arrancar el ragdoll el proxy interpola de IDENTITY a la
-	# rotación real y pega un giro raro en Y. Mandándola siempre, el valor es continuo en el flanco.
-	# La posición ya viaja como rb.global_position (la cápsula sigue a la pelvis via _update_active).
+	# Rotación de la pelvis (raíz): es la orientación AUTORITATIVA del ragdoll. El proxy la usa para
+	# orientar su ragdoll al activarlo (activate_as_proxy) y para manejar la pelvis kinemática cada frame.
+	# Se manda SIEMPRE (no sólo en ragdoll) para que el valor sea continuo en el flanco. La posición ya
+	# viaja como rb.global_position (la cápsula sigue a la pelvis via _update_active).
 	var ragdoll_rot := bi.ragdoll_util.pelvis_rotation() if is_instance_valid(bi.ragdoll_util) else Quaternion.IDENTITY
 	_receive_state.rpc(rb.global_position, rb.rotation.y, rb.linear_velocity, rb.impact_xz, rb.impact_y,
 		bi.crouch_t, bi.jump_squat_t, throw_t, throw_push, throw_dir, bi.head_pitch, ragdoll, ragdoll_rot)
@@ -88,8 +88,8 @@ func apply_to_puppet() -> void:
 	# Ragdoll: RAÍZ sincronizada, resto local. El proxy corre su propio ragdoll, pero la PELVIS es
 	# kinemática y la manejamos a la pose del dueño (posición = s["pos"], rotación = s["ragdoll_rot"]);
 	# los demás huesos simulan local colgados de ella. Así el ragdoll queda en el lugar correcto (no
-	# deriva) y con los huesos en su sitio (las joints se armaron bien, ver activate → sync_to_bones).
-	# En la recuperación volvemos al transform normal. Ver characters.md (Causa C).
+	# deriva) y con los huesos en su sitio. En la recuperación volvemos al transform normal. Ver
+	# characters.md (Causa C).
 	_drive_proxy_ragdoll(bi, rb, s["ragdoll"], s["ragdoll_rot"])
 	if is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active:
 		bi.ragdoll_util.drive_pelvis_to(s["pos"], s["ragdoll_rot"])
@@ -109,24 +109,18 @@ func apply_to_puppet() -> void:
 		bi.anim_mod.throw_world_dir = s["throw_dir"]
 
 ## Enciende/apaga el ragdoll LOCAL del proxy según el flag sincronizado (en flancos). El proxy no
-## detecta impactos (es puppet), así que su ragdoll solo lo dispara esto. Al salir, deactivate arranca
-## la recuperación local y hay que restaurar el estado puppet (deactivate des-congela la cápsula).
+## detecta impactos (es puppet), así que su ragdoll solo lo dispara esto. La activación y el apagado
+## viven encapsulados en RagdollUtil (activate_as_proxy / deactivate_as_proxy): el yaw autoritativo,
+## la siembra de momento, la pelvis kinemática y la restauración del puppet se resuelven ahí adentro.
 func _drive_proxy_ragdoll(bi: BoneInstantiator, rb: CharacterRigidBody3D, want: bool, ragdoll_rot: Quaternion) -> void:
 	var rd := bi.ragdoll_util
 	if not is_instance_valid(rd):
 		return
+	var root := bi.custom_bones_util.lower_spine
 	if want and not rd.is_active:
-		# Orientar el esqueleto al yaw AUTORITATIVO (el de la pelvis del dueño) ANTES de activar: activate
-		# arma el ragdoll desde la pose local (los huesos cuelgan de la cápsula), y en el flanco del ragdoll
-		# la cápsula del proxy trae yaw≈0 (el dueño manda rb.rotation.y≈0 al ragdollear). Sin esto el ragdoll
-		# se arma mirando al norte y después la pelvis pega un giro instantáneo a la dirección real. Ver ragdoll_util.
-		rb.rotation.y = Basis(ragdoll_rot).get_euler().y
-		rd.activate(rb, bi.custom_bones_util.lower_spine)
-		rd.seed_velocity(rb.puppet_velocity)  # arrancar con el momento del dueño (puppet_velocity quedó en el último de antes del ragdoll)
-		rd.set_pelvis_kinematic(true)          # la pelvis la maneja la red; el resto simula local
+		rd.activate_as_proxy(rb, root, ragdoll_rot, rb.puppet_velocity)
 	elif not want and rd.is_active:
-		rd.deactivate(rb, bi.custom_bones_util.lower_spine)
-		rb.setup_as_puppet()  # restaurar puppet (kinemático, sin gravedad): deactivate lo des-congeló
+		rd.deactivate_as_proxy(rb, root)
 
 ## Estado interpolado al tiempo de render (extrapola con la velocidad si va por delante del buffer).
 func _sample_at(render_t: float) -> Dictionary:
