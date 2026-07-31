@@ -116,22 +116,21 @@ func _is_own_character(node: Node) -> bool:
 		current = current.get_parent()
 	return false
 
+## El outline va en material_overlay (propiedad del MeshInstance3D, por instancia) y no en
+## mat.next_pass: el material de la malla es un recurso compartido entre todas las instancias del
+## mismo PackedScene, así que escribirle next_pass contorneaba todos los asientos/objetos iguales.
 func _apply_outline_to(interactable: Interactable) -> void:
 	for target in interactable.get_outline_targets():
 		if is_instance_valid(target):
 			_collect_meshes_recursive(target, _hovered_meshes)
 	for mesh in _hovered_meshes:
 		if is_instance_valid(mesh):
-			for i in mesh.mesh.get_surface_count():
-				var mat := mesh.get_active_material(i)
-				if mat: mat.next_pass = _outline_material
+			mesh.material_overlay = _outline_material
 
 func _clear_outline() -> void:
 	for mesh in _hovered_meshes:
 		if is_instance_valid(mesh):
-			for i in mesh.mesh.get_surface_count():
-				var mat := mesh.get_active_material(i)
-				if mat: mat.next_pass = null
+			mesh.material_overlay = null
 	_hovered_meshes.clear()
 
 func _collect_meshes_recursive(node: Node, result: Array[MeshInstance3D]) -> void:
