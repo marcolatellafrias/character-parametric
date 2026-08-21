@@ -2,7 +2,7 @@ extends Object
 class_name CarArchetypes
 
 static var speed_debug_factor: float = 0.533
-static var size_debug_factor: float = 8.28  # 7.2 × 1.15 — all car sizes bumped 15%
+static var size_debug_factor: float = 11.592  # 7.2 × 1.15 × 1.4 — sigue la escala 40% de la ciudad
 
 enum Type {
 	VENDING_TRUCK,

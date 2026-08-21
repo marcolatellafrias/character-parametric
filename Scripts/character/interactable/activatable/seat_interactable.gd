@@ -13,6 +13,10 @@ var _body:          RigidBody3D = null
 var _spawn_point:   Node3D      = null
 var _seated_bi:     Node        = null
 var _borrowed_mesh: Node3D      = null
+## Transform de reposo del visual (sin ocupante), guardado al construirlo: es a donde vuelve solo.
+var _visual_rest_local: Transform3D = Transform3D.IDENTITY
+## Personaje que está posando este asiento EN ESTA MÁQUINA (lo registra update_seated_visual).
+var _visual_occupant: Node = null
 ## Ocupación exclusiva (un solo jugador por asiento), arbitrada por el host. Ver ExclusiveClaim.
 var _claim:         ExclusiveClaim = null
 
@@ -34,6 +38,7 @@ func _build_visual() -> void:
 		return
 	_visual_root = seat_scene.instantiate() as Node3D
 	add_child(_visual_root)
+	_visual_rest_local = _visual_root.transform
 
 func _build_collider() -> void:
 	_body                 = RigidBody3D.new()
@@ -116,20 +121,59 @@ func _local_player() -> Node:
 	var spawner := get_tree().get_first_node_in_group("character_spawner")
 	return spawner.get("local_player") if is_instance_valid(spawner) else null
 
-## Libera el asiento localmente e informa al host, sin esperar el round-trip. Para el respawn con
-## alguien sentado: hay que soltarlo YA (sincrónico) antes de reconstruir el esqueleto.
-func release_occupant_for_teardown() -> void:
+## Saca al ocupante EN EL LUGAR (sin teleport al spawn point): libera localmente ya —sincrónico, sin
+## esperar el round-trip del host— y avisa a los proxies. Lo usan los cambios de estado que la cápsula
+## sentada no soporta y que necesitan el asiento libre ANTES de seguir: el respawn (reconstruye el
+## esqueleto) y el ragdoll (ver PlayerController._leave_seat_in_place).
+func release_occupant_in_place() -> void:
 	if not is_instance_valid(_seated_bi):
 		return
 	if is_instance_valid(_claim):
 		_claim.release()          # que el host libere la ocupación (async, no importa el orden)
 	_release_occupant(false, true)  # revert local ya, sin teleport pero avisando a los proxies
 
+# ── Visual: función de la ocupación, no efecto de los eventos ─────────────────
+# Girar con el ocupante y volver al reposo se DERIVAN cada frame de quién ocupa el asiento,
+# revalidado contra el estado vivo del personaje. No salen de los eventos de sentarse/pararse porque
+# esos solo corren en la máquina del ocupante (_seated_bi solo lo setea _sit): en un proxy el visual
+# se rotaba y nadie lo devolvía nunca, así que quedaba congelado en el último yaw al pararse. Con la
+# derivación no hay ninguna salida —pararse, ragdollear, despawn del personaje, desconexión— que haya
+# que acordarse de limpiar: dejan de cumplir la condición y el asiento se acomoda solo.
+
+func _physics_process(_delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
+	if not _is_occupied_by(_visual_occupant):
+		_visual_occupant = null
+		_restore_rest_visual()
+
+## ¿Este personaje sigue realmente sentado acá? Es la MISMA condición que el gate del solve de pose
+## (BoneInstantiator._solve_frame), así que el visual y el pose no pueden discrepar. Ragdollear cuenta
+## como NO sentado: la cápsula deja de mandar el pose y el asiento no tiene a quién seguir. Eso lo
+## cubre además en el orden en que llegan las dos novedades a un proxy (el asiento libre viaja por RPC
+## confiable y el flag de ragdoll en el estado por tick), sin importar cuál gane.
+func _is_occupied_by(bi: Node) -> bool:
+	if not is_instance_valid(bi):
+		return false
+	if bi.get("current_seat") != self or not bi.get("is_seated"):
+		return false
+	var rd = bi.get("ragdoll_util")
+	return not (is_instance_valid(rd) and (rd.is_active or rd.is_recovering))
+
+func _restore_rest_visual() -> void:
+	if not is_instance_valid(_visual_root):
+		return
+	_visual_root.transform = _visual_rest_local
+	if not is_instance_valid(_borrowed_mesh):
+		_visual_root.visible = true  # sin malla prestada, nadie lo está reemplazando
+
 ## El asiento gira con el ocupante (mismo yaw) — sin sincronizar nada extra: el yaw ya viaja en el
 ## transform del personaje. Owner: la malla prestada (hija de la cápsula, para esconderse en primera
 ## persona con el cuerpo); proxy remoto: el visual propio del asiento (a la vista, porque ahí nunca
-## se corrió _sit). Lo llama BoneInstantiator._pose_root cada frame del que está sentado.
-func update_seated_visual(occupant_yaw: float) -> void:
+## se corrió _sit). Lo llama BoneInstantiator._pose_root cada frame del que está sentado, y de paso
+## REGISTRA al ocupante para que _physics_process pueda soltar el visual cuando deje de estarlo.
+func update_seated_visual(occupant: Node, occupant_yaw: float) -> void:
+	_visual_occupant = occupant
 	var mesh: Node3D = _borrowed_mesh if is_instance_valid(_borrowed_mesh) else _visual_root
 	if not is_instance_valid(mesh):
 		return

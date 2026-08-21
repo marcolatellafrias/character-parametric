@@ -5,8 +5,8 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(800/2, 800/2)
-@export var min_distance: float = 180.5*1.3
+@export var region_size: Vector2 = Vector2(800/2*1.4, 800/2*1.4)
+@export var min_distance: float = 180.5*1.3*1.4
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
 ## When true, the city derives its seeds from the weekly world seed (WorldSeeds). Untick to force the inspector values (debug).

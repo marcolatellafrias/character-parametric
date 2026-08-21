@@ -14,12 +14,9 @@ var player_camera:  Camera3D
 var arms_controller: ArmsController
 var anim_mod: AnimationModifiers
 
-var grab_stiffness:           float = 150.0
-var grab_damping:             float = 15.0
-var grab_rotation_sensitivity: float = 0.005
-var grab_rotation_stiffness:  float = 50.0
-var grab_rotation_damping:    float = 8.0
-var grab_angular_damp:        float = 4.0
+## Fuerza del agarre, normalizada (= `strenght` del arquetipo). La física del agarre la resuelve
+## GrabbableInteractable juntando todas las manos; acá sólo aportamos con cuánta fuerza tira ésta.
+var grab_strength:            float = 0.5
 var show_grab_curve:          bool  = true
 var grab_cone_half_angle:     float = 120.0
 ## Impulso de lanzamiento (N·s) a carga completa para OBJETOS. Impulso fijo → Δv = impulso/masa:
@@ -38,8 +35,6 @@ var _grabbed:               RigidBody3D = null
 var _grabbed_grab_point:    Node3D      = null
 var _grab_distance:         float       = 3.0
 var _is_rotating:           bool        = false
-var _grab_target_rotation:  Quaternion  = Quaternion.IDENTITY
-var _grab_relative_rotation: Quaternion = Quaternion.IDENTITY
 
 var _line_mesh:         MeshInstance3D = null
 var _is_charging_throw: bool           = false
@@ -141,10 +136,9 @@ func update(delta: float) -> void:
 		_reset_effort()
 		return
 
-	_apply_grab_force()
+	_update_hold()
 	if not is_instance_valid(_grabbed):
 		return
-	_apply_grab_torque()
 	_update_effort_zone(delta)
 	if is_instance_valid(arms_controller):
 		var grabbable := _get_grabbable(_grabbed)
@@ -215,9 +209,6 @@ func _start_grab(grabbable: GrabbableInteractable) -> void:
 	var grab_world      := _grabbed_grab_point.global_position if is_instance_valid(_grabbed_grab_point) else _grabbed.global_position
 	_grab_distance       = clamp(origin.distance_to(grab_world), grab_dist_min, grab_dist_max)
 	_grabbed.sleeping      = false
-	_grab_target_rotation  = _grabbed.global_transform.basis.get_rotation_quaternion()
-	var player_rot         := Quaternion(char_rigidbody.global_transform.basis)
-	_grab_relative_rotation = player_rot.inverse() * _grab_target_rotation
 	if is_instance_valid(arms_controller):
 		arms_controller.start_grab(grabbable, _get_interaction_origin(), _grabbed_grab_point, grab_dist_min, grab_dist_max)
 	var ns := _char_net_sync()  # avisar a los otros qué agarré, para que sus proxies muevan los brazos
@@ -226,9 +217,16 @@ func _start_grab(grabbable: GrabbableInteractable) -> void:
 
 func _stop_grab() -> void:
 	_reset_effort()
-	# Avisamos que soltamos (el host promueve autoridad al que quede, o vuelve al host).
 	if is_instance_valid(_grabbed):
+		# Soltamos la mano en el solver: local si simulamos el cuerpo, o avisándole al que lo simula
+		# (si no, seguiría tirando hasta que la mano expire por timeout).
+		var grabbable := _get_grabbable(_grabbed)
 		var net := _net_body_of(_grabbed)
+		if is_instance_valid(net) and multiplayer.has_multiplayer_peer() and not net.is_multiplayer_authority():
+			net.send_grab_release()
+		elif is_instance_valid(grabbable):
+			grabbable.clear_hold(_hold_key())
+		# Avisamos que soltamos (el host promueve autoridad al que quede, o vuelve al host).
 		if is_instance_valid(net):
 			net.end_grab()
 	_grabbed            = null
@@ -243,9 +241,16 @@ func _stop_grab() -> void:
 	if is_instance_valid(ns):
 		ns.set_grab_target(null)
 
-func _apply_grab_force() -> void:
+## No aplicamos fuerzas: registramos nuestra MANO (dónde agarramos y hacia dónde tiramos) y el
+## solver del grabbable las junta todas y resuelve una vez. Si el cuerpo está sincronizado y no
+## somos su autoridad, la mano viaja como intención a quien lo simula.
+func _update_hold() -> void:
 	if not is_instance_valid(_grabbed):
 		_grabbed = null
+		return
+	var grabbable := _get_grabbable(_grabbed)
+	if not is_instance_valid(grabbable):
+		_stop_grab()
 		return
 	var origin     := _get_interaction_origin()
 	var cam_fwd    := -player_camera.global_transform.basis.z
@@ -255,36 +260,19 @@ func _apply_grab_force() -> void:
 		_stop_grab()
 		return
 
-	# Co-agarre: si el objeto está sincronizado y NO somos su autoridad, mandamos la intención
-	# (grab point + a dónde tiramos) a quien lo simula, y no tocamos el cuerpo (está frozen acá).
+	# El origen (pecho) viaja con la mano: el solver lo usa para orientar el objeto de modo que la
+	# parte que agarraste quede de frente al agarrador.
+	var offset := _grabbed.to_local(grab_world)
+
 	var net := _net_body_of(_grabbed)
 	if is_instance_valid(net) and multiplayer.has_multiplayer_peer() and not net.is_multiplayer_authority():
-		net.send_grab_intent(_grabbed.to_local(grab_world), target_pos, grab_stiffness, grab_damping)
+		net.send_grab_intent(offset, target_pos, origin, grab_strength)
 		return
+	grabbable.set_hold(_hold_key(), offset, target_pos, origin, grab_strength)
 
-	# Autoridad (u offline): fuerza en el GRAB POINT (off-center → traslación + rotación
-	# emergente) + damping angular para frenar giros indeseados.
-	var force := (target_pos - grab_world) * grab_stiffness - _grabbed.linear_velocity * grab_damping
-	_grabbed.apply_force(force, grab_world - _grabbed.global_position)
-	_grabbed.apply_torque(-_grabbed.angular_velocity * grab_angular_damp)
-	_grabbed.sleeping = false
-
-func _apply_grab_torque() -> void:
-	if not is_instance_valid(_grabbed):
-		return
-	# Yaw-follow (la caja rota con el personaje) SOLO con un agarrador. Con co-agarre se apaga
-	# (la orientación sale de las fuerzas en los grab points), y los co-grabbers no aplican torque.
-	var net := _net_body_of(_grabbed)
-	if is_instance_valid(net) and multiplayer.has_multiplayer_peer():
-		if not net.is_multiplayer_authority() or net.has_cograbbers():
-			return
-	var player_rot          := Quaternion(char_rigidbody.global_transform.basis)
-	_grab_target_rotation   = player_rot * _grab_relative_rotation
-	var current := _grabbed.global_transform.basis.get_rotation_quaternion()
-	var error   := (_grab_target_rotation * current.inverse()).normalized()
-	var angle   := error.get_angle()
-	if angle > PI: angle -= TAU
-	_grabbed.apply_torque(error.get_axis() * angle * grab_rotation_stiffness - _grabbed.angular_velocity * grab_rotation_damping)
+## Identifica nuestra mano en el registro del grabbable.
+func _hold_key() -> int:
+	return multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else GrabbableInteractable.LOCAL_HOLD
 
 func _release_throw() -> void:
 	var dir := -player_camera.global_transform.basis.z
@@ -408,8 +396,7 @@ func _update_grab_strength() -> void:
 	if not is_instance_valid(_entity_instantiation):
 		return
 	var arch       := _entity_instantiation.arch_final
-	grab_stiffness = arch.strenght * arch.weight * 9.8
-	grab_damping   = grab_stiffness * 0.1
+	grab_strength  = arch.strenght
 	throw_impulse_max = arch.throw_strenght * THROW_IMPULSE_SCALE
 	push_speed_max    = arch.throw_strenght * PUSH_SPEED_SCALE
 
@@ -425,19 +412,12 @@ func _is_out_of_reach(world_pos: Vector3) -> bool:
 	var origin := _get_interaction_origin()
 	var to_pos := world_pos - origin
 	var dist   := to_pos.length()
-	print("[OUT_OF_REACH] dist=%.3f grip_dist_max=%.3f interact_dist_max=%.3f" % [dist, grip_dist_max, interact_dist_max])
 	if dist > grip_dist_max:
-		print("[OUT_OF_REACH] LOST — too far (%.3f > %.3f)" % [dist, grip_dist_max])
 		return true
 	if dist <= 0.001:
 		return false
 	var cam_fwd := -player_camera.global_transform.basis.z
-	var dot     := to_pos.normalized().dot(cam_fwd)
-	var cone    := cos(deg_to_rad(grab_cone_half_angle))
-	if dot < cone:
-		print("[OUT_OF_REACH] LOST — outside cone (dot=%.3f < cone=%.3f)" % [dot, cone])
-		return true
-	return false
+	return to_pos.normalized().dot(cam_fwd) < cos(deg_to_rad(grab_cone_half_angle))
 
 # ── Input API ─────────────────────────────────────────────────────────────────
 
@@ -453,16 +433,14 @@ func release_interact() -> void:
 	_stop_grab()
 	_stop_control()
 
+## Rotación libre con el mouse desactivada: la orientación la determina DÓNDE agarraste (el solver
+## del grabbable), así que no hay un target de rotación que el mouse pueda mover. Se mantienen como
+## no-op porque el PlayerController las llama. Ver technical/ui.md / conceptual/multiplayer.md.
 func set_rotating(_value: bool) -> void:
-	# Rotación libre con el mouse desactivada: con 1 agarrador el yaw sigue al personaje solo,
-	# con co-agarre la orientación es emergente. Ver technical/ui.md / conceptual/multiplayer.md.
 	_is_rotating = false
 
-func apply_grab_rotation(relative: Vector2) -> void:
-	if not _is_rotating or not is_instance_valid(_grabbed): return
-	var delta_rot := Quaternion(player_camera.global_transform.basis.x, -relative.y * grab_rotation_sensitivity) \
-				  * Quaternion(player_camera.global_transform.basis.y, -relative.x * grab_rotation_sensitivity)
-	_grab_target_rotation = delta_rot * _grab_target_rotation
+func apply_grab_rotation(_relative: Vector2) -> void:
+	pass
 
 func apply_controlled_motion(relative: Vector2) -> void:
 	if is_instance_valid(_controlled):

@@ -1,6 +1,6 @@
 class_name EntityArchetype
 
-enum Archetype {fat_man, kid, tall_lanky, giga, old}
+enum Archetype {fat_man, kid, tall_lanky, giga, old, generic}
 
 # BASE STATS
 var strenght : float = 1.0
@@ -19,11 +19,11 @@ var time_to_standup : float = 4.0
 
 # REACH/ARMS
 var throw_strenght : float = 1.0
-var reach : float = 1.0
-var reach_multiplier : float = 1.2
 
 # JUMP
-var jump_strenght : float = 0.5
+## Altura del apex a carga máxima, EN METROS (CharacterRigidBody3D.jump_to_height despeja el impulso).
+## Un toque sin cargar sube el 30% de esto.
+var jump_height : float = 0.8
 var time_to_max_jump : float = 1.0
 
 # AGE RANGE
@@ -67,11 +67,25 @@ var fatness : float = 0.5
 var muscularity : float = 0.5
 var has_neck: bool = true
 
-# PROPORTIONS
+# PROPORTIONS — LARGOS DE HUESO
+## Las tres cadenas paramétricas, 0..1 sobre los rangos medidos del modelo de Blender
+## (SkeletonSizesUtil.MIN_/MID_/MAX_*). **0.5 = el largo tal como fue esculpido**, no el promedio de
+## los extremos: el modelo ES el genérico, y los extremos se modelan a mano sin obligación de quedar
+## simétricos. Por eso la interpolación va en dos tramos (lerp_three).
+## Reemplazan a `height` + `legs_to_feet_proportion` + `chest_to_low_spine_proportion` + `reach`:
+## ahora el modelo define lo posible y el arquetipo elige adentro. Ver
+## technical/skinned-character-migration.md.
+var legs_length  : float = 0.5
+var arms_length  : float = 0.5
+var torso_length : float = 0.5
+
+# PROPORTIONS — VESTIGIALES
+## Ya NO alimentan el esqueleto: los largos salen de las tres variables de arriba, y cadera/hombros/
+## cuello/cabeza están fijos en el largo esculpido hasta la fase 3. `height` en particular pasó a ser
+## un RESULTADO (SkeletonSizesUtil.total_height); estos campos quedan solo como referencia de autor.
 var height : float = 1.8
 var chest_to_low_spine_proportion : float = 1.0
 var legs_to_feet_proportion : float = 1.0
-var hips_width_proportion : float = 1.0
 var shoulder_width_proportion : float = 1.0
 var head_neck_ratio: float = 0.4
 
@@ -87,8 +101,88 @@ static func create(archetype: Archetype) -> EntityArchetype:
 		return kid_arch()
 	if(archetype == Archetype.giga):
 		return giga_arch()
+	if(archetype == Archetype.generic):
+		return generic_arch()
 	else:
 		return old_arch()
+
+## NEUTRO — el arquetipo de referencia del modelo skinneado. Postura sin nada raro: sin joroba, sin
+## hombros caídos, sin piernas lisiadas, base de pies angosta, brazos apenas flexionados. No es un
+## personaje de juego: existe para poder MIRAR el modelo tal como se esculpió, sin que la postura de
+## un arquetipo se coma la evaluación.
+##
+## Tiene las tres cadenas en 0.5, o sea el largo esculpido exacto ⇒ deformación cero. Poniendo
+## EntityInstantiation.FORCE_GENERIC_ARCHETYPE en true todos los personajes vuelven a ser este, que es
+## la vista de la fase 1 y sigue sirviendo para mirar el modelo sin ruido.
+## Ver technical/skinned-character-migration.md.
+static func generic_arch() -> EntityArchetype:
+	var arch = EntityArchetype.new()
+	arch.strenght = 1.0
+	arch.weight = 80.0
+	arch.speed = 0.3
+	arch.back_speed_factor = 1.0
+	arch.lateral_speed_factor = 1.0
+	arch.sprint_multiplier = 1.6
+	arch.acceleration = 0.6
+	arch.foward_stability = 1.0
+	arch.backwards_stability = 1.0
+	arch.sideways_stability = 1.0
+	arch.stability_spring = 1.0
+	arch.stability_damp = 1.0
+	arch.time_to_standup = 1.5
+	arch.throw_strenght = 0.7
+	arch.jump_height = 0.8
+	arch.time_to_max_jump = 0.5
+	arch.min_age = 20
+	arch.max_age = 60
+	arch.robot_chance = 0.0
+	arch.alien_chance = 0.0
+	arch.human_chance = 1.0
+	arch.uncompatible_archetypes = [] as Array[Archetype]
+	# No entra en el sorteo ni en los blends: es un arquetipo de referencia, no de población.
+	arch.archetype_frequency = 0.0
+	arch.shoulder_swing = 0.5
+	arch.side_swing = 0.5
+	arch.arm_swing = 0.5
+	arch.hip_swing = 0.5
+	arch.root_bounciness = 0.5
+	arch.step_height = 0.4
+	# Piernas lo más rectas que permita seguir caminando. La altura de pelvis sale de acá
+	# (h = L · lerp(0.93, 0.80, stride)), así que BAJAR stride SUBE la pelvis y estira la pierna:
+	#   stride 0.50 → pelvis 0.747, alcance de pie 0.339  (bastante flexionada)
+	#   stride 0.25 → pelvis 0.775, alcance de pie 0.269  ← acá
+	#   stride 0.00 → pelvis 0.803, alcance de pie 0.167  (casi recta, pasitos)
+	# El reposo esculpido tiene la cadera a 0.859: llegar ahí daría alcance CERO, o sea que no podría
+	# dar un paso. Ver "the pelvis height is the stride budget" en technical/character-animation.md.
+	arch.stride = 0.25
+	arch.leg_cripple_chance = 0.0
+	arch.slouch = 0.0
+	# <0.5 baja los hombros (shoulder_height = lerp(-0.3, 0.3, esto), y el ángulo negativo rota el
+	# hueso del hombro hacia abajo). 0.15 ≈ -12°: caídos, relajados, sin llegar a colgar.
+	arch.shoulders_height = 0.15
+	# Neutro en el eje adelante/atrás: shoulder_back = lerp(0, 0.3, esto), así que 0.0 es exactamente
+	# cero rotación en Y del hueso del hombro. Los otros arquetipos lo usan para echar los hombros
+	# atrás (hasta 0.5 en `giga`); el de referencia no debe empujar nada.
+	arch.shoulders_back = 0.0
+	# Cuánto se abre el brazo respecto de la vertical: angle = lerp(0, -45°, esto). 0.3 ≈ -13.5°,
+	# brazos pegados al cuerpo. En 0 quedarían perfectamente verticales (y se clavarían en la cadera).
+	arch.arm_openness = 0.3
+	arch.arm_bentness = 0.15
+	arch.arm_elbow_openness = 0.5
+	arch.fatness = 0.5
+	arch.muscularity = 0.5
+	arch.has_neck = true
+	# El modelo tal cual se esculpió. 0.5 en las tres = deformación cero.
+	arch.legs_length  = 0.5
+	arch.arms_length  = 0.5
+	arch.torso_length = 0.5
+	arch.height = 1.71
+	arch.chest_to_low_spine_proportion = 0.33
+	arch.legs_to_feet_proportion = 0.55
+	arch.shoulder_width_proportion = 0.125
+	arch.head_neck_ratio = 0.25
+	arch.stance_width = 1.0
+	return arch
 
 static func fat_man_arch() -> EntityArchetype:
 	var arch = EntityArchetype.new()
@@ -106,9 +200,7 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 2.0
 	arch.throw_strenght = 0.5
-	arch.reach = 0.65
-	arch.reach_multiplier = 2.4
-	arch.jump_strenght = 0.5
+	arch.jump_height = 0.5
 	arch.time_to_max_jump = 0.3
 	arch.min_age = 1
 	arch.max_age = 99
@@ -135,10 +227,13 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.fatness = 1.0
 	arch.muscularity = 0.9
 	arch.has_neck = true
+	# Torso grande sobre piernas cortas. ≈1.74 m.
+	arch.legs_length  = 0.45
+	arch.arms_length  = 0.50
+	arch.torso_length = 0.70
 	arch.height = 1.85
 	arch.chest_to_low_spine_proportion = 0.28
 	arch.legs_to_feet_proportion = 0.42
-	arch.hips_width_proportion = 0.08
 	arch.shoulder_width_proportion = 0.13
 	arch.head_neck_ratio = 0.4
 	arch.stance_width = 1.4
@@ -160,9 +255,7 @@ static func kid_arch() -> EntityArchetype:
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 1.0
 	arch.throw_strenght = 0.3
-	arch.reach = 0.38
-	arch.reach_multiplier = 3.6
-	arch.jump_strenght = 0.3
+	arch.jump_height = 0.75
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 1
 	arch.max_age = 99
@@ -189,10 +282,13 @@ static func kid_arch() -> EntityArchetype:
 	arch.fatness = 0.23
 	arch.muscularity = 0.17
 	arch.has_neck = true
+	# El más chico de todos. ≈1.38 m.
+	arch.legs_length  = 0.15
+	arch.arms_length  = 0.20
+	arch.torso_length = 0.25
 	arch.height = 1.45
 	arch.chest_to_low_spine_proportion = 0.27
 	arch.legs_to_feet_proportion = 0.48
-	arch.hips_width_proportion = 0.07
 	arch.shoulder_width_proportion = 0.15
 	arch.head_neck_ratio = 0.25
 	arch.stance_width = 1.4
@@ -214,9 +310,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 1.0
 	arch.throw_strenght = 0.5
-	arch.reach = 0.75
-	arch.reach_multiplier = 2.5
-	arch.jump_strenght = 0.25
+	arch.jump_height = 0.95
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 1
 	arch.max_age = 99
@@ -243,10 +337,13 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.fatness = 0.37
 	arch.muscularity = 0.27
 	arch.has_neck = true
+	# Piernas y brazos largos, torso medio: el desgarbado. ≈1.89 m.
+	arch.legs_length  = 0.85
+	arch.arms_length  = 0.80
+	arch.torso_length = 0.55
 	arch.height = 1.95
 	arch.chest_to_low_spine_proportion = 0.28
 	arch.legs_to_feet_proportion = 0.52
-	arch.hips_width_proportion = 0.05
 	arch.shoulder_width_proportion = 0.13
 	arch.head_neck_ratio = 0.45
 	arch.stance_width = 1.4
@@ -268,9 +365,7 @@ static func giga_arch() -> EntityArchetype:
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 1.0
 	arch.throw_strenght = 0.9
-	arch.reach = 0.75
-	arch.reach_multiplier = 2.3
-	arch.jump_strenght = 0.2
+	arch.jump_height = 0.85
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 20
 	arch.max_age = 90
@@ -297,10 +392,13 @@ static func giga_arch() -> EntityArchetype:
 	arch.fatness = 0.5
 	arch.muscularity = 1.0
 	arch.has_neck = true
+	# Tronco enorme sobre piernas medias: el macizo. ≈1.85 m.
+	arch.legs_length  = 0.60
+	arch.arms_length  = 0.65
+	arch.torso_length = 0.80
 	arch.height = 1.7
 	arch.chest_to_low_spine_proportion = 0.3
 	arch.legs_to_feet_proportion = 0.47
-	arch.hips_width_proportion = 0.07
 	arch.shoulder_width_proportion = 0.14
 	arch.head_neck_ratio = 0.5
 	arch.stance_width = 1.3
@@ -322,9 +420,7 @@ static func old_arch() -> EntityArchetype:
 	arch.stability_damp = 0.7
 	arch.time_to_standup = 1.0
 	arch.throw_strenght = 0.35
-	arch.reach = 0.5
-	arch.reach_multiplier = 3.0
-	arch.jump_strenght = 0.6
+	arch.jump_height = 0.35
 	arch.time_to_max_jump = 0.5
 	arch.min_age = 50
 	arch.max_age = 99
@@ -351,18 +447,18 @@ static func old_arch() -> EntityArchetype:
 	arch.fatness = 0.1
 	arch.muscularity = 0.0
 	arch.has_neck = true
+	# Encogido: todo por debajo de la media. ≈1.59 m.
+	arch.legs_length  = 0.40
+	arch.arms_length  = 0.40
+	arch.torso_length = 0.40
 	arch.height = 1.65
 	arch.chest_to_low_spine_proportion = 0.25
 	arch.legs_to_feet_proportion = 0.55
-	arch.hips_width_proportion = 0.052
 	arch.shoulder_width_proportion = 0.11
 	arch.head_neck_ratio = 0.45
 	arch.stance_width = 1.4
 	return arch
 
-static func max_leg_lenght() -> float:
-	var leg_lenght : float = tall_lanky_arch().legs_to_feet_proportion * tall_lanky_arch().height
-	return leg_lenght
 
 func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	var r := EntityArchetype.new()
@@ -380,9 +476,7 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.stability_damp                = lerpf(stability_damp, b.stability_damp, t)
 	r.time_to_standup               = lerpf(time_to_standup, b.time_to_standup, t)
 	r.throw_strenght                = lerpf(throw_strenght, b.throw_strenght, t)
-	r.reach                         = lerpf(reach, b.reach, t)
-	r.reach_multiplier              = lerpf(reach_multiplier, b.reach_multiplier, t)
-	r.jump_strenght                 = lerpf(jump_strenght, b.jump_strenght, t)
+	r.jump_height                   = lerpf(jump_height, b.jump_height, t)
 	r.time_to_max_jump              = lerpf(time_to_max_jump, b.time_to_max_jump, t)
 	r.min_age                       = lerpf(min_age, b.min_age, t)
 	r.max_age                       = lerpf(max_age, b.max_age, t)
@@ -403,10 +497,12 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.fatness                       = lerpf(fatness, b.fatness, t)
 	r.muscularity                   = lerpf(muscularity, b.muscularity, t)
 	r.has_neck                      = has_neck
+	r.legs_length                   = lerpf(legs_length, b.legs_length, t)
+	r.arms_length                   = lerpf(arms_length, b.arms_length, t)
+	r.torso_length                  = lerpf(torso_length, b.torso_length, t)
 	r.height                        = lerpf(height, b.height, t)
 	r.chest_to_low_spine_proportion = lerpf(chest_to_low_spine_proportion, b.chest_to_low_spine_proportion, t)
 	r.legs_to_feet_proportion       = lerpf(legs_to_feet_proportion, b.legs_to_feet_proportion, t)
-	r.hips_width_proportion         = lerpf(hips_width_proportion, b.hips_width_proportion, t)
 	r.shoulder_width_proportion     = lerpf(shoulder_width_proportion, b.shoulder_width_proportion, t)
 	r.head_neck_ratio = lerpf(head_neck_ratio, b.head_neck_ratio, t)
 	r.stance_width = lerpf(stance_width, b.stance_width, t)

@@ -287,7 +287,7 @@ func update_ik_raycast(
 	left: bool, bones: CustomBonesUtil, sizes: SkeletonSizesUtil, inputs: AnimationInputs,
 ) -> void:
 	var leg := get_leg_data(left)
-	var upper_leg := bones.left_upper_leg if left else bones.right_upper_leg
+	var higher_leg := bones.left_higher_leg if left else bones.right_higher_leg
 	var lower_leg := bones.left_lower_leg if left else bones.right_lower_leg
 
 	if not recovery_targets_locked:
@@ -317,7 +317,7 @@ func update_ik_raycast(
 		_set_swinging(left, false)
 		indicator_b.visible = false
 		indicator_c.visible = false
-		solve_two_bone_ik(upper_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
+		solve_two_bone_ik(higher_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
 		return
 
 	indicator_b.visible = true
@@ -457,7 +457,7 @@ func update_ik_raycast(
 		_set_indicator_color(indicator_b, raycast_color if active_candidate_idx == 1 else inactive_raycast_color)
 		_set_indicator_color(indicator_c, raycast_color if active_candidate_idx == 2 else inactive_raycast_color)
 
-	solve_two_bone_ik(upper_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
+	solve_two_bone_ik(higher_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
 
 ## PASO DE ASENTAMIENTO. Al frenar los pies quedan asimétricos (uno adelante, uno atrás) porque el
 ## ciclo se cortó donde se cortó. Acá el pie más desplazado da un pasito para meterse bajo la cadera

@@ -20,7 +20,8 @@ var throw_strenght_multiplier : float = 1.0
 var reach_multiplier : float = 1.0
 
 # JUMP
-var jump_strenght_multiplier : float
+## OJO: hoy no lo aplica nadie — el salto sale solo del archetype (jump_height).
+var jump_height_multiplier : float = 1.0
 
 # ANIMATIONS
 var shoulder_swing_multiplier : float = 1.0
@@ -47,7 +48,7 @@ static func human_specie() -> EntitySpecie:
 	specie.stability_damp_multiplier = 1.0
 	specie.throw_strenght_multiplier = 1.0
 	specie.reach_multiplier = 1.0
-	specie.jump_strenght_multiplier = 1.2
+	specie.jump_height_multiplier = 1.2
 	specie.shoulder_swing_multiplier = 1.0
 	specie.hip_swing_multiplier = 1.0
 	specie.root_bounciness_multiplier = 1.0
@@ -78,7 +79,7 @@ static func alien_specie() -> EntitySpecie:
 	specie.stability_damp_multiplier = 1.0
 	specie.throw_strenght_multiplier = 1.0
 	specie.reach_multiplier = 1.5
-	specie.jump_strenght_multiplier = 1.0
+	specie.jump_height_multiplier = 1.0
 	specie.shoulder_swing_multiplier = 1.0
 	specie.hip_swing_multiplier = 1.0
 	specie.root_bounciness_multiplier = 1.0
@@ -108,7 +109,7 @@ static func robot_specie() -> EntitySpecie:
 	specie.stability_damp_multiplier = 1.0
 	specie.throw_strenght_multiplier = 1.0
 	specie.reach_multiplier = 1.0
-	specie.jump_strenght_multiplier = 1.0
+	specie.jump_height_multiplier = 1.0
 	specie.shoulder_swing_multiplier = 1.0
 	specie.hip_swing_multiplier = 1.0
 	specie.root_bounciness_multiplier = 1.0

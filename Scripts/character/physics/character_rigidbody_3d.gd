@@ -13,7 +13,6 @@ var fly_sprint_multiplier: float = 2.0
 const SPEED_SCALE := 10.0
 const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
-const JUMP_SCALE := 30.0
 
 ## Resistencia a voltearse (ragdoll por choque). El umbral de impacto escala con el PESO relativo a
 ## este peso de referencia: un pesado necesita un golpe mucho más fuerte para caerse que un liviano.
@@ -333,8 +332,14 @@ func _apply_movement_force() -> void:
 		apply_central_force(brake_force)
 		_frame_force += brake_force
 
-func jump(impulse: float) -> void:
-	apply_central_impulse(Vector3.UP * impulse)
+## Salta pidiendo ALTURA, no fuerza: el archetype declara cuántos metros sube el apex
+## (`jump_height`) y acá se despeja el impulso contra la gravedad real (v = √(2·g·h), impulso = m·v).
+## Así el número del archetype se lee en metros y no depende de la masa ni de la gravedad del proyecto.
+func jump_to_height(height: float) -> void:
+	if height <= 0.0:
+		return
+	var g := maxf(get_gravity().length(), 0.01)
+	apply_central_impulse(Vector3.UP * mass * sqrt(2.0 * g * height))
 
 func set_creative_mode(enabled: bool) -> void:
 	creative_mode = enabled

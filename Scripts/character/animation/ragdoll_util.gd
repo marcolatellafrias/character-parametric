@@ -60,11 +60,11 @@ static func create(bones_util: CustomBonesUtil, skel_rb_node: Node3D, joints_nod
 
 func _build_bodies(bu: CustomBonesUtil) -> void:
 	var all_bones: Array = [
-		bu.lower_spine, bu.middle_spine, bu.upper_spine, bu.chest,
+		bu.lower_spine, bu.middle_spine, bu.higher_spine, bu.chest,
 		bu.left_hip, bu.right_hip,
-		bu.left_upper_leg, bu.left_lower_leg,
-		bu.right_upper_leg, bu.right_lower_leg,
-		bu.right_upper_feet, bu.left_upper_feet,
+		bu.left_higher_leg, bu.left_lower_leg,
+		bu.right_higher_leg, bu.right_lower_leg,
+		bu.right_foot, bu.left_foot,
 		bu.neck, bu.head,
 		bu.left_shoulder, bu.right_shoulder,
 		bu.right_upper_arm, bu.right_lower_arm,
@@ -126,16 +126,16 @@ func _build_joints() -> void:
 
 	var pairs: Array = [
 		[bu.lower_spine,  bu.middle_spine,    55.0, 6.0, -20.0, 20.0, -30.0, 30.0, -20.0, 20.0],
-		[bu.middle_spine, bu.upper_spine,     55.0, 6.0, -20.0, 20.0, -30.0, 30.0, -20.0, 20.0],
-		[bu.upper_spine,  bu.chest,           50.0, 6.0, -20.0, 20.0, -25.0, 25.0, -20.0, 20.0],
+		[bu.middle_spine, bu.higher_spine,     55.0, 6.0, -20.0, 20.0, -30.0, 30.0, -20.0, 20.0],
+		[bu.higher_spine,  bu.chest,           50.0, 6.0, -20.0, 20.0, -25.0, 25.0, -20.0, 20.0],
 		[bu.lower_spine,  bu.left_hip,        40.0, 5.0, -30.0, 30.0, -40.0, 40.0, -30.0, 30.0],
 		[bu.lower_spine,  bu.right_hip,       40.0, 5.0, -30.0, 30.0, -40.0, 40.0, -30.0, 30.0],
-		[bu.left_hip,     bu.left_upper_leg,  35.0, 5.0, -40.0, 40.0, -80.0, 40.0, -30.0, 30.0],
-		[bu.right_hip,    bu.right_upper_leg, 35.0, 5.0, -40.0, 40.0, -80.0, 40.0, -30.0, 30.0],
-		[bu.left_upper_leg,  bu.left_lower_leg,  25.0, 4.0, -10.0, 10.0,   0.0, 130.0, -10.0, 10.0],
-		[bu.right_upper_leg, bu.right_lower_leg, 25.0, 4.0, -10.0, 10.0,   0.0, 130.0, -10.0, 10.0],
-		[bu.left_lower_leg,  bu.left_upper_feet,  10.0, 3.0, -20.0, 20.0, -30.0, 30.0, -15.0, 15.0],
-		[bu.right_lower_leg, bu.right_upper_feet, 10.0, 3.0, -20.0, 20.0, -30.0, 30.0, -15.0, 15.0],
+		[bu.left_hip,     bu.left_higher_leg,  35.0, 5.0, -40.0, 40.0, -80.0, 40.0, -30.0, 30.0],
+		[bu.right_hip,    bu.right_higher_leg, 35.0, 5.0, -40.0, 40.0, -80.0, 40.0, -30.0, 30.0],
+		[bu.left_higher_leg,  bu.left_lower_leg,  25.0, 4.0, -10.0, 10.0,   0.0, 130.0, -10.0, 10.0],
+		[bu.right_higher_leg, bu.right_lower_leg, 25.0, 4.0, -10.0, 10.0,   0.0, 130.0, -10.0, 10.0],
+		[bu.left_lower_leg,  bu.left_foot,  10.0, 3.0, -20.0, 20.0, -30.0, 30.0, -15.0, 15.0],
+		[bu.right_lower_leg, bu.right_foot, 10.0, 3.0, -20.0, 20.0, -30.0, 30.0, -15.0, 15.0],
 		[bu.chest, bu.left_shoulder,  35.0, 5.0, -50.0, 50.0, -60.0, 60.0, -40.0, 40.0],
 		[bu.chest, bu.right_shoulder, 35.0, 5.0, -50.0, 50.0, -60.0, 60.0, -40.0, 40.0],
 		[bu.left_shoulder,  bu.left_upper_arm,  25.0, 4.0, -70.0, 70.0, -70.0, 70.0, -70.0, 70.0],
@@ -297,7 +297,7 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
 		var upper_bones: Array = [
 			_bodies.get(_bones_util.lower_spine,    null),
 			_bodies.get(_bones_util.middle_spine,   null),
-			_bodies.get(_bones_util.upper_spine,    null),
+			_bodies.get(_bones_util.higher_spine,    null),
 			_bodies.get(_bones_util.chest,          null),
 			_bodies.get(_bones_util.left_shoulder,  null),
 			_bodies.get(_bones_util.right_shoulder, null),
@@ -317,8 +317,8 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
 		var lower_bones: Array = [
 			_bodies.get(_bones_util.left_hip,         null),
 			_bodies.get(_bones_util.right_hip,        null),
-			_bodies.get(_bones_util.left_upper_leg,   null),
-			_bodies.get(_bones_util.right_upper_leg,  null),
+			_bodies.get(_bones_util.left_higher_leg,   null),
+			_bodies.get(_bones_util.right_higher_leg,  null),
 			_bodies.get(_bones_util.left_lower_leg,   null),
 			_bodies.get(_bones_util.right_lower_leg,  null),
 		]
@@ -567,10 +567,10 @@ func _update_recovery(delta: float) -> void:
 		_finish_recovery()
 
 ## Bones de pierna que resuelve el IK de recuperación (los hips quedan en el blend normal, cerca de
-## la pelvis). upper_leg → lower_leg → feet, ambos lados.
+## la pelvis). higher_leg → lower_leg → feet, ambos lados.
 func _is_recovery_leg_bone(bone: CustomBone) -> bool:
-	return bone == _bones_util.left_upper_leg  or bone == _bones_util.left_lower_leg  or bone == _bones_util.left_upper_feet \
-		or bone == _bones_util.right_upper_leg or bone == _bones_util.right_lower_leg or bone == _bones_util.right_upper_feet
+	return bone == _bones_util.left_higher_leg  or bone == _bones_util.left_lower_leg  or bone == _bones_util.left_foot \
+		or bone == _bones_util.right_higher_leg or bone == _bones_util.right_lower_leg or bone == _bones_util.right_foot
 
 ## Piso bajo world_pos (raycast hacia abajo, solo mundo). INF si no hay.
 func _recovery_floor_y(world_pos: Vector3) -> float:
@@ -591,9 +591,9 @@ func _recovery_floor_y(world_pos: Vector3) -> float:
 ## principio de la recuperación (para no dar un salto). Misma matemática que IkUtil.solve_two_bone_ik,
 ## pero aplicada a los CUERPOS del ragdoll (que es lo visible), con la convención cuerpo≡hueso.
 func _solve_recovery_leg(left: bool, root_body: RigidBody3D, root_bone: CustomBone, floor_y: float, t: float) -> void:
-	var upper_bone: CustomBone = _bones_util.left_upper_leg  if left else _bones_util.right_upper_leg
+	var upper_bone: CustomBone = _bones_util.left_higher_leg  if left else _bones_util.right_higher_leg
 	var lower_bone: CustomBone = _bones_util.left_lower_leg  if left else _bones_util.right_lower_leg
-	var foot_bone:  CustomBone = _bones_util.left_upper_feet if left else _bones_util.right_upper_feet
+	var foot_bone:  CustomBone = _bones_util.left_foot if left else _bones_util.right_foot
 	var upper_body: RigidBody3D = _bodies.get(upper_bone, null)
 	var lower_body: RigidBody3D = _bodies.get(lower_bone, null)
 	var foot_body:  RigidBody3D = _bodies.get(foot_bone,  null)
@@ -712,14 +712,25 @@ func _clear_joints() -> void:
 			j.queue_free()
 	_joints.clear()
 
+## Los cuerpos del ragdoll (cajas con la forma del hueso) son lo VISIBLE mientras se ragdollea.
+## Con el modelo skinneado puesto dejan de serlo: se quedan invisibles siempre y el espejo los lee a
+## ellos, así la malla skinneada es lo único que se ve en los dos estados. Lo apaga BoneInstantiator.
+var show_bodies: bool = true
+
+## Los RigidBody3D por hueso (CustomBone → RigidBody3D), con la convención cuerpo≡hueso: el transform
+## global del cuerpo es el del hueso. Por eso el espejo puede leerlos con la MISMA corrección de ejes.
+func get_bodies() -> Dictionary:
+	return _bodies
+
 func _set_meshes_visible(value: bool) -> void:
+	var visible_value := value and show_bodies
 	for bone in _bodies:
 		var rb: RigidBody3D = _bodies[bone]
 		if not is_instance_valid(rb):
 			continue
 		for child in rb.get_children():
 			if child is MeshInstance3D:
-				child.visible = value
+				child.visible = visible_value
 
 func _set_body_mesh_color(rb: RigidBody3D, color: Color) -> void:
 	for child in rb.get_children():

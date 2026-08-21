@@ -5,6 +5,15 @@ class_name EntityInstantiation
 ## igual, solo que hoy son siempre los del humano = 1.0).
 const FORCE_HUMAN_SPECIE := true
 
+## Vista de la FASE 1 de la migración: todos los personajes usan el arquetipo `generic`, que tiene las
+## tres cadenas de hueso en 1.0 y por lo tanto reproduce el modelo esculpido con DEFORMACIÓN CERO.
+## Sirve para mirar la malla sin que la variación de arquetipos meta ruido: si algo se ve torcido con
+## esto prendido, es un bug del espejo y no una proporción para tunear.
+##
+## En false (fase 2 en adelante) los arquetipos vuelven a variar, cada uno con su 0..1 por cadena
+## dentro de los rangos del modelo. Ver technical/skinned-character-migration.md.
+const FORCE_GENERIC_ARCHETYPE := false
+
 var blend_range := 0.5
 
 var master_seed: int
@@ -35,6 +44,15 @@ static func create(seed: int) -> EntityInstantiation:
 	inst.master_seed = seed
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
+
+	if FORCE_GENERIC_ARCHETYPE:
+		inst.archetype_type = EntityArchetype.Archetype.generic
+		inst.archetype_blend = 0.0
+		inst.arch_final = EntityArchetype.create(EntityArchetype.Archetype.generic)
+		inst.specie_type = _resolve_specie(rng, inst.arch_final)
+		inst.spec = _make_specie(inst.specie_type)
+		inst._resolve(rng)
+		return inst
 
 	if seed >= 0 and seed <= 4:
 		var debug_archetypes: Array[EntityArchetype.Archetype] = [

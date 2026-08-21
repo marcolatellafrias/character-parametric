@@ -21,7 +21,7 @@ func register_all() -> void:
 	var left_hip       := bi.custom_bones_util.left_hip
 	var lower_spine    := bi.custom_bones_util.lower_spine
 	var middle_spine   := bi.custom_bones_util.middle_spine
-	var upper_spine    := bi.custom_bones_util.upper_spine
+	var higher_spine    := bi.custom_bones_util.higher_spine
 	var chest          := bi.custom_bones_util.chest
 	var right_shoulder := bi.custom_bones_util.right_shoulder
 	var left_shoulder  := bi.custom_bones_util.left_shoulder
@@ -49,12 +49,12 @@ func register_all() -> void:
 
 	var lower_spine_rotation  := _spine_local_weight(1, 5, _bottom_spine_rotation, _top_spine_rotation)
 	var middle_spine_rotation := _spine_local_weight(2, 5, _bottom_spine_rotation, _top_spine_rotation)
-	var upper_spine_rotation  := _spine_local_weight(3, 5, _bottom_spine_rotation, _top_spine_rotation)
+	var higher_spine_rotation  := _spine_local_weight(3, 5, _bottom_spine_rotation, _top_spine_rotation)
 	var chest_rotation        := _spine_local_weight(4, 5, _bottom_spine_rotation, _top_spine_rotation)
 
 	pa.register(lower_spine,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, lower_spine_rotation)
 	pa.register(middle_spine, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, middle_spine_rotation)
-	pa.register(upper_spine,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, upper_spine_rotation)
+	pa.register(higher_spine,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, higher_spine_rotation)
 	pa.register(chest,        PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, chest_rotation)
 
 	# ─── SPINE BOW ───────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ func register_all() -> void:
 	var bow_w := 0.15
 	pa.register(lower_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  bow_w * 0.5)
 	pa.register(middle_spine, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  bow_w * 1.0)
-	pa.register(upper_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -bow_w * 1.0)
+	pa.register(higher_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -bow_w * 1.0)
 	pa.register(chest,        PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -bow_w * 0.5)
 	pa.register(lower_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  0.03)
 
@@ -217,19 +217,19 @@ func _register_camera_pitch_animations() -> void:
 	if is_instance_valid(bi.custom_bones_util.neck):
 		pa.register_formula(bi.custom_bones_util.neck,     PA.Axis.ROT_X, pitch_callable, 0.25)
 	pa.register_formula(bi.custom_bones_util.chest,        PA.Axis.ROT_X, pitch_callable, 0.12)
-	pa.register_formula(bi.custom_bones_util.upper_spine,  PA.Axis.ROT_X, pitch_callable, 0.08)
+	pa.register_formula(bi.custom_bones_util.higher_spine,  PA.Axis.ROT_X, pitch_callable, 0.08)
 	pa.register_formula(bi.custom_bones_util.middle_spine, PA.Axis.ROT_X, pitch_callable, 0.05)
 
 	# ─── EXTRA SPINE BEND SOLO AL MIRAR ABAJO ────────────────────────────────
 	var look_down_extra := 0.12
 	var lower_spine     := bi.custom_bones_util.lower_spine
 	var middle_spine    := bi.custom_bones_util.middle_spine
-	var upper_spine     := bi.custom_bones_util.upper_spine
+	var higher_spine     := bi.custom_bones_util.higher_spine
 	var chest           := bi.custom_bones_util.chest
 	var down_callable   := func() -> float: return -min(0.0, pitch_callable.call())
 	pa.register_formula(lower_spine,  PA.Axis.ROT_X, down_callable, -look_down_extra * 0.4)
 	pa.register_formula(middle_spine, PA.Axis.ROT_X, down_callable, -look_down_extra * 0.7)
-	pa.register_formula(upper_spine,  PA.Axis.ROT_X, down_callable, -look_down_extra * 1.0)
+	pa.register_formula(higher_spine,  PA.Axis.ROT_X, down_callable, -look_down_extra * 1.0)
 	pa.register_formula(chest,        PA.Axis.ROT_X, down_callable, -look_down_extra * 0.5)
 	pa.register_formula(lower_spine,  PA.Axis.POS_Y, down_callable, -look_down_extra * 0.6)
 	pa.register_formula(lower_spine,  PA.Axis.POS_Z, down_callable,  look_down_extra * 0.4)
@@ -243,7 +243,7 @@ func refresh_camera_animations() -> void:
 		bi.custom_bones_util.head,
 		bi.custom_bones_util.neck,
 		bi.custom_bones_util.chest,
-		bi.custom_bones_util.upper_spine,
+		bi.custom_bones_util.higher_spine,
 		bi.custom_bones_util.middle_spine,
 	]
 	for bone in bones:

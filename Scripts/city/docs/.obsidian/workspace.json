@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "conceptual/interactables.md",
+                "file": "technical/character-animation.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "interactables"
+              "title": "character-animation"
             }
           }
         ]
@@ -41,7 +41,9 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": false
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
               },
               "icon": "lucide-folder-closed",
               "title": "Explorador de archivos"
@@ -185,19 +187,23 @@
   },
   "active": "9576508c48e6342d",
   "lastOpenFiles": [
-    "technical/character-animation.md.tmp.11520.4ec9d11721ec",
-    "technical/character-animation.md.tmp.11520.3598f0c798b7",
-    "technical/character-animation.md.tmp.11836.3130065a3dbb",
-    "technical/character-animation.md.tmp.11836.d717b729de65",
-    "technical/character-animation.md.tmp.11836.ffb9b5c8c1cc",
-    "technical/character-animation.md.tmp.11836.d6008faa37b5",
-    "technical/character-animation.md.tmp.11836.23124cab0ce7",
-    "technical/character-animation.md.tmp.11836.0aa38ea19ad0",
-    "technical/character-animation.md.tmp.11836.7fa0b7263111",
-    "technical/character-animation.md.tmp.11836.686b0e21b5dd",
-    "technical/character-animation.md.tmp.11836.443f0fc6e1c5",
-    "conceptual/hud.md",
+    "sed0FI9Bt",
+    "sed1gOTW7",
+    "technical/skinned-character-migration.md.tmp.16768.4e78dcd0108a",
+    "technical/sedf77yEx",
+    "technical/skinned-character-migration.md.tmp.16768.943e28b035da",
+    "technical/character-blender-authoring.md.tmp.16768.d8e254b11b82",
+    "technical/character-blender-authoring.md.tmp.16768.a9e44cb34b36",
+    "technical/character-blender-authoring.md.tmp.16768.29a2fb01d294",
+    "technical/character-blender-authoring.md.tmp.16768.4489da1a758e",
+    "technical/skinned-character-migration.md.tmp.16768.d647cac863b2",
+    "technical/skinned-character-migration.md.tmp.16768.450dbeecd330",
+    "technical/character-blender-authoring.md",
+    "technical/skinned-character-migration.md",
+    "technical/characters.md",
+    "technical/character-animation.md",
     "conceptual/interactables.md",
+    "conceptual/hud.md",
     "conceptual/world.md",
     "conceptual/ship-gameplay.md",
     "conceptual/run-setup.md",
@@ -205,8 +211,6 @@
     "conceptual/onfoot-gameplay.md",
     "conceptual/objects.md",
     "conceptual/multiplayer.md",
-    "technical/character-animation.md",
-    "technical/characters.md",
     "technical/ui.md",
     "comandos-utiles.md",
     "technical/sidewalks.md",

@@ -3,12 +3,12 @@ extends Node
 signal settings_changed
 
 @export_group("Fog")
-@export var fog_start_distance: float = 100.0:
+@export var fog_start_distance: float = 140.0:
 	set(value):
 		fog_start_distance = value
 		settings_changed.emit()
 
-@export var render_distance: float = 250.0:
+@export var render_distance: float = 350.0:
 	set(value):
 		render_distance = value
 		settings_changed.emit()

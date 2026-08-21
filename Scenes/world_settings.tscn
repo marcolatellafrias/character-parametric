@@ -5,4 +5,4 @@
 [node name="WorldSettings" type="Node"]
 script = ExtResource("1")
 fog_color = Color(0.7209096, 0.47572768, 0.30881587, 1)
-spawn_buffer = 100.0
+spawn_buffer = 140.0

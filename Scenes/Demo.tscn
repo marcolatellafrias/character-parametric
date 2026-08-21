@@ -1,4 +1,4 @@
-[gd_scene load_steps=29 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=30 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
 [ext_resource type="Material" uid="uid://da33e5tos7dp0" path="res://Materials/blue.tres" id="4_oilx1"]
@@ -9,11 +9,12 @@
 [ext_resource type="Script" uid="uid://bl2t0acm7uwql" path="res://Scripts/character_test.gd" id="10_4i7ud"]
 [ext_resource type="Shader" uid="uid://cwp4o1qsu4vtg" path="res://Shaders/radial_fog.gdshader" id="11_h3puh"]
 [ext_resource type="Script" uid="uid://bby2e141ke1uw" path="res://Scripts/common/fps_graph.gd" id="11_v3boh"]
-[ext_resource type="PackedScene" uid="uid://k543h15j5sew" path="res://Scenes/player.tscn" id="11_ymvx6"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
 [ext_resource type="PackedScene" uid="uid://d2fiffsg4ajn1" path="res://Scenes/world_settings.tscn" id="12_v3boh"]
-[ext_resource type="Script" path="res://Scripts/net/character_spawner.gd" id="13_spawn"]
-[ext_resource type="Script" path="res://Scripts/ui/pause_menu.gd" id="14_pause"]
+[ext_resource type="Script" uid="uid://c4x45acgat3q6" path="res://Scripts/net/character_spawner.gd" id="13_spawn"]
+[ext_resource type="PackedScene" uid="uid://huxsasishwaq" path="res://Models/final simplified with modifiers3.fbx" id="14_k27g2"]
+[ext_resource type="Script" uid="uid://dy2h5n5w1evpo" path="res://Scripts/ui/pause_menu.gd" id="14_pause"]
+[ext_resource type="PackedScene" uid="uid://b5e5knhws3abc" path="res://Models/final simplified with modifiers4.fbx" id="15_6aqh6"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
 albedo_color = Color(0.36026734, 0.21508548, 0.19387919, 1)
@@ -85,7 +86,7 @@ radius = 0.25
 script = ExtResource("11_v3boh")
 
 [node name="WorldSettings" parent="." instance=ExtResource("12_v3boh")]
-fog_start_distance = 5.0
+fog_start_distance = 7.0
 fog_color = Color(0.7476558, 0.43702698, 0.38007766, 1)
 
 [node name="world" type="Node3D" parent="."]
@@ -184,8 +185,8 @@ script = ExtResource("14_pause")
 
 [node name="city" type="Node3D" parent="."]
 script = ExtResource("9_oilx1")
-region_size = Vector2(900, 900)
-min_distance = 117.325
+region_size = Vector2(1260, 1260)
+min_distance = 164.255
 generation_seed = 12345
 show_streets = false
 show_distorted_grid = false
@@ -212,3 +213,18 @@ script = ExtResource("12_k27g2")
 world = NodePath("../..")
 fog_shader = ExtResource("11_h3puh")
 show_traffic_debug = true
+
+[node name="final simplified with modifiers3" parent="." instance=ExtResource("14_k27g2")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.27526, 0.031407915, 5.0766344)
+
+[node name="final simplified with modifiers4" parent="." instance=ExtResource("14_k27g2")]
+transform = Transform3D(0.4747642, 0, 0.880113, 0, 1, 0, -0.880113, 0, 0.4747642, -7.8187475, 0.031407915, 5.0766344)
+
+[node name="final simplified with modifiers5" parent="." instance=ExtResource("14_k27g2")]
+transform = Transform3D(-0.6572833, 0, 0.75364375, 0, 1, 0, -0.75364375, 0, -0.6572833, -2.7264814, 0.031407915, 5.0766344)
+
+[node name="final simplified with modifiers6" parent="." instance=ExtResource("14_k27g2")]
+transform = Transform3D(-0.99775624, 0, 0.06695303, 0, 1, 0, -0.06695303, 0, -0.99775624, 7.0205107, 0.031407915, 5.0766344)
+
+[node name="final simplified with modifiers7" parent="." instance=ExtResource("15_6aqh6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.3326063, 0.031407915, 8.076241)

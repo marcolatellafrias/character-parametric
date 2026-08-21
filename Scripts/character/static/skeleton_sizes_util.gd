@@ -5,6 +5,14 @@ var torso_height : float
 var head_height : float
 var hips_width : float
 var shoulders_width : float
+## Largo de la cadena del brazo (hombro→muñeca) en metros. Reemplaza a `EntityArchetype.reach`, que
+## ya no existe: el largo del brazo sale del rango del modelo, no de un número autorado.
+var arm_reach : float
+## Hasta dónde llega a agarrar, en metros. Derivado del brazo (× MAX_ARM_STRETCH × 0.97), no autorado
+## — reemplaza a `reach × reach_multiplier`. Ver "The arm reach problem" en el doc de migración.
+var interaction_reach : float
+## Altura total del personaje, en metros. Es un RESULTADO (pierna + torso + cabeza), no una entrada.
+var total_height : float
 
 var head_size: Vector3
 var head_offset: Vector3
@@ -12,18 +20,18 @@ var neck_size: Vector3
 var neck_offset: Vector3
 var chest_size: Vector3
 var chest_offset: Vector3
-var upper_spine_size: Vector3
-var upper_spine_offset: Vector3
+var higher_spine_size: Vector3
+var higher_spine_offset: Vector3
 var middle_spine_size: Vector3
 var middle_spine_offset: Vector3
 var lower_spine_size: Vector3
 var lower_spine_offset: Vector3
-var upper_leg_size: Vector3
-var upper_leg_offset: Vector3
+var higher_leg_size: Vector3
+var higher_leg_offset: Vector3
 var lower_leg_size: Vector3
 var lower_leg_offset: Vector3
-var upper_feet_size: Vector3
-var upper_feet_offset: Vector3
+var foot_size: Vector3
+var foot_offset: Vector3
 var lower_feet_size: Vector3
 var lower_feet_offset: Vector3
 var upper_arm_size: Vector3
@@ -96,19 +104,78 @@ var raycast_start_y_offset: float = 0.0
 const CONST_HEAD_HEIGHT    := 0.378
 const CONST_HEAD_RADIUS_XZ := 0.19
 
+# ── LARGOS DE HUESO: EL MODELO DE BLENDER MANDA ───────────────────────────────────────────────────
+# Todos los largos salen de rangos medidos del modelo, NO de `height` × proporciones. El arquetipo
+# solo aporta un 0..1 por cadena (legs_length / arms_length / torso_length) y acá se convierte a
+# metros. Consecuencia buscada: `height` deja de ser una entrada y pasa a ser un RESULTADO — ver
+# `total_height`. Si un arquetipo quisiera un largo fuera del rango, gana el rango.
+#
+# EL MODELO ES EL 0.5, NO EL MÁXIMO. Los MID_* son los largos medidos de Models/character.glb, y ese
+# sculpt es el personaje GENÉRICO — el valor en 0.5. Los extremos se modelan a mano después, y no
+# tienen por qué ser simétricos alrededor del medio: por eso son TRES números y la interpolación va
+# en dos tramos (ver lerp_three). Esa asimetría es el control artístico.
+#
+# ⚠ MIN_* y MAX_* son PROVISORIOS (0.65× y 1.30× del sculpt). Se reemplazan cuando estén modelados
+# los extremos en Blender. Los MID_* sí son medidos y exactos.
+const MIN_LEG   := 0.5610  # PROVISORIO
+const MID_LEG   := 0.8630  # higher.leg 0.3963 + lower.leg 0.4667
+const MAX_LEG   := 1.1219  # PROVISORIO
+const MIN_TORSO := 0.3843  # PROVISORIO
+const MID_TORSO := 0.5912  # lower 0.1557 + middle 0.1530 + higher 0.1356 + chest 0.1469
+const MAX_TORSO := 0.7686  # PROVISORIO
+const MIN_ARM   := 0.5379  # PROVISORIO
+const MID_ARM   := 0.8276  # upper.arm 0.4150 + lower.arm 0.4126
+const MAX_ARM   := 1.0759  # PROVISORIO
+
+## Reparto de cada cadena entre sus huesos, en fracciones del MODELO — así las proporciones internas
+## se mantienen a cualquier largo. Ojo que no coinciden con las que tenía el código a mano: el
+## antebrazo era 0.55 de la cadena y en el modelo brazo y antebrazo son prácticamente iguales.
+const FRAC_HIGHER_LEG   := 0.4592
+const FRAC_LOWER_LEG    := 0.5408
+const FRAC_LOWER_SPINE  := 0.2634
+const FRAC_MIDDLE_SPINE := 0.2588
+const FRAC_HIGHER_SPINE := 0.2294
+const FRAC_CHEST        := 0.2485
+const FRAC_UPPER_ARM    := 0.5015
+const FRAC_LOWER_ARM    := 0.4985
+
+# Huesos todavía NO parametrizados — quedan fijos en el largo esculpido. Los toma la fase D del plan
+# de Blender (head_length, neck_length) y la E (shoulders_width). La cadera no se parametriza nunca:
+# todos los personajes tienen el mismo ancho, por decisión. Ver el doc.
+const REF_NECK     := 0.0570
+## La cabeza es hueso HOJA: no estira nada de la malla (no tiene hijo que mover). Este número es el
+## alto visual (tope de head_mesh 1.7108 − base del hueso 1.5269) y solo se usa para la altura total,
+## que alimenta la cápsula física y la altura de cámara.
+const REF_HEAD     := 0.1839
+const REF_SHOULDER := 0.2099
+const REF_HIP      := 0.1294
+
+## Techo de estiramiento del brazo al agarrar algo, en múltiplos de su largo esculpido. De acá sale
+## el alcance de interacción: más allá de esto la malla del brazo se ve de goma. Ver "The arm reach
+## problem" en el doc.
+const MAX_ARM_STRETCH := 1.25
+
 static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var skelSizes = SkeletonSizesUtil.new()
 	var entityStats := inst.arch_final
 
-	var new_head_height  := CONST_HEAD_HEIGHT
-	var remaining_height := entityStats.height - new_head_height
-	var leg_torso_sum    := entityStats.legs_to_feet_proportion + entityStats.chest_to_low_spine_proportion
-	if leg_torso_sum == 0.0:
-		leg_torso_sum = 1.0
-	var new_leg_height   := remaining_height * (entityStats.legs_to_feet_proportion / leg_torso_sum)
-	var new_torso_height := remaining_height * (entityStats.chest_to_low_spine_proportion / leg_torso_sum)
-	var new_hips_width        := entityStats.hips_width_proportion * entityStats.height
-	var new_shoulders_width   := entityStats.shoulder_width_proportion * entityStats.height
+	# Las tres cadenas paramétricas: 0..1 del arquetipo → metros, dentro del rango del modelo.
+	var new_leg_height   := lerp_three(MIN_LEG,   MID_LEG,   MAX_LEG,   entityStats.legs_length)
+	var new_torso_height := lerp_three(MIN_TORSO, MID_TORSO, MAX_TORSO, entityStats.torso_length)
+	var new_arm_length   := lerp_three(MIN_ARM,   MID_ARM,   MAX_ARM,   entityStats.arms_length)
+	# Todavía sin parametrizar (fase 3): quedan en el largo esculpido.
+	var new_head_height       := REF_NECK + REF_HEAD
+	var new_hips_width        := REF_HIP
+	var new_shoulders_width   := REF_SHOULDER
+
+	skelSizes.arm_reach = new_arm_length
+	# Alcance de interacción: hasta dónde puede agarrar, derivado del brazo y no autorado. El 0.97 es
+	# el GRAB_MIN_BEND_FACTOR de ArmsController — con ese techo el brazo nunca se estira más de
+	# MAX_ARM_STRETCH veces su largo esculpido.
+	skelSizes.interaction_reach = new_arm_length * MAX_ARM_STRETCH * 0.97
+	# `height` ya no es una entrada: es esto. Lo lee la cápsula, la cámara y el panel de debug.
+	skelSizes.total_height = new_leg_height + new_torso_height + new_head_height
+
 	skelSizes.leg_height      = new_leg_height
 	skelSizes.torso_height    = new_torso_height
 	skelSizes.head_height     = new_head_height
@@ -131,11 +198,11 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.chest_offset = Vector3(0.4, 0.4, chest_new_offset)
 	skelSizes.chest_size = Vector3(chest_u_radius, new_torso_height * 0.3, chest_l_radius)
 
-	var upper_spine_u_radius : float = lerp_range(0.1, 0.3, entityStats.fatness)
-	var upper_spine_l_radius : float = lerp_range(0.1, 0.3, entityStats.fatness)
-	var upper_spine_new_offset : float = lerp_range(0.0, -0.55, entityStats.fatness)
-	skelSizes.upper_spine_size = Vector3(upper_spine_u_radius, new_torso_height * 0.25, upper_spine_l_radius)
-	skelSizes.upper_spine_offset = Vector3(0.0, 0.0, upper_spine_new_offset)
+	var higher_spine_u_radius : float = lerp_range(0.1, 0.3, entityStats.fatness)
+	var higher_spine_l_radius : float = lerp_range(0.1, 0.3, entityStats.fatness)
+	var higher_spine_new_offset : float = lerp_range(0.0, -0.55, entityStats.fatness)
+	skelSizes.higher_spine_size = Vector3(higher_spine_u_radius, new_torso_height * 0.25, higher_spine_l_radius)
+	skelSizes.higher_spine_offset = Vector3(0.0, 0.0, higher_spine_new_offset)
 
 	var middle_spine_u_radius : float = lerp_range(0.1, 0.55, entityStats.fatness)
 	var middle_spine_l_radius : float = lerp_range(0.1, 0.5, entityStats.fatness)
@@ -153,7 +220,7 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var shoulder_l_radius : float = lerp_range(0.08, 0.25, entityStats.muscularity)
 	skelSizes.shoulder_width = Vector3(shoulder_u_radius, new_shoulders_width, shoulder_l_radius)
 
-	var arm_total := entityStats.reach
+	var arm_total := new_arm_length
 	var upper_arm_u_radius : float = lerp_range(0.06, 0.2, entityStats.muscularity)
 	var upper_arm_l_radius : float = lerp_range(0.06, 0.23, entityStats.muscularity)
 	skelSizes.upper_arm_size = Vector3(upper_arm_u_radius, arm_total * 0.45, upper_arm_l_radius)
@@ -163,20 +230,38 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.lower_arm_size = Vector3(lower_arm_u_radius, arm_total * 0.55, lower_arm_l_radius)
 	skelSizes.lower_arm_offset = Vector3(0.0, 1.0, 0.0)
 
-	var upper_leg_u_radius : float = lerp_range(0.06, 0.2, entityStats.fatness)
-	var upper_leg_l_radius : float = lerp_range(0.06, 0.23, entityStats.fatness)
-	skelSizes.upper_leg_size = Vector3(upper_leg_u_radius, new_leg_height * 0.45, upper_leg_l_radius)
-	skelSizes.upper_leg_offset = Vector3(1.0, 0.0, 0.0)
+	var higher_leg_u_radius : float = lerp_range(0.06, 0.2, entityStats.fatness)
+	var higher_leg_l_radius : float = lerp_range(0.06, 0.23, entityStats.fatness)
+	skelSizes.higher_leg_size = Vector3(higher_leg_u_radius, new_leg_height * 0.45, higher_leg_l_radius)
+	skelSizes.higher_leg_offset = Vector3(1.0, 0.0, 0.0)
 	var lower_leg_u_radius : float = lerp_range(0.06, 0.2, entityStats.fatness)
 	var lower_leg_l_radius : float = lerp_range(0.06, 0.23, entityStats.fatness)
 	skelSizes.lower_leg_size = Vector3(lower_leg_u_radius, new_leg_height * 0.55, lower_leg_l_radius)
 	skelSizes.lower_leg_offset = Vector3(1.0, 1.0, 0.0)
-	skelSizes.upper_feet_size = Vector3(0.1, new_leg_height * 0.2, 0.1)
+	skelSizes.foot_size = Vector3(0.1, new_leg_height * 0.2, 0.1)
 	skelSizes.lower_feet_size = Vector3(0.1, new_leg_height * 0.02, 0.1)
 	var hip_u_radius : float = lerp_range(0.1, 0.2, entityStats.fatness)
 	var hip_l_radius : float = lerp_range(0.1, 0.2, entityStats.fatness)
 	skelSizes.hip_size = Vector3(hip_u_radius, new_hips_width, hip_l_radius)
 	skelSizes.hip_offset = Vector3(1.0, 1.0, 0.0)
+
+	# Largo de cada hueso: la cadena repartida por las fracciones del MODELO. Va DESPUÉS del bloque que
+	# arma los tamaños (que fija los radios) y ANTES de todo lo derivado (marcha, poles, targets de
+	# reposo de brazos), que lee estos campos.
+	# Los radios (.x/.z) NO se tocan: son la forma de la cápsula del CustomBone, que ya no se dibuja.
+	# Hueso hoja = no estira malla, así que `foot_size` se queda con su fórmula derivada.
+	skelSizes.lower_spine_size.y  = new_torso_height * FRAC_LOWER_SPINE
+	skelSizes.middle_spine_size.y = new_torso_height * FRAC_MIDDLE_SPINE
+	skelSizes.higher_spine_size.y = new_torso_height * FRAC_HIGHER_SPINE
+	skelSizes.chest_size.y        = new_torso_height * FRAC_CHEST
+	skelSizes.neck_size.y         = REF_NECK if entityStats.has_neck else 0.0
+	skelSizes.head_size.y         = REF_HEAD if entityStats.has_neck else REF_NECK + REF_HEAD
+	skelSizes.shoulder_width.y    = REF_SHOULDER
+	skelSizes.upper_arm_size.y    = new_arm_length * FRAC_UPPER_ARM
+	skelSizes.lower_arm_size.y    = new_arm_length * FRAC_LOWER_ARM
+	skelSizes.hip_size.y          = REF_HIP
+	skelSizes.higher_leg_size.y   = new_leg_height * FRAC_HIGHER_LEG
+	skelSizes.lower_leg_size.y    = new_leg_height * FRAC_LOWER_LEG
 
 	skelSizes.raycast_leg_lenght = new_leg_height
 
@@ -223,7 +308,7 @@ static func _compute_arm_shoulder_local(left: bool, s: SkeletonSizesUtil) -> Vec
 	pos += Vector3(0, s.lower_spine_size.y, 0)
 	var b := Basis.from_euler(Vector3(s.slouchiness_center_spine, 0, 0))
 	pos += b * Vector3(0, s.middle_spine_size.y, 0)
-	pos += Vector3(0, s.upper_spine_size.y, 0)
+	pos += Vector3(0, s.higher_spine_size.y, 0)
 	b = Basis.from_euler(Vector3(-s.slouchiness_chest, 0, 0))
 	pos += b * Vector3(0, s.chest_size.y, 0)
 	if left:
@@ -285,3 +370,26 @@ func _update_gait(inputs: AnimationInputs, entity_stats: EntityArchetype) -> voi
 
 static func lerp_range(min_val: float, max_val: float, t: float) -> float:
 	return min_val + (max_val - min_val) * clamp(t, 0.0, 1.0)
+
+## Interpolación en DOS TRAMOS sobre tres valores autorales: 0.0 → 0.5 → 1.0.
+##
+## No es un lerp de dos puntos porque **el 0.5 no es el punto medio**: es el personaje genérico tal
+## como fue esculpido, y los extremos se modelan a mano sin obligación de quedar simétricos. Esa
+## asimetría ES el control artístico — con un lerp de dos extremos, el genérico saldría del promedio
+## en vez de salir del modelo.
+static func lerp_three(lo: float, mid: float, hi: float, t: float) -> float:
+	var c := clampf(t, 0.0, 1.0)
+	if c <= 0.5:
+		return lo + (mid - lo) * (c * 2.0)
+	return mid + (hi - mid) * ((c - 0.5) * 2.0)
+
+## La inversa de lerp_three: dado un largo en metros, qué valor 0..1 lo produce. La usa el agarre
+## para despejar "necesito un brazo de tanto, ¿qué arms_length es eso?" y clampear en 1.0.
+static func inverse_lerp_three(lo: float, mid: float, hi: float, value: float) -> float:
+	if value <= mid:
+		if absf(mid - lo) < 0.0001:
+			return 0.5
+		return clampf(0.5 * (value - lo) / (mid - lo), 0.0, 1.0)
+	if absf(hi - mid) < 0.0001:
+		return 0.5
+	return clampf(0.5 + 0.5 * (value - mid) / (hi - mid), 0.0, 1.0)

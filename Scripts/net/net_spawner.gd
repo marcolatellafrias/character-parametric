@@ -24,6 +24,10 @@ const BOX_VARIANTS := {
 	"box_heavy_square": {"size": Vector3(0.9, 0.9, 0.9), "mass": 40.0, "color": Color(0.7, 0.2, 0.2),   "label": "pesada ▪"},
 	"box_light_long":   {"size": Vector3(0.9, 0.9, 1.8), "mass": 8.0,  "color": Color(0.5, 0.85, 0.5),  "label": "liviana ▬"},
 	"box_heavy_long":   {"size": Vector3(0.9, 0.9, 1.8), "mass": 80.0, "color": Color(0.85, 0.5, 0.2),  "label": "pesada ▬"},
+	# Extra larga = tres cajas comunes en fila. Con GRAB_DENSITY 3 le salen SEIS grab points a lo
+	# largo (2×2×6 en total), así que es la variante para probar el agarre de a tres o más.
+	"box_light_xlong":  {"size": Vector3(0.9, 0.9, 2.7), "mass": 12.0,  "color": Color(0.4, 0.9, 0.75), "label": "liviana ▭"},
+	"box_heavy_xlong":  {"size": Vector3(0.9, 0.9, 2.7), "mass": 120.0, "color": Color(0.9, 0.35, 0.5), "label": "pesada ▭"},
 }
 
 var _next_id: int = 0

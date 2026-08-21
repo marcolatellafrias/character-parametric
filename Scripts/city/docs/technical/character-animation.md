@@ -21,16 +21,18 @@ Because all three are pure functions of the seed, **the same seed rebuilds the e
 ### Bone hierarchy
 
 ```
-lower_spine ─┬─ middle_spine ─ upper_spine ─ chest ─┬─ neck(optional) ─ head
+lower_spine ─┬─ middle_spine ─ higher_spine ─ chest ─┬─ neck(optional) ─ head
              │                                       ├─ left_shoulder  ─ left_upper_arm  ─ left_lower_arm
              │                                       └─ right_shoulder ─ right_upper_arm ─ right_lower_arm
-             ├─ left_hip  ─ left_upper_leg  ─ left_lower_leg  ─ left_upper_feet
-             └─ right_hip ─ right_upper_leg ─ right_lower_leg ─ right_upper_feet
+             ├─ left_hip  ─ left_higher_leg  ─ left_lower_leg  ─ left_foot
+             └─ right_hip ─ right_higher_leg ─ right_lower_leg ─ right_foot
 ```
 
 `lower_spine` is added as a child of the `CharacterRigidBody3D`, so **the whole skeleton follows the capsule**.
 
 ### `CustomBone`
+
+**Forward is −Z**, project-wide (Godot's own convention — `basis.z` points backwards). Every bone rest, IK target, seated pose and interaction direction assumes it. An imported asset that faces another way is corrected where it enters the system, never by bending this rule — see [skinned-character-migration.md](skinned-character-migration.md#forward-axis--the-project-convention).
 
 A `Node3D` per bone with `capsule_dimensions` (x/z = radius, y = length) and a `rest_rotation`. Its mesh is a procedural `bone.glb` driven by **blend shapes** (height / top & bottom radius / dome heights) so a single mesh fits any proportions; `set_length()` re-stretches it. `pose_from_rest_to(dir, pole)` returns the basis that points the bone's rest axis along `dir` with a pole-resolved twist — the primitive the IK uses.
 
@@ -82,6 +84,16 @@ Everything else — the procedural layer + `anim_mod`, the **arms** (rest target
 
 Seated also re-pins the legs **once more after the arms** (`_repin_legs_seated`), because the grab overrides tilt the spine. That re-pin reuses the **cached** foot/pole targets — recomputing them post-tilt would drag the feet along with the torso.
 
+#### The seat's own visual is derived, not event-driven
+
+The seat mesh yaws with its occupant. **Which** mesh differs by machine: on the occupant's machine `_sit` hides `_visual_root` and parents a **borrowed copy** to the capsule (so it hides in first person with the body); on every other machine `_sit` never ran, so the seat's own `_visual_root` is the one that turns.
+
+That rotation is **re-derived every frame from live occupancy** (`SeatInteractable._physics_process` → `_is_occupied_by`), not applied and un-applied by sit/stand events. The reason is that the events are **local-only** — `_seated_bi` is set by `_sit`, which runs solely on the occupant's machine — so a proxy had something writing its rotation and *nothing* ever putting it back: stand up, and the empty chair stayed frozen at your last yaw. The predicate reads the character's live `is_seated` / `current_seat` — **the same condition that gates the pose solve**, so the visual and the pose cannot disagree — and treats ragdolling as not-seated. Nothing has to be cleaned up on any exit path (stand up, ragdoll, character despawn, disconnect): the condition simply stops holding and the seat returns to rest on its own. The half-rate proxy solve is a non-issue because the predicate reads state, not a "last posed" timestamp.
+
+#### Seated and ragdoll are mutually exclusive
+
+Sitting leaves the capsule inert (collider off, axis-locked, `is_active=false`) and hands a child mesh to it, so a character cannot be seated and ragdolling at once. `_on_fall_triggered` already refuses to ragdoll an impact while seated; the **debug ragdoll (G)** used to bypass that and produce the hybrid — you flew off with the chair welded to you, while every other machine saw the chair sitting still. Both G and respawn (P) now leave the seat first through one place, `PlayerController._leave_seat_in_place` → `SeatInteractable.release_occupant_in_place` (releases the claim, reverts the capsule, tells the proxies — **no** teleport to the stand-up point, you ragdoll from where you sat). New ragdoll entry points go through the same call.
+
 ---
 
 ## The gait model
@@ -94,7 +106,7 @@ The legs are the one part with **state that persists between frames**, so they g
 |---|---|
 | `neutral_local` | the foot raycast's **rest local origin** — `x = ±raycast_stance_offset` (stance width), `y = −raycast_start_y_offset` (up near the hip). The hip's ground projection. |
 | `next_target` | the **live ground hit** this frame, at the probe position (below). |
-| `current_target` | where the foot **actually is**. `solve_two_bone_ik(upper_leg, lower_leg, current_target, pole)` bends the leg to it. |
+| `current_target` | where the foot **actually is**. `solve_two_bone_ik(higher_leg, lower_leg, current_target, pole)` bends the leg to it. |
 | `airborne_target` | foot **tucked up**; used instead of the ground when `is_grounded` is false. |
 | `pole` | knee-bend direction — a node in front of the leg (offset by `pole_distance` + hip width). |
 
@@ -210,7 +222,7 @@ Lateral/backward steps are shortened by `axis_weight_lateral` / `axis_weight_bac
 
 ### The resting stance (why the foot clips)
 
-The capsule holds the pelvis at `leg_height − distance_from_ground` above the ground (`y_offset` in `CharacterRigidBody3D.create`), so **idle legs are visibly bent** — more so now that the pelvis is derived from the stride. The foot IK targets the **raw ground point**, and the foot bone (`upper_feet`) is **rigidly ~90° to the shin** — foot roll is *not* animated. Net effect: the un-animated foot dips a little into the floor at rest. Known cosmetic quirk; harmless, and any leg animation must reproduce it (rather than fight it) to avoid a pop.
+The capsule holds the pelvis at `leg_height − distance_from_ground` above the ground (`y_offset` in `CharacterRigidBody3D.create`), so **idle legs are visibly bent** — more so now that the pelvis is derived from the stride. The foot IK targets the **raw ground point**, and the foot bone (`foot`) is **rigidly ~90° to the shin** — foot roll is *not* animated. Net effect: the un-animated foot dips a little into the floor at rest. Known cosmetic quirk; harmless, and any leg animation must reproduce it (rather than fight it) to avoid a pop.
 
 ### Standing up from a ragdoll (recovery)
 

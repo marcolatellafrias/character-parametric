@@ -73,6 +73,26 @@ Drives the shared interactable model ([interactables.md](../conceptual/interacta
 
 ---
 
+## Visual height vs gameplay height
+
+A rule that already holds in the code but was never written down, and is worth protecting because it is easy to break by accident:
+
+> **Nothing the animation pipeline does to the skeleton may change where the character can reach.**
+
+The pelvis moves constantly for visual reasons — the foot-spread bob (`FOOT_SPREAD_X/Z` → `POS_Y`, scaled by `root_bounciness`), the jump-squat and throw offsets in `AnimationModifiers`, procedural sway. **None of that touches gameplay.** `get_interaction_origin()` never reads a bone: it is computed analytically from the **capsule position**, the **bone sizes** (deterministic from the seed) and `crouch_t`. Same for the grabbable handle points, which are static local offsets on the capsule.
+
+**Crouch is the one deliberate exception.** `chest_tip_y -= leg_height * 0.35 * crouch_t` — crouching genuinely lowers what you can reach, because the player asked for it and expects it. The difference that matters: crouch is a **held player intent**, while the bob is a **byproduct of the walk cycle**. A reach that oscillated with every step would make grabbing feel random, so the bob is excluded on purpose.
+
+### Why this keeps multiplayer cheap
+
+Because the visual height is *derived* rather than authoritative, **it never has to travel**. The bob falls out of the foot spread, which falls out of the proxy's own local foot IK. Anything new on this side is free too: a speed-driven pelvis height, for instance, would derive from `velocity`, which is already in the per-tick state — so a proxy reproduces it from what it already receives, with no new field.
+
+The gameplay side is the opposite and that's why it's small: the capsule transform and `crouch_t` are **synced**, so reach is identical on every machine by construction.
+
+**The test for anything added here:** if it changes where the character can reach, it is gameplay — it needs a synced input and it belongs in `get_interaction_origin()`. If it only changes what the character looks like, it stays local and derived, and it must not leak into that function.
+
+---
+
 ## Decoupling & loose ends
 
 The **intent**: physics is the capsule, aesthetics is the skeleton, and **bone shapes must never affect the capsule's physics**. In normal play this holds. Where it currently leaks:

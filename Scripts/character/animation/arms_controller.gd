@@ -180,8 +180,7 @@ func drive_grab(delta: float, target: Node) -> void:
 		var interactable := target as Interactable
 		var origin := bi.get_interaction_origin()
 		_driven_grab_point = _nearest_interaction_point(interactable, origin)
-		var arch := bi.entity_instantiation.arch_final
-		var max_reach: float = arch.reach * arch.reach_multiplier
+		var max_reach: float = bi.skel_sizes_util.interaction_reach
 		start_grab(interactable, origin, _driven_grab_point, max_reach * 0.1, max_reach * 0.9)
 	else:
 		_driven_grab_point = null

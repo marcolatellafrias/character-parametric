@@ -74,7 +74,7 @@ func _register_builtins() -> void:
 	register("join", _cmd_join, "join <código> — se une por código (Steam)")
 	register("host_local", func(_a): SessionManager.host_local(), "hostea local (ENet) para test multi-instancia")
 	register("join_local", _cmd_join_local, "join_local [ip] — se une a un host local (default 127.0.0.1)")
-	register("spawn", _cmd_spawn, "spawn <box_light_square|box_heavy_square|box_light_long|box_heavy_long|dashboard|seat>")
+	register("spawn", _cmd_spawn, "spawn <box_light_square|box_heavy_square|box_light_long|box_heavy_long|box_light_xlong|box_heavy_xlong|dashboard|seat>")
 
 func _cmd_help(_args: PackedStringArray) -> void:
 	log_line("Comandos:")

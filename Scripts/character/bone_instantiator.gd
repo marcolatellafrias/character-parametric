@@ -20,6 +20,13 @@ var skel_sizes_util: SkeletonSizesUtil
 var custom_bones_util: CustomBonesUtil
 var char_rigidbody: CharacterRigidBody3D
 var ik_util: IkUtil
+## Espejo del rig lógico sobre el Skeleton3D del modelo de Blender. null mientras no exista el
+## modelo — en ese caso el personaje se sigue dibujando con los meshes de CustomBone, como siempre.
+## Ver technical/skinned-character-migration.md.
+var skinned_body: SkinnedBodyUtil
+## Gizmos de debug del esqueleto (líneas/articulaciones y cápsulas de colisión). Se crea recién
+## cuando alguien prende un visualizador desde el panel. Ver Scripts/character/debug/skeleton_debug_draw.gd.
+var skeleton_debug: SkeletonDebugDraw
 var locomotion_signals: LocomotionSignals
 var procedural_animator: ProceduralBoneAnimator
 var ragdoll_util: RagdollUtil
@@ -50,6 +57,9 @@ var head_pitch:   float = 0.0
 var _npc_skip_frame: bool = false
 var _reset_feet_after_recovery: bool = false  # plantar los pies el primer frame tras recuperarse
 
+## Debug: esconde el personaje ENTERO (malla skinneada + cápsulas de CustomBone). Gana sobre la
+## primera persona — si no, cambiar de cámara con el numpad lo volvía a mostrar a medias.
+var character_hidden: bool = false
 var grab_cone_mesh: MeshInstance3D = null
 var show_grab_cone: bool = false
 var grab_cone_half_angle: float = 120.0
@@ -87,8 +97,9 @@ func initialize_skeleton() -> void:
 	char_rigidbody.fall_triggered.connect(_on_fall_triggered)
 	char_rigidbody.add_child(custom_bones_util.lower_spine)
 	add_child(char_rigidbody)
-	
-	var cone_dist := entity_instantiation.arch_final.reach * entity_instantiation.arch_final.reach_multiplier
+
+
+	var cone_dist := skel_sizes_util.interaction_reach
 	var cone_radius : float = cone_dist * abs(tan(deg_to_rad(grab_cone_half_angle)))
 	grab_cone_mesh = DebugUtil.create_debug_cone(Color(0.2, 0.8, 1.0, 0.15), cone_dist, cone_radius)
 	grab_cone_mesh.visible = false
@@ -142,6 +153,25 @@ func initialize_skeleton() -> void:
 	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_arm, custom_bones_util.right_lower_arm,
 		ik_util.right_arm_ik_target.global_position, ik_util.right_arm_pole.global_position)
 
+	# El espejo se calibra ACÁ, DESPUÉS del primer solve de brazos — no en el rest de construcción.
+	#
+	# El rest con el que se arma el CustomBone (brazos rectos hacia abajo, giro del hueso el que salga
+	# de createFromToDown) NO es la pose en la que el personaje vive: apenas corre la IK, los brazos se
+	# van a la pose A del arquetipo (arm_openness/arm_bentness) y su torsión pasa a salir del pole del
+	# codo. Calibrar contra el rest de construcción deja el offset de torsión medido en una pose que el
+	# personaje abandona en el mismo frame, y el mesh de las manos sale rotado.
+	#
+	# Acá los huesos ya están en la pose de reposo REAL, así que la calibración se hace contra lo que
+	# se va a ver. Ver technical/skinned-character-migration.md.
+	skinned_body = SkinnedBodyUtil.create(custom_bones_util, char_rigidbody)
+	if is_instance_valid(skinned_body):
+		# Con el modelo skinneado puesto, los meshes de cápsula del CustomBone se superponen y tapan.
+		# Los huesos siguen existiendo y siguen siendo la fuente de verdad del pose — solo dejan de
+		# dibujar. Para volver a verlos (debug del espejo), comentá esto.
+		for bone in custom_bones_util.get_all_bones():
+			if is_instance_valid(bone):
+				bone.set_mesh_visible(false)
+
 	procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)
 
 	bone_animations = BoneAnimations.new()
@@ -151,6 +181,16 @@ func initialize_skeleton() -> void:
 
 	ragdoll_util = RagdollUtil.create(custom_bones_util, skel_rigidbodies, joints)
 	ragdoll_util.ik_util = ik_util  # para que el IK de recuperación use el mismo pole que la locomoción
+	# Con el modelo skinneado, los cuerpos del ragdoll dejan de ser lo visible: quedan invisibles y la
+	# malla los sigue vía _sync_skinned_body.
+	ragdoll_util.show_bodies = not is_instance_valid(skinned_body)
+
+	# Primera persona: se aplica ACÁ, al final. PlayerController.rebind (que corre en
+	# on_skeleton_built, bastante más arriba) es quien venía seteando esto, pero el espejo se crea
+	# DESPUÉS de esa llamada — así que en el build y en cada respawn el estado nunca llegaba a las
+	# mallas skinneadas y la cara se veía hasta que cambiabas de cámara y volvías con numpad 5.
+	if is_active and is_instance_valid(player_controller):
+		set_first_person_visibility(player_controller.is_first_person_view())
 
 	jump_squat_t = 0.0
 	crouch_t     = 0.0
@@ -180,7 +220,12 @@ func _clear_prior_generations() -> void:
 	for child in joints.get_children():           child.queue_free()
 
 	if is_instance_valid(char_rigidbody):
-		char_rigidbody.queue_free()
+		char_rigidbody.queue_free()  # se lleva puesto el skinned_body, que cuelga de él
+	skinned_body = null
+	if is_instance_valid(skeleton_debug):
+		# Sus gizmos cuelgan de los CustomBone, que se van con la generación anterior.
+		skeleton_debug.queue_free()
+	skeleton_debug = null
 
 	if is_instance_valid(anim_mod):
 		anim_mod.queue_free()
@@ -229,6 +274,9 @@ func _physics_process(delta: float) -> void:
 		if ragdoll_util.is_active:
 			ik_util.update_ik_raycast(true,  custom_bones_util, skel_sizes_util, animation_inputs)
 			ik_util.update_ik_raycast(false, custom_bones_util, skel_sizes_util, animation_inputs)
+			# El solve entero se saltea acá, así que la malla skinneada se sincroniza a mano: si no,
+			# se congela en el pose del último frame parado mientras el cuerpo cae.
+			_sync_skinned_body()
 			return
 		if ragdoll_util.is_recovering and not ik_util.recovery_targets_locked:
 			ik_util.recovery_targets_locked = true
@@ -296,6 +344,7 @@ func _solve_frame(delta: float) -> void:
 		_repin_legs_seated()   # los overrides de brazos inclinan el spine: volver a los MISMOS targets
 
 	_sync_ragdoll_bodies()
+	_sync_skinned_body()
 
 ## Raíz. Sentado: clava el spine en el asiento, fija la cápsula en XZ y gira la malla del asiento con
 ## el ocupante. Parado: nada, la raíz la manda la cápsula. Es idempotente a propósito (se llama antes
@@ -303,10 +352,10 @@ func _solve_frame(delta: float) -> void:
 func _pose_root(seated: bool) -> void:
 	if not seated:
 		return
-	current_seat.update_seated_visual(char_rigidbody.global_rotation.y)
+	current_seat.update_seated_visual(self, char_rigidbody.global_rotation.y)
 	var seat_pos : Vector3 = current_seat.global_position
 	var backward := char_rigidbody.global_transform.basis.z
-	var z_offset : float = skel_sizes_util.upper_leg_size.y - current_seat.seat_area.z * 0.5
+	var z_offset : float = skel_sizes_util.higher_leg_size.y - current_seat.seat_area.z * 0.5
 	custom_bones_util.lower_spine.global_position = \
 		Vector3(seat_pos.x, seat_pos.y + current_seat.height, seat_pos.z) + backward * z_offset
 	char_rigidbody.global_position.x = seat_pos.x
@@ -337,8 +386,8 @@ func _pose_legs_seated() -> void:
 	var left_hip_tip  := custom_bones_util.left_hip.global_position  + custom_bones_util.left_hip.global_transform.basis.y  * custom_bones_util.left_hip.capsule_dimensions.y
 	var right_hip_tip := custom_bones_util.right_hip.global_position + custom_bones_util.right_hip.global_transform.basis.y * custom_bones_util.right_hip.capsule_dimensions.y
 
-	var left_knee  := left_hip_tip  + forward * skel_sizes_util.upper_leg_size.y
-	var right_knee := right_hip_tip + forward * skel_sizes_util.upper_leg_size.y
+	var left_knee  := left_hip_tip  + forward * skel_sizes_util.higher_leg_size.y
+	var right_knee := right_hip_tip + forward * skel_sizes_util.higher_leg_size.y
 
 	var tuck := forward * -skel_sizes_util.lower_leg_size.y * 0.2
 	_seated_left_foot  = left_knee  + Vector3.DOWN * skel_sizes_util.lower_leg_size.y * 0.85 + tuck
@@ -353,8 +402,8 @@ func _pose_legs_seated() -> void:
 ## Re-resuelve el IK de las piernas sentadas contra los targets ya cacheados (los huesos se movieron
 ## porque algo tocó el spine después de plantarlas).
 func _repin_legs_seated() -> void:
-	ik_util.solve_two_bone_ik(custom_bones_util.left_upper_leg,  custom_bones_util.left_lower_leg,  _seated_left_foot,  _seated_left_pole)
-	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_leg, custom_bones_util.right_lower_leg, _seated_right_foot, _seated_right_pole)
+	ik_util.solve_two_bone_ik(custom_bones_util.left_higher_leg,  custom_bones_util.left_lower_leg,  _seated_left_foot,  _seated_left_pole)
+	ik_util.solve_two_bone_ik(custom_bones_util.right_higher_leg, custom_bones_util.right_lower_leg, _seated_right_foot, _seated_right_pole)
 
 ## Capa procedural + modificadores de raíz. Igual en los dos modos: sentado, `anim_mod.is_seated`
 ## hace que _apply_root_offsets no toque el spine y el procedural saltea POS_Y/POS_Z de la raíz, así
@@ -401,6 +450,21 @@ func _pose_arms(delta: float) -> void:
 func _sync_ragdoll_bodies() -> void:
 	if is_instance_valid(ragdoll_util) and not ragdoll_util.is_recovering:
 		ragdoll_util.sync_to_bones()
+
+## Copia el pose del rig lógico a la malla skinneada. Va al FINAL del solve, después de que todo lo
+## demás terminó de mover los CustomBone — el espejo no anima nada, solo refleja el resultado.
+##
+## La FUENTE cambia según el estado: parado son los CustomBone; ragdolleando o levantándose son los
+## cuerpos rígidos, porque ahí los huesos quedan congelados y lo que se mueve son ellos (antes eran
+## además lo visible; ahora van invisibles y la malla skinneada los sigue). Ver "What breaks" en
+## technical/skinned-character-migration.md.
+func _sync_skinned_body() -> void:
+	if not is_instance_valid(skinned_body):
+		return
+	if is_instance_valid(ragdoll_util) and (ragdoll_util.is_active or ragdoll_util.is_recovering):
+		skinned_body.sync_from_ragdoll(ragdoll_util.get_bodies())
+	else:
+		skinned_body.sync_from_bones()
 
 ## Ubica local_targets (raycasts de pies, targets/poles de brazos) siguiendo el transform del
 ## personaje. Lee animation_inputs (no la cápsula en vivo): así el facing viene de una sola fuente
@@ -457,25 +521,35 @@ func refresh_camera_animations() -> void:
 		bone_animations.refresh_camera_animations()
 
 func set_first_person_visibility(first_person: bool) -> void:
+	if character_hidden:
+		return  # el toggle de debug manda: no lo pisa un cambio de cámara
+	# Con el modelo skinneado los meshes de CustomBone están apagados para siempre: si entráramos al
+	# bucle de abajo, primera persona los volvería a prender y taparían el modelo. La granularidad por
+	# hueso se pierde — se esconde la pieza cabeza+cuello, que es su propia malla.
+	# Ver "What breaks" en technical/skinned-character-migration.md.
+	if is_instance_valid(skinned_body):
+		skinned_body.set_first_person(first_person)
+		return
+
 	var visible_bones: Array[CustomBone] = [
-		custom_bones_util.left_upper_feet,
-		custom_bones_util.right_upper_feet,
+		custom_bones_util.left_foot,
+		custom_bones_util.right_foot,
 		custom_bones_util.left_lower_arm,
 		custom_bones_util.right_lower_arm,
 	]
 	var all_bones: Array[CustomBone] = [
 		custom_bones_util.lower_spine,
 		custom_bones_util.middle_spine,
-		custom_bones_util.upper_spine,
+		custom_bones_util.higher_spine,
 		custom_bones_util.chest,
 		custom_bones_util.left_hip,
 		custom_bones_util.right_hip,
-		custom_bones_util.left_upper_leg,
+		custom_bones_util.left_higher_leg,
 		custom_bones_util.left_lower_leg,
-		custom_bones_util.right_upper_leg,
+		custom_bones_util.right_higher_leg,
 		custom_bones_util.right_lower_leg,
-		custom_bones_util.left_upper_feet,
-		custom_bones_util.right_upper_feet,
+		custom_bones_util.left_foot,
+		custom_bones_util.right_foot,
 		custom_bones_util.left_shoulder,
 		custom_bones_util.right_shoulder,
 		custom_bones_util.left_upper_arm,
@@ -526,16 +600,36 @@ func get_interaction_origin() -> Vector3:
 	if is_seated and is_instance_valid(current_seat):
 		var seat_pos    : Vector3 = current_seat.global_position
 		var backward    := char_rigidbody.global_transform.basis.z
-		var z_offset    : float = sizes.upper_leg_size.y - current_seat.seat_area.z * 0.5
+		var z_offset    : float = sizes.higher_leg_size.y - current_seat.seat_area.z * 0.5
 		var spine_world := Vector3(seat_pos.x, seat_pos.y + current_seat.height, seat_pos.z) + backward * z_offset
 		return spine_world + Vector3(0.0,
-			sizes.lower_spine_size.y + sizes.middle_spine_size.y + sizes.upper_spine_size.y + sizes.chest_size.y,
+			sizes.lower_spine_size.y + sizes.middle_spine_size.y + sizes.higher_spine_size.y + sizes.chest_size.y,
 			0.0)
 
 	var chest_tip_y := ground_y + sizes.leg_height \
 		+ sizes.lower_spine_size.y + sizes.middle_spine_size.y \
-		+ sizes.upper_spine_size.y + sizes.chest_size.y
+		+ sizes.higher_spine_size.y + sizes.chest_size.y
 
 	chest_tip_y -= sizes.leg_height * 0.35 * crouch_t
 
 	return Vector3(char_rigidbody.global_position.x, chest_tip_y, char_rigidbody.global_position.z)
+
+## Gizmos de debug, creados recién al primer uso: un personaje normal no paga nada por esto.
+func get_skeleton_debug() -> SkeletonDebugDraw:
+	if not is_instance_valid(skeleton_debug):
+		skeleton_debug = SkeletonDebugDraw.new()
+		skeleton_debug.bi = self
+		add_child(skeleton_debug)
+	return skeleton_debug
+
+## Debug: muestra u oculta el personaje COMPLETO. A diferencia de la primera persona, que deja manos
+## y uñas a la vista, esto no deja nada — es para mirar la cápsula, el esqueleto o los colisionadores
+## sin el cuerpo encima.
+func set_character_visible(value: bool) -> void:
+	character_hidden = not value
+	if is_instance_valid(skinned_body):
+		skinned_body.set_meshes_visible(value)
+	if custom_bones_util != null:
+		for bone in custom_bones_util.get_all_bones():
+			if is_instance_valid(bone):
+				bone.set_mesh_visible(value and not is_instance_valid(skinned_body))

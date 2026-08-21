@@ -40,7 +40,7 @@ var arms_controller: ArmsController = null
 
 var _creative: bool = false
 var _debug_panel: DebugPanel = null
-var _capsule_view: bool = false
+var _character_hidden: bool = false
 
 ## Punto de entrada único cuando el BoneInstantiator (re)construye el esqueleto del jugador
 ## activo — tanto el build inicial como cada respawn. Construye lo persistente una sola vez
@@ -61,7 +61,7 @@ func on_skeleton_built(target: BoneInstantiator, cam: Camera3D) -> void:
 func _construct_persistent(target: BoneInstantiator, cam: Camera3D) -> void:
 	interaction_controller = InteractionController.new()
 	add_child(interaction_controller)
-	var max_reach := target.entity_instantiation.arch_final.reach * target.entity_instantiation.arch_final.reach_multiplier
+	var max_reach := target.skel_sizes_util.interaction_reach
 	interaction_controller.setup(target.char_rigidbody, cam, target.arms_controller, target.anim_mod, max_reach, target.entity_instantiation)
 
 	_impact_debug_hud = ImpactDebugHUD.create()
@@ -79,7 +79,7 @@ func rebind(target: BoneInstantiator) -> void:
 	head_size       = target.skel_sizes_util.head_size
 	arms_controller = target.arms_controller
 
-	var max_reach := target.entity_instantiation.arch_final.reach * target.entity_instantiation.arch_final.reach_multiplier
+	var max_reach := target.skel_sizes_util.interaction_reach
 	if is_instance_valid(interaction_controller):
 		interaction_controller.rebind(char_rigidbody, player_camera, arms_controller, target.anim_mod, max_reach, target.entity_instantiation)
 
@@ -323,6 +323,12 @@ func _update_ragdoll_camera(_delta: float) -> void:
 		char_rigidbody.rotation.y = camera_yaw
 
 
+## true cuando la cámara activa es la del jugador (no una de debug), o sea cuando hay que esconderle
+## la cabeza y el torso. Lo lee BoneInstantiator al final de initialize_skeleton para aplicar el
+## estado correcto en el build/respawn, no solo cuando cambiás de cámara.
+func is_first_person_view() -> bool:
+	return _debug_cam_mode == 0
+
 func _set_debug_cam(mode: int) -> void:
 	_debug_cam_mode = mode
 	var bi := _get_bi()
@@ -364,9 +370,10 @@ func _release_jump() -> void:
 	if arch == null or not char_rigidbody.is_grounded:
 		_cancel_jump_charge()
 		return
-	var t          := _jump_charge / arch.time_to_max_jump
-	var max_impulse := arch.jump_strenght * char_rigidbody.mass * CharacterRigidBody3D.JUMP_SCALE
-	char_rigidbody.jump(lerpf(max_impulse * 0.3, max_impulse, t))
+	var t := _jump_charge / arch.time_to_max_jump
+	# La carga interpola ALTURA (no impulso): así la barra es lineal con lo que se ve saltar, y un
+	# toque sin cargar sigue siendo un saltito util (30% de la altura), no el 9% que daba en impulso.
+	char_rigidbody.jump_to_height(lerpf(arch.jump_height * 0.3, arch.jump_height, t))
 	_cancel_jump_charge()
 
 
@@ -415,8 +422,22 @@ func _toggle_ragdoll() -> void:
 		return  # ya te estás levantando: no se puede re-ragdollear (nada de G-spam). En el futuro el
 				 # levantarse será por timer según arch.time_to_standup, no con G. Ver onfoot-gameplay.md.
 	else:
+		_leave_seat_in_place(bi)  # sentado y ragdoll son excluyentes: primero salir del asiento
 		char_rigidbody.is_snapshot_active = false
 		bi.ragdoll_util.activate(char_rigidbody, bi.custom_bones_util.lower_spine)
+
+
+## Sale del asiento en el lugar, si estaba sentado. Lo llaman los cambios de estado que son
+## MUTUAMENTE EXCLUYENTES con estar sentado: el ragdoll (G) y el respawn (P). Sentado, la cápsula
+## queda inerte (colisión off, axis lock, is_active=false) y el asiento le presta una malla hija, así
+## que entrar a cualquiera de esos estados sin salir primero deja un híbrido inválido — ragdollear
+## sentado te mandaba a volar con la silla pegada (y los proxies la veían quieta en su lugar).
+## El camino por impacto no necesita esto: BoneInstantiator._on_fall_triggered ya se niega a
+## ragdollear si estás sentado.
+func _leave_seat_in_place(bi: BoneInstantiator) -> void:
+	var seat := bi.current_seat as SeatInteractable
+	if is_instance_valid(seat):
+		seat.release_occupant_in_place()
 
 
 func _find_bone_instantiator(node: Node) -> BoneInstantiator:
@@ -445,7 +466,7 @@ func _switch_to(target: BoneInstantiator) -> void:
 		target.custom_bones_util.head,
 		target.custom_bones_util.neck,
 		target.custom_bones_util.chest,
-		target.custom_bones_util.upper_spine,
+		target.custom_bones_util.higher_spine,
 		target.custom_bones_util.middle_spine,
 	]
 	for bone in bones_to_clear:
@@ -471,9 +492,7 @@ func _respawn() -> void:
 	# Salir limpio de todo estado que se aferra a la cápsula actual, ANTES de reconstruirla.
 	if _creative:
 		_set_creative(false)
-	var seat := bi.current_seat as SeatInteractable
-	if is_instance_valid(seat):
-		seat.release_occupant_for_teardown()  # soltar YA (sincrónico) antes de reconstruir
+	_leave_seat_in_place(bi)  # soltar YA (sincrónico) antes de reconstruir
 	if is_instance_valid(bi.ragdoll_util) and bi.ragdoll_util.is_active:
 		bi.ragdoll_util.deactivate(char_rigidbody, bi.custom_bones_util.lower_spine)
 	if is_instance_valid(interaction_controller):
@@ -576,9 +595,12 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Toggle creative (V)",      func(): _set_creative(not _creative))
 	_debug_panel.add_action("Acciones", "Toggle ragdoll (G)",       _toggle_ragdoll)
 	_debug_panel.add_action("Acciones", "Respawn (P)",              _respawn)
-	_debug_panel.add_action("Acciones", "Show capsule / hide body", _debug_toggle_capsule_view)
+	_debug_panel.add_action("Acciones", "Esconder personaje",        _debug_toggle_character_hidden)
+	_debug_panel.add_action("Acciones", "Ver cápsula física",        _debug_toggle_capsule_mesh)
 	_debug_panel.add_action("Acciones", "Ragdoll debug color",      _debug_toggle_ragdoll_color)
 	_debug_panel.add_action("Acciones", "Grab cone",                _debug_toggle_grab_cone)
+	_debug_panel.add_action("Acciones", "Ver esqueleto",            _debug_toggle_skeleton_draw)
+	_debug_panel.add_action("Acciones", "Ver colisionadores",       _debug_toggle_collider_draw)
 
 	# ── Spawn ──
 	_debug_panel.add_action("Spawn", "Go to start",        _go_to_start)
@@ -587,6 +609,8 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Spawn", "Caja pesada ▪",      func(): _debug_spawn("box_heavy_square"))
 	_debug_panel.add_action("Spawn", "Caja liviana ▬",     func(): _debug_spawn("box_light_long"))
 	_debug_panel.add_action("Spawn", "Caja pesada ▬",      func(): _debug_spawn("box_heavy_long"))
+	_debug_panel.add_action("Spawn", "Caja liviana ▭",     func(): _debug_spawn("box_light_xlong"))
+	_debug_panel.add_action("Spawn", "Caja pesada ▭",      func(): _debug_spawn("box_heavy_xlong"))
 	_debug_panel.add_action("Spawn", "Dashboard",          func(): _debug_spawn("dashboard"))
 	_debug_panel.add_action("Spawn", "Seat",               func(): _debug_spawn("seat"))
 	_debug_panel.add_action("Spawn", "Limpiar spawns",     func(): NetSpawner.request_clear_all())
@@ -594,6 +618,7 @@ func _setup_debug_panel() -> void:
 
 func _character_stats_text(inst: EntityInstantiation) -> String:
 	var arch := inst.arch_final
+	var sizes := SkeletonSizesUtil.create(inst)
 	var primary := str(EntityArchetype.Archetype.keys()[inst.archetype_type])
 	var blend := "arch      (no blend)"
 	if inst.archetype_blend > 0.0:
@@ -606,25 +631,32 @@ func _character_stats_text(inst: EntityInstantiation) -> String:
 		blend,
 		"%s  |  age %d" % [EntitySpecie.Specie.keys()[inst.specie_type], inst.age],
 		"",
-		"height    %.2f m" % arch.height,
+		# height y reach son DERIVADOS del modelo (SkeletonSizesUtil), ya no campos del arquetipo.
+		"height    %.2f m" % sizes.total_height,
 		"weight    %.1f kg" % arch.weight,
 		"speed     %.1f" % arch.speed,
 		"strength  %.2f" % arch.strenght,
-		"jump      %.2f" % arch.jump_strenght,
-		"reach     %.2f" % arch.reach,
+		"jump      %.2fm" % arch.jump_height,
+		"arm       %.2f m  (reach %.2f)" % [sizes.arm_reach, sizes.interaction_reach],
 		"fatness   %.2f" % arch.fatness,
 		"muscle    %.2f" % arch.muscularity,
 	]
 	return "\n".join(lines)
 
 
-func _debug_toggle_capsule_view() -> void:
-	_capsule_view = not _capsule_view
-	if is_instance_valid(char_rigidbody) and is_instance_valid(char_rigidbody.mesh_instance):
-		char_rigidbody.mesh_instance.visible = _capsule_view
+## Esconde el personaje ENTERO. Antes esto venía pegado a mostrar la cápsula y usaba el camino de
+## primera persona, que deja manos y uñas visibles; ahora son dos botones y este no deja nada.
+func _debug_toggle_character_hidden() -> void:
+	_character_hidden = not _character_hidden
 	var bi := _get_bi()
 	if is_instance_valid(bi):
-		bi.set_first_person_visibility(_capsule_view)
+		bi.set_character_visible(not _character_hidden)
+
+
+## La cápsula de colisión del cuerpo físico, aparte del personaje.
+func _debug_toggle_capsule_mesh() -> void:
+	if is_instance_valid(char_rigidbody) and is_instance_valid(char_rigidbody.mesh_instance):
+		char_rigidbody.mesh_instance.visible = not char_rigidbody.mesh_instance.visible
 
 
 func _debug_toggle_ragdoll_color() -> void:
@@ -637,6 +669,22 @@ func _debug_toggle_grab_cone() -> void:
 	var bi := _get_bi()
 	if is_instance_valid(bi):
 		bi.show_grab_cone = not bi.show_grab_cone
+
+
+## Líneas por hueso + esferas en las articulaciones. Los gizmos cuelgan de los CustomBone, así que
+## siguen el pose solos: no hay que redibujar nada por frame salvo el largo, que cambia al estirar
+## el brazo. Ver Scripts/character/debug/skeleton_debug_draw.gd.
+func _debug_toggle_skeleton_draw() -> void:
+	var bi := _get_bi()
+	if is_instance_valid(bi):
+		bi.get_skeleton_debug().toggle_bones()
+
+
+## Las cápsulas de colisión de los huesos (las que usa el ragdoll), leídas de los colliders reales.
+func _debug_toggle_collider_draw() -> void:
+	var bi := _get_bi()
+	if is_instance_valid(bi):
+		bi.get_skeleton_debug().toggle_colliders()
 
 
 func _debug_spawn_pos() -> Vector3:
