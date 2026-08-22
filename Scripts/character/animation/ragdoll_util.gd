@@ -45,6 +45,17 @@ var _char_rb: CharacterRigidBody3D = null
 var _recovering_char_rb: CharacterRigidBody3D = null
 var _lower_spine_body: RigidBody3D = null
 
+## POSE RELAJADA: foto de la base global de cada hueso en el momento de construir el ragdoll — que es
+## justo después del primer solve de brazos, o sea la pose de reposo REAL del personaje.
+##
+## Los resortes de las juntas tiran hacia acá. Antes se leía `bone.rest_rotation`, y eso se rompió en
+## silencio cuando el reposo pasó a salir del modelo: el rest del brazo es la T-pose, así que al
+## ragdollear los brazos se abrían en cruz. La diferencia es estructural — `rest_rotation` contesta
+## "cuáles son los ejes de este hueso", no "qué pose sostiene el personaje". El ragdoll necesitaba la
+## segunda, así que ahora OBSERVA en vez de re-derivar, y ningún cambio futuro en cómo se arman los
+## rests lo puede volver a romper.
+var _relaxed_basis: Dictionary = {}
+
 var _parent_bone: Dictionary = {}
 var _ordered_bones: Array[CustomBone] = []
 
@@ -73,6 +84,7 @@ func _build_bodies(bu: CustomBonesUtil) -> void:
 	for bone in all_bones:
 		if not is_instance_valid(bone):
 			continue
+		_relaxed_basis[bone] = bone.global_transform.basis
 		var rb := _make_body(bone)
 		_bodies[bone] = rb
 		_skel_rb_node.add_child(rb)
@@ -102,14 +114,6 @@ func _make_body(bone: CustomBone) -> RigidBody3D:
 	shape.shape    = caps
 	shape.position = Vector3(0.0, d.y * 0.5, 0.0)
 	rb.add_child(shape)
-
-	for child in bone.get_children():
-		if child is MeshInstance3D:
-			var mesh_copy := child.duplicate() as MeshInstance3D
-			mesh_copy.material_override = child.material_override
-			mesh_copy.visible = false
-			rb.add_child(mesh_copy)
-			break
 
 	return rb
 
@@ -201,9 +205,9 @@ func _create_joint(
 	j.set_param_y(AL, yl); j.set_param_y(AU, yh)
 	j.set_param_z(AL, zl); j.set_param_z(AU, zh)
 
-	var rest_basis_a  := Basis.from_euler(bone_a.rest_rotation)
-	var rest_basis_b  := Basis.from_euler(bone_b.rest_rotation)
-	var rest_relative := rest_basis_a.inverse() * rest_basis_b
+	var relaxed_a: Basis = _relaxed_basis.get(bone_a, Basis.from_euler(bone_a.rest_rotation))
+	var relaxed_b: Basis = _relaxed_basis.get(bone_b, Basis.from_euler(bone_b.rest_rotation))
+	var rest_relative := relaxed_a.inverse() * relaxed_b
 	var anim_relative := body_a.global_basis.inverse() * body_b.global_basis
 	var offset_quat   := anim_relative.get_rotation_quaternion().inverse() \
 						* rest_relative.get_rotation_quaternion()
@@ -699,6 +703,7 @@ func cleanup() -> void:
 		if is_instance_valid(rb):
 			rb.queue_free()
 	_bodies.clear()
+	_relaxed_basis.clear()
 	_ragdoll_rids.clear()
 	head_body           = null
 	_lower_spine_body   = null

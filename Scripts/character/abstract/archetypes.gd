@@ -56,11 +56,8 @@ var stance_width: float = 1.0
 
 # POSTURE
 var slouch : float = 0.0
-var shoulders_height : float = 0.5
-var shoulders_back : float = 0.5
 var arm_openness: float = 0.5
 var arm_bentness: float = 0.3
-var arm_elbow_openness: float = 0.5
 
 # VISUAL
 var fatness : float = 0.5
@@ -107,7 +104,7 @@ static func create(archetype: Archetype) -> EntityArchetype:
 		return old_arch()
 
 ## NEUTRO — el arquetipo de referencia del modelo skinneado. Postura sin nada raro: sin joroba, sin
-## hombros caídos, sin piernas lisiadas, base de pies angosta, brazos apenas flexionados. No es un
+## piernas lisiadas, base de pies angosta, brazos rectos al costado. No es un
 ## personaje de juego: existe para poder MIRAR el modelo tal como se esculpió, sin que la postura de
 ## un arquetipo se coma la evaluación.
 ##
@@ -147,28 +144,17 @@ static func generic_arch() -> EntityArchetype:
 	arch.hip_swing = 0.5
 	arch.root_bounciness = 0.5
 	arch.step_height = 0.4
-	# Piernas lo más rectas que permita seguir caminando. La altura de pelvis sale de acá
-	# (h = L · lerp(0.93, 0.80, stride)), así que BAJAR stride SUBE la pelvis y estira la pierna:
-	#   stride 0.50 → pelvis 0.747, alcance de pie 0.339  (bastante flexionada)
-	#   stride 0.25 → pelvis 0.775, alcance de pie 0.269  ← acá
-	#   stride 0.00 → pelvis 0.803, alcance de pie 0.167  (casi recta, pasitos)
-	# El reposo esculpido tiene la cadera a 0.859: llegar ahí daría alcance CERO, o sea que no podría
-	# dar un paso. Ver "the pelvis height is the stride budget" en technical/character-animation.md.
-	arch.stride = 0.25
+	# ZANCADA — ahora significa literalmente "qué tan largo es el paso", nada más. La altura de pelvis
+	# ya NO sale de acá: la resuelve la geometría cada frame (ver SkeletonSizesUtil.foot_reach y
+	# BoneInstantiator._update_pelvis_drop).
+	arch.stride = 0.60
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.0
-	# <0.5 baja los hombros (shoulder_height = lerp(-0.3, 0.3, esto), y el ángulo negativo rota el
-	# hueso del hombro hacia abajo). 0.15 ≈ -12°: caídos, relajados, sin llegar a colgar.
-	arch.shoulders_height = 0.15
-	# Neutro en el eje adelante/atrás: shoulder_back = lerp(0, 0.3, esto), así que 0.0 es exactamente
-	# cero rotación en Y del hueso del hombro. Los otros arquetipos lo usan para echar los hombros
-	# atrás (hasta 0.5 en `giga`); el de referencia no debe empujar nada.
-	arch.shoulders_back = 0.0
-	# Cuánto se abre el brazo respecto de la vertical: angle = lerp(0, -45°, esto). 0.3 ≈ -13.5°,
-	# brazos pegados al cuerpo. En 0 quedarían perfectamente verticales (y se clavarían en la cadera).
-	arch.arm_openness = 0.3
-	arch.arm_bentness = 0.15
-	arch.arm_elbow_openness = 0.5
+	# Brazos casi rectos al costado, apenas separados del torso. En 0.0 se meten dentro del cuerpo.
+	# `arm_bentness` no puede ser 0 en la práctica: a extensión total el codo queda colineal y la mano
+	# sale rotada al azar (ver SkeletonSizesUtil.ARM_REST_EXTENSION).
+	arch.arm_openness = 0.25
+	arch.arm_bentness = 0.12
 	arch.fatness = 0.5
 	arch.muscularity = 0.5
 	arch.has_neck = true
@@ -219,11 +205,8 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.stride = 0.45
 	arch.leg_cripple_chance = 0.1
 	arch.slouch = 0.0
-	arch.shoulders_height = 0.15
-	arch.shoulders_back = 0.15
 	arch.arm_openness = 0.58
 	arch.arm_bentness = 0.18
-	arch.arm_elbow_openness = 0.8
 	arch.fatness = 1.0
 	arch.muscularity = 0.9
 	arch.has_neck = true
@@ -274,11 +257,8 @@ static func kid_arch() -> EntityArchetype:
 	arch.stride = 0.40
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.1
-	arch.shoulders_height = 0.0
-	arch.shoulders_back = 0.2
 	arch.arm_openness = 0.5
 	arch.arm_bentness = 0.2
-	arch.arm_elbow_openness = 0.7
 	arch.fatness = 0.23
 	arch.muscularity = 0.17
 	arch.has_neck = true
@@ -329,11 +309,8 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.stride = 0.85
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.5
-	arch.shoulders_height = 0.0
-	arch.shoulders_back = 0.3
 	arch.arm_openness = 0.2
 	arch.arm_bentness = 0.11
-	arch.arm_elbow_openness = 0.7
 	arch.fatness = 0.37
 	arch.muscularity = 0.27
 	arch.has_neck = true
@@ -384,11 +361,8 @@ static func giga_arch() -> EntityArchetype:
 	arch.stride = 0.75
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.0
-	arch.shoulders_height = 0.25
-	arch.shoulders_back = 0.5
 	arch.arm_openness = 0.4
 	arch.arm_bentness = 0.18
-	arch.arm_elbow_openness = 0.7
 	arch.fatness = 0.5
 	arch.muscularity = 1.0
 	arch.has_neck = true
@@ -439,11 +413,8 @@ static func old_arch() -> EntityArchetype:
 	arch.stride = 0.25
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 1.0
-	arch.shoulders_height = 0.5
-	arch.shoulders_back = 0.0
 	arch.arm_openness = 0.25
 	arch.arm_bentness = 0.1
-	arch.arm_elbow_openness = 0.7
 	arch.fatness = 0.1
 	arch.muscularity = 0.0
 	arch.has_neck = true
@@ -492,8 +463,6 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.stride                        = lerpf(stride, b.stride, t)
 	r.leg_cripple_chance            = lerpf(leg_cripple_chance, b.leg_cripple_chance, t)
 	r.slouch                        = lerpf(slouch, b.slouch, t)
-	r.shoulders_height              = lerpf(shoulders_height, b.shoulders_height, t)
-	r.shoulders_back                = lerpf(shoulders_back, b.shoulders_back, t)
 	r.fatness                       = lerpf(fatness, b.fatness, t)
 	r.muscularity                   = lerpf(muscularity, b.muscularity, t)
 	r.has_neck                      = has_neck
@@ -508,5 +477,4 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.stance_width = lerpf(stance_width, b.stance_width, t)
 	r.arm_openness          = lerpf(arm_openness, b.arm_openness, t)
 	r.arm_bentness          = lerpf(arm_bentness, b.arm_bentness, t)
-	r.arm_elbow_openness = lerpf(arm_elbow_openness, b.arm_elbow_openness, t)
 	return r

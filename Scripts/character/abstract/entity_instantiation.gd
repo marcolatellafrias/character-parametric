@@ -6,13 +6,13 @@ class_name EntityInstantiation
 const FORCE_HUMAN_SPECIE := true
 
 ## Vista de la FASE 1 de la migración: todos los personajes usan el arquetipo `generic`, que tiene las
-## tres cadenas de hueso en 1.0 y por lo tanto reproduce el modelo esculpido con DEFORMACIÓN CERO.
+## tres cadenas de hueso en 0.5 y por lo tanto reproduce el modelo esculpido con DEFORMACIÓN CERO.
 ## Sirve para mirar la malla sin que la variación de arquetipos meta ruido: si algo se ve torcido con
 ## esto prendido, es un bug del espejo y no una proporción para tunear.
 ##
 ## En false (fase 2 en adelante) los arquetipos vuelven a variar, cada uno con su 0..1 por cadena
 ## dentro de los rangos del modelo. Ver technical/skinned-character-migration.md.
-const FORCE_GENERIC_ARCHETYPE := false
+const FORCE_GENERIC_ARCHETYPE := true
 
 var blend_range := 0.5
 

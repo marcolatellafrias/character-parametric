@@ -199,7 +199,7 @@ Twelve variables. `neck_length` is new — it was a gap in the earlier list. `ex
 
 ## The normal bake
 
-One bake, on the **base mesh at rest** — generic proportions, no pose, every shape key at 0. High-poly duplicate → project onto the low-poly. There is no need for a bake per shape key or per extreme.
+One bake, on the **base mesh at rest** — generic proportions, no pose, every shape key at 0. High-poly duplicate → project onto the low-poly. bueno pero entonceThere is no need for a bake per shape key or per extreme.
 
 **It survives the deformations**, and the reason is worth knowing: a **tangent-space** normal map is stored *relative to the surface*, not to the world. When bones bend or stretch the mesh, the surface's tangent frame moves and the map rides along with it. (This is exactly why tangent space, not object space, is the right choice for a skinned character — object space would break the moment a limb rotated.) The only limit is the same one the textures have: stretch far enough and the detail reads as stretched. With soft organic forms that is negligible — the same bet the gradient textures already make.
 

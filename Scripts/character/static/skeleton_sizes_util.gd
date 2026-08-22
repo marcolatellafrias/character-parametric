@@ -15,33 +15,19 @@ var interaction_reach : float
 var total_height : float
 
 var head_size: Vector3
-var head_offset: Vector3
 var neck_size: Vector3
-var neck_offset: Vector3
 var chest_size: Vector3
-var chest_offset: Vector3
 var higher_spine_size: Vector3
-var higher_spine_offset: Vector3
 var middle_spine_size: Vector3
-var middle_spine_offset: Vector3
 var lower_spine_size: Vector3
-var lower_spine_offset: Vector3
 var higher_leg_size: Vector3
-var higher_leg_offset: Vector3
 var lower_leg_size: Vector3
-var lower_leg_offset: Vector3
 var foot_size: Vector3
-var foot_offset: Vector3
 var lower_feet_size: Vector3
-var lower_feet_offset: Vector3
 var upper_arm_size: Vector3
-var upper_arm_offset: Vector3
 var lower_arm_size: Vector3
-var lower_arm_offset: Vector3
 var shoulder_width: Vector3
-var shoulder_offset: Vector3
 var hip_size: Vector3
-var hip_offset: Vector3
 var raycast_stance_offset: float
 
 # ── MARCHA ────────────────────────────────────────────────────────────────────────────────────────
@@ -51,17 +37,25 @@ var raycast_stance_offset: float
 ## queda trabada recta (la IK clampea y el pie deja de llegar al target); 0.95 deja la rodilla
 ## visiblemente flexionada incluso en el punto más estirado del paso.
 const MAX_EXTENSION := 0.95
-## Extremos de la altura de pelvis, en fracción del largo de pierna. stride=0 → pelvis alta (poco
-## alcance, pasitos), stride=1 → pelvis baja (mucho alcance, zancada larga).
-const HIP_HEIGHT_HIGH := 0.93
-const HIP_HEIGHT_LOW  := 0.80
+## Extensión de la pierna PARADO, en fracción de su largo. NO es un margen de seguridad (la pelvis ya
+## baja sola cuando no llega): es la GARANTÍA de que la pierna alcanza el piso estando parado. Subirlo
+## hacia 1.0 endereza la pierna y acerca el reposo al modelo, a cambio de trabar antes en terreno
+## irregular.
+const STAND_EXTENSION := 0.97
+
+## Excursión máxima del pie desde la cadera, en fracción del largo de pierna, mapeada desde `stride`.
+## Ya NO se deriva de la altura de pelvis: es al revés — se elige la zancada y la pelvis baja lo que
+## haga falta (ver BoneInstantiator._update_pelvis_drop). El tope existe para que la bajada no se
+## vaya de rango, no por geometría.
+const FOOT_REACH_MIN := 0.20
+const FOOT_REACH_MAX := 0.55
 ## Duty factor: fracción del ciclo que el pie pasa APOYADO. Caminando >0.5 (siempre hay un pie en el
 ## piso, y hay doble apoyo); corriendo <0.5 (hay fase de vuelo con los dos pies en el aire).
 const DUTY_WALK := 0.62
 const DUTY_RUN  := 0.40
 
-## Alcance horizontal del pie desde la cadera, en metros, con el pie en el piso y la rodilla todavía
-## flexionada: A_max = √((e·L)² − h²). Es el techo duro de la excursión del pie.
+## Excursión máxima del pie desde la cadera, en metros. Es una ELECCIÓN (sale de `stride`), no una
+## consecuencia de la altura de pelvis: la pelvis se acomoda para que el pie llegue.
 var foot_reach: float
 ## EXCURSIÓN del pie de este frame (A, metros): cuánto se adelanta/atrasa el pie respecto de la
 ## cadera. El pie pisa en +A y despega en −A, así que su recorrido en el marco del cuerpo es 2A.
@@ -74,6 +68,11 @@ var current_stride: float
 var current_duty: float
 
 var step_height: float
+## Altura del TOBILLO sobre el piso, o sea el grosor de pie/zapato. Sale del modelo (en Blender la
+## planta apoya en 0). Es lo que separa "el pie apoya" de "el tobillo toca el piso".
+var ankle_height: float
+## Altura de la pelvis parado, en metros sobre el piso. Sale del modelo (ReferenceRig).
+var standing_pelvis_height: float
 var distance_from_ground: float
 var raycast_leg_lenght: float
 var pole_distance: float
@@ -84,12 +83,12 @@ var axis_weight_backward: float = 1.0
 var slouchiness_chest: float
 var slouchiness_center_spine: float
 var slouchiness_neck: float
-var shoulder_height: float
-var shoulder_back: float
 
 var arm_openness_angle: float
 var arm_bentness: float
-var elbow_pole_direction: float
+## Hacia dónde apunta el codo, 0..1 (0 = adentro, 0.5 = atrás, 1 = afuera). Constante por ahora:
+## era por arquetipo y se simplificó mientras se cierra el personaje genérico.
+const ELBOW_POLE_DIRECTION := 0.7
 var left_arm_tip_rest_local: Vector3
 var right_arm_tip_rest_local: Vector3
 var left_arm_pole_rest_local: Vector3
@@ -150,6 +149,10 @@ const REF_HEAD     := 0.1839
 const REF_SHOULDER := 0.2099
 const REF_HIP      := 0.1294
 
+## Extensión máxima del brazo en reposo, en fracción de su cadena. Nunca 1.0: a extensión total el
+## codo queda colineal, el plano de flexión se indefine y la torsión de la mano sale arbitraria.
+const ARM_REST_EXTENSION := 0.97
+
 ## Techo de estiramiento del brazo al agarrar algo, en múltiplos de su largo esculpido. De acá sale
 ## el alcance de interacción: más allá de esto la malla del brazo se ve de goma. Ver "The arm reach
 ## problem" en el doc.
@@ -158,11 +161,14 @@ const MAX_ARM_STRETCH := 1.25
 static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var skelSizes = SkeletonSizesUtil.new()
 	var entityStats := inst.arch_final
+	var rig := ReferenceRig.get_rig()
 
 	# Las tres cadenas paramétricas: 0..1 del arquetipo → metros, dentro del rango del modelo.
 	var new_leg_height   := lerp_three(MIN_LEG,   MID_LEG,   MAX_LEG,   entityStats.legs_length)
 	var new_torso_height := lerp_three(MIN_TORSO, MID_TORSO, MAX_TORSO, entityStats.torso_length)
 	var new_arm_length   := lerp_three(MIN_ARM,   MID_ARM,   MAX_ARM,   entityStats.arms_length)
+	# Cuánto se aparta esta pierna de la del modelo: escala lo que se lee del rig (estancia, tobillo).
+	var leg_scale: float = new_leg_height / rig.leg_chain if rig.leg_chain > 0.0 else 1.0
 	# Todavía sin parametrizar (fase 3): quedan en el largo esculpido.
 	var new_head_height       := REF_NECK + REF_HEAD
 	var new_hips_width        := REF_HIP
@@ -180,7 +186,10 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.torso_height    = new_torso_height
 	skelSizes.head_height     = new_head_height
 	skelSizes.hips_width      = new_hips_width
-	skelSizes.raycast_stance_offset = new_hips_width * inst.arch_final.stance_width
+	# La estancia sale del MODELO, no del ancho de cadera. Si el pie en reposo no cae donde el modelo lo
+	# tiene, la tibia queda girada respecto de él y el pie —que cuelga rígido de la tibia— hereda ese
+	# giro: eran los pies apuntando para adentro. `stance_width` queda como multiplicador encima.
+	skelSizes.raycast_stance_offset = rig.foot_rest_x * leg_scale * inst.arch_final.stance_width
 	skelSizes.shoulders_width = new_shoulders_width
 
 	if entityStats.has_neck:
@@ -190,31 +199,22 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	else:
 		skelSizes.neck_size = Vector3.ZERO
 		skelSizes.head_size = Vector3(CONST_HEAD_RADIUS_XZ, new_head_height, CONST_HEAD_RADIUS_XZ * 0.85)
-	skelSizes.head_offset = Vector3(0.8, 1.0, -0.8)
 
 	var chest_u_radius : float = lerp_range(0.16, 0.45, entityStats.muscularity)
 	var chest_l_radius : float = lerp_range(0.16, 0.45, entityStats.muscularity)
-	var chest_new_offset : float = lerp_range(0.0, -0.35, entityStats.muscularity)
-	skelSizes.chest_offset = Vector3(0.4, 0.4, chest_new_offset)
 	skelSizes.chest_size = Vector3(chest_u_radius, new_torso_height * 0.3, chest_l_radius)
 
 	var higher_spine_u_radius : float = lerp_range(0.1, 0.3, entityStats.fatness)
 	var higher_spine_l_radius : float = lerp_range(0.1, 0.3, entityStats.fatness)
-	var higher_spine_new_offset : float = lerp_range(0.0, -0.55, entityStats.fatness)
 	skelSizes.higher_spine_size = Vector3(higher_spine_u_radius, new_torso_height * 0.25, higher_spine_l_radius)
-	skelSizes.higher_spine_offset = Vector3(0.0, 0.0, higher_spine_new_offset)
 
 	var middle_spine_u_radius : float = lerp_range(0.1, 0.55, entityStats.fatness)
 	var middle_spine_l_radius : float = lerp_range(0.1, 0.5, entityStats.fatness)
-	var middle_spine_new_offset : float = lerp_range(0.0, -0.35, entityStats.fatness)
 	skelSizes.middle_spine_size = Vector3(middle_spine_u_radius, new_torso_height * 0.25, middle_spine_l_radius)
-	skelSizes.middle_spine_offset = Vector3(0.0, 0.0, middle_spine_new_offset)
 
 	var lower_spine_u_radius : float = lerp_range(0.1, 0.35, entityStats.fatness)
 	var lower_spine_l_radius : float = lerp_range(0.1, 0.35, entityStats.fatness)
-	var lower_spine_new_offset : float = lerp_range(0.0, -0.1, entityStats.fatness)
 	skelSizes.lower_spine_size = Vector3(lower_spine_u_radius, new_torso_height * 0.2, lower_spine_l_radius)
-	skelSizes.lower_spine_offset = Vector3(0.0, 0.0, lower_spine_new_offset)
 
 	var shoulder_u_radius : float = lerp_range(0.08, 0.2, entityStats.muscularity)
 	var shoulder_l_radius : float = lerp_range(0.08, 0.25, entityStats.muscularity)
@@ -224,26 +224,21 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var upper_arm_u_radius : float = lerp_range(0.06, 0.2, entityStats.muscularity)
 	var upper_arm_l_radius : float = lerp_range(0.06, 0.23, entityStats.muscularity)
 	skelSizes.upper_arm_size = Vector3(upper_arm_u_radius, arm_total * 0.45, upper_arm_l_radius)
-	skelSizes.upper_arm_offset = Vector3(1.0, 1.0, 0.0)
 	var lower_arm_u_radius : float = lerp_range(0.06, 0.13, entityStats.muscularity)
 	var lower_arm_l_radius : float = lerp_range(0.06, 0.18, entityStats.muscularity)
 	skelSizes.lower_arm_size = Vector3(lower_arm_u_radius, arm_total * 0.55, lower_arm_l_radius)
-	skelSizes.lower_arm_offset = Vector3(0.0, 1.0, 0.0)
 
 	var higher_leg_u_radius : float = lerp_range(0.06, 0.2, entityStats.fatness)
 	var higher_leg_l_radius : float = lerp_range(0.06, 0.23, entityStats.fatness)
 	skelSizes.higher_leg_size = Vector3(higher_leg_u_radius, new_leg_height * 0.45, higher_leg_l_radius)
-	skelSizes.higher_leg_offset = Vector3(1.0, 0.0, 0.0)
 	var lower_leg_u_radius : float = lerp_range(0.06, 0.2, entityStats.fatness)
 	var lower_leg_l_radius : float = lerp_range(0.06, 0.23, entityStats.fatness)
 	skelSizes.lower_leg_size = Vector3(lower_leg_u_radius, new_leg_height * 0.55, lower_leg_l_radius)
-	skelSizes.lower_leg_offset = Vector3(1.0, 1.0, 0.0)
 	skelSizes.foot_size = Vector3(0.1, new_leg_height * 0.2, 0.1)
 	skelSizes.lower_feet_size = Vector3(0.1, new_leg_height * 0.02, 0.1)
 	var hip_u_radius : float = lerp_range(0.1, 0.2, entityStats.fatness)
 	var hip_l_radius : float = lerp_range(0.1, 0.2, entityStats.fatness)
 	skelSizes.hip_size = Vector3(hip_u_radius, new_hips_width, hip_l_radius)
-	skelSizes.hip_offset = Vector3(1.0, 1.0, 0.0)
 
 	# Largo de cada hueso: la cadena repartida por las fracciones del MODELO. Va DESPUÉS del bloque que
 	# arma los tamaños (que fija los radios) y ANTES de todo lo derivado (marcha, poles, targets de
@@ -267,13 +262,27 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 
 	# ── Marcha: de la zancada deseada sale la altura de pelvis, y de ahí el alcance ───────────────
 	# La cadena de la pierna (fémur 0.45 + tibia 0.55) mide exactamente new_leg_height. Con la cadera
-	# a altura h y el pie en el piso, el alcance horizontal es √((e·L)² − h²): cuanto MÁS ALTA la
-	# pelvis, MENOS puede adelantar el pie sin trabar la rodilla. Por eso la zancada no se puede
-	# pedir libre — se elige h para que la zancada pedida entre. Ver character-animation.md.
-	var hip_height: float = new_leg_height * lerp_range(HIP_HEIGHT_HIGH, HIP_HEIGHT_LOW, inst.stride)
-	skelSizes.distance_from_ground = new_leg_height - hip_height
-	var max_extension: float = MAX_EXTENSION * new_leg_height
-	skelSizes.foot_reach = sqrt(max(0.0, max_extension * max_extension - hip_height * hip_height))
+	# INVERTIDO respecto de como era: antes se elegía la altura de pelvis y de ahí salía el alcance del
+	# pie. Ahora se elige el alcance (la zancada) y la pelvis BAJA lo que haga falta, frame a frame,
+	# midiendo si las piernas llegan (BoneInstantiator._update_pelvis_drop).
+	#
+	# Y la altura PARADO sale del modelo, no de una fracción del largo de pierna: en Blender la planta
+	# está en 0, así que la Y del hueso raíz es literalmente a qué altura se para el personaje. Con eso
+	# el reposo del juego coincide con Blender por construcción, incluida la flexión que hayas modelado
+	# y el grosor de pie/zapato (que no se deduce del esqueleto, pero se mide porque el modelo apoya en
+	# 0). Se escala con el largo de pierna para que un arquetipo de piernas cortas baje proporcional.
+	#
+	# Antes había además un margen de seguridad (STAND_EXTENSION) para que un pie en un escalón no
+	# trabara la rodilla. Quedó redundante: la pelvis ya baja sola cuando las piernas no llegan, así que
+	# el margen estático solo agachaba al personaje de gratis, siempre.
+	# La pelvis parada se DERIVA, no se copia del modelo. Copiarla fue el error anterior: el modelo la
+	# tiene a 0.8885 sobre una cadena de 0.863, o sea que la pierna no llegaba al piso ni estirada del
+	# todo — el personaje flotaba y nunca daba un paso. Del modelo sale solo la altura de TOBILLO (el
+	# grosor de pie/zapato, que ningún hueso puede decir), y encima va lo que la pierna alcanza.
+	skelSizes.ankle_height = rig.ankle_rest_height * leg_scale
+	skelSizes.standing_pelvis_height = skelSizes.ankle_height + new_leg_height * STAND_EXTENSION
+	skelSizes.distance_from_ground = new_leg_height - skelSizes.standing_pelvis_height
+	skelSizes.foot_reach = new_leg_height * lerp_range(FOOT_REACH_MIN, FOOT_REACH_MAX, inst.stride)
 	skelSizes.current_duty = DUTY_WALK
 	skelSizes.current_excursion = 0.0
 	skelSizes.current_stride = 0.0
@@ -285,12 +294,9 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.slouchiness_chest        = lerp_range(0.0, 0.6, entityStats.slouch)
 	skelSizes.slouchiness_center_spine = lerp_range(0.0, 0.6, entityStats.slouch)
 	skelSizes.slouchiness_neck         = lerp_range(0.2, 0.6, entityStats.slouch)
-	skelSizes.shoulder_height          = lerp_range(-0.3, 0.3, entityStats.shoulders_height)
-	skelSizes.shoulder_back            = lerp_range(0.0, 0.3, entityStats.shoulders_back)
 
 	skelSizes.arm_openness_angle   = lerp_range(0.0, -PI * 0.25, entityStats.arm_openness)
 	skelSizes.arm_bentness         = entityStats.arm_bentness
-	skelSizes.elbow_pole_direction = entityStats.arm_elbow_openness
 
 	skelSizes.left_arm_tip_rest_local   = _compute_arm_tip_local(true,  skelSizes)
 	skelSizes.right_arm_tip_rest_local  = _compute_arm_tip_local(false, skelSizes)
@@ -312,9 +318,9 @@ static func _compute_arm_shoulder_local(left: bool, s: SkeletonSizesUtil) -> Vec
 	b = Basis.from_euler(Vector3(-s.slouchiness_chest, 0, 0))
 	pos += b * Vector3(0, s.chest_size.y, 0)
 	if left:
-		b = Basis.from_euler(Vector3(0, s.shoulder_back, deg_to_rad(90) - s.shoulder_height))
+		b = Basis.from_euler(Vector3(0, 0, deg_to_rad(90)))
 	else:
-		b = Basis.from_euler(Vector3(0, -s.shoulder_back, deg_to_rad(-90) + s.shoulder_height))
+		b = Basis.from_euler(Vector3(0, 0, deg_to_rad(-90)))
 	pos += b * Vector3(0, s.shoulder_width.y, 0)
 	return pos
 
@@ -337,10 +343,10 @@ static func _compute_arm_pole_local(left: bool, s: SkeletonSizesUtil) -> Vector3
 	var backward := Vector3(0, 0, 1)
 	var outward  := Vector3(sign_x, 0, 0)
 	var pole_dir: Vector3
-	if s.elbow_pole_direction >= 0.5:
-		pole_dir = backward.lerp(outward,  (s.elbow_pole_direction - 0.5) * 2.0).normalized()
+	if ELBOW_POLE_DIRECTION >= 0.5:
+		pole_dir = backward.lerp(outward,  (ELBOW_POLE_DIRECTION - 0.5) * 2.0).normalized()
 	else:
-		pole_dir = backward.lerp(-outward, (0.5 - s.elbow_pole_direction) * 2.0).normalized()
+		pole_dir = backward.lerp(-outward, (0.5 - ELBOW_POLE_DIRECTION) * 2.0).normalized()
 
 	return elbow + pole_dir * s.upper_arm_size.y * 0.8 + Vector3(0, 0, 0.5)
 

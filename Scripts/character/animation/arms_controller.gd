@@ -19,8 +19,12 @@ const GRAB_MIN_BEND_FACTOR:      float = 0.97
 const GRAB_POLE_SMOOTH:          float = 10.0
 const GRAB_BLEND_SPEED:          float = 6.0
 
-const GRAB_ROOT_TILT_BACK:    float = 0.23
-const GRAB_ROOT_TILT_FORWARD: float = 0.32
+## Inclinación del torso al agarrar, en radianes. Se mapea contra el rango de agarre — y ese rango se
+## achicó de ~1.56 m a ~1.00 m cuando el alcance pasó a derivarse del brazo real. Antes un objeto a la
+## distancia del brazo usaba ~40% del rango; ahora usa ~90%, o sea que la misma vuelta de rueda
+## inclina el cuerpo mucho más. Reducidos en proporción para que el gesto vuelva a ser el de antes.
+const GRAB_ROOT_TILT_BACK:    float = 0.09
+const GRAB_ROOT_TILT_FORWARD: float = 0.13
 
 const GRAB_SHOULDER_Z_UP:      float = 0.65
 const GRAB_SHOULDER_Z_DOWN:    float = 0.32

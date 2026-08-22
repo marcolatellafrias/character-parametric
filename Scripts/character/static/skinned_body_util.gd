@@ -12,61 +12,6 @@ extends Node3D
 ## escalas de hueso en 1, todos los blend shapes en 0). Si ves algo torcido, es un bug de este
 ## archivo, no una proporción para tunear.
 
-## Modelo de Blender: las mallas skinneadas + el armature. Mientras el archivo no exista, create()
-## devuelve null y el personaje sigue dibujándose con los meshes de CustomBone (cero cambio).
-const MODEL_PATH := "res://Models/character.glb"
-
-## CustomBone (Godot) → hueso del rig de Blender. Los nombres del lado de Godot se renombraron para
-## seguir a Blender (`higher_spine`, `higher_leg`, `foot`), así que lo único que queda por traducir es
-## la convención de lado: Blender usa el sufijo .L/.R porque tiene significado funcional ahí
-## (X-mirror, Flip Names) y GDScript no acepta puntos en un identificador.
-##
-## wrist.L/R y los 30 huesos de dedos NO están: van rígidos colgando del antebrazo y no los maneja
-## nadie todavía (ver "Deferred — hands and fingers" en el doc).
-const BONE_MAP := {
-	"lower_spine":      "lower.spine",
-	"middle_spine":     "middle.spine",
-	"higher_spine":     "higher.spine",
-	"chest":            "chest",
-	"neck":             "neck",
-	"head":             "head",
-	"left_shoulder":    "shoulder.L",
-	"right_shoulder":   "shoulder.R",
-	"left_upper_arm":   "upper.arm.L",
-	"right_upper_arm":  "upper.arm.R",
-	"left_lower_arm":   "lower.arm.L",
-	"right_lower_arm":  "lower.arm.R",
-	"left_hip":         "hip.L",
-	"right_hip":        "hip.R",
-	"left_higher_leg":  "higher.leg.L",
-	"right_higher_leg": "higher.leg.R",
-	"left_lower_leg":   "lower.leg.L",
-	"right_lower_leg":  "lower.leg.R",
-	"left_foot":        "foot.L",
-	"right_foot":       "foot.R",
-}
-
-## ── CONVENCIÓN DE FRENTE ──────────────────────────────────────────────────────────────────────────
-## DECISIÓN DEL PROYECTO: el frente es **−Z**. Es el estándar de Godot (`Node3D.basis.z` apunta hacia
-## ATRÁS, `look_at` mira a −Z) y ya es lo que usa todo este código: la cápsula, la cámara, el pose
-## sentado (`-char_rigidbody.global_transform.basis.z`), los interactuables y el tráfico. No se
-## discute por personaje ni por modelo: si algo entra mirando para otro lado, se corrige al entrar.
-##
-## El modelo de Blender está autorado mirando **+Z**, o sea 180° al revés. Medido, no supuesto:
-##   · `foot.L` apunta +Z y el CustomBone del pie apunta −Z
-##   · `hip.L` / `shoulder.L` apuntan +X y los `left_*` del CustomBone apuntan −X
-##   · `higher.leg.L` apunta −Y en los dos
-## Un yaw de 180° en Y manda +Z→−Z, +X→−X y deja −Y quieto: explica las tres a la vez. No es un roll
-## por hueso (eso ya lo absorbe `_fix`) ni un intercambio de lados — es el modelo entero.
-##
-## Se corrige UNA sola vez, acá, plegado dentro de `_fix`. Ojo con la tentación de arreglarlo rotando
-## el nodo del modelo o el Skeleton3D: `_fix` se calcula a partir de los dos rest, así que cualquier
-## rotación puesta en el medio se recalcula adentro y hay que razonarla dos veces. Un solo lugar.
-##
-## Si algún día el modelo se re-exporta ya mirando −Z (rotarlo 180° en el eje Z de Blender y aplicar
-## la rotación), esto pasa a 0.0 y no hay que tocar nada más.
-const MODEL_FORWARD_YAW := PI
-
 ## Primera persona: la lista es de lo que SE VE, no de lo que se esconde. Todo lo demás desaparece.
 ##
 ## Está invertida a propósito. El modelo pasó de 5 mallas a 13 (pelo, ojos, boca, cigarrillo, uñas,
@@ -87,10 +32,10 @@ var meshes: Array[MeshInstance3D] = []
 ## personaje.
 var _driven_idx: PackedInt32Array = PackedInt32Array()
 var _driven_bone: Array[CustomBone] = []
-## Corrección de ejes por hueso: rest_custom⁻¹ · rest_skel. Se calcula UNA vez en el build, con los
-## dos rigs en reposo. No intentes reconciliar las convenciones a mano — CustomBone usa
-## createFromToDown/Left/etc. y Blender le asigna su propio roll a cada hueso; la corrección los
-## concilia sea cual sea.
+## Corrección de ejes por hueso. Lleva justo la diferencia de ROLL entre los dos rigs: el rig lógico
+## usa la convención de Godot (X derecha, Z atrás) y el modelo tiene el roll con el que fue esculpido.
+## ReferenceRig se queda con la dirección del modelo y descarta su roll a propósito; esta corrección
+## se lo devuelve a la malla, que sí lo necesita para verse bien. Se calcula sola en el build.
 var _fix: Array[Basis] = []
 ## Global de CADA hueso del esqueleto en el frame actual, para resolver el padre. Se siembra con los
 ## rest globals: si algún hueso manejado colgara de uno NO manejado, ese padre aporta su rest en vez
@@ -109,11 +54,11 @@ var _global: Array[Transform3D] = []
 ##
 ## Devuelve null si todavía no existe el modelo, y el personaje sigue andando como siempre.
 static func create(bones: CustomBonesUtil, parent: Node3D) -> SkinnedBodyUtil:
-	if not ResourceLoader.exists(MODEL_PATH):
+	if not ResourceLoader.exists(ReferenceRig.MODEL_PATH):
 		return null
-	var scene: PackedScene = load(MODEL_PATH)
+	var scene: PackedScene = load(ReferenceRig.MODEL_PATH)
 	if scene == null:
-		push_error("SkinnedBodyUtil: no se pudo cargar %s" % MODEL_PATH)
+		push_error("SkinnedBodyUtil: no se pudo cargar %s" % ReferenceRig.MODEL_PATH)
 		return null
 
 	var util := SkinnedBodyUtil.new()
@@ -123,7 +68,7 @@ static func create(bones: CustomBonesUtil, parent: Node3D) -> SkinnedBodyUtil:
 
 	util.skeleton = util._find_skeleton(model)
 	if util.skeleton == null:
-		push_error("SkinnedBodyUtil: %s no tiene ningún Skeleton3D" % MODEL_PATH)
+		push_error("SkinnedBodyUtil: %s no tiene ningún Skeleton3D" % ReferenceRig.MODEL_PATH)
 		util.free()
 		return null
 	util._collect_meshes(model)
@@ -245,18 +190,18 @@ func _bind(bones: CustomBonesUtil) -> void:
 
 	# Ordenado por índice de esqueleto = padres antes que hijos.
 	var pairs: Array = []
-	for field in BONE_MAP:
+	for field in ReferenceRig.BONE_MAP:
 		var cb := bones.get(field) as CustomBone
 		if not is_instance_valid(cb):
 			continue  # p.ej. `neck` cuando has_neck es false
-		var idx := _find_bone(BONE_MAP[field], field)
+		var idx := _find_bone(ReferenceRig.BONE_MAP[field], field)
 		if idx < 0:
 			continue
 		pairs.append([idx, cb])
 	pairs.sort_custom(func(a, b): return a[0] < b[0])
 
 	var skel_inv := skeleton.global_transform.affine_inverse()
-	var forward_fix := Basis(Vector3.UP, MODEL_FORWARD_YAW)
+	var forward_fix := Basis(Vector3.UP, ReferenceRig.MODEL_FORWARD_YAW)
 	_driven_idx.resize(pairs.size())
 	_driven_bone.resize(pairs.size())
 	_fix.resize(pairs.size())

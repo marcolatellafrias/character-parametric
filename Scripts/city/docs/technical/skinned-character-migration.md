@@ -9,7 +9,7 @@
 
 The two-layer split (physics capsule vs aesthetic skeleton) **does not change**. What changes is only what the aesthetic layer *draws*.
 
-Today every `CustomBone` carries its own `MeshInstance3D` (a `bone.glb` stretched by blend shapes). After the migration, `CustomBone` stops drawing entirely and becomes a **pure logical rig**; a real `Skeleton3D` mirrors it every frame and five skinned meshes hang off that.
+`CustomBone` draws nothing and is a **pure logical rig**; a real `Skeleton3D` mirrors it every frame and the skinned meshes hang off that. (It used to carry a `bone.glb` per bone — that, `bone.tscn` and `custom_bone.tscn` are deleted.)
 
 ```
 CharacterRigidBody3D
@@ -393,7 +393,7 @@ This is Godot's own convention — `Node3D.basis.z` points *backwards*, `look_at
 
 A 180° yaw about Y maps +Z→−Z, +X→−X and leaves −Y alone — it explains all three at once. Two things it rules out: it is **not** a per-bone roll difference (`_fix` already absorbs those, which is exactly why the spine bases matched while the model still rendered backwards), and it is **not** an L/R swap (`shoulder.L` really is the character's left in both rigs; the yaw is what makes the two agree).
 
-**Where the correction lives:** `SkinnedBodyUtil.MODEL_FORWARD_YAW`, folded into the per-bone `_fix` at build time. One constant, one place, zero per-frame cost.
+**Where the correction lives:** `ReferenceRig.MODEL_FORWARD_YAW`. One constant, one place, applied once when the model is read — both the logical rig and the mirror take their rest from there already corrected.
 
 Do **not** "fix" this by rotating the model root or the `Skeleton3D` node instead. `_fix` is derived from *both* rest poses, so a rotation inserted between them gets partly re-absorbed into the correction and has to be reasoned about twice. Keep it in the one constant.
 

@@ -34,34 +34,53 @@ func get_all_bones() -> Array[CustomBone]:
 		neck, head,
 	]
 
+## Arma la jerarquía. Las ROTACIONES DE REPOSO salen del modelo de Blender (ReferenceRig), no de
+## convenciones hardcodeadas: antes había cinco helpers (`createFromToUp/Down/Left/Right/Forward`) que
+## aproximaban a mano lo que el modelo ya dice exacto, y esa diferencia era la que hacía que el
+## personaje se viera distinto en Blender y en el juego.
+##
+## Lo único que se le suma encima es la POSTURA del arquetipo — hoy solo `slouch`, y como offset
+## relativo a lo que dice el modelo. Con `slouch = 0` el reposo es exactamente el esculpido.
 static func create(sizes: SkeletonSizesUtil, inst: EntityInstantiation) -> CustomBonesUtil:
-	var bones_util = CustomBonesUtil.new()
-	var entity_stats := inst.arch_final
+	var u := CustomBonesUtil.new()
+	var stats := inst.arch_final
+	var rig := ReferenceRig.get_rig()
 
-	bones_util.lower_spine  = CustomBone.create(sizes.lower_spine_size, Vector3.ZERO, Color.WHITE_SMOKE, sizes.lower_spine_offset)
-	bones_util.middle_spine = CustomBone.createFromToUp(bones_util.lower_spine, sizes.middle_spine_size, sizes.middle_spine_offset, 0.0, sizes.slouchiness_center_spine, Color.ROYAL_BLUE, true)
-	bones_util.higher_spine  = CustomBone.createFromToUp(bones_util.middle_spine, sizes.higher_spine_size, sizes.higher_spine_offset, 0.0, 0.0, Color.BURLYWOOD, true)
-	bones_util.chest        = CustomBone.createFromToUp(bones_util.higher_spine, sizes.chest_size, sizes.chest_offset, 0.0, -sizes.slouchiness_chest, Color.BURLYWOOD, true)
-	bones_util.left_hip     = CustomBone.createFromToLeft(bones_util.lower_spine, sizes.hip_size, sizes.hip_offset, 0.0, 0.0, Color.ROYAL_BLUE, false)
-	bones_util.right_hip    = CustomBone.createFromToRight(bones_util.lower_spine, sizes.hip_size, sizes.hip_offset, 0.0, 0.0, Color.ROYAL_BLUE, false)
+	u.lower_spine  = _bone(rig, "lower_spine", sizes.lower_spine_size)
+	u.middle_spine = _bone(rig, "middle_spine", sizes.middle_spine_size, u.lower_spine,  true,  sizes.slouchiness_center_spine)
+	u.higher_spine = _bone(rig, "higher_spine", sizes.higher_spine_size, u.middle_spine, true)
+	u.chest        = _bone(rig, "chest", sizes.chest_size, u.higher_spine, true, -sizes.slouchiness_chest)
 
-	bones_util.left_higher_leg  = CustomBone.createFromToDown(bones_util.left_hip, sizes.higher_leg_size, sizes.higher_leg_offset, 0.0, 0.0, Color.DARK_ORANGE, true)
-	bones_util.left_lower_leg  = CustomBone.createFromToDown(bones_util.left_higher_leg, sizes.lower_leg_size, sizes.lower_leg_offset, 0.0, 0.0, Color.ORANGE, true)
-	bones_util.right_higher_leg = CustomBone.createFromToDown(bones_util.right_hip, sizes.higher_leg_size, sizes.higher_leg_offset, 0.0, 0.0, Color.DARK_ORANGE, true)
-	bones_util.right_lower_leg = CustomBone.createFromToDown(bones_util.right_higher_leg, sizes.lower_leg_size, sizes.lower_leg_offset, 0.0, 0.0, Color.ORANGE, true)
-	bones_util.right_foot = CustomBone.createFromToForward(bones_util.right_lower_leg, sizes.foot_size, sizes.foot_offset, 0.0, 0.0, Color.SIENNA, true)
-	bones_util.left_foot  = CustomBone.createFromToForward(bones_util.left_lower_leg, sizes.foot_size, sizes.foot_offset, 0.0, 0.0, Color.SIENNA, true)
+	# Las caderas cuelgan de la BASE del lower_spine, no de su punta (use_parent_end = false).
+	u.left_hip  = _bone(rig, "left_hip", sizes.hip_size, u.lower_spine, false)
+	u.right_hip = _bone(rig, "right_hip", sizes.hip_size, u.lower_spine, false)
 
-	if entity_stats.has_neck:
-		bones_util.neck = CustomBone.createFromToUp(bones_util.chest, sizes.neck_size, sizes.neck_offset, 0.0, -sizes.slouchiness_neck, Color.CORAL, true)
-	bones_util.head = CustomBone.createFromToUp(bones_util.neck if bones_util.neck else bones_util.chest, sizes.head_size, sizes.head_offset, 0.0, 0.0, Color.DEEP_PINK, true,false)
+	u.left_higher_leg  = _bone(rig, "left_higher_leg", sizes.higher_leg_size, u.left_hip,         true)
+	u.left_lower_leg   = _bone(rig, "left_lower_leg", sizes.lower_leg_size, u.left_higher_leg,  true)
+	u.left_foot        = _bone(rig, "left_foot", sizes.foot_size, u.left_lower_leg,   true)
+	u.right_higher_leg = _bone(rig, "right_higher_leg", sizes.higher_leg_size, u.right_hip,        true)
+	u.right_lower_leg  = _bone(rig, "right_lower_leg", sizes.lower_leg_size, u.right_higher_leg, true)
+	u.right_foot       = _bone(rig, "right_foot", sizes.foot_size, u.right_lower_leg,  true)
 
-	bones_util.left_shoulder  = CustomBone.createFromToLeft(bones_util.chest, sizes.shoulder_width, sizes.shoulder_offset, sizes.shoulder_back, -sizes.shoulder_height, Color.CHOCOLATE, true)
-	bones_util.right_shoulder = CustomBone.createFromToRight(bones_util.chest, sizes.shoulder_width, sizes.shoulder_offset, -sizes.shoulder_back, sizes.shoulder_height, Color.ROYAL_BLUE, true)
+	if stats.has_neck:
+		u.neck = _bone(rig, "neck", sizes.neck_size, u.chest, true, -sizes.slouchiness_neck)
+	u.head = _bone(rig, "head", sizes.head_size, u.neck if u.neck else u.chest, true)
 
-	bones_util.right_upper_arm = CustomBone.createFromToDown(bones_util.right_shoulder, sizes.upper_arm_size, sizes.upper_arm_offset, 0.0, 0.0, Color.VIOLET, true)
-	bones_util.left_upper_arm  = CustomBone.createFromToDown(bones_util.left_shoulder,  sizes.upper_arm_size, sizes.upper_arm_offset, 0.0, 0.0, Color.VIOLET, true)
-	bones_util.right_lower_arm = CustomBone.createFromToDown(bones_util.right_upper_arm, sizes.lower_arm_size, sizes.lower_arm_offset, 0.0, 0.0, Color.DEEP_PINK, true)
-	bones_util.left_lower_arm  = CustomBone.createFromToDown(bones_util.left_upper_arm,  sizes.lower_arm_size, sizes.lower_arm_offset, 0.0, 0.0, Color.DEEP_PINK, true)
+	u.left_shoulder   = _bone(rig, "left_shoulder", sizes.shoulder_width, u.chest, true)
+	u.right_shoulder  = _bone(rig, "right_shoulder", sizes.shoulder_width, u.chest, true)
+	u.left_upper_arm  = _bone(rig, "left_upper_arm", sizes.upper_arm_size, u.left_shoulder,   true)
+	u.left_lower_arm  = _bone(rig, "left_lower_arm", sizes.lower_arm_size, u.left_upper_arm,  true)
+	u.right_upper_arm = _bone(rig, "right_upper_arm", sizes.upper_arm_size, u.right_shoulder,  true)
+	u.right_lower_arm = _bone(rig, "right_lower_arm", sizes.lower_arm_size, u.right_upper_arm, true)
 
-	return bones_util
+	return u
+
+## `pitch` es la postura del arquetipo, aplicada como rotación LOCAL sobre la base del modelo (no
+## sumada al euler): así se dobla sobre el eje propio de la articulación, que es lo anatómicamente
+## correcto y lo que hace que sea un offset relativo y no un valor absoluto.
+static func _bone(rig: ReferenceRig, field: String, dims: Vector3,
+		parent: CustomBone = null, use_parent_end: bool = true, pitch: float = 0.0) -> CustomBone:
+	var basis: Basis = rig.bases.get(field, Basis.IDENTITY)
+	if not is_zero_approx(pitch):
+		basis = basis * Basis(Vector3.RIGHT, pitch)
+	return CustomBone.create(dims, basis.get_euler(), parent, use_parent_end)

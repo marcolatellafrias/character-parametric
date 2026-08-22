@@ -133,9 +133,17 @@ static func create(sizes: SkeletonSizesUtil, skeleton: BoneInstantiator) -> IkUt
 	new_ik_util.current_duty      = sizes.current_duty
 	return new_ik_util
 
+## Cuánto se corre el pole de rodilla hacia AFUERA, en múltiplos del ancho de cadera. En 0 las rodillas
+## apuntan al frente y el pie conserva el ángulo con el que fue modelado.
+##
+## Ojo: en un IK de dos huesos, "hacia dónde apunta la rodilla" y "cuánto gira la tibia" son EL MISMO
+## grado de libertad, y el pie cuelga rígido de la tibia. Así que todo lo que abras acá también abre
+## los pies — no se pueden pedir por separado sin darle al pie su propia fuente de orientación.
+const KNEE_POLE_SIDE := 0.0
+
 static func create_pole(left: bool, sizes: SkeletonSizesUtil, local_targets: Node3D) -> Node3D:
 	var color: Color = left_color if left else right_color
-	var horizontal_offset: float = -sizes.hips_width if left else sizes.hips_width
+	var horizontal_offset: float = sizes.hips_width * KNEE_POLE_SIDE * (-1.0 if left else 1.0)
 	var pole := Node3D.new()
 	local_targets.add_child(pole)
 	pole.position = Vector3(horizontal_offset, 0, -sizes.pole_distance)
@@ -293,11 +301,15 @@ func update_ik_raycast(
 	if not recovery_targets_locked:
 		_update_stepping_foot(leg.current_target)
 
-	var min_raycast_length: float   = sizes.raycast_leg_lenght
+	# El rayo y el umbral de alcance incluyen la altura del TOBILLO. El hueso del pie no se planta en el
+	# piso: se planta `ankle_height` más arriba, porque abajo tiene el pie y el zapato. Sin sumarlo acá,
+	# el suelo queda "fuera de alcance" justo esa distancia, el pie se va al target aéreo y el personaje
+	# flota sin dar pasos.
+	var min_raycast_length: float   = sizes.raycast_leg_lenght + sizes.ankle_height
 	var total_raycast_length: float = min_raycast_length * 1.5
 	leg.raycast.target_position.y   = -(total_raycast_length - sizes.raycast_start_y_offset)
 	var max_raycast_distance: float       = leg.raycast.target_position.length()
-	var leg_reach_raycast_distance: float = sizes.leg_height - sizes.raycast_start_y_offset
+	var leg_reach_raycast_distance: float = sizes.leg_height + sizes.ankle_height - sizes.raycast_start_y_offset
 
 	var indicator_a := left_leg_raycast_indicator   if left else right_leg_raycast_indicator
 	var indicator_b := left_leg_raycast_indicator_b if left else right_leg_raycast_indicator_b
@@ -399,7 +411,8 @@ func update_ik_raycast(
 			)
 			out_of_reach = true
 		else:
-			landing = collision_point
+			# El TOBILLO va arriba del piso, no en el piso: la suela apoya, el tobillo queda donde va.
+			landing = collision_point + Vector3.UP * sizes.ankle_height
 		resolved = true
 		break
 

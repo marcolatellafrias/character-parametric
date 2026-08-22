@@ -11,10 +11,10 @@ It documents the pipeline explicitly — the per-frame inputs, and how a remote 
 `BoneInstantiator.initialize_skeleton()` builds everything, deterministically from `master_seed`:
 
 1. **`EntityInstantiation.create(seed)`** → `arch_final` (an `EntityArchetype`: height, weight, reach, fatness, muscularity, proportions, slouch, arm/leg factors, step params…). This is the stat block.
-2. **`SkeletonSizesUtil.create(inst)`** → every bone's **size / offset / rest data** as a pure function of the archetype stats (e.g. `middle_spine` radius `lerp(0.1, 0.55, fatness)`, arm segment lengths from `reach`, leg heights from proportions). Also derives the gait: `foot_reach`, `distance_from_ground`, `step_height`, `raycast_leg_lenght`, arm rest targets/poles, etc. — all of it out of the archetype's single `stride` knob (see [the gait model](#the-gait-model)).
+2. **`SkeletonSizesUtil.create(inst)`** → every bone.s **size / offset / rest data**. Bone **lengths** come from the Blender model.s measured ranges (`legs_length` / `arms_length` / `torso_length`, see [skinned-character-migration.md](skinned-character-migration.md)); **radii** still come from `fatness` / `muscularity` and today only shape the ragdoll colliders. It also derives the gait — `foot_reach`, `distance_from_ground`, `step_height`, arm rest targets/poles (see [the gait model](#the-gait-model)).
 
 **What the seed actually varies.** Only three things: the **archetype**, whether a **second archetype blends** in at 0.5, and the **specie** (today pinned to human by `EntityInstantiation.FORCE_HUMAN_SPECIE`). There is **no per-instance random roll on animation parameters** — `_resolve` computes each one as `archetype value × specie multiplier`. Two characters of the same archetype and specie animate identically; the variety is meant to come from the archetype set and the blends, not from jitter. (`age` and `skin_color` are still rolled, and neither feeds the pose.)
-3. **`CustomBonesUtil.create(sizes, inst)`** → builds the **bone hierarchy** of `CustomBone`s (parents, rest rotations, offsets) from those sizes.
+3. **`CustomBonesUtil.create(sizes, inst)`** → builds the **bone hierarchy** of `CustomBone`s. Rest rotations come from **`ReferenceRig`** — the Blender model, read once per session — not from hardcoded conventions; see [the rest pose](#the-rest-pose-comes-from-the-model).
 
 Because all three are pure functions of the seed, **the same seed rebuilds the exact same skeleton on any machine** — this is what M3 leans on (a remote proxy uses a seed derived from the peer's Steam id).
 
@@ -34,7 +34,27 @@ lower_spine ─┬─ middle_spine ─ higher_spine ─ chest ─┬─ neck(opt
 
 **Forward is −Z**, project-wide (Godot's own convention — `basis.z` points backwards). Every bone rest, IK target, seated pose and interaction direction assumes it. An imported asset that faces another way is corrected where it enters the system, never by bending this rule — see [skinned-character-migration.md](skinned-character-migration.md#forward-axis--the-project-convention).
 
-A `Node3D` per bone with `capsule_dimensions` (x/z = radius, y = length) and a `rest_rotation`. Its mesh is a procedural `bone.glb` driven by **blend shapes** (height / top & bottom radius / dome heights) so a single mesh fits any proportions; `set_length()` re-stretches it. `pose_from_rest_to(dir, pole)` returns the basis that points the bone's rest axis along `dir` with a pole-resolved twist — the primitive the IK uses.
+### The rest pose comes from the model
+
+`ReferenceRig` loads `character.glb` once and caches, per bone, its **rest basis** and its **length**. `CustomBone.create` takes a *global* rest rotation and converts it against the parent, so those bases feed straight in.
+
+**And the roll comes from the nearest world axis, not from a minimal rotation.** Rotating straight from +Y onto the bone's direction is unstable near the vertical: for a bone pointing almost straight down, the rotation axis is decided by a minuscule horizontal component. Measured on this model, a 9.5° leg tilt produced 48° of spurious yaw, which the foot inherited — that was the splayed feet. So the direction is first snapped to the nearest world axis (which picks the convention), and the model's exact direction is applied as a small correction on top.
+
+The rest stance width is read from the model too, for the same reason: if the foot target at rest does not land where the model has it, the shin is rotated relative to the model and the foot — rigidly attached to the shin — inherits that rotation.
+
+**The model supplies the direction; the project supplies the roll.** A bone's rest is the *minimal rotation* taking the character frame (X right, Y up, Z back) onto the bone's direction — never the model's own basis. Copying the roll too leaves the near-vertical bones (spine, neck, head) rolled 180° about their own axis relative to Godot's convention: local X points left, local Z points forward. Everything that reads local axes then breaks silently — arm IK targets land on the wrong side (crossed arms) and head pitch inverts. The roll difference is not lost: `SkinnedBodyUtil` recovers it in its per-bone correction and hands it back to the mesh, which is precisely what that correction is for.
+
+That rule reproduces the five hardcoded factories it replaced (`createFromToUp/Down/Left/Right/Forward`) exactly — they were one rule written five times.
+
+This replaced five hardcoded helpers — `createFromToUp/Down/Left/Right/Forward` — that approximated by hand what the model already states exactly. That gap was the reason a character looked one way in Blender and another in-game.
+
+The archetype now only layers **posture** on top, and only `slouch` (`shoulders_height`/`shoulders_back` were dropped; `arm_elbow_openness` became a constant). It is applied as a **local rotation on the model's basis**, not added to the euler — so it bends about the joint.s own axis and is a genuine offset. At `slouch = 0` the rest is exactly what was sculpted.
+
+Two consequences worth knowing: the arms keep their **T-pose** rest from the model (the IK poses them to the archetype's A-pose anyway, and the T-pose rest is the correct twist reference because the mesh is bound to it); and `SkinnedBodyUtil`'s per-bone axis correction now **collapses to the identity**, since both rigs share a rest pose. It is kept as a safety net, computed automatically.
+
+A `Node3D` per bone with `capsule_dimensions` (x/z = radius, y = length) and a `rest_rotation`. **It draws nothing** — the visible body is the skinned mesh, which follows these bones. Each bone used to instantiate its own `bone.glb`; twenty meshes per character that would now always be hidden. The radii survive only to size the ragdoll's collision capsules.
+
+`pose_from_rest_to(dir, pole)` returns the basis that points the bone's rest axis along `dir` with a pole-resolved twist — the primitive the IK uses. **It degenerates at full extension**: a chain asked to reach exactly its own length puts the elbow/knee collinear, the bend plane vanishes, and the twist comes out arbitrary — which reads as a hand flipped the wrong way round. The rest targets are clamped (`SkeletonSizesUtil.ARM_REST_EXTENSION`) so it cannot happen, even at `arm_bentness = 0`.
 
 ---
 
@@ -62,7 +82,7 @@ Anything new that reads current transforms on a proxy follows the same rule: syn
    - `update_airborne_target`: how far the leg tucks up while off the ground (scales with vertical speed).
    - `update_ik_raycast`: **if `is_grounded` is false → foot goes to the *airborne* target** (tucked up), else casts down (several candidate origins) to find the ground, and places the foot according to the leg's **gait phase** — planted during stance, interpolated to the predicted landing point during swing. Then `solve_two_bone_ik` bends the leg to the foot target.
 4. **`procedural_animator.update()`** (`ProceduralBoneAnimator`) — re-poses each registered bone/node from the locomotion signals. Registrations live in `BoneAnimations` (`register_all`): each entry maps a **signal** (step progress, h-velocity, foot spread…) to a **bone axis** (rot/pos) × weight × optional curve. This is the "walk/idle look" — spine sway, hip drive, arm swing, etc. All additive on top of rest.
-5. **`anim_mod.apply(delta)`** (`AnimationModifiers`) — root offsets on `lower_spine` for **crouch** (`crouch_t`), **jump squat** (`jump_squat_t`) and **throw** tilt (`throw_t`/`throw_push_t`).
+5. **`anim_mod.apply(delta)`** (`AnimationModifiers`) — root offsets on `lower_spine`: **crouch**, **jump squat**, **throw** tilt, and the **pelvis drop** the legs need to reach their feet (see [the gait model](#1-geometry-the-pelvis-follows-the-legs-not-the-other-way-round)).
 6. **Arm IK** — arm rest targets are placed relative to the chest, then **`arms_controller.apply_world_overrides`** blends in **grab** (arms reach the interactable's *handle points*, body/shoulder adjust) and **throw** poses; finally `solve_two_bone_ik` bends each arm to its target.
 7. **Ragdoll sync** (`ragdoll_util.sync_to_bones`) when not ragdolling. During ragdoll the flow is bypassed and the capsule follows the bone-bodies ([characters.md](characters.md)).
 
@@ -120,24 +140,35 @@ The legs are the one part with **state that persists between frames**, so they g
 
 So "it snaps out at each step and then meets the foot" is the mechanism working. Watching A during swing is the way to see whether the prediction is aiming correctly.
 
-### 1. Geometry: the pelvis height *is* the stride budget
+### 1. Geometry: the pelvis follows the legs, not the other way round
 
-The IK chain (upper + lower leg) is exactly `leg_height` (`0.45 + 0.55`), and the hip sits at `h = leg_height − distance_from_ground`. With the foot on the ground the chain has to span `h` vertically and `A` horizontally, so the reach is
+The leg chain is exactly `leg_height`. With the foot on the ground, the hip can only sit as high as the chain can span — so hip height and step length are two faces of one constraint: **the lower the pelvis, the further the foot can reach.**
 
-```
-A_max = √((e·L)² − h²)          e = MAX_EXTENSION = 0.95, L = leg_height
-```
+The old design picked a hip height from `stride` at build time and derived the reach from it. That baked the worst case in permanently: the character stood *always* crouched by the amount its longest stride would ever need, and it could not react to a foot landing on a step.
 
-**The higher the pelvis, the shorter the possible step** — and it collapses fast. At `h = 0.95 L` (what all five archetypes used to author via `distance_from_ground_factor`) the leg is *already* at 95 % extension standing still: `A_max = 0`. Any step at all had to clamp in `solve_two_bone_ik`, locking the knee straight.
-
-So the direction is inverted: **pick the stride, derive the pelvis height it needs.**
+It is now inverted, and matches the standard **pelvis adjustment** pattern from foot IK:
 
 ```
-h      = L · lerp(HIP_HEIGHT_HIGH, HIP_HEIGHT_LOW, stride)     # 0.93 → 0.80
-A_max  = √((e·L)² − h²)                                        # foot_reach
+stand:  hip = pelvis_rest_height · (leg_height / model_leg_chain)   # measured, not estimated
+reach:  A_max = leg_height · lerp(0.20, 0.55, stride)
+frame:  drop  = max over both legs of (|hip − foot| − leg_height · MAX_EXTENSION), clamped at 0
 ```
 
-`distance_from_ground` is now an *output* (`L − h`), not an authored field. Raising `stride` lowers the hips and buys reach; that trade is the whole point and it is not optional — it is geometry.
+**The one thing read from the model is the ankle height** — how far the foot bone sits above the sole, i.e. the thickness of foot and shoe, which no bone length can infer. In Blender the sole rests at 0, so it is simply the foot bone's Y.
+
+Everything else about the standing pose is derived, and copying it from the model instead was a mistake worth recording: the model has the pelvis at 0.8885 over a leg chain of 0.863, so the leg could not reach the floor even fully straight. The character floated and never stepped, because the ground read as out of reach on every raycast and the feet kept tucking to their airborne target. `STAND_EXTENSION` is what prevents that — not a safety margin but the **guarantee that the leg reaches the ground standing up**.
+
+The ankle height also has to be added to the foot raycast, its out-of-reach threshold, and the landing point: **the foot bone is planted `ankle_height` above the ground, not on it.** Miss any one of the three and the character floats.
+
+**`stride` now means literally "how long is the step"**, and the pelvis is a consequence. Standing still with the feet under the hips the distance is short, the drop is zero, and the character stands exactly like the sculpted model. It bends only while stepping.
+
+**It measures instead of predicting**, which is the whole point: a speed-driven formula guesses, and guesses wrong on stairs, slopes, while crouched, or when shoved. Asking "do my legs reach?" every frame cannot be wrong.
+
+`BoneInstantiator._update_pelvis_drop` computes it right after the feet are placed; `AnimationModifiers._apply_root_offsets` applies it as a root offset on `lower_spine`, alongside crouch and jump squat. It never touches the physics capsule — see [visual height vs gameplay height](characters.md#visual-height-vs-gameplay-height).
+
+**`root_bounciness` is a multiplier on that drop, never an addend** (`drop × (1 + bounciness × 0.6)`). It used to be a `FOOT_SPREAD → POS_Y` weight — the right idea, but disconnected from the geometry, so it could fight what the leg needed and pull the foot off the ground. As a multiplier ≥ 1 that is impossible: art can exaggerate the walk but cannot break it. It also costs nothing to tune per character size, being dimensionless, and it is zero at idle for free. The one thing it cannot do is *raise* the pelvis; a bouncy push-off would be a separate additive term.
+
+**Ordering, and why the legs are solved twice.** The legs are solved before the procedural layer (foot raycasts start at the hips — see below), but the root offsets move the pelvis *after* that, which would drag the feet down with it. So `_repin_legs_standing` re-solves both legs against the **same** world foot targets once the root has settled. Same pattern, and same reason, as `_repin_legs_seated`.
 
 ### 2. Per frame: excursion, duty, stride
 
@@ -210,9 +241,11 @@ Lateral/backward steps are shortened by `axis_weight_lateral` / `axis_weight_bac
 
 | Knob | Where | Effect |
 |---|---|---|
-| `stride` | `EntityArchetype` | the character's gait: hips lower, reach and step longer |
+| `stride` | `EntityArchetype` | step length. The pelvis follows on its own |
 | `MAX_EXTENSION` | `SkeletonSizesUtil` | how straight the leg is allowed to get at the extremes |
-| `HIP_HEIGHT_HIGH/LOW` | `SkeletonSizesUtil` | the pelvis range `stride` maps onto |
+| `KNEE_POLE_SIDE` | `IkUtil` | how far out the knees point — and with them the feet |
+| `FOOT_REACH_MIN/MAX` | `SkeletonSizesUtil` | the step-length range `stride` maps onto |
+| `PELVIS_DROP_EXAGGERATION` | `BoneInstantiator` | how much `root_bounciness` overshoots the needed drop |
 | `DUTY_WALK/RUN` | `SkeletonSizesUtil` | walk-vs-run character; below 0.5 gives a flight phase |
 | `MIN_SWING_RATE` | `IkUtil` | how fast a step in progress finishes when you brake mid-stride |
 | `SETTLE_EXCURSION_FRACTION` | `IkUtil` | how far off-centre a foot must be before the settling step fires |

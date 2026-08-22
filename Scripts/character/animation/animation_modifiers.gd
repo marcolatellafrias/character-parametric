@@ -21,6 +21,10 @@ var throw_world_dir: Vector3 = Vector3.FORWARD
 
 var is_seated: bool = false
 
+## Cuánto tiene que bajar la pelvis, en metros, para que las dos piernas alcancen sus pies. Lo mide
+## BoneInstantiator._update_pelvis_drop cada frame y acá solo se aplica. Siempre ≥ 0.
+var pelvis_drop: float = 0.0
+
 
 func _ready() -> void:
 	bi = get_parent() as BoneInstantiator
@@ -35,7 +39,9 @@ func apply(delta: float) -> void:
 func _apply_root_offsets() -> void:
 	if is_seated:
 		return
-	var y          := JUMP_SQUAT_Y    * jump_squat_t + CROUCH_Y    * crouch_t
+	# La bajada geométrica va con el mismo signo que agacharse: las tres razones para bajar la pelvis
+	# se suman en un solo número. Ver technical/character-animation.md (ajuste de pelvis).
+	var y          := JUMP_SQUAT_Y    * jump_squat_t + CROUCH_Y    * crouch_t - pelvis_drop
 	var z          := JUMP_SQUAT_Z    * jump_squat_t + CROUCH_Z    * crouch_t
 	var tilt       := JUMP_SQUAT_TILT * jump_squat_t + CROUCH_TILT * crouch_t
 	var throw_tilt := -THROW_CHARGE_TILT * throw_t + THROW_PUSH_TILT * throw_push_t

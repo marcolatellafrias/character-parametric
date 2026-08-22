@@ -164,13 +164,6 @@ func initialize_skeleton() -> void:
 	# Acá los huesos ya están en la pose de reposo REAL, así que la calibración se hace contra lo que
 	# se va a ver. Ver technical/skinned-character-migration.md.
 	skinned_body = SkinnedBodyUtil.create(custom_bones_util, char_rigidbody)
-	if is_instance_valid(skinned_body):
-		# Con el modelo skinneado puesto, los meshes de cápsula del CustomBone se superponen y tapan.
-		# Los huesos siguen existiendo y siguen siendo la fuente de verdad del pose — solo dejan de
-		# dibujar. Para volver a verlos (debug del espejo), comentá esto.
-		for bone in custom_bones_util.get_all_bones():
-			if is_instance_valid(bone):
-				bone.set_mesh_visible(false)
 
 	procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)
 
@@ -330,6 +323,9 @@ func _solve_frame(delta: float) -> void:
 
 	if not seated:
 		_pose_legs_standing()
+		# Con los pies ya colocados se puede medir si las piernas llegan. Va acá, entre colocarlos y la
+		# capa procedural: el resultado lo aplica _apply_root_offsets, que corre dentro de _pose_procedural.
+		_update_pelvis_drop(delta)
 
 	_pose_root(seated)
 	_pose_procedural(delta)
@@ -337,6 +333,11 @@ func _solve_frame(delta: float) -> void:
 
 	if seated:
 		_pose_legs_seated()
+	else:
+		# La raíz se movió (bajada de pelvis, agacharse, squat). Las piernas se resolvieron contra la
+		# posición anterior, así que hay que volver a clavarlas a los MISMOS puntos del piso o los pies
+		# se hunden justo lo que bajó la pelvis.
+		_repin_legs_standing()
 
 	_pose_arms(delta)
 
@@ -417,19 +418,20 @@ func _pose_procedural(delta: float) -> void:
 
 ## Brazos, COMPARTIDO: recalcula targets/poles desde el spine ya posado, maneja el agarre de un proxy
 ## desde el estado sincronizado, aplica los overrides (throw/grab) y resuelve el IK.
+## Brazos, COMPARTIDO: recoloca targets y poles desde el spine ya posado, maneja el agarre de un
+## proxy desde el estado sincronizado, aplica los overrides y resuelve la IK.
 func _pose_arms(delta: float) -> void:
 	var rb_basis := custom_bones_util.lower_spine.global_transform.basis
+
 	var left_anim_offset:  Vector3 = ik_util.left_arm_ik_target.position  - skel_sizes_util.left_arm_tip_rest_local
 	var right_anim_offset: Vector3 = ik_util.right_arm_ik_target.position - skel_sizes_util.right_arm_tip_rest_local
+	var left_pole_offset:  Vector3 = ik_util.left_arm_pole.position  - skel_sizes_util.left_arm_pole_rest_local
+	var right_pole_offset: Vector3 = ik_util.right_arm_pole.position - skel_sizes_util.right_arm_pole_rest_local
 
 	ik_util.left_arm_ik_target.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_tip_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_anim_offset)
 	ik_util.right_arm_ik_target.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_tip_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_anim_offset)
-
-	var left_pole_anim_offset:  Vector3 = ik_util.left_arm_pole.position  - skel_sizes_util.left_arm_pole_rest_local
-	var right_pole_anim_offset: Vector3 = ik_util.right_arm_pole.position - skel_sizes_util.right_arm_pole_rest_local
-
-	ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_pole_anim_offset)
-	ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_pole_anim_offset)
+	ik_util.left_arm_pole.global_position  = custom_bones_util.left_upper_arm.global_position  + rb_basis * (skel_sizes_util.left_arm_pole_rest_local  - skel_sizes_util.left_arm_shoulder_rest_local + left_pole_offset)
+	ik_util.right_arm_pole.global_position = custom_bones_util.right_upper_arm.global_position + rb_basis * (skel_sizes_util.right_arm_pole_rest_local - skel_sizes_util.right_arm_shoulder_rest_local + right_pole_offset)
 
 	# Proxy: manejar el agarre desde el estado sincronizado (el jugador local lo maneja su IC). Vale
 	# igual sentado que parado — un proxy sentado en un dashboard también tiene que llegar al handle.
@@ -520,49 +522,14 @@ func refresh_camera_animations() -> void:
 	if is_instance_valid(bone_animations):
 		bone_animations.refresh_camera_animations()
 
+## Primera persona: la maneja enteramente la malla skinneada — los CustomBone no dibujan nada.
+## Perdimos la granularidad por hueso de antes (mostrar solo antebrazos y pies); recuperarla
+## necesitaría máscara por índice de hueso en el shader. Ver "What breaks" en el doc de migración.
 func set_first_person_visibility(first_person: bool) -> void:
 	if character_hidden:
 		return  # el toggle de debug manda: no lo pisa un cambio de cámara
-	# Con el modelo skinneado los meshes de CustomBone están apagados para siempre: si entráramos al
-	# bucle de abajo, primera persona los volvería a prender y taparían el modelo. La granularidad por
-	# hueso se pierde — se esconde la pieza cabeza+cuello, que es su propia malla.
-	# Ver "What breaks" en technical/skinned-character-migration.md.
 	if is_instance_valid(skinned_body):
 		skinned_body.set_first_person(first_person)
-		return
-
-	var visible_bones: Array[CustomBone] = [
-		custom_bones_util.left_foot,
-		custom_bones_util.right_foot,
-		custom_bones_util.left_lower_arm,
-		custom_bones_util.right_lower_arm,
-	]
-	var all_bones: Array[CustomBone] = [
-		custom_bones_util.lower_spine,
-		custom_bones_util.middle_spine,
-		custom_bones_util.higher_spine,
-		custom_bones_util.chest,
-		custom_bones_util.left_hip,
-		custom_bones_util.right_hip,
-		custom_bones_util.left_higher_leg,
-		custom_bones_util.left_lower_leg,
-		custom_bones_util.right_higher_leg,
-		custom_bones_util.right_lower_leg,
-		custom_bones_util.left_foot,
-		custom_bones_util.right_foot,
-		custom_bones_util.left_shoulder,
-		custom_bones_util.right_shoulder,
-		custom_bones_util.left_upper_arm,
-		custom_bones_util.left_lower_arm,
-		custom_bones_util.right_upper_arm,
-		custom_bones_util.right_lower_arm,
-		custom_bones_util.neck,
-		custom_bones_util.head,
-	]
-	for bone in all_bones:
-		if not is_instance_valid(bone):
-			continue
-		bone.set_mesh_visible(first_person == false or visible_bones.has(bone))
 
 func _setup_char_grabbable() -> void:
 	var grabbable := CharacterGrabbable.new()
@@ -629,7 +596,60 @@ func set_character_visible(value: bool) -> void:
 	character_hidden = not value
 	if is_instance_valid(skinned_body):
 		skinned_body.set_meshes_visible(value)
-	if custom_bones_util != null:
-		for bone in custom_bones_util.get_all_bones():
-			if is_instance_valid(bone):
-				bone.set_mesh_visible(value and not is_instance_valid(skinned_body))
+
+# ── AJUSTE DE PELVIS ──────────────────────────────────────────────────────────────────────────────
+# La pelvis baja SOLO lo que haga falta para que las piernas lleguen a sus pies. Es el patrón estándar
+# de foot IK (pelvis adjustment): se mide la distancia cadera↔pie de cada pierna y, si supera lo que
+# la pierna estira, se baja la raíz por el peor déficit de las dos.
+#
+# Es geométrico, no predictivo: no adivina por velocidad, mide. Por eso funciona igual en escaleras,
+# pendientes, agachado o cuando te empujan — casos donde una fórmula por velocidad se equivoca.
+#
+# Y reemplaza a la derivación vieja `stride → altura de pelvis → alcance del pie`, que iba al revés:
+# ahora `stride` significa literalmente el largo del paso, y la pelvis es una consecuencia.
+
+## Cuánto más de lo estrictamente necesario baja la pelvis, por unidad de `root_bounciness`. Es un
+## MULTIPLICADOR sobre la bajada geométrica, nunca un sumando: así el arte puede exagerar el andar
+## pero no puede romperlo — con factor ≥ 1 es imposible que la pierna no llegue. Ver el doc.
+const PELVIS_DROP_EXAGGERATION := 0.6
+## Suavizado de la bajada (1/s). Sin esto la pelvis salta en cuanto un pie pisa un desnivel.
+const PELVIS_DROP_SMOOTH := 12.0
+
+var _pelvis_drop_smooth: float = 0.0
+
+## Mide el déficit de alcance de las dos piernas y deja el resultado suavizado en anim_mod. Corre
+## DESPUÉS de colocar los pies (necesita sus targets) y ANTES de la capa procedural (que es la que
+## aplica el offset de raíz).
+func _update_pelvis_drop(delta: float) -> void:
+	if not is_instance_valid(anim_mod):
+		return
+	if is_seated or (is_instance_valid(ragdoll_util) and (ragdoll_util.is_active or ragdoll_util.is_recovering)):
+		_pelvis_drop_smooth = 0.0
+		anim_mod.pelvis_drop = 0.0
+		return
+
+	var max_len: float = skel_sizes_util.leg_height * SkeletonSizesUtil.MAX_EXTENSION
+	var deficit: float = maxf(
+		_leg_deficit(custom_bones_util.left_higher_leg,  ik_util.left_leg_current_target,  max_len),
+		_leg_deficit(custom_bones_util.right_higher_leg, ik_util.right_leg_current_target, max_len))
+	# El arte solo puede EXAGERAR lo que la geometría ya pide (factor ≥ 1). No puede atenuarlo: con los
+	# pies en el piso, bajar menos de lo necesario es imposible — el pie se despegaría.
+	deficit *= 1.0 + entity_instantiation.root_bounciness * PELVIS_DROP_EXAGGERATION
+
+	_pelvis_drop_smooth = lerpf(_pelvis_drop_smooth, deficit, clampf(delta * PELVIS_DROP_SMOOTH, 0.0, 1.0))
+	anim_mod.pelvis_drop = _pelvis_drop_smooth
+
+## Cuánto le falta a esta pierna para llegar a su pie, o 0 si llega.
+func _leg_deficit(hip: CustomBone, target: Node3D, max_len: float) -> float:
+	if not (is_instance_valid(hip) and is_instance_valid(target)):
+		return 0.0
+	return maxf(0.0, hip.global_position.distance_to(target.global_position) - max_len)
+
+## Re-resuelve la IK de las piernas contra los MISMOS targets de piso, después de que los offsets de
+## raíz movieron la pelvis. Sin esto los pies se despegan del suelo exactamente lo que bajó la
+## pelvis. Mismo patrón que _repin_legs_seated. Ver technical/character-animation.md.
+func _repin_legs_standing() -> void:
+	ik_util.solve_two_bone_ik(custom_bones_util.left_higher_leg, custom_bones_util.left_lower_leg,
+		ik_util.left_leg_current_target.global_position, ik_util.left_leg_pole.global_position)
+	ik_util.solve_two_bone_ik(custom_bones_util.right_higher_leg, custom_bones_util.right_lower_leg,
+		ik_util.right_leg_current_target.global_position, ik_util.right_leg_pole.global_position)

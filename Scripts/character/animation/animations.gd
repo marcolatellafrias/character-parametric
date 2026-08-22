@@ -10,7 +10,6 @@ func register_all() -> void:
 	var PA := ProceduralBoneAnimator
 	var ls := bi.locomotion_signals
 
-	var vertical_bobbing := bi.entity_instantiation.root_bounciness
 	var shoulder_swing   := bi.entity_instantiation.shoulder_swing
 	var hip_swing        := bi.entity_instantiation.hip_swing
 
@@ -40,8 +39,11 @@ func register_all() -> void:
 
 	# ─── SPINE ──────────────────────────────────────────────────────────────────
 
-	pa.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_X, vertical_bobbing * -0.14)
-	pa.register(lower_spine, PA.Axis.POS_Y, PA.SignalType.FOOT_SPREAD_Z, vertical_bobbing * -0.3)
+	# El rebote vertical de cadera YA NO se registra acá. Era un peso artístico contra la separación de
+	# pies — la idea correcta, pero desacoplada de la geometría: podía pelearse con lo que la pierna
+	# necesitaba y despegar el pie del piso. Ahora la pelvis baja lo que la pierna pide
+	# (BoneInstantiator._update_pelvis_drop) y `root_bounciness` es el MULTIPLICADOR que exagera esa
+	# bajada. Misma variable, mismo look, pero imposible de romper. Ver technical/character-animation.md.
 
 	pa.register_formula(lower_spine, PA.Axis.ROT_Z,
 		func(): return ls.foot_spread_unified.x * (0.01 + 0.04 * ls.speed_norm),
