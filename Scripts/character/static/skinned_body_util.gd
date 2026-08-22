@@ -237,23 +237,3 @@ static func _align_axis(from: Vector3, to: Vector3) -> Basis:
 			flip = from.cross(Vector3.UP)
 		return Basis(flip.normalized(), PI)
 	return Basis(from.cross(to).normalized(), acos(d))
-
-
-## Diagnóstico: cuánto se despegó la malla skinneada del rig lógico. Devuelve [peor_mm, nombre].
-## Mide el resultado de la conversión a espacio mundial que hace _sync, que es donde se sospecha la
-## pérdida de precisión lejos del origen. Ver PrecisionProbe.
-func measure_drift() -> Array:
-	var worst := 0.0
-	var worst_name := "-"
-	if skeleton == null:
-		return [worst, worst_name]
-	for k in _driven_idx.size():
-		var cb := _driven_bone[k]
-		if not is_instance_valid(cb):
-			continue
-		var bone_world: Vector3 = (skeleton.global_transform * skeleton.get_bone_global_pose(_driven_idx[k])).origin
-		var d: float = cb.global_position.distance_to(bone_world) * 1000.0
-		if d > worst:
-			worst = d
-			worst_name = str(cb.name)
-	return [worst, worst_name]

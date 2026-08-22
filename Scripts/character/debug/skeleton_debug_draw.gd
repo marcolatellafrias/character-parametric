@@ -33,14 +33,14 @@ var _col_refs:   Array[CustomBone] = []
 func is_bones_on() -> bool:     return _bones_on
 func is_colliders_on() -> bool: return _colliders_on
 
-func toggle_bones() -> void:
-	_bones_on = not _bones_on
+func set_bones(value: bool) -> void:
+	_bones_on = value
 	_free_group(_bone_nodes, _bone_refs)
 	if _bones_on:
 		_build_bones()
 
-func toggle_colliders() -> void:
-	_colliders_on = not _colliders_on
+func set_colliders(value: bool) -> void:
+	_colliders_on = value
 	_free_group(_col_nodes, _col_refs)
 	if _colliders_on:
 		_build_colliders()

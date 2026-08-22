@@ -28,8 +28,15 @@ var _was_ragdoll_active: bool = false
 
 var _debug_cam_mode: int = 0
 var _debug_camera: Camera3D = null
-const DEBUG_CAM_DISTANCE: float = 5.0
-const DEBUG_CAM_HEIGHT: float = 1.5
+## Zoom de la cámara de debug, ADIMENSIONAL: multiplica la distancia a la que el personaje entra justo
+## en cuadro. 1.0 = encuadrado exacto, y no se puede acercar más que eso. Al ser un múltiplo y no una
+## medida en metros, se ajusta solo a cualquier altura de personaje. Numpad +/- mientras se mantienen
+## apretados; no se resetea al volver a primera persona.
+var _debug_cam_zoom: float = 2.5
+const DEBUG_CAM_ZOOM_SPEED: float = 2.0
+const DEBUG_CAM_ZOOM_MAX:   float = 8.0
+## Aire alrededor del personaje con el zoom al mínimo, para que no quede pegado a los bordes.
+const DEBUG_CAM_FRAME_MARGIN: float = 1.15
 
 var _hud: PlayerHUD = null
 var _impact_debug_hud: ImpactDebugHUD = null
@@ -40,7 +47,6 @@ var arms_controller: ArmsController = null
 
 var _creative: bool = false
 var _debug_panel: DebugPanel = null
-var _character_hidden: bool = false
 
 ## Punto de entrada único cuando el BoneInstantiator (re)construye el esqueleto del jugador
 ## activo — tanto el build inicial como cada respawn. Construye lo persistente una sola vez
@@ -244,7 +250,7 @@ func _physics_process(delta: float) -> void:
 	_was_ragdoll_active = ragdoll_active
 
 	_update_hud(delta)
-	_update_debug_camera()
+	_update_debug_camera(delta)
 
 	if ragdoll_active:
 		_update_ragdoll_camera(delta)
@@ -344,23 +350,42 @@ func _set_debug_cam(mode: int) -> void:
 			bi.set_first_person_visibility(false)
 
 
-func _update_debug_camera() -> void:
+func _update_debug_camera(delta: float) -> void:
 	if _debug_cam_mode == 0 or not is_instance_valid(_debug_camera):
 		return
+
+	# Zoom con numpad +/-. Se lee el estado de la tecla en vez de escuchar eventos porque es una acción
+	# SOSTENIDA: con eventos habría que manejar press/release/echo para lo mismo.
+	var zoom := 0.0
+	if Input.is_key_pressed(KEY_KP_ADD):
+		zoom -= 1.0
+	if Input.is_key_pressed(KEY_KP_SUBTRACT):
+		zoom += 1.0
+	if not is_zero_approx(zoom):
+		_debug_cam_zoom = clampf(_debug_cam_zoom + zoom * DEBUG_CAM_ZOOM_SPEED * delta, 1.0, DEBUG_CAM_ZOOM_MAX)
+
+	# Encuadre derivado del personaje, no de constantes en metros: mira a su CENTRO, y la distancia
+	# mínima es la que lo hace entrar justo en cuadro — trigonometría del FOV. Así funciona igual con un
+	# personaje de 1.38 m que con uno de 1.9 m, sin tocar un número.
+	var sizes  := _get_bi().skel_sizes_util
+	var ground := char_rigidbody.global_position.y - sizes.standing_pelvis_height
+	var fit    : float = (sizes.total_height * 0.5 * DEBUG_CAM_FRAME_MARGIN) / tan(deg_to_rad(_debug_camera.fov) * 0.5)
+	var _debug_cam_distance := fit * _debug_cam_zoom
+
 	var yaw_basis := Basis(Vector3.UP, camera_yaw)
 	var forward   := -yaw_basis.z
 	var right     := yaw_basis.x
-	var look_target := char_rigidbody.global_position + Vector3(0.0, DEBUG_CAM_HEIGHT, 0.0)
+	var look_target := Vector3(char_rigidbody.global_position.x, ground + sizes.total_height * 0.5, char_rigidbody.global_position.z)
 	var flat_offset := Vector3.ZERO
 	match _debug_cam_mode:
-		1: flat_offset = (-forward - right).normalized() * DEBUG_CAM_DISTANCE
-		2: flat_offset = -forward * DEBUG_CAM_DISTANCE
-		3: flat_offset = (-forward + right).normalized() * DEBUG_CAM_DISTANCE
-		4: flat_offset = -right * DEBUG_CAM_DISTANCE
-		6: flat_offset = right * DEBUG_CAM_DISTANCE
-		7: flat_offset = (forward - right).normalized() * DEBUG_CAM_DISTANCE
-		8: flat_offset = forward * DEBUG_CAM_DISTANCE
-		9: flat_offset = (forward + right).normalized() * DEBUG_CAM_DISTANCE
+		1: flat_offset = (-forward - right).normalized() * _debug_cam_distance
+		2: flat_offset = -forward * _debug_cam_distance
+		3: flat_offset = (-forward + right).normalized() * _debug_cam_distance
+		4: flat_offset = -right * _debug_cam_distance
+		6: flat_offset = right * _debug_cam_distance
+		7: flat_offset = (forward - right).normalized() * _debug_cam_distance
+		8: flat_offset = forward * _debug_cam_distance
+		9: flat_offset = (forward + right).normalized() * _debug_cam_distance
 	_debug_camera.global_position = look_target + Vector3(flat_offset.x, 0.0, flat_offset.z)
 	_debug_camera.look_at(look_target, Vector3.UP)
 
@@ -595,13 +620,13 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Toggle creative (V)",      func(): _set_creative(not _creative))
 	_debug_panel.add_action("Acciones", "Toggle ragdoll (G)",       _toggle_ragdoll)
 	_debug_panel.add_action("Acciones", "Respawn (P)",              _respawn)
-	_debug_panel.add_action("Acciones", "Esconder personaje",        _debug_toggle_character_hidden)
-	_debug_panel.add_action("Acciones", "Ver cápsula física",        _debug_toggle_capsule_mesh)
-	_debug_panel.add_action("Acciones", "Ragdoll debug color",      _debug_toggle_ragdoll_color)
-	_debug_panel.add_action("Acciones", "Grab cone",                _debug_toggle_grab_cone)
-	_debug_panel.add_action("Acciones", "Ver esqueleto",            _debug_toggle_skeleton_draw)
-	_debug_panel.add_action("Acciones", "Ver colisionadores",       _debug_toggle_collider_draw)
-	_debug_panel.add_action("Acciones", "Probe de precisión",        _debug_precision_probe)
+	# Todos globales: se aplican a TODOS los personajes de la escena, no solo al propio.
+	_debug_panel.add_action("Acciones", "Esconder personajes",       func(): CharacterDebugView.toggle_hide_character(get_tree()))
+	_debug_panel.add_action("Acciones", "Ver cápsula física",        func(): CharacterDebugView.toggle_capsule(get_tree()))
+	_debug_panel.add_action("Acciones", "Ragdoll debug color",       func(): CharacterDebugView.toggle_ragdoll_color(get_tree()))
+	_debug_panel.add_action("Acciones", "Grab cone",                 func(): CharacterDebugView.toggle_grab_cone(get_tree()))
+	_debug_panel.add_action("Acciones", "Ver esqueleto",             func(): CharacterDebugView.toggle_skeleton(get_tree()))
+	_debug_panel.add_action("Acciones", "Ver colisionadores",        func(): CharacterDebugView.toggle_colliders(get_tree()))
 
 	# ── Spawn ──
 	_debug_panel.add_action("Spawn", "Go to start",        _go_to_start)
@@ -643,57 +668,6 @@ func _character_stats_text(inst: EntityInstantiation) -> String:
 		"muscle    %.2f" % arch.muscularity,
 	]
 	return "\n".join(lines)
-
-
-## Esconde el personaje ENTERO. Antes esto venía pegado a mostrar la cápsula y usaba el camino de
-## primera persona, que deja manos y uñas visibles; ahora son dos botones y este no deja nada.
-func _debug_toggle_character_hidden() -> void:
-	_character_hidden = not _character_hidden
-	var bi := _get_bi()
-	if is_instance_valid(bi):
-		bi.set_character_visible(not _character_hidden)
-
-
-## La cápsula de colisión del cuerpo físico, aparte del personaje.
-func _debug_toggle_capsule_mesh() -> void:
-	if is_instance_valid(char_rigidbody) and is_instance_valid(char_rigidbody.mesh_instance):
-		char_rigidbody.mesh_instance.visible = not char_rigidbody.mesh_instance.visible
-
-
-func _debug_toggle_ragdoll_color() -> void:
-	var rd := _get_ragdoll()
-	if rd != null:
-		rd.debug_ragdoll_color = not rd.debug_ragdoll_color
-
-
-func _debug_toggle_grab_cone() -> void:
-	var bi := _get_bi()
-	if is_instance_valid(bi):
-		bi.show_grab_cone = not bi.show_grab_cone
-
-
-## Líneas por hueso + esferas en las articulaciones. Los gizmos cuelgan de los CustomBone, así que
-## siguen el pose solos: no hay que redibujar nada por frame salvo el largo, que cambia al estirar
-## el brazo. Ver Scripts/character/debug/skeleton_debug_draw.gd.
-func _debug_toggle_skeleton_draw() -> void:
-	var bi := _get_bi()
-	if is_instance_valid(bi):
-		bi.get_skeleton_debug().toggle_bones()
-
-
-## Las cápsulas de colisión de los huesos (las que usa el ragdoll), leídas de los colliders reales.
-func _debug_toggle_collider_draw() -> void:
-	var bi := _get_bi()
-	if is_instance_valid(bi):
-		bi.get_skeleton_debug().toggle_colliders()
-
-
-## Mide si los huesos se están separando por precisión fp32 (empeora lejos del origen) o por un bug
-## de lógica. Corrélo JUSTO cuando veas el problema. Ver Scripts/character/debug/precision_probe.gd.
-func _debug_precision_probe() -> void:
-	var bi := _get_bi()
-	if is_instance_valid(bi):
-		print(PrecisionProbe.run(bi))
 
 
 func _debug_spawn_pos() -> Vector3:

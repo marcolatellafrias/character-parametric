@@ -178,6 +178,10 @@ func initialize_skeleton() -> void:
 	# malla los sigue vía _sync_skinned_body.
 	ragdoll_util.show_bodies = not is_instance_valid(skinned_body)
 
+	# Los visualizadores de debug son estado GLOBAL: un personaje que spawnea o respawnea nace con lo
+	# que esté prendido, sin que nadie tenga que volver a tocar el panel.
+	CharacterDebugView.apply_to(self)
+
 	# Primera persona: se aplica ACÁ, al final. PlayerController.rebind (que corre en
 	# on_skeleton_built, bastante más arriba) es quien venía seteando esto, pero el espejo se crea
 	# DESPUÉS de esa llamada — así que en el build y en cada respawn el estado nunca llegaba a las
@@ -594,8 +598,16 @@ func get_skeleton_debug() -> SkeletonDebugDraw:
 ## sin el cuerpo encima.
 func set_character_visible(value: bool) -> void:
 	character_hidden = not value
-	if is_instance_valid(skinned_body):
-		skinned_body.set_meshes_visible(value)
+	if not is_instance_valid(skinned_body):
+		return
+	if character_hidden:
+		skinned_body.set_meshes_visible(false)
+		return
+	# Al volver a mostrar NO se prende todo a lo bruto: se restaura el estado de primera persona. Si no,
+	# cualquier toggle del panel (que pasa por acá con value = true) le devolvía el cuerpo entero al
+	# jugador que estaba en primera persona.
+	var first_person := is_active and is_instance_valid(player_controller) and player_controller.is_first_person_view()
+	skinned_body.set_first_person(first_person)
 
 # ── AJUSTE DE PELVIS ──────────────────────────────────────────────────────────────────────────────
 # La pelvis baja SOLO lo que haga falta para que las piernas lleguen a sus pies. Es el patrón estándar
