@@ -144,10 +144,14 @@ static func generic_arch() -> EntityArchetype:
 	arch.hip_swing = 0.5
 	arch.root_bounciness = 0.5
 	arch.step_height = 0.4
-	# ZANCADA — ahora significa literalmente "qué tan largo es el paso", nada más. La altura de pelvis
-	# ya NO sale de acá: la resuelve la geometría cada frame (ver SkeletonSizesUtil.foot_reach y
+	# ZANCADA — significa literalmente "qué tan largo es el paso", nada más. La altura de pelvis ya NO
+	# sale de acá: la resuelve la geometría cada frame (ver SkeletonSizesUtil.foot_reach y
 	# BoneInstantiator._update_pelvis_drop).
-	arch.stride = 0.60
+	#
+	# 0.95 da 0.460 m de excursión de pie contra los 0.354 de 0.60 — un 30% más de paso. Ojo que queda
+	# cerca del techo del rango (FOOT_REACH_MIN/MAX): si hiciera falta más, conviene subir el techo y no
+	# este número, que ya casi no tiene recorrido.
+	arch.stride = 0.95
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.0
 	# Brazos casi rectos al costado, apenas separados del torso. En 0.0 se meten dentro del cuerpo.

@@ -601,6 +601,7 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Grab cone",                _debug_toggle_grab_cone)
 	_debug_panel.add_action("Acciones", "Ver esqueleto",            _debug_toggle_skeleton_draw)
 	_debug_panel.add_action("Acciones", "Ver colisionadores",       _debug_toggle_collider_draw)
+	_debug_panel.add_action("Acciones", "Probe de precisión",        _debug_precision_probe)
 
 	# ── Spawn ──
 	_debug_panel.add_action("Spawn", "Go to start",        _go_to_start)
@@ -685,6 +686,14 @@ func _debug_toggle_collider_draw() -> void:
 	var bi := _get_bi()
 	if is_instance_valid(bi):
 		bi.get_skeleton_debug().toggle_colliders()
+
+
+## Mide si los huesos se están separando por precisión fp32 (empeora lejos del origen) o por un bug
+## de lógica. Corrélo JUSTO cuando veas el problema. Ver Scripts/character/debug/precision_probe.gd.
+func _debug_precision_probe() -> void:
+	var bi := _get_bi()
+	if is_instance_valid(bi):
+		print(PrecisionProbe.run(bi))
 
 
 func _debug_spawn_pos() -> Vector3:

@@ -139,7 +139,7 @@ static func create(sizes: SkeletonSizesUtil, skeleton: BoneInstantiator) -> IkUt
 ## Ojo: en un IK de dos huesos, "hacia dónde apunta la rodilla" y "cuánto gira la tibia" son EL MISMO
 ## grado de libertad, y el pie cuelga rígido de la tibia. Así que todo lo que abras acá también abre
 ## los pies — no se pueden pedir por separado sin darle al pie su propia fuente de orientación.
-const KNEE_POLE_SIDE := 0.0
+const KNEE_POLE_SIDE := 1.1
 
 static func create_pole(left: bool, sizes: SkeletonSizesUtil, local_targets: Node3D) -> Node3D:
 	var color: Color = left_color if left else right_color
@@ -208,8 +208,18 @@ func solve_two_bone_ik(upper_bone: CustomBone, lower_bone: CustomBone, ik_target
 	var sinA: float = sqrt(max(0.0, 1.0 - cosA * cosA))
 	var knee_pos: Vector3 = root_pos + dir_to_target * (cosA * upper_len) + pole_on_plane * (sinA * upper_len)
 
-	upper_bone.global_transform.basis = upper_bone.pose_from_rest_to((knee_pos - root_pos).normalized(), pole_on_plane)
-	lower_bone.global_transform.basis = upper_bone.pose_from_rest_to((target_pos - knee_pos).normalized(), pole_on_plane)
+	# Se escribe la base LOCAL, nunca `global_transform.basis`. Asignar el global en GDScript reescribe
+	# el transform entero —origen incluido—, y Godot recalcula la posición local del hueso contra un
+	# padre que acaba de rotar en la línea anterior. El hijo deja de estar en la punta del padre, y como
+	# al frame siguiente se lee ese valor ya corrido, el error SE ACUMULA: las juntas se van abriendo
+	# solas con el tiempo aunque el personaje esté quieto.
+	#
+	# Escribiendo la base local, `position` queda intacta en la punta del padre y no hay nada que derive.
+	var upper_parent := upper_bone.get_parent() as Node3D
+	var upper_global := upper_bone.pose_from_rest_to((knee_pos - root_pos).normalized(), pole_on_plane)
+	upper_bone.transform.basis = (upper_parent.global_transform.basis.inverse() * upper_global) if upper_parent else upper_global
+	var lower_global := upper_bone.pose_from_rest_to((target_pos - knee_pos).normalized(), pole_on_plane)
+	lower_bone.transform.basis = upper_bone.global_transform.basis.inverse() * lower_global
 
 
 # ── Marcha por fase ───────────────────────────────────────────────────────────────────────────────

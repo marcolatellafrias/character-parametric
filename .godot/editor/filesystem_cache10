@@ -1,5 +1,5 @@
 63f7b34db8d8cdea90c76aacccf841ec
-::res://::1787358856
+::res://::1787376588
 CLAUDE.md::TextFile::-1::1784871269::0::1::::<><><>0<>0<><>::
 dledtk_8x8_fo.png::CompressedTexture2D::9182871763473998172::1773172499::1773172500::1::::<><><>0<>0<>82367680f8fa88a990d0bd0c5b821044<>res://.godot/imported/dledtk_8x8_fo.png-c44b05e89ae9a7f92c245da178500be9.ctex::
 err.txt::TextFile::-1::1784182278::0::1::::<><><>0<>0<><>::
@@ -31,7 +31,7 @@ godotsteam.gdextension::GDExtension::7217876115720920266::1784849212::0::1::::<>
 ::res://addons/godotsteam/linux64/::1774846319
 ::res://addons/godotsteam/linuxarm64/::1774846319
 ::res://addons/godotsteam/win32/::1774846319
-::res://addons/godotsteam/win64/::1787364002
+::res://addons/godotsteam/win64/::1787376578
 ::res://addons/Mirror3D/::1787361236
 Mirror3D.gd::GDScript::6114414996668009307::1773170702::0::1::::Mirror3D<>Node3D<><>0<>1<><>::
 Mirror3D.gdshader::Shader::3030333951447338880::1787361236::0::1::::<><><>0<>0<><>::
@@ -49,7 +49,7 @@ green.tres::StandardMaterial3D::8092101318124136034::1776216737::0::1::::<><><>0
 red.tres::StandardMaterial3D::1329789553095403771::1761072817::0::1::::<><><>0<>0<><>::
 Shapes.tres::StandardMaterial3D::3572604480624761035::1761072817::0::1::::<><><>0<>0<><>::
 templategrid_albedo.png::CompressedTexture2D::1416096460625069073::1761072817::1761072817::1::::<><><>0<>0<>e6acb3a0bfdf540a92cc74409ad6c09b<>res://.godot/imported/templategrid_albedo.png-3a74868f1c9a55fae4e22c6a7ef39c90.s3tc.ctex::
-::res://Models/::1787364293
+::res://Models/::1787364380
 bocetos.blend::PackedScene::6304780204427679344::1776455272::1776746677::1::::<><><>0<>0<>671b693cfb76a5806ce1c9e88830ffb4<>res://.godot/imported/bocetos.blend-ef07cf028d4cb28127770bd81f8ed58c.scn::
 character.glb::PackedScene::5685441818210143200::1787364376::1787364380::1::::<><><>0<>0<>5e61c47ccdb6bcdcedbb60e1fa6ee3fd<>res://.godot/imported/character.glb-b9aff486a27b0b6be6d390456368132a.scn::uid://cxehmkqtd56xi::::res://Models/character_body texture.png<>uid://dk6deoxg2wr6d::::res://Models/character_cig tex.png<>uid://mag4nkffpsip::::res://Models/character_left eye texture.png<>uid://beqlhb8868qvd::::res://Models/character_hands text.png<>uid://cr10tumlmo0fp::::res://Models/character_face texture.png<>uid://brb6ak222v3vb::::res://Models/character_mouth texture.png
 character_body texture.png::CompressedTexture2D::6395889281372279954::1787335404::1787364379::1::::<><><>0<>0<>f12a8ae2aa146a3a9196b4d2fabb7ca3<>res://.godot/imported/character_body texture.png-a2d3fdea884533d52c9fdb084cf6bb17.s3tc.ctex::
@@ -157,24 +157,25 @@ marco textura.png::CompressedTexture2D::4521124324136316203::1762725894::1771448
 character_test.gd::GDScript::3215434434459665187::1784879289::0::1::::<>CharacterBody3D<><>0<>0<><>::
 world_seeds.gd::GDScript::5589243996452502094::1784849098::0::1::::WorldSeeds<>RefCounted<><>0<>0<><>::
 world_settings.gd::GDScript::4157253141975604989::1786460133::0::1::::<>Node<><>0<>0<><>::
-::res://Scripts/character/::1787363026
+::res://Scripts/character/::1787367691
 bone_instantiator.gd::GDScript::1226092283612256082::1787363026::0::1::::BoneInstantiator<>Node3D<><>0<>0<><>::
-player_controller.gd::GDScript::435046117816229089::1787354438::0::1::::PlayerController<>Node<><>0<>0<><>::
-::res://Scripts/character/abstract/::1787358159
-archetypes.gd::GDScript::8027365844528752703::1787358159::0::1::::EntityArchetype<>RefCounted<><>0<>0<><>::
+player_controller.gd::GDScript::435046117816229089::1787367691::0::1::::PlayerController<>Node<><>0<>0<><>::
+::res://Scripts/character/abstract/::1787365529
+archetypes.gd::GDScript::8027365844528752703::1787365529::0::1::::EntityArchetype<>RefCounted<><>0<>0<><>::
 entity_instantiation.gd::GDScript::6817974987898998302::1787356989::0::1::::EntityInstantiation<>RefCounted<><>0<>0<><>::
 species.gd::GDScript::345204219848979680::1785520676::0::1::::EntitySpecie<>RefCounted<><>0<>0<><>::
-::res://Scripts/character/animation/::1787363991
+::res://Scripts/character/animation/::1787368323
 animations.gd::GDScript::567133455242391327::1787356977::0::1::::BoneAnimations<>Node<><>0<>0<><>::
 animation_inputs.gd::GDScript::1845824528866523012::1785331840::0::1::::AnimationInputs<>RefCounted<><>0<>0<><>::
 animation_modifiers.gd::GDScript::2735904420846953449::1787356778::0::1::::AnimationModifiers<>Node<><>0<>0<><>::
 arms_controller.gd::GDScript::5294022276116184382::1787363991::0::1::::ArmsController<>Node<><>0<>0<><>::
-ik_util.gd::GDScript::4007581012796352977::1787363956::0::1::::IkUtil<>RefCounted<><>0<>0<><>::
+ik_util.gd::GDScript::4007581012796352977::1787368323::0::1::::IkUtil<>RefCounted<><>0<>0<><>::
 locomotion_signals.gd::GDScript::8138627130483821961::1785296425::0::1::::LocomotionSignals<>RefCounted<><>0<>0<><>::
 procedural_bone_animation.gd::GDScript::939499812986483018::1774763003::0::1::::ProceduralBoneAnimator<>RefCounted<><>0<>0<><>::
 ragdoll_util.gd::GDScript::4917027309412070728::1787362227::0::1::::RagdollUtil<>RefCounted<><>0<>0<><>::
-::res://Scripts/character/debug/::1787335756
+::res://Scripts/character/debug/::1787368355
 debug_panel.gd::GDScript::5165991290601290912::1784881200::0::1::::DebugPanel<>CanvasLayer<><>0<>0<><>::
+precision_probe.gd::GDScript::2592822823875600997::1787368355::0::1::::PrecisionProbe<>RefCounted<><>0<>0<><>::
 skeleton_debug_draw.gd::GDScript::7533194760999544381::1787354390::0::1::::SkeletonDebugDraw<>Node3D<><>0<>0<><>::
 ::res://Scripts/character/hud/::1784881241
 impact_debug.gd::GDScript::5598155494036319537::1774015683::0::1::::ImpactDebugHUD<>Control<><>0<>0<><>::
@@ -210,7 +211,7 @@ custom_bone.gd::GDScript::7303680877299981931::1787358203::0::1::::CustomBone<>N
 custom_bones_util.gd::GDScript::7938771750587122071::1787358302::0::1::::CustomBonesUtil<>RefCounted<><>0<>0<><>::
 reference_rig.gd::GDScript::4449621310325352093::1787363891::0::1::::ReferenceRig<>RefCounted<><>0<>0<><>::
 skeleton_sizes_util.gd::GDScript::8137534484398750668::1787363924::0::1::::SkeletonSizesUtil<>RefCounted<><>0<>0<><>::
-skinned_body_util.gd::GDScript::4976335730989607698::1787359253::0::1::::SkinnedBodyUtil<>Node3D<><>0<>0<><>::
+skinned_body_util.gd::GDScript::4976335730989607698::1787367675::0::1::::SkinnedBodyUtil<>Node3D<><>0<>0<><>::
 ::res://Scripts/city/::1784708502
 ::res://Scripts/city/block/::1784182089
 block_generator.gd::GDScript::7432849795240157090::1784168329::0::1::::BlockGenerator<>RefCounted<><>0<>0<><>::
@@ -251,7 +252,7 @@ world.md::TextFile::-1::1784710086::0::1::::<><><>0<>0<><>::
 ::res://Scripts/city/docs/technical/::1787363991
 bridges.md::TextFile::-1::1784709907::0::1::::<><><>0<>0<><>::
 character-animation.md::TextFile::-1::1787363991::0::1::::<><><>0<>0<><>::
-character-blender-authoring.md::TextFile::-1::1786631711::0::1::::<><><>0<>0<><>::
+character-blender-authoring.md::TextFile::-1::1787364596::0::1::::<><><>0<>0<><>::
 characters.md::TextFile::-1::1787362299::0::1::::<><><>0<>0<><>::
 city-generation.md::TextFile::-1::1784710038::0::1::::<><><>0<>0<><>::
 sidewalks.md::TextFile::-1::1784709937::0::1::::<><><>0<>0<><>::
