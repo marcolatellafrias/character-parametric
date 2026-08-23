@@ -1,7 +1,9 @@
 class_name PackageSpawner
 extends Node3D
 
-const CELL := 0.15
+## La celda es la de los grabbables, no una propia: duplicarla dejaba dos números que se iban a
+## separar en silencio la primera vez que alguien tocara uno.
+const CELL := GrabbableInteractable.CELL_SIZE
 
 @export var cells_x: int   = 4
 @export var cells_y: int   = 4

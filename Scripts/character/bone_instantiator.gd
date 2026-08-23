@@ -152,16 +152,10 @@ func initialize_skeleton() -> void:
 	ik_util.solve_two_bone_ik(custom_bones_util.right_upper_arm, custom_bones_util.right_lower_arm,
 		ik_util.right_arm_ik_target.global_position, ik_util.right_arm_pole.global_position)
 
-	# El espejo se calibra ACÁ, DESPUÉS del primer solve de brazos — no en el rest de construcción.
-	#
-	# El rest con el que se arma el CustomBone (brazos rectos hacia abajo, giro del hueso el que salga
-	# de createFromToDown) NO es la pose en la que el personaje vive: apenas corre la IK, los brazos se
-	# van a la pose A del arquetipo (arm_openness/arm_bentness) y su torsión pasa a salir del pole del
-	# codo. Calibrar contra el rest de construcción deja el offset de torsión medido en una pose que el
-	# personaje abandona en el mismo frame, y el mesh de las manos sale rotado.
-	#
-	# Acá los huesos ya están en la pose de reposo REAL, así que la calibración se hace contra lo que
-	# se va a ver. Ver technical/skinned-character-migration.md.
+	# El espejo va acá nada más que por orden de construcción: su calibración NO depende de la pose
+	# (sale de dos reposos, ver SkinnedBodyUtil._bind), así que da igual si los brazos ya se
+	# resolvieron o no. Durante un tiempo sí dependía, y era un bug: la pose viva trae la torsión que
+	# eligió la IK ese frame, y cada respawn congelaba un roll distinto en las manos.
 	skinned_body = SkinnedBodyUtil.create(custom_bones_util, char_rigidbody)
 
 	procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)

@@ -57,6 +57,15 @@ const BONE_MAP := {
 ## pasa a 0.0 y no hay que tocar nada más.
 const MODEL_FORWARD_YAW := PI
 
+## ── FACTOR DE ESTIRAMIENTO DEL BRAZO ──────────────────────────────────────────────────────────────
+## La ESCALA DE POSE que se le aplicó a `upper.arm.L/R` en Blender para esculpir el shape key
+## `arms_length_max`, o sea cuánto mide el brazo en el extremo 1.0 respecto del 0.0.
+##
+## Es el ÚNICO número del brazo que no sale del .glb, y no por descuido: glTF no exporta escala de
+## pose, así que el archivo solo puede contar el extremo 0.0 (`arm_chain`). Si se re-esculpe con otro
+## factor, se cambia acá y nada más. Ver technical/character-blender-length-variable.md.
+const ARM_MODEL_FACTOR := 4.0
+
 static var _cached: ReferenceRig = null
 
 ## Base de reposo GLOBAL por hueso. Del modelo sale la DIRECCIÓN; el ROLL lo pone la convención del

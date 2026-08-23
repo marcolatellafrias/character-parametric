@@ -117,7 +117,9 @@ Only so you can preview with one slider. **Godot never reads it** — Blender dr
 - Variable type: **Single Property** — the small dropdown left of `var`. It defaults to *Transform Channel*, which has no Path field at all; this is the usual place to get stuck.
 - **Prop**: Object → the armature
 - **Path**: `["arms_length"]` — brackets *and* double quotes, because it is a custom property
-- **Expression**: `1 + (factor − 1) * var`
+- **Expression**: `1 + (factor - 1) * var` — with the factor 4 from step 4, that is `1 + 3 * var`.
+
+> ⚠ **Type the minus from your keyboard.** The expression is Python, so a typographic minus (−) pasted in from prose raises a SyntaxError and leaves the driver red without saying why.
 
 Repeat for `upper.arm.R`. **The forearms get no driver** — they inherit, and driving them compounds the scale.
 

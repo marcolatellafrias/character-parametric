@@ -405,6 +405,29 @@ If the model is ever re-exported already facing −Z (rotate 180° about Blender
 
 > **Resolved — kept for the reasoning.** The answer is [authored extremes with a clamp](#phase-3--vertical-slice-the-generic-character): the arm is modelled at 0.0 and 1.0, a grab solves for the `arms_length` that reaches, and stops there. The numbers below are from the capsule-era rig and no longer describe the model, but the constraint they expose is exactly why the clamp exists.
 
+### Length and stretch are two independent variables
+
+Reach is **not** one number, and collapsing it into one is what the old `reach` / `reach_multiplier`
+pair got right and is worth keeping:
+
+| Archetype field | What it means | Where it lands |
+|---|---|---|
+| `arms_length` (0..1) | **Body proportion.** What arm the character has standing still, doing nothing. | `SkeletonSizesUtil.arm_reach`, in metres |
+| `arm_stretch` (×) | **How far out of that proportion they go to reach something.** | `interaction_reach = arm_reach × arm_stretch × 0.97` |
+
+They are independent on purpose: a short-armed character can have a huge stretch and a long-armed one
+a small one. Those are different characters, and one number cannot say both.
+
+`arms_length` maps into a *band* of the Blender range (`ARM_EXT_MIN`..`ARM_EXT_MAX`), not the whole
+0..1 — the top of the range is reserved for reaching, which is exactly what `arm_stretch` spends. The
+only global constant left is `SkeletonSizesUtil.MAX_ARM_STRETCH`, and it is a safety net rather than
+a knob: it stops an archetype asking for an arm past the sculpted extreme, where the shape key has
+nothing left to correct the silhouette with and the mesh really does go rubbery.
+
+Consequence worth stating: **stretching is not a cheat here.** Inside the authored range the stretched
+arm is a shape somebody sculpted and approved, so `arm_stretch` is free to be generous. On the current
+model the generic sits at `2.0` — a 1.11 m reach, using 0.69 of the sculpted range.
+
 **This blocks `arms_length` in Phase 2 and it is the hardest constraint in the migration.**
 
 `ArmsController._apply_arm_grab` **physically lengthens the arm bones at runtime** so the hand reaches a grabbed object ([arms_controller.gd:255-269](../../character/animation/arms_controller.gd#L255-L269)):

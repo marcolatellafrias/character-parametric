@@ -8,9 +8,13 @@ var shoulders_width : float
 ## Largo de la cadena del brazo (hombro→muñeca) en metros. Reemplaza a `EntityArchetype.reach`, que
 ## ya no existe: el largo del brazo sale del rango del modelo, no de un número autorado.
 var arm_reach : float
-## Hasta dónde llega a agarrar, en metros. Derivado del brazo (× MAX_ARM_STRETCH × 0.97), no autorado
-## — reemplaza a `reach × reach_multiplier`. Ver "The arm reach problem" en el doc de migración.
+## Hasta dónde llega a agarrar, en metros: `arm_reach × arm_stretch × 0.97`. Reemplaza a
+## `reach × reach_multiplier` con la misma división de responsabilidades — largo del brazo y cuánto
+## estira son DOS variables de arquetipo independientes. Ver "The arm reach problem" en el doc.
 var interaction_reach : float
+## Cuánto estira el brazo este personaje al agarrar, en múltiplos de su reposo. Sale del arquetipo,
+## ya clampeado al rango que se esculpió en Blender.
+var arm_stretch : float
 ## Altura total del personaje, en metros. Es un RESULTADO (pierna + torso + cabeza), no una entrada.
 var total_height : float
 
@@ -119,16 +123,34 @@ const CONST_HEAD_RADIUS_XZ := 0.19
 const LENGTH_MIN_FACTOR := 0.65
 const LENGTH_MAX_FACTOR := 1.30
 
+## ── BRAZO: LA BANDA DEL ARQUETIPO DENTRO DEL RANGO DE BLENDER ─────────────────────────────────────
+## El brazo ya NO usa el esquema provisorio de arriba: tiene sus dos extremos autorados, el 0.0 es el
+## modelo tal cual viene y el 1.0 es ese modelo × ARM_MODEL_FACTOR.
+##
+## Pero `arms_length` del arquetipo NO mapea a 0..1 completo, y no es un descuido: en Blender el 1.0
+## es "brazo totalmente extendido alcanzando", no "personaje de brazos largos" — son cosas distintas.
+## Con factor ×4 la distinción deja de ser teórica: un personaje parado con el brazo en 1.0 mediría
+## 1.49 m de hombro a muñeca. Así que el arquetipo elige PROPORCIÓN DE CUERPO dentro de esta banda, y
+## el agarre es lo único que empuja por encima de ella.
+##
+## 0.08..0.28 da 0.46..0.69 m de cadena sobre el modelo actual, con el genérico (0.5) en 0.57 m — la
+## proporción humana para 1.71 m de altura, que es a lo que está escalado el modelo.
+const ARM_EXT_MIN := 0.08
+const ARM_EXT_MAX := 0.28
+
 
 
 ## Extensión máxima del brazo en reposo, en fracción de su cadena. Nunca 1.0: a extensión total el
 ## codo queda colineal, el plano de flexión se indefine y la torsión de la mano sale arbitraria.
 const ARM_REST_EXTENSION := 0.97
 
-## Techo de estiramiento del brazo al agarrar algo, en múltiplos de su largo esculpido. De acá sale
-## el alcance de interacción: más allá de esto la malla del brazo se ve de goma. Ver "The arm reach
-## problem" en el doc.
-const MAX_ARM_STRETCH := 1.25
+## Techo ABSOLUTO del estiramiento, en múltiplos del largo en reposo. Es una red de seguridad, no la
+## perilla: quien elige cuánto estira cada personaje es `EntityArchetype.arm_stretch`. Esto solo
+## impide que un arquetipo pida un brazo fuera del rango que se esculpió en Blender, donde el shape
+## key ya no tiene con qué corregir la silueta y la malla sí se ve de goma.
+##
+## 2.5 sobre el genérico (escala 1.54) da 0.98 del rango autorado — o sea justo el borde del ×4.
+const MAX_ARM_STRETCH := 2.5
 
 static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var skelSizes = SkeletonSizesUtil.new()
@@ -138,7 +160,7 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	# Las tres cadenas paramétricas: 0..1 del arquetipo → metros, dentro del rango del modelo.
 	var new_leg_height   := _chain(rig.leg_chain, entityStats.legs_length)
 	var new_torso_height := _chain(rig.torso_chain,   entityStats.torso_length)
-	var new_arm_length   := _chain(rig.arm_chain,     entityStats.arms_length)
+	var new_arm_length   := arm_chain_for(rig, lerp_range(ARM_EXT_MIN, ARM_EXT_MAX, entityStats.arms_length))
 	# Cuánto se aparta esta pierna de la del modelo: escala lo que se lee del rig (estancia, tobillo).
 	var leg_scale: float = new_leg_height / rig.leg_chain if rig.leg_chain > 0.0 else 1.0
 	# Todavía sin parametrizar (fase 3): quedan en el largo esculpido.
@@ -151,7 +173,8 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	# Alcance de interacción: hasta dónde puede agarrar, derivado del brazo y no autorado. El 0.97 es
 	# el GRAB_MIN_BEND_FACTOR de ArmsController — con ese techo el brazo nunca se estira más de
 	# MAX_ARM_STRETCH veces su largo esculpido.
-	skelSizes.interaction_reach = new_arm_length * MAX_ARM_STRETCH * 0.97
+	skelSizes.arm_stretch = minf(entityStats.arm_stretch, MAX_ARM_STRETCH)
+	skelSizes.interaction_reach = new_arm_length * skelSizes.arm_stretch * 0.97
 	# `height` ya no es una entrada: es esto. Lo lee la cápsula, la cámara y el panel de debug.
 	skelSizes.total_height = new_leg_height + new_torso_height + new_head_height
 
@@ -300,9 +323,16 @@ static func _compute_arm_shoulder_local(left: bool, s: SkeletonSizesUtil) -> Vec
 static func _compute_arm_tip_local(left: bool, s: SkeletonSizesUtil) -> Vector3:
 	var sign_x := -1.0 if left else 1.0
 	var shoulder := _compute_arm_shoulder_local(left, s)
-	var arm_length := s.upper_arm_size.y + s.lower_arm_size.y \
-		+ 0.4 * s.upper_arm_size.x \
-		+ 0.4 * s.lower_arm_size.z
+	# El techo es la CADENA por ARM_REST_EXTENSION, nunca la cadena entera: a extensión total el codo
+	# queda colineal, el plano de flexión se indefine y la torsión sale arbitraria — o sea la mano dada
+	# vuelta, distinta según hacia dónde mire el personaje. La constante existía y estaba documentada,
+	# pero no la leía nadie.
+	#
+	# Y los radios de cápsula (.x/.z) que se sumaban acá ya no van: eran del sistema viejo, donde el
+	# brazo eran dos cápsulas dibujadas y la punta caía sobre la superficie de la última. Con la malla
+	# de Blender no representan nada, y sumaban ~0.10 m a un target que la cadena tiene que poder
+	# alcanzar: con el brazo corto pedían MÁS que el largo del brazo, y lo dejaban colineal siempre.
+	var arm_length := (s.upper_arm_size.y + s.lower_arm_size.y) * ARM_REST_EXTENSION
 	var actual_distance: float = lerp(arm_length, 0.0, s.arm_bentness)
 	var arm_dir := Basis(Vector3.FORWARD, s.arm_openness_angle * sign_x) * Vector3.DOWN
 	return shoulder + arm_dir * actual_distance
@@ -356,7 +386,14 @@ static func lerp_range(min_val: float, max_val: float, t: float) -> float:
 ## como fue esculpido, y los extremos se modelan a mano sin obligación de quedar simétricos. Esa
 ## asimetría ES el control artístico — con un lerp de dos extremos, el genérico saldría del promedio
 ## en vez de salir del modelo.
-## Largo de una cadena: el esculpido es el 0.5, y los extremos son factores provisorios sobre él.
+## Largo de la cadena del brazo para un valor del rango de Blender (0 = el modelo tal cual, 1 = el
+## modelo × ARM_MODEL_FACTOR). Es la misma cuenta que hace el driver de Blender, y su inversa la usa
+## el agarre para despejar cuánto puede estirar.
+static func arm_chain_for(rig: ReferenceRig, ext: float) -> float:
+	return rig.arm_chain * (1.0 + (ReferenceRig.ARM_MODEL_FACTOR - 1.0) * ext)
+
+## Largo de una cadena TODAVÍA SIN AUTORAR (pierna, torso): el esculpido es el 0.5 y los extremos son
+## factores provisorios sobre él. El brazo ya no pasa por acá — ver arm_chain_for.
 static func _chain(sculpted: float, t: float) -> float:
 	return lerp_three(sculpted * LENGTH_MIN_FACTOR, sculpted, sculpted * LENGTH_MAX_FACTOR, t)
 

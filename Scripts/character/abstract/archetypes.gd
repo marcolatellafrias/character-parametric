@@ -76,6 +76,19 @@ var legs_length  : float = 0.5
 var arms_length  : float = 0.5
 var torso_length : float = 0.5
 
+## Cuánto puede ESTIRAR el brazo al agarrar, en múltiplos de su largo en reposo. Es una variable
+## INDEPENDIENTE de `arms_length`, y la distinción importa: `arms_length` es la proporción del cuerpo
+## —qué brazo tiene el personaje parado sin hacer nada— y esto es cuánto se sale de esa proporción
+## para alcanzar algo. Un personaje de brazos cortos puede tener un estirón enorme y al revés.
+##
+## De acá sale `SkeletonSizesUtil.interaction_reach`, o sea el alcance de agarre en metros: es LA
+## perilla del alcance por arquetipo.
+##
+## El techo lo pone el rango autorado en Blender (ver ReferenceRig.ARM_MODEL_FACTOR): el brazo
+## estirado tiene la silueta que se esculpió, así que estirar no es "malla de goma" mientras el
+## resultado caiga adentro del rango. SkeletonSizesUtil lo clampea ahí solo.
+var arm_stretch : float = 2.0
+
 # PROPORTIONS — VESTIGIALES
 ## Ya NO alimentan el esqueleto: los largos salen de las tres variables de arriba, y cadera/hombros/
 ## cuello/cabeza están fijos en el largo esculpido hasta la fase 3. `height` en particular pasó a ser
@@ -166,6 +179,7 @@ static func generic_arch() -> EntityArchetype:
 	arch.legs_length  = 0.5
 	arch.arms_length  = 0.5
 	arch.torso_length = 0.5
+	arch.arm_stretch  = 2.0
 	arch.height = 1.71
 	arch.chest_to_low_spine_proportion = 0.33
 	arch.legs_to_feet_proportion = 0.55

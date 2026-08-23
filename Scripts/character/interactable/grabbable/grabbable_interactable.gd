@@ -25,7 +25,12 @@ extends Interactable
 
 var grab_points: Array[Node3D] = []
 
-const CELL_SIZE      := 0.15
+## Unidad en la que se miden TODOS los grabbables: los tamaños se declaran en celdas y de acá salen
+## los metros. Bajarla achica cada caja sin tocar su conteo de celdas, o sea sin cambiar cuántos grab
+## points le salen (ver GRAB_DENSITY) ni cómo se siente el agarre.
+##
+## Solo la usan los grabbables. El dashboard tiene su propio `cell_size` y no tiene nada que ver.
+const CELL_SIZE      := 0.105
 ## Una celda de grab points cada tantas celdas del objeto: más chico = más puntos. A 3, una caja
 ## cúbica de 6 celdas tiene 8 puntos en vez de 1, así que el punto que engancha el agarre queda
 ## mucho más cerca de donde apuntaste — y por eso cuesta más perder el grip (el agarre se suelta

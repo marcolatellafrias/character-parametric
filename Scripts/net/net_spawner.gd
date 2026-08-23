@@ -18,16 +18,18 @@ const SCENES := {
 	"seat": "res://Scenes/ship/working_seat.tscn",  # SeatInteractable funcional (no la malla suelta)
 }
 
-## Variantes de caja: tamaño (m), masa (kg) y color.
+## Variantes de caja: tamaño en CELDAS de grabbable, masa (kg) y color. En celdas y no en metros a
+## propósito: el tamaño de celda es la perilla del tamaño de los objetos, y con metros hardcodeados
+## bajarla no achicaba las cajas — les daba más celdas, o sea más grab points, que es lo contrario.
 const BOX_VARIANTS := {
-	"box_light_square": {"size": Vector3(0.9, 0.9, 0.9), "mass": 4.0,  "color": Color(0.45, 0.7, 1.0),  "label": "liviana ▪"},
-	"box_heavy_square": {"size": Vector3(0.9, 0.9, 0.9), "mass": 40.0, "color": Color(0.7, 0.2, 0.2),   "label": "pesada ▪"},
-	"box_light_long":   {"size": Vector3(0.9, 0.9, 1.8), "mass": 8.0,  "color": Color(0.5, 0.85, 0.5),  "label": "liviana ▬"},
-	"box_heavy_long":   {"size": Vector3(0.9, 0.9, 1.8), "mass": 80.0, "color": Color(0.85, 0.5, 0.2),  "label": "pesada ▬"},
+	"box_light_square": {"cells": Vector3i(6, 6, 6), "mass": 4.0,  "color": Color(0.45, 0.7, 1.0),  "label": "liviana ▪"},
+	"box_heavy_square": {"cells": Vector3i(6, 6, 6), "mass": 40.0, "color": Color(0.7, 0.2, 0.2),   "label": "pesada ▪"},
+	"box_light_long":   {"cells": Vector3i(6, 6, 12), "mass": 8.0,  "color": Color(0.5, 0.85, 0.5),  "label": "liviana ▬"},
+	"box_heavy_long":   {"cells": Vector3i(6, 6, 12), "mass": 80.0, "color": Color(0.85, 0.5, 0.2),  "label": "pesada ▬"},
 	# Extra larga = tres cajas comunes en fila. Con GRAB_DENSITY 3 le salen SEIS grab points a lo
 	# largo (2×2×6 en total), así que es la variante para probar el agarre de a tres o más.
-	"box_light_xlong":  {"size": Vector3(0.9, 0.9, 2.7), "mass": 12.0,  "color": Color(0.4, 0.9, 0.75), "label": "liviana ▭"},
-	"box_heavy_xlong":  {"size": Vector3(0.9, 0.9, 2.7), "mass": 120.0, "color": Color(0.9, 0.35, 0.5), "label": "pesada ▭"},
+	"box_light_xlong":  {"cells": Vector3i(6, 6, 18), "mass": 12.0,  "color": Color(0.4, 0.9, 0.75), "label": "liviana ▭"},
+	"box_heavy_xlong":  {"cells": Vector3i(6, 6, 18), "mass": 120.0, "color": Color(0.9, 0.35, 0.5), "label": "pesada ▭"},
 }
 
 var _next_id: int = 0
@@ -178,7 +180,8 @@ func _clear_local_spawned() -> void:
 # ── Construcción de cajas ─────────────────────────────────────────────────────
 
 func _build_box(cfg: Dictionary) -> RigidBody3D:
-	var size: Vector3 = cfg["size"]
+	var cells: Vector3i = cfg["cells"]
+	var size := Vector3(cells) * GrabbableInteractable.CELL_SIZE
 	var body := RigidBody3D.new()
 	body.mass = cfg["mass"]
 

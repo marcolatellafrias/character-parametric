@@ -8,9 +8,7 @@ extends Node3D
 ## antes. Esta clase no anima nada — solo copia ese pose a un Skeleton3D real cada frame, para que
 ## las mallas skinneadas del modelo de Blender lo sigan.
 ##
-## Ver technical/skinned-character-migration.md. FASE 1: el mesh no se deforma NUNCA (todas las
-## escalas de hueso en 1, todos los blend shapes en 0). Si ves algo torcido, es un bug de este
-## archivo, no una proporción para tunear.
+## Ver technical/skinned-character-migration.md.
 
 ## Primera persona: la lista es de lo que SE VE, no de lo que se esconde. Todo lo demás desaparece.
 ##
@@ -22,6 +20,32 @@ extends Node3D
 ## Solo manos y uñas. `arms_mesh` existe como malla propia y podría mostrarse, pero va oculta por
 ## decisión: en primera persona no se ven los brazos.
 const FIRST_PERSON_VISIBLE: Array[String] = ["hand", "nail"]
+
+## ── HUESOS QUE ESTIRAN LA MALLA ───────────────────────────────────────────────────────────────────
+## Un hueso de esta lista se ESCALA a lo largo de sí mismo hasta el largo que pide el rig lógico, en
+## vez de solo rotar. Es lo mismo que hace el driver de `arms_length` en Blender, y es lo único que
+## deforma la malla de verdad: mover el hueso hijo traslada nada más los vértices que le pesan a ÉL,
+## y el tramo del medio del brazo —que pesa 100% al padre— se queda quieto. Se ve como una junta que
+## se abre, no como un brazo largo.
+##
+## Por ahora solo los brazos, que son los únicos con extremos autorados en Blender. Piernas y torso
+## entran acá cuando tengan su shape key; hasta entonces su escala da 1.0 y no cambia nada.
+const STRETCH_BONES: Array[String] = [
+	"left_upper_arm", "right_upper_arm", "left_lower_arm", "right_lower_arm",
+]
+
+## Hueso RÍGIDO que cuelga de un hueso estirable y que NO tiene que crecer con él. No está en
+## BONE_MAP porque nadie lo anima —la mano y los 30 huesos de dedos van rígidos colgando del
+## antebrazo—, así que si no se lo maneja acá hereda la escala del padre y la mano crece con el brazo.
+## Es el `Inherit Scale = None` que el doc de Blender pide en `wrist.L/R`, del lado de Godot.
+const RIGID_TIP := {
+	"left_lower_arm":  "wrist.L",
+	"right_lower_arm": "wrist.R",
+}
+
+## Nombre del blend shape que corrige la silueta del brazo estirado. Lo escribe el sync a partir de
+## la MISMA escala que va al hueso, así no pueden desincronizarse.
+const ARM_SHAPE_NAME := "arms_length_max"
 
 var skeleton: Skeleton3D
 var meshes: Array[MeshInstance3D] = []
@@ -39,18 +63,27 @@ var _driven_bone: Array[CustomBone] = []
 var _fix: Array[Basis] = []
 ## Global de CADA hueso del esqueleto en el frame actual, para resolver el padre. Se siembra con los
 ## rest globals: si algún hueso manejado colgara de uno NO manejado, ese padre aporta su rest en vez
-## de basura. (Hoy no pasa: todos los padres de la tabla están en la tabla.)
+## de basura.
 var _global: Array[Transform3D] = []
+## Largo de reposo del hueso EN EL MODELO, o 0 si el hueso no estira. Con esto el sync deduce solo la
+## escala (`cb.length / _rest_len`): nadie tiene que avisarle que el arquetipo cambió de brazo ni que
+## el agarre lo está estirando — sale del largo del CustomBone, que ya es la verdad.
+var _rest_len: PackedFloat32Array = PackedFloat32Array()
+## Punta rígida colgada de este hueso (−1 si no hay), y su pose de reposo relativa al hueso.
+var _tip_idx: PackedInt32Array = PackedInt32Array()
+var _tip_rest: Array[Transform3D] = []
+## Dónde escribir el blend shape del brazo.
+var _arm_shape_mesh: MeshInstance3D = null
+var _arm_shape_idx: int = -1
+## Escala escrita en el frame anterior, para no reescribir el blend shape si no cambió.
+var _arm_shape_written: float = -1.0
 
 
-## Construye el espejo y se cuelga de `parent` (la cápsula). `bones` tiene que estar en la POSE DE
-## REPOSO REAL — o sea después del primer solve de brazos, no en el rest de construcción. De ahí sale
-## la corrección de ejes, y calibrarla en una pose que el personaje no mantiene deja las manos
-## rotadas. Ver el comentario en BoneInstantiator.initialize_skeleton.
+## Construye el espejo y se cuelga de `parent` (la cápsula).
 ##
-## El add_child va ADENTRO a propósito: _bind compara global_transform del esqueleto contra los de
-## los CustomBone, que ya están en el árbol. Bindear antes de entrar al árbol mezcla un global de
-## adentro con uno de afuera y la corrección sale mal.
+## Se puede llamar en cualquier momento: la calibración sale de dos REPOSOS, no de la pose viva (ver
+## `_bind`), así que no importa en qué estado estén los CustomBone ni hacia dónde mire el personaje.
+## `bones` solo se recorre para resolver qué CustomBone corresponde a cada hueso.
 ##
 ## Devuelve null si todavía no existe el modelo, y el personaje sigue andando como siempre.
 static func create(bones: CustomBonesUtil, parent: Node3D) -> SkinnedBodyUtil:
@@ -97,6 +130,7 @@ func _sync(bodies: Dictionary) -> void:
 	if skeleton == null:
 		return
 	var root_inv := skeleton.global_transform.affine_inverse()
+	var arm_scale := 1.0
 	for k in _driven_idx.size():
 		var idx := _driven_idx[k]
 		var cb := _driven_bone[k]
@@ -107,15 +141,47 @@ func _sync(bodies: Dictionary) -> void:
 			var rb: Node3D = bodies.get(cb)
 			if is_instance_valid(rb):
 				src = rb
-		# La fuente en el espacio del Skeleton3D. El origin va DIRECTO: de ahí sale el largo de
-		# hueso, y por eso las proporciones del arquetipo estiran la malla sin que haya que pedirlo.
-		# La base va por delta desde el reposo (·_fix), que es lo que concilia las convenciones.
+		# La fuente en el espacio del Skeleton3D. El origin va DIRECTO: de ahí sale dónde ARRANCA el
+		# hueso. La base va por delta desde el reposo (·_fix), que concilia las convenciones de ejes.
 		var g := root_inv * src.global_transform
-		var desired := Transform3D(g.basis * _fix[k], g.origin)
-		_global[idx] = desired
+		var rigid := Transform3D(g.basis * _fix[k], g.origin)
+		var stretched := rigid
+		if _rest_len[k] > 0.0:
+			# `_fix` es un roll puro alrededor de Y, así que `rigid.basis.y` sigue siendo la dirección
+			# del hueso: escalar Y en local estira a lo LARGO del hueso, igual que el `S Y Y` de Blender.
+			var s: float = cb.length / _rest_len[k]
+			stretched.basis = rigid.basis.scaled_local(Vector3(1.0, s, 1.0))
+			arm_scale = s
+		_global[idx] = stretched
 		var p := skeleton.get_bone_parent(idx)
 		var parent_g: Transform3D = _global[p] if p >= 0 else Transform3D.IDENTITY
-		skeleton.set_bone_pose(idx, parent_g.affine_inverse() * desired)
+		skeleton.set_bone_pose(idx, parent_g.affine_inverse() * stretched)
+
+		# La punta rígida (la muñeca): va en la punta del antebrazo YA ESTIRADO —por eso la posición
+		# sale de `stretched`— pero con la orientación y el tamaño SIN escalar —por eso la base sale de
+		# `rigid`. Los dedos cuelgan de ella y heredan lo mismo.
+		var ti := _tip_idx[k]
+		if ti >= 0:
+			var tip := _tip_rest[k]
+			skeleton.set_bone_pose(ti, Transform3D((rigid * tip).basis, (stretched * tip).origin))
+
+	_write_arm_shape(arm_scale)
+
+
+## El blend shape sale de la MISMA escala que fue al hueso, invirtiendo el factor con el que se
+## esculpió en Blender. No hay un segundo número que mantener en sincronía: si el brazo mide 1.54×,
+## el shape va en 0.18 y punto — incluido el estirón del agarre, que sube los dos a la vez.
+func _write_arm_shape(arm_scale: float) -> void:
+	if _arm_shape_idx < 0 or not is_instance_valid(_arm_shape_mesh):
+		return
+	if is_equal_approx(arm_scale, _arm_shape_written):
+		return
+	_arm_shape_written = arm_scale
+	var span := ReferenceRig.ARM_MODEL_FACTOR - 1.0
+	var ext := 0.0
+	if span > 0.0:
+		ext = clampf((arm_scale - 1.0) / span, 0.0, 1.0)
+	_arm_shape_mesh.set_blend_shape_value(_arm_shape_idx, ext)
 
 
 ## Aplica FIRST_PERSON_VISIBLE. Perdemos la granularidad por hueso que daba
@@ -155,9 +221,13 @@ func _find_skeleton(node: Node) -> Skeleton3D:
 
 func _collect_meshes(node: Node) -> void:
 	if node is MeshInstance3D:
-		meshes.append(node as MeshInstance3D)
-		# FASE 4: los blend shapes se escriben acá. En fase 1 tienen que quedar TODOS en 0 — si el
-		# mesh se deforma en fase 1, es un bug del espejo y no una proporción.
+		var mi := node as MeshInstance3D
+		meshes.append(mi)
+		if _arm_shape_idx < 0:
+			var found := mi.find_blend_shape_by_name(ARM_SHAPE_NAME)
+			if found >= 0:
+				_arm_shape_mesh = mi
+				_arm_shape_idx = found
 	for child in node.get_children():
 		_collect_meshes(child)
 
@@ -197,43 +267,74 @@ func _bind(bones: CustomBonesUtil) -> void:
 		var idx := _find_bone(ReferenceRig.BONE_MAP[field], field)
 		if idx < 0:
 			continue
-		pairs.append([idx, cb])
+		pairs.append([idx, cb, field])
 	pairs.sort_custom(func(a, b): return a[0] < b[0])
 
-	var skel_inv := skeleton.global_transform.affine_inverse()
+	var rig := ReferenceRig.get_rig()
 	var forward_fix := Basis(Vector3.UP, ReferenceRig.MODEL_FORWARD_YAW)
 	_driven_idx.resize(pairs.size())
 	_driven_bone.resize(pairs.size())
 	_fix.resize(pairs.size())
+	_rest_len.resize(pairs.size())
+	_tip_idx.resize(pairs.size())
+	_tip_rest.resize(pairs.size())
 	for k in pairs.size():
 		var idx: int = pairs[k][0]
 		var cb: CustomBone = pairs[k][1]
+		var field: String = pairs[k][2]
 		_driven_idx[k] = idx
 		_driven_bone[k] = cb
-		var custom_rest := (skel_inv * cb.global_transform).basis
-		var skel_rest := forward_fix * skeleton.get_bone_global_rest(idx).basis
-		# ALINEAR LA DIRECCIÓN, no copiar el rest. Los dos rigs están en POSES distintas: el modelo de
-		# Blender tiene los brazos casi horizontales (T-pose) y el rest del CustomBone los tiene
-		# colgando. Sin este término, _fix se come esa diferencia de pose además de la de ejes: el
-		# hueso del brazo queda orientado horizontal mientras la cadena de posiciones baja, y el mesh
-		# sale cruzado/roto.
+		# LA CALIBRACIÓN NO MIRA LA POSE. `_fix` es una constante de CONVENCIÓN entre los dos rigs —
+		# cuánto difiere el roll con el que Blender esculpió el hueso del que usa el rig lógico— así que
+		# sale de dos reposos y de nada más: el reposo de construcción del CustomBone (`rig.bases`, que
+		# ya viene del modelo) contra el reposo del propio modelo.
 		#
-		# Con el alineado, `_fix` codifica SOLO la convención de ejes (el roll), y se cumple que
-		# desired.basis.y == cb.global_basis.y SIEMPRE: el hueso del modelo apunta exactamente a donde
-		# apunta el CustomBone, sea cual sea el rest con el que se modeló. Ver el doc.
-		var align := _align_axis(skel_rest.y.normalized(), custom_rest.y.normalized())
-		_fix[k] = custom_rest.inverse() * (align * skel_rest)
+		# Definición: con el CustomBone en su reposo de construcción, el hueso del modelo tiene que
+		# quedar en SU reposo. De ahí `_fix = bases⁻¹ · (yaw · rest)`, y se cumple exacto porque
+		# `bases[field].y == (yaw · rest).y` por construcción (ReferenceRig lo arma justo así).
+		#
+		# Antes esto se medía contra la pose VIVA, después del primer solve de brazos. El problema no
+		# era la idea sino que la pose viva trae la TORSIÓN QUE ELIGIÓ LA IK en ese frame, y esa torsión
+		# no es la misma dos veces: cada respawn congelaba un roll distinto (se midieron 8.4° de
+		# dispersión, y ~34° de corrimiento sistemático) y las manos salían torcidas, distinto cada vez.
+		# Peor: los dos brazos pueden estar en puntos distintos de su transitorio, y entonces cada mano
+		# congela una torsión propia — de ahí que salieran asimétricas y no espejadas.
+		#
+		# Si a partir de acá la mano queda mal pero SIEMPRE IGUAL, el problema es la torsión que elige
+		# la IK del brazo (el pole del codo), no esto. Es el lugar honesto para arreglarlo.
+		_fix[k] = (rig.bases[field] as Basis).inverse() * (forward_fix * skeleton.get_bone_global_rest(idx).basis)
+
+		_rest_len[k] = float(rig.lengths.get(field, 0.0)) if STRETCH_BONES.has(field) else 0.0
+		_tip_idx[k] = -1
+		_tip_rest[k] = Transform3D.IDENTITY
+		if RIGID_TIP.has(field):
+			var tip := _find_bone(RIGID_TIP[field], field)
+			if tip >= 0:
+				_tip_idx[k] = tip
+				# Se lee ANTES de reparentar: después, el global rest deja de ser el del modelo.
+				_tip_rest[k] = skeleton.get_bone_global_rest(idx).affine_inverse() * skeleton.get_bone_global_rest(tip)
+
+	_detach_children_of_stretched()
 
 
-## Rotación mínima que lleva `from` a `to`. Misma construcción que CustomBone.pose_from_rest_to usa
-## para su parte de alineado.
-static func _align_axis(from: Vector3, to: Vector3) -> Basis:
-	var d := clampf(from.dot(to), -1.0, 1.0)
-	if d > 0.999999:
-		return Basis()
-	if d < -0.999999:
-		var flip := from.cross(Vector3.RIGHT)
-		if flip.length_squared() < 1e-6:
-			flip = from.cross(Vector3.UP)
-		return Basis(flip.normalized(), PI)
-	return Basis(from.cross(to).normalized(), acos(d))
+## UN HUESO ESCALADO NO PUEDE TENER HIJOS. Godot compone el global de un hueso como
+## `global(padre) · local(hijo)` y guarda ese local descompuesto en posición + cuaternión + escala:
+## un producto con SHEAR no entra ahí. Y con el padre escalado en Y y el hijo rotado (el codo
+## doblado), `local = S⁻¹·R·S` es exactamente eso — a 1.54× y 28° de codo se pierden ~20° de
+## ortogonalidad, o sea un antebrazo que se tuerce distinto según cuánto esté doblado el brazo.
+##
+## La salida es sacarlos de la jerarquía: como el espejo ya calcula el global de CADA hueso manejado,
+## un hueso raíz no necesita padre — `_sync` le escribe el global directo (ya contempla `p < 0`) y no
+## queda producto que descomponer. Lo único que sigue colgando de un hueso escalado son huesos
+## rígidos (los dedos, bajo la muñeca), que sí tienen que heredar.
+##
+## No toca las poses de bind del Skin, que son absolutas: el skinning sigue leyendo el global que le
+## escribimos. Sí invalida `get_bone_global_rest` de los huesos movidos — por eso corre al final de
+## `_bind`, cuando ya se leyó todo lo que hacía falta.
+func _detach_children_of_stretched() -> void:
+	for k in _driven_idx.size():
+		if _rest_len[k] <= 0.0:
+			continue
+		for child in skeleton.get_bone_children(_driven_idx[k]):
+			skeleton.set_bone_parent(child, -1)
+

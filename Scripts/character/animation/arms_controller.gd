@@ -262,7 +262,11 @@ func _apply_arm_grab(delta: float, upper: CustomBone, lower: CustomBone, ik_targ
 	var ratio     := nat_upper / nat_total
 
 	var dist         := upper.global_position.distance_to(handle_world)
-	var target_total : float = max(nat_total, dist / GRAB_MIN_BEND_FACTOR)
+	# Techo duro del estirón. Más allá de esto la malla se ve de goma, y el shape key que corrige la
+	# silueta está autorado hasta ahí. `interaction_reach` sale de este mismo tope, así que agarrar algo
+	# dentro del cono nunca lo toca; lo que sí lo toca es seguir agarrado y ALEJARSE, que el cono no acota.
+	var max_total: float = nat_total * sizes.arm_stretch
+	var target_total : float = clampf(dist / GRAB_MIN_BEND_FACTOR, nat_total, max_total)
 	var new_total    := lerpf(nat_total, target_total, blend)
 	var new_upper_l  := new_total * ratio
 	var new_lower_l  := new_total * (1.0 - ratio)
