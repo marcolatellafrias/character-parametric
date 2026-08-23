@@ -330,16 +330,23 @@ func _solve_frame(delta: float) -> void:
 
 	if seated:
 		_pose_legs_seated()
-	else:
-		# La raíz se movió (bajada de pelvis, agacharse, squat). Las piernas se resolvieron contra la
-		# posición anterior, así que hay que volver a clavarlas a los MISMOS puntos del piso o los pies
-		# se hunden justo lo que bajó la pelvis.
-		_repin_legs_standing()
 
 	_pose_arms(delta)
 
+	# ── LAS PIERNAS SE CLAVAN AL FINAL, DESPUÉS DE TODO LO QUE MUEVA LA RAÍZ ──────────────────────
+	# INVARIANTE: el tren inferior NO lo maneja el tren superior. Los pies siguen la IK a un punto
+	# FIJO DEL MUNDO, y todo lo que mueva la raíz —bajada de pelvis, agacharse, squat, y sobre todo la
+	# inclinación de torso del agarre— tiene que resolverse volviendo a clavar las piernas a esos
+	# MISMOS puntos, nunca dejando que la pierna acompañe a la cadera.
+	#
+	# Este repin ya existía, pero corría ANTES de _pose_arms — o sea antes de la única cosa que todavía
+	# movía la raíz. La pierna se quedaba con la solución vieja y giraba con la cadera, como si el pie
+	# no estuviera apoyado. Sentado el bug no aparecía porque el caso sentado sí re-clava después de los
+	# brazos (era este mismo comentario, dos líneas más abajo).
 	if seated:
-		_repin_legs_seated()   # los overrides de brazos inclinan el spine: volver a los MISMOS targets
+		_repin_legs_seated()
+	else:
+		_repin_legs_standing()
 
 	_sync_ragdoll_bodies()
 	_sync_skinned_body()

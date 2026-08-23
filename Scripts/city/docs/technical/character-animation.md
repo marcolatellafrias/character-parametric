@@ -62,6 +62,51 @@ A `Node3D` per bone with `capsule_dimensions` (x/z = radius, y = length) and a `
 
 For the **active** player every frame; for **NPCs/proxies** (`is_active=false`) every *other* frame (`_npc_skip_frame`). This half-rate is a **performance** measure — the full procedural solve is expensive, and a crowd of NPCs/proxies doesn't need it every tick. Order in `BoneInstantiator._physics_process` → `_solve_frame`:
 
+### A reference value is derived, never snapshotted
+
+A value that describes **what the rig is** (an axis convention, a relaxed pose, a rest length) has to
+be computable from the model and the archetype. Reading it off the live skeleton at build time looks
+equivalent and is not: the pose at that instant carries whatever twist the IK happened to choose, and
+that solve is not deterministic across rebuilds — the arm targets are stored as *offsets from wherever
+the target node was left*, so a respawn inherits state from the previous generation.
+
+Measured, same seed, repeated respawns: the mirror's axis correction drifted **8.4°** and the ragdoll's
+relaxed pose **8.9°**. Both read as "the hands come out twisted, differently every time".
+
+- `SkinnedBodyUtil._fix` — **fixed.** Derived from two rest poses (`ReferenceRig.bases` against the
+  model's own rest), so it cannot vary.
+- `RagdollUtil._relaxed_basis` — **still snapshots** `bone.global_transform.basis` in `_build_bodies`.
+  Same class, same drift. Closing it means making the one-off build solve start from a clean state
+  instead of inheriting the previous generation's target offsets.
+
+### Bone poses are additive on top of a per-frame reset
+
+`ProceduralBoneAnimation.update()` opens every frame by writing `bone.transform.basis =
+rest_local_basis` for every **registered** bone. Everything downstream composes onto that with `*=`,
+which is why the grab lean and the shoulder rotations do not wind up over time.
+
+The catch: that only holds for bones the animator actually registers — today `lower_spine`,
+`middle_spine`, `higher_spine`, `chest`, both hips and both shoulders. **`*=` on any other bone
+accumulates silently**: no error, nothing visible in the first seconds, and a character that slowly
+winds up. `neck`, `head` and every limb bone are outside the reset.
+
+### The lower body is not driven by the upper body
+
+**Invariant: nothing above the pelvis may move the legs.** The feet track an IK target that is a
+**fixed point in the world** — a spot on the ground the foot is planted on. The pelvis is free to
+move (pelvis drop, crouch, jump squat, and the grab lean), but every one of those is a reason to
+**re-solve the legs against the same world targets**, never a reason to let the leg swing with the
+hip. A leg that follows the hip reads instantly as feet skating: the character pivots as if standing
+on ice.
+
+This is why `_repin_legs_standing()` / `_repin_legs_seated()` run **last in `_solve_frame`, after
+`_pose_arms`**. The arm overrides are the final thing that moves the root — `ArmsController`
+tilts `lower_spine` while grabbing — so anything re-pinned before them is re-pinned too early.
+
+> The lean itself is wanted, and not only for looks: leaning the torso toward what you are reaching
+> for buys real range, so the arm has to stretch less to cover the same interaction distance. Which
+> is exactly why it must not cost leg stability — the two have to be independent.
+
 ### The half-rate solve and the sync-before-snapshot rule
 
 On NPCs/proxies the solve — and with it `sync_to_bones`, the foot targets and the IK — runs every other frame, while the **physics and the capsule keep moving every frame**. So on those characters the skeleton and the ragdoll bodies sit a frame or two behind the live physics. One rule follows from that: **anything that snapshots the skeleton or the bodies syncs them first.** The code enforces this at the one place it matters — `_build_joints()` runs `sync_to_bones()` as its first line, so a proxy's ragdoll joints are always built from the current pose, which is what keeps the limbs in their sockets (see [characters.md](characters.md)).

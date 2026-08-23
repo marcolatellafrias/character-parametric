@@ -19,10 +19,9 @@ const GRAB_MIN_BEND_FACTOR:      float = 0.97
 const GRAB_POLE_SMOOTH:          float = 10.0
 const GRAB_BLEND_SPEED:          float = 6.0
 
-## Inclinación del torso al agarrar, en radianes. Se mapea contra el rango de agarre — y ese rango se
-## achicó de ~1.56 m a ~1.00 m cuando el alcance pasó a derivarse del brazo real. Antes un objeto a la
-## distancia del brazo usaba ~40% del rango; ahora usa ~90%, o sea que la misma vuelta de rueda
-## inclina el cuerpo mucho más. Reducidos en proporción para que el gesto vuelva a ser el de antes.
+## Inclinación del torso al agarrar, en radianes. FORWARD se usa agarrando algo por debajo del pecho,
+## BACK por encima — lo maneja la ALTURA del punto agarrado, no su distancia (ver
+## _apply_grab_body_adjustments, que explica por qué).
 const GRAB_ROOT_TILT_BACK:    float = 0.09
 const GRAB_ROOT_TILT_FORWARD: float = 0.13
 
@@ -225,15 +224,28 @@ func _apply_grab_body_adjustments() -> void:
 	var t_r        : float = clamp((dist_r - _grab_dist_min) / dist_range, 0.0, 1.0) * _grab_right_blend
 	var t_avg      : float = (t_l + t_r) / max(_grab_left_blend + _grab_right_blend, 0.001)
 
-	var root_tilt   := lerpf(-GRAB_ROOT_TILT_BACK, GRAB_ROOT_TILT_FORWARD, t_avg)
+	var grab_y_rel := _grab_point_world.y - _grab_chest_rest_world.y
+	var y_norm     : float = clamp(grab_y_rel / max(sizes.torso_height, 0.001), -1.0, 1.0)
+
+	# La inclinación de la raíz sigue la ALTURA del punto agarrado, no su distancia. Agacharse hacia
+	# algo bajo inclina adelante; sostener algo alto endereza y echa atrás.
+	#
+	# Antes seguía la distancia, y eso ponía la POSTURA DEL CUERPO en la ruedita del mouse: el rango de
+	# agarre (0.11–1.00 m) es casi exactamente el recorrido de la rueda, así que girarla de un extremo
+	# al otro barría los 12.6° enteros de inclinación. Y como `lower_spine` es la raíz del árbol de
+	# huesos, lo que se movía era el personaje entero — la cápsula no, de ahí que se leyera como un bug
+	# del esqueleto y no de esta línea. Bajar las constantes solo lo hacía más lento, no lo desacoplaba.
+	#
+	# La altura sí es una razón para inclinarse y NO la toca la rueda: acercar o alejar un objeto no
+	# cambia su altura. La rueda sigue moviendo el brazo (el estirón y el giro de hombro), que es lo
+	# que se espera que mueva.
+	var root_tilt   := lerpf(GRAB_ROOT_TILT_FORWARD, -GRAB_ROOT_TILT_BACK, (y_norm + 1.0) * 0.5)
 	var spine       := cb.lower_spine
 	var spine_basis := spine.transform.basis
 	var parent_basis := (spine.get_parent() as Node3D).global_transform.basis
 	var local_world_right := spine_basis.inverse() * parent_basis.inverse() * bi.char_rigidbody.global_transform.basis.x
 	spine.transform.basis *= Basis(local_world_right, -root_tilt * body_blend)
 
-	var grab_y_rel := _grab_point_world.y - _grab_chest_rest_world.y
-	var y_norm     : float = clamp(grab_y_rel / max(sizes.torso_height, 0.001), -1.0, 1.0)
 	var shoulder_z := y_norm * (GRAB_SHOULDER_Z_UP if y_norm >= 0.0 else GRAB_SHOULDER_Z_DOWN)
 	var shoulder_y_l := _grab_shoulder_y(t_l)
 	var shoulder_y_r := _grab_shoulder_y(t_r)
