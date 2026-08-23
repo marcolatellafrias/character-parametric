@@ -177,11 +177,28 @@ func _write_arm_shape(arm_scale: float) -> void:
 	if is_equal_approx(arm_scale, _arm_shape_written):
 		return
 	_arm_shape_written = arm_scale
-	var span := ReferenceRig.ARM_MODEL_FACTOR - 1.0
-	var ext := 0.0
-	if span > 0.0:
-		ext = clampf((arm_scale - 1.0) / span, 0.0, 1.0)
-	_arm_shape_mesh.set_blend_shape_value(_arm_shape_idx, ext)
+	var f := ReferenceRig.ARM_MODEL_FACTOR
+	var w := 0.0
+	if f > 1.0 and arm_scale > 0.0:
+		# w = F·v/s, NO w = v. Y la diferencia no es cosmética.
+		#
+		# La malla final es (escala del hueso) × (mezcla del shape key). Las dos son lineales, así que
+		# el producto es CUADRÁTICO: sale exacto en los dos extremos —que es donde se autoró— y se va
+		# en el medio. Concreto con F=4: el codo está esculpido para conservar su tamaño, o sea que en
+		# el reposo largo mide 1/4; a mitad de camino el reposo mezclado da 0.625 y el hueso escala
+		# 2.5, así que el codo se hincha 1.5625×. La cota es (1+F)²/(4F), y crece con el factor: +56%
+		# a ×4, +12% a ×2. Además el corrector queda subaplicado (0.18 donde iba 0.47), y por eso el
+		# resultado se parecía al hueso escalado a secas.
+		#
+		# Esta curva lo cancela EXACTO: pedir que `s·(1 − w(1−1/F)) = 1` para todo s despeja en
+		# w = (1−1/s)/(1−1/F) = F·v/s. Todo lo que se esculpió para conservar tamaño lo conserva en
+		# todos los valores intermedios, no solo en los extremos. Lo que se esculpió para escalar
+		# proporcional no lo toca (su reposo no cambia entre los dos extremos, así que w le da igual).
+		#
+		# El driver de Blender tiene que usar la MISMA expresión o el preview miente. Ver
+		# technical/character-blender-length-variable.md.
+		w = clampf((1.0 - 1.0 / arm_scale) / (1.0 - 1.0 / f), 0.0, 1.0)
+	_arm_shape_mesh.set_blend_shape_value(_arm_shape_idx, w)
 
 
 ## Aplica FIRST_PERSON_VISIBLE. Perdemos la granularidad por hueso que daba

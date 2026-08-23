@@ -75,7 +75,9 @@ The second `Y` switches to the bone's local axis. With one `Y` you scale along w
 
 > ⚠️ **Do not select the forearms.** `lower.arm` is a child and inherits its parent's scale, so scaling both compounds: 4 × 4 = **16**. The chain stretches uniformly from the upper arm alone. The same trap bites again at the driver stage.
 
-**On picking the factor.** The job of the arm at `1.0` is *fully extended reaching*, not "a long-armed character" — those are different things. The gameplay reach is `resting arm × MAX_ARM_STRETCH`, so a maximum near that keeps the hand touching what the game lets you grab. The bigger the factor, the further apart the two authored shapes and the less control you have over the middle — which is the arm you look at almost all the time.
+**On picking the factor.** The job of the arm at `1.0` is *fully extended reaching*, not "a long-armed character" — those are different things. The gameplay reach is `resting arm × arm_stretch`, so a maximum near that keeps the hand touching what the game lets you grab.
+
+A big factor used to be dangerous because of [the midpoint bulge](#the-midpoint-bulge), which grows with it and lands on the arm you look at almost all the time. With the corrected shape-key curve that is gone, and a large factor costs only sculpting resolution — which is why ×4 is fine.
 
 ---
 
@@ -123,9 +125,76 @@ Only so you can preview with one slider. **Godot never reads it** — Blender dr
 
 Repeat for `upper.arm.R`. **The forearms get no driver** — they inherit, and driving them compounds the scale.
 
-**The shape key.** Select `arms_mesh` → **Object Data** tab → **Shape Keys** → click `arms_length_max` → right-click its **Value** slider (below the list) → **Add Driver** → same Prop and Path, **Expression: `var`**.
+**The shape key.** Select `arms_mesh` → **Object Data** tab → **Shape Keys** → click `arms_length_max` → right-click its **Value** slider (below the list) → **Add Driver** → same Prop and Path, and:
+
+- **Expression**: `4 * var / (1 + 3 * var)` — with factor 4. In general `F * var / (1 + (F-1) * var)`.
+
+**Not `var`.** It is the same value at both ends and wrong everywhere between them; see
+[The midpoint bulge](#the-midpoint-bulge) below for why. Godot drives it with the same curve.
 
 *Sanity check:* with `arms_length` at 0 the bone's Driver Value reads `1.000`; at 1 it reads the factor.
+
+---
+
+## The midpoint bulge
+
+**The single most important thing on this page.** Authoring two extremes and blending between them
+does *not* give you the in-between you sculpted, and the error is largest exactly where the character
+spends all its time.
+
+### Why
+
+The final mesh is **(bone scale) × (shape-key blend)**. Drive both from the same `0..1` and you are
+multiplying two linear functions, which is **quadratic**: exact at `0.0` and `1.0` — the two places
+you authored — and off everywhere between.
+
+Work it through on the elbow, which you sculpted to *keep its size*. Keeping its size at `1.0` means
+its rest size there is `1/F` of the short arm, because the bone multiplies it back by `F`. Halfway:
+
+| | factor 4 |
+|---|---|
+| blended rest size | `(1 + 1/4) / 2` = **0.625** |
+| bone scale | **2.5** |
+| what you see | 0.625 × 2.5 = **1.5625** |
+
+The elbow swells **56%** and nothing you sculpted asked for it. The peak error is `(1+F)²/(4F)`, so it
+grows with the factor: **+56%** at ×4, +12.5% at ×2, +4% at ×1.5.
+
+There is a second symptom that reads differently and is the same cause: at `arms_length` 0.5 the
+corrective is applied at 0.18 when it should be at 0.47, so the result looks like the arm was
+stretched by the bone alone and your sculpt barely counts.
+
+### The fix
+
+**The shape key does not have to sit at the same value as the length.** They are two drivers and
+decoupling them cancels the quadratic exactly:
+
+```
+w  =  F * v / (1 + (F-1) * v)   =   F * v / s
+```
+
+where `v` is the length parameter and `s` the bone scale. It still gives 0 at 0 and 1 at 1, so both
+authored extremes are untouched — it only changes the path between them.
+
+It comes straight out of demanding that a constant-size feature stay constant: `s * (1 - w(1 - 1/F)) = 1`
+for every `s`, which solves to `w = (1 - 1/s) / (1 - 1/F)`. So **everything you sculpted to keep its
+size keeps it at every intermediate value**, not just at the ends. Verified in Godot: the elbow reads
+`1.000×` across the whole range.
+
+Features you sculpted to scale *proportionally* are unaffected — their rest size is the same in both
+shapes, so no value of `w` moves them.
+
+### What this means for the factor
+
+The old warning here — *the bigger the factor, the less control over the middle* — was describing this
+bulge without naming it. With the corrected curve the reason mostly evaporates, and a large factor
+costs only sculpting resolution, not correctness. That is what makes ×4 fine.
+
+### Applying it to legs and torso
+
+This is a property of the technique, not of the arm. Every chain authored this way needs the same
+curve, with its own `F`. In Godot it lives in `SkinnedBodyUtil._write_arm_shape`; a second chain gets
+the same expression with its own factor.
 
 ---
 
