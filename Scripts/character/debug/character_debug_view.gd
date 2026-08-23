@@ -17,6 +17,9 @@ static var show_skeleton:  bool = false
 static var show_colliders: bool = false
 static var show_grab_cone: bool = false
 static var ragdoll_color:  bool = false
+## Poles, targets, anillos de alcance/zancada y sondeos del raycast de piernas. Apagado por defecto:
+## son ayudas de autoría de la marcha y ensucian la vista el resto del tiempo.
+static var show_gait_gizmos: bool = false
 
 static func toggle_hide_character(tree: SceneTree) -> void:
 	hide_character = not hide_character
@@ -42,6 +45,10 @@ static func toggle_ragdoll_color(tree: SceneTree) -> void:
 	ragdoll_color = not ragdoll_color
 	apply_all(tree)
 
+static func toggle_gait_gizmos(tree: SceneTree) -> void:
+	show_gait_gizmos = not show_gait_gizmos
+	apply_all(tree)
+
 static func apply_all(tree: SceneTree) -> void:
 	if tree == null:
 		return
@@ -59,6 +66,9 @@ static func apply_to(bi: BoneInstantiator) -> void:
 
 	if is_instance_valid(bi.char_rigidbody) and is_instance_valid(bi.char_rigidbody.mesh_instance):
 		bi.char_rigidbody.mesh_instance.visible = show_capsule
+
+	if is_instance_valid(bi.ik_util):
+		bi.ik_util.set_gizmos_visible(show_gait_gizmos)
 
 	if is_instance_valid(bi.ragdoll_util):
 		bi.ragdoll_util.debug_ragdoll_color = ragdoll_color

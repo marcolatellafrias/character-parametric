@@ -83,7 +83,35 @@ var _right_was_airborne: bool = false
 var _stride_rendered: float = -1.0
 
 var recovery_targets_locked: bool = false
-var debug_enabled: bool = true
+## Los gizmos de marcha (poles, targets, anillos de alcance y zancada, sondeos del raycast) se
+## dibujan solo si esto está prendido. Arranca APAGADO: son ayudas de autoría, no del juego.
+## Manda CharacterDebugView, global para todos los personajes.
+##
+## Gatea también la ACTUALIZACIÓN de los indicadores del raycast, no solo su visibilidad: mover tres
+## mallas por pierna por frame para nada es gasto puro. Quedan viejos mientras están ocultos y se
+## corrigen en el primer frame después de prenderlos.
+var gizmos_visible: bool = false
+
+## Prende/apaga TODOS los gizmos de marcha de este personaje. Los nodos contenedores son funcionales
+## —son los targets de la IK y los poles de verdad, y el solver los lee—, así que no se tocan: se
+## apaga solo lo que DIBUJA, las MeshInstance3D que cuelgan de ellos.
+func set_gizmos_visible(value: bool) -> void:
+	gizmos_visible = value
+	_stride_rendered = -1.0  # forzar redibujo del anillo de zancada al volver a prenderlo
+	for holder in [left_leg_pole, right_leg_pole, left_leg_next_target, right_leg_next_target,
+			left_leg_current_target, right_leg_current_target,
+			left_leg_airborne_target, right_leg_airborne_target,
+			left_arm_ik_target, right_arm_ik_target, left_arm_pole, right_arm_pole]:
+		if not is_instance_valid(holder):
+			continue
+		for child in (holder as Node3D).get_children():
+			if child is MeshInstance3D:
+				(child as MeshInstance3D).visible = value
+	for ind in [left_leg_raycast_indicator, right_leg_raycast_indicator,
+			left_leg_raycast_indicator_b, right_leg_raycast_indicator_b,
+			left_leg_raycast_indicator_c, right_leg_raycast_indicator_c]:
+		if is_instance_valid(ind):
+			ind.visible = value
 
 func get_leg_data(left: bool) -> LegData:
 	var d := LegData.new()
@@ -265,6 +293,8 @@ func _sync_phase_to_feet(inputs: AnimationInputs) -> void:
 	gait_phase = current_duty if l <= r else fposmod(current_duty - 0.5, 1.0)
 
 func _update_stride_ring() -> void:
+	if not gizmos_visible:
+		return
 	if is_equal_approx(current_excursion, _stride_rendered) or not is_instance_valid(current_step_left_mesh_instance):
 		return
 	_stride_rendered = current_excursion
@@ -325,7 +355,7 @@ func update_ik_raycast(
 	var indicator_b := left_leg_raycast_indicator_b if left else right_leg_raycast_indicator_b
 	var indicator_c := left_leg_raycast_indicator_c if left else right_leg_raycast_indicator_c
 
-	if debug_enabled:
+	if gizmos_visible:
 		var line_len := total_raycast_length - sizes.raycast_start_y_offset
 		for ind in [indicator_a, indicator_b, indicator_c]:
 			DebugUtil.update_debug_line_mesh(ind, line_len)
@@ -342,8 +372,8 @@ func update_ik_raycast(
 		solve_two_bone_ik(higher_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
 		return
 
-	indicator_b.visible = true
-	indicator_c.visible = true
+	indicator_b.visible = gizmos_visible
+	indicator_c.visible = gizmos_visible
 
 	var basis_owner := leg.raycast.get_parent() as Node3D
 	var ph := _leg_phase(left)
@@ -465,7 +495,7 @@ func update_ik_raycast(
 				_settle_step_if_needed(left, leg, sizes, basis_owner, landing)
 			# APOYO: el pie queda plantado en el mundo. No se toca.
 
-	if debug_enabled:
+	if gizmos_visible:
 		# El raycast vuelve siempre a `original_origin`, así que cada indicador tiene que llevarse a
 		# mano al candidato que representa — incluido el A. Antes el A no se movía y quedaba pegado
 		# al B (los dos en neutral): justo el sondeo interesante, el de aterrizaje predicho, era el

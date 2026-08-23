@@ -87,7 +87,6 @@ func initialize_skeleton() -> void:
 	skel_sizes_util      = SkeletonSizesUtil.create(entity_instantiation)
 	custom_bones_util    = CustomBonesUtil.create(skel_sizes_util, entity_instantiation)
 	ik_util              = IkUtil.create(skel_sizes_util, self)
-	ik_util.debug_enabled = is_active
 
 	var full_height := skel_sizes_util.leg_height + skel_sizes_util.torso_height + skel_sizes_util.head_height
 	var charRb      := Vector3(skel_sizes_util.shoulders_width * 2, full_height, skel_sizes_util.hips_width * 2)

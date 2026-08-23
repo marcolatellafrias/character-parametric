@@ -627,6 +627,7 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Grab cone",                 func(): CharacterDebugView.toggle_grab_cone(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver esqueleto",             func(): CharacterDebugView.toggle_skeleton(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver colisionadores",        func(): CharacterDebugView.toggle_colliders(get_tree()))
+	_debug_panel.add_action("Acciones", "Ver gizmos de marcha",      func(): CharacterDebugView.toggle_gait_gizmos(get_tree()))
 
 	# ── Spawn ──
 	_debug_panel.add_action("Spawn", "Go to start",        _go_to_start)

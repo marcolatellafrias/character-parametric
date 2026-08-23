@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "technical/character-animation.md",
+                "file": "technical/character-blender-length-variable.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "character-animation"
+              "title": "character-blender-length-variable"
             }
           }
         ]
@@ -187,6 +187,9 @@
   },
   "active": "9576508c48e6342d",
   "lastOpenFiles": [
+    "00-overview.md",
+    "conceptual/world.md",
+    "technical/character-animation.md",
     "technical/jvvAb9MB",
     "technical/sedt3q6EF",
     "technical/7UMxOqOk",
@@ -197,14 +200,11 @@
     "technical/PKxgluMu",
     "technical/HaLhjRsC",
     "technical/QsrzjLoD",
-    "technical/sedoyJGNk",
     "technical/character-blender-authoring.md",
     "technical/skinned-character-migration.md",
     "technical/characters.md",
-    "technical/character-animation.md",
     "conceptual/interactables.md",
     "conceptual/hud.md",
-    "conceptual/world.md",
     "conceptual/ship-gameplay.md",
     "conceptual/run-setup.md",
     "conceptual/people.md",
@@ -215,7 +215,6 @@
     "comandos-utiles.md",
     "technical/sidewalks.md",
     "technical/traffic.md",
-    "00-overview.md",
     "conceptual/controllables.md",
     "conceptual/glossary.md",
     "technical/city-generation.md",

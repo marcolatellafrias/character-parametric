@@ -84,16 +84,15 @@ One bone fewer, one rule fewer. What remains is the seam rule above, which was a
 
 ---
 
-## The 0.5 convention
+## The base mesh is the `0.0` extreme
 
-Every parameter defaults to **0.5**, and that default **is** the generic character. Both extremes (0.0 and 1.0) are hand-modelled — mesh *and* bone length.
+**The mesh as modelled is the minimum**, and a single shape key carries the maximum. One sculpt, one shape key, a plain lerp between them — and Godot needs only two numbers per variable.
 
-**0.5 is not the arithmetic midpoint**, and it is not supposed to be. If `legs_length` runs 0.3 → 0.9, the value at 0.5 can be 0.6, or 0.55, or 0.7 — whatever looks right. The curve is asymmetric on purpose; that asymmetry is the artistic control.
+The generic character then sits at some **intermediate value chosen later**, from the Godot side, by looking at it. It is not authored.
 
-Two consequences:
+This replaced an earlier convention where the base sat at `0.5` and each variable had two shape keys, so the midpoint could be authored too. Being able to shape the middle sounds valuable, but it costs a second sculpt and a two-segment interpolation on both sides, and the middle is only ever a blend of two shapes already approved. Not worth it.
 
-- **Two shape keys per variable**, one per extreme, driven by the half-ranges: `min_key = max(0, (0.5 − v) · 2)`, `max_key = max(0, (v − 0.5) · 2)`. Uniform for every variable, no inverted cases, nothing to remember.
-- **Interpolation happens in two segments** on the Godot side (`0 → 0.5` and `0.5 → 1`), which is what lets 0.5 sit off-centre.
+The practical consequence for authoring: **shorten the model to the minimum before anything else.** See [character-blender-length-variable.md](character-blender-length-variable.md).
 
 ### Keep archetypes low in the arm range
 
@@ -106,6 +105,8 @@ Gameplay reach is proportional to a character's own resting arm, and the *mesh* 
 Each phase is a stopping point where the character is complete and testable.
 
 ### Phase A — The generic character, with arm length
+
+> **The hands-on recipe lives in [character-blender-length-variable.md](character-blender-length-variable.md)** — every menu path, and the traps that cost the most time (scale inheritance compounding, the On Cage back-solve, editing into the wrong shape key). This page stays at the level of what to do and why; that one is what to follow while Blender is open.
 
 **Goal: one character, aesthetically finished, in the game — plus the one variable it can't do without.**
 
@@ -240,6 +241,8 @@ Check at least the combinations that will actually exist, and specifically the o
 ---
 
 ## What ships to Godot
+
+Step-by-step for each variable: [character-blender-length-variable.md](character-blender-length-variable.md).
 
 1. The `.glb` — five meshes, the armature, shape keys, at 1.7 m.
 2. **Three lengths per bone-driven variable**: the value at 0.0, at 0.5, and at 1.0. Three, not two — because 0.5 is authored and deliberately off-centre, so Godot interpolates (and inverts) in two segments:

@@ -77,6 +77,17 @@ var ankle_rest_height: float = 0.0
 ## que fue modelado. Antes se estimaba como el ancho de cadera; el modelo la dice exacta, y si no
 ## coincide la tibia queda girada respecto del modelo y el pie hereda ese giro.
 var foot_rest_x: float = 0.0
+## Largos de cadena y de los huesos sueltos, medidos del rig. Antes eran constantes transcritas a mano
+## de un volcado, y quedaban viejas en silencio cada vez que se re-exportaba el modelo: el rig lógico
+## le pedía a la malla proporciones de una versión anterior y el espejo la estiraba para cumplir.
+var arm_chain: float = 0.0
+var torso_chain: float = 0.0
+var shoulder_len: float = 0.0
+var hip_len: float = 0.0
+var neck_len: float = 0.0
+## La cabeza es hueso HOJA, así que su largo no sale de un hijo: se mide como el tope de head_mesh
+## menos la base del hueso. Solo alimenta la altura total (cápsula y altura de cámara).
+var head_len: float = 0.0
 ## Largo de la cadena de pierna del modelo, para escalar lo de arriba cuando un arquetipo tenga otra.
 var leg_chain: float = 0.0
 var valid: bool = false
@@ -118,6 +129,14 @@ func _load() -> void:
 		ankle_rest_height = skel.get_bone_global_rest(ankle_idx).origin.y
 		foot_rest_x = absf(skel.get_bone_global_rest(ankle_idx).origin.x)
 	leg_chain = float(lengths.get("left_higher_leg", 0.0)) + float(lengths.get("left_lower_leg", 0.0))
+	arm_chain    = float(lengths.get("left_upper_arm", 0.0)) + float(lengths.get("left_lower_arm", 0.0))
+	torso_chain  = float(lengths.get("lower_spine", 0.0)) + float(lengths.get("middle_spine", 0.0)) + float(lengths.get("higher_spine", 0.0)) + float(lengths.get("chest", 0.0))
+	shoulder_len = float(lengths.get("left_shoulder", 0.0))
+	hip_len      = float(lengths.get("left_hip", 0.0))
+	neck_len     = float(lengths.get("neck", 0.0))
+	var head_idx := _find_bone(skel, "head")
+	if head_idx >= 0:
+		head_len = maxf(0.0, _top_of_head(root) - skel.get_bone_global_rest(head_idx).origin.y)
 	valid = not bases.is_empty()
 	root.free()
 
@@ -201,3 +220,14 @@ static func _minimal_rotation(from: Vector3, to: Vector3) -> Basis:
 	if d < -0.999999:
 		return Basis(Vector3.RIGHT, PI)
 	return Basis(from.cross(to).normalized(), acos(d))
+
+## Tope de la malla de la cabeza, para medir el largo del hueso hoja `head`.
+func _top_of_head(node: Node) -> float:
+	var mi := node as MeshInstance3D
+	if mi != null and mi.name.to_lower().contains("head"):
+		var ab: AABB = mi.get_aabb()
+		return ab.position.y + ab.size.y
+	var best := 0.0
+	for child in node.get_children():
+		best = maxf(best, _top_of_head(child))
+	return best
