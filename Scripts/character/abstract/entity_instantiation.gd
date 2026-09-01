@@ -5,14 +5,37 @@ class_name EntityInstantiation
 ## igual, solo que hoy son siempre los del humano = 1.0).
 const FORCE_HUMAN_SPECIE := true
 
-## Vista de la FASE 1 de la migración: todos los personajes usan el arquetipo `generic`, que tiene las
-## tres cadenas de hueso en 0.5 y por lo tanto reproduce el modelo esculpido con DEFORMACIÓN CERO.
-## Sirve para mirar la malla sin que la variación de arquetipos meta ruido: si algo se ve torcido con
-## esto prendido, es un bug del espejo y no una proporción para tunear.
+## ── CANDADO GLOBAL DE ARQUETIPO ───────────────────────────────────────────────────────────────────
+## Todos los personajes usan este arquetipo y se saltea el sorteo. `-1` = sorteo normal, que es lo que
+## hace el juego de verdad.
 ##
-## En false (fase 2 en adelante) los arquetipos vuelven a variar, cada uno con su 0..1 por cadena
-## dentro de los rangos del modelo. Ver technical/skinned-character-migration.md.
-const FORCE_GENERIC_ARCHETYPE := true
+## Es CONST y no una variable, a propósito: al valer lo mismo en todas las máquinas no rompe la
+## determinación por seed. Estado mutable acá haría que el proxy resuelva otro personaje con la misma
+## seed y se viera distinto en cada pantalla.
+##
+## Hoy apunta a `generic`, que es la vista de la fase 1 de la migración: sirve para mirar la malla sin
+## que la variación de arquetipos meta ruido, así que si algo se ve torcido con esto puesto es un bug
+## del espejo y no una proporción para tunear. Poniendo `-1` la ciudad vuelve a variar.
+##
+## Para mirar UN arquetipo sin tocar código está el panel de debug — ver DEBUG_SEED_BASE.
+## Ver technical/skinned-character-migration.md.
+const FORCE_ARCHETYPE: int = EntityArchetype.Archetype.generic
+
+## ── SEEDS DE DEBUG: EL ARQUETIPO VA CODIFICADO EN LA SEED ─────────────────────────────────────────
+## Una seed en esta banda fuerza un arquetipo y GANA sobre el candado global. La variación que va
+## adentro sigue alimentando el rng, así que color, edad y specie varían igual: se pueden spawnear
+## diez `giga` distintos y no diez clones.
+##
+## VA EN LA SEED, y esa es la decisión que importa: la seed es lo ÚNICO que viaja a las otras máquinas
+## (`CharacterNetSync.broadcast_seed`). Un forzado guardado en una variable estática haría que el
+## proxy resuelva otro arquetipo con la misma seed. Codificado acá, todas las máquinas llegan al mismo
+## personaje sin mandar un byte de más y sin tocar el protocolo.
+##
+## La banda arranca en 900000 y las seeds normales salen de `randi() % 100000`, así que no se pisan.
+## Antes esto eran las seeds 0..4, que sí podían salir sorteadas y no alcanzaban para todos los
+## arquetipos. La elección de la UI vive en DebugArchetype.
+const DEBUG_SEED_BASE := 900000
+const DEBUG_SEED_SPAN := 1000
 
 var blend_range := 0.5
 
@@ -27,6 +50,9 @@ var spec: EntitySpecie
 
 var age: int
 var skin_color: Color
+var cloth_color: Color
+var hair_color: Color
+var leather_color: Color
 
 # Parámetros de animación resueltos: arquetipo (ya blendeado) × multiplicador de specie. No hay
 # sorteo por seed acá — la variación entre personajes viene del arquetipo, del blend de dos
@@ -45,24 +71,13 @@ static func create(seed: int) -> EntityInstantiation:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 
-	if FORCE_GENERIC_ARCHETYPE:
-		inst.archetype_type = EntityArchetype.Archetype.generic
-		inst.archetype_blend = 0.0
-		inst.arch_final = EntityArchetype.create(EntityArchetype.Archetype.generic)
-		inst.specie_type = _resolve_specie(rng, inst.arch_final)
-		inst.spec = _make_specie(inst.specie_type)
-		inst._resolve(rng)
-		return inst
-
-	if seed >= 0 and seed <= 4:
-		var debug_archetypes: Array[EntityArchetype.Archetype] = [
-			EntityArchetype.Archetype.fat_man,
-			EntityArchetype.Archetype.kid,
-			EntityArchetype.Archetype.tall_lanky,
-			EntityArchetype.Archetype.giga,
-			EntityArchetype.Archetype.old,
-		]
-		inst.archetype_type = debug_archetypes[seed]
+	# El arquetipo puede venir forzado por dos vías, y LA SEED GANA: es una elección explícita hecha
+	# desde el panel, mientras que el candado global es apenas el default de la sesión.
+	var forced := archetype_in_seed(seed)
+	if forced < 0:
+		forced = FORCE_ARCHETYPE
+	if forced >= 0:
+		inst.archetype_type = forced as EntityArchetype.Archetype
 		inst.archetype_blend = 0.0
 		inst.arch_final = EntityArchetype.create(inst.archetype_type)
 		inst.specie_type = _resolve_specie(rng, inst.arch_final)
@@ -93,6 +108,20 @@ static func create(seed: int) -> EntityInstantiation:
 	return inst
 
 
+## Seed que reproduce `archetype` con una variación propia. La usa el panel de debug.
+static func debug_seed(archetype: EntityArchetype.Archetype, variation: int) -> int:
+	return DEBUG_SEED_BASE + int(archetype) * DEBUG_SEED_SPAN + posmod(variation, DEBUG_SEED_SPAN)
+
+
+## El arquetipo codificado en una seed, o −1 si es una seed normal.
+static func archetype_in_seed(seed: int) -> int:
+	if seed < DEBUG_SEED_BASE:
+		return -1
+	@warning_ignore("integer_division")
+	var idx: int = (seed - DEBUG_SEED_BASE) / DEBUG_SEED_SPAN
+	return idx if idx < EntityArchetype.Archetype.size() else -1
+
+
 func _resolve(rng: RandomNumberGenerator) -> void:
 	age             = roundi(rng.randf_range(arch_final.min_age, arch_final.max_age))
 	shoulder_swing  = arch_final.shoulder_swing  * spec.shoulder_swing_multiplier
@@ -101,7 +130,21 @@ func _resolve(rng: RandomNumberGenerator) -> void:
 	root_bounciness = arch_final.root_bounciness * spec.root_bounciness_multiplier
 	step_height     = arch_final.step_height     * spec.step_height_multiplier
 	stride          = clampf(arch_final.stride   * spec.stride_multiplier, 0.0, 1.0)
-	skin_color      = spec.skin_colors[rng.randi() % spec.skin_colors.size()]
+	skin_color      = _pick(rng, spec.skin_colors,    Color(0.9, 0.7, 0.5))
+	cloth_color     = _pick(rng, spec.cloth_colors,   Color(0.35, 0.35, 0.42))
+	hair_color      = _pick(rng, spec.hair_colors,    Color(0.15, 0.11, 0.09))
+	leather_color   = _pick(rng, spec.leather_colors, Color(0.25, 0.18, 0.14))
+	# Va AL FINAL: el rng ya se consumió, así que sacar el candado devuelve el comportamiento de antes
+	# sin desplazar ninguna otra tirada. Ver AppearancePreset.
+	AppearancePreset.apply(self)
+
+
+## Un color de la paleta, o el fallback si la specie todavía no tiene esa paleta cargada. El fallback
+## existe para que agregar un rol nuevo no rompa las species viejas — se ven grises, no crashean.
+static func _pick(rng: RandomNumberGenerator, palette: Array, fallback: Color) -> Color:
+	if palette == null or palette.is_empty():
+		return fallback
+	return palette[rng.randi() % palette.size()]
 
 
 static func _pick_archetype(rng: RandomNumberGenerator) -> EntityArchetype.Archetype:

@@ -12,6 +12,7 @@ var velocity: Vector3 = Vector3.ZERO       # velocidad de movimiento (world) →
 var basis: Basis = Basis()                 # orientación del cuerpo (yaw)
 var origin: Vector3 = Vector3.ZERO         # posición del cuerpo
 var grounded: bool = true                  # pies plantados vs recogidos
+var delta: float = 0.0                     # dt del frame → suavizados que no dependan de los FPS
 var ground_point: Vector3 = Vector3.ZERO   # punto de contacto con el piso
 
 # ── Impacto (stagger) ──

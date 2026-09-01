@@ -5,7 +5,8 @@ The recipe for giving a bone chain a parametric length that Godot can drive — 
 It produces exactly three things:
 
 1. **One shape key** on the affected mesh, named after the variable.
-2. **Two numbers**: the chain length at `0.0` and at `1.0`.
+2. **One number**: the factor the bone was scaled by. Godot measures the rest length itself, and pose
+   scale is the one thing the `.glb` cannot carry.
 3. Nothing else. Drivers and reference objects are authoring aids and never leave Blender.
 
 ---
@@ -40,6 +41,37 @@ Either route works — what matters is the end state (rest bones short, mesh mat
 > ⚠️ **If you take the Edit Mode route, check what hangs below.** Editing the armature's rest does **not** move meshes. Shortening `lower.arm` moves the head of `wrist`, but `hands_mesh` and `nails_mesh` stay put and end up floating where the long forearm used to end.
 
 > ⚠️ **Applying a modifier fails on a mesh that already has shape keys.** If you take the Pose Mode route, it has to happen before step 3.
+
+### Re-basing when the model is not an extreme
+
+The arm was already the shortest arm, so step 1 was free. Usually it is not: the leg was authored at
+what should be the *middle* of its range, and making the model the `0.0` means genuinely shrinking it.
+
+**How much.** Take it from the band the code already uses, so no archetype changes meaning. The leg's
+was `0.65 … 1.30` around the sculpt, so the new base is **65 %** of it and the factor is
+`1.30 / 0.65 = `**`2.0`**.
+
+**The archetype value that reproduces the original moves, and it is no longer `0.5`.** Solve
+`1 + (F−1)·v` against the old length: for the leg, `1/0.65 = 1.5385` ⇒ **`v = 0.5385`**. Put it in the
+generic archetype or the reference character silently gets shorter. This is also why the midpoint-bulge
+fix is load-bearing here and not a nicety — the generic now *lives* at mid-range, where the error peaks.
+
+**Only two meshes moved**, and knowing which saves the whole step: anything whose geometry sits above
+the hip is untouched by a leg scale, so the shape-keyed arm meshes never enter the picture and the
+"cannot apply a modifier with shape keys" wall never comes up. Check with the mesh's bounding box, not
+by eye.
+
+> ⚠️ **THE CHARACTER HAS TO END UP STANDING ON THE ORIGIN.** Scaling `higher.leg` pivots at the hip, so
+> the feet rise — for the leg, by 0.319 m. Godot reads the sole-to-ankle distance as `foot.L`'s global
+> rest height, so a model left floating tells it the character has 35 cm soles, and it stands them that
+> far in the air. It is the float-and-never-step bug recorded in `character-animation.md`.
+>
+> Fix it in Object Mode — select everything, move down, **`Object → Apply → All Transforms`**. Applying
+> is the part people skip: without it the offset ships as a node transform and the bone rests, which is
+> what Godot actually reads, do not move at all. A pure translation is safe on shape-keyed meshes.
+>
+> Verify by measuring the exported `.glb`, not in the viewport: ankle back to its original height, chain
+> at exactly `factor × new base`, thigh/calf fractions unchanged.
 
 ---
 
@@ -108,9 +140,9 @@ Check by leaving Edit Mode; compare against the short version with **Pose → Cl
 
 ---
 
-## 7. The driver *(optional)*
+## 7. The driver
 
-Only so you can preview with one slider. **Godot never reads it** — Blender drivers and custom properties do not survive the `.glb`.
+**Godot never reads it** — Blender drivers and custom properties do not survive the `.glb`. But it is not decoration either: it is the only way to preview an **intermediate** value, and an intermediate value is the one thing two authored extremes never show you. Wire it with the expressions below and the preview matches the game; wire the shape key with plain `var` and it lies, in exactly the way [The midpoint bulge](#the-midpoint-bulge) describes.
 
 **The property.** Object Mode → armature → Properties → **Object** tab → **Custom Properties** → **New** → gear icon → name `arms_length`, Min `0`, Max `1`, Default `0`.
 
@@ -209,13 +241,13 @@ the same expression with its own factor.
 
 ## What ships to Godot
 
-**The two chain lengths**, and nothing else.
+**The factor**, and nothing else — one per chain, in `ReferenceRig`: `ARM_MODEL_FACTOR = 4.0`,
+`LEGS_MODEL_FACTOR = 2.0`. Godot's side is then two entries in `SkinnedBodyUtil.STRETCH_CHAINS` and a
+call to `SkeletonSizesUtil.authored_chain`; there is no per-chain logic to write.
 
-Read them in the armature's Edit Mode: select the bone → `N` panel → **Item** → **Length**. Sum `upper.arm` + `lower.arm` for the `0.0` value; multiply by the factor for `1.0`.
+Everything else Godot measures from the `.glb` on load: every bone's rest length, and from those the chain, its internal proportions, and the mesh scale. Pose scale is the single quantity glTF does not carry, which is exactly why the factor has to be handed over by hand.
 
-Godot re-measures the `0.0` length from the `.glb` itself, so in practice **the factor alone is enough** — pose scale is not exported, which is the one thing the file cannot tell us.
-
-Worked example: `0.153838 + 0.218627 = 0.372465` at `0.0`, factor 4 → `1.48986` at `1.0`.
+If you want the lengths anyway: armature Edit Mode → select the bone → `N` panel → **Item** → **Length**. Worked example: `0.153838 + 0.218627 = 0.372465` at `0.0`, factor 4 → `1.48986` at `1.0`.
 
 ---
 

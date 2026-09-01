@@ -22,7 +22,6 @@ var head_size: Vector3
 var neck_size: Vector3
 var chest_size: Vector3
 var higher_spine_size: Vector3
-var middle_spine_size: Vector3
 var lower_spine_size: Vector3
 var higher_leg_size: Vector3
 var lower_leg_size: Vector3
@@ -37,15 +36,34 @@ var raycast_stance_offset: float
 # ── MARCHA ────────────────────────────────────────────────────────────────────────────────────────
 # Todo esto se deriva del knob `stride` del arquetipo. Ver technical/character-animation.md.
 
-## Extensión máxima "cómoda" de la cadena de la pierna, en fracción de su largo. A 1.0 la pierna
-## queda trabada recta (la IK clampea y el pie deja de llegar al target); 0.95 deja la rodilla
-## visiblemente flexionada incluso en el punto más estirado del paso.
-const MAX_EXTENSION := 0.95
+## Extensión máxima de la cadena de la pierna, en fracción de su largo. Es el TECHO de la IK: pasado
+## esto, `BoneInstantiator._update_pelvis_drop` considera que el pie no llega y baja la pelvis.
+##
+## ⚠ TIENE QUE SER ≥ STAND_EXTENSION_STRAIGHT, o la pose de reposo es inalcanzable por definición.
+## Estuvo en 0.95 contra un reposo de 0.99, y el efecto era el opuesto al buscado: **parado y quieto**
+## el déficit daba 3.8 cm, la pelvis bajaba sola, y `root_bounciness` lo exageraba hasta 4.9 cm. O
+## sea que todo lo que `leg_bentness` pidiera por encima de 0.95 se descartaba, y el arquetipo que
+## pedía la pierna MÁS RECTA terminaba siendo el más flexionado, por generar el mayor déficit.
+##
+## Esa es la razón de que sea 0.99 y no un número "cómodo": el margen para terreno irregular ya lo da
+## la caída de pelvis, que existe justo para eso. Este techo no tiene que aportar margen, tiene que
+## dejar que el reposo se cumpla.
+const MAX_EXTENSION := 0.99
 ## Extensión de la pierna PARADO, en fracción de su largo. NO es un margen de seguridad (la pelvis ya
 ## baja sola cuando no llega): es la GARANTÍA de que la pierna alcanza el piso estando parado. Subirlo
 ## hacia 1.0 endereza la pierna y acerca el reposo al modelo, a cambio de trabar antes en terreno
 ## irregular.
-const STAND_EXTENSION := 0.97
+## Cuánto de su largo usa la pierna estando parada. Es lo que fija la FLEXIÓN DE RODILLA en reposo, y
+## el arquetipo elige dónde cae dentro de esta banda con `leg_bentness`.
+##
+##   0.99 → ~16° de rodilla      0.985 → 20°      0.97 → 28°      0.95 → 37°      0.90 → ~52°
+##
+## ⚠ El techo NO puede acercarse a 1.0, y no es un margen de seguridad: es **la garantía de que la
+## pierna llega al piso estando parada**. Con la pierna estirada al 100% el objetivo de la IK queda
+## justo en el límite del alcance, cualquier irregularidad del terreno lo deja fuera, y el pie se pliega
+## hacia su objetivo aéreo — el personaje flota y no da un paso. Ver technical/character-animation.md.
+const STAND_EXTENSION_STRAIGHT := 0.99
+const STAND_EXTENSION_BENT := 0.90
 
 ## Excursión máxima del pie desde la cadera, en fracción del largo de pierna, mapeada desde `stride`.
 ## Ya NO se deriva de la altura de pelvis: es al revés — se elige la zancada y la pelvis baja lo que
@@ -84,9 +102,39 @@ var axis_weight_lateral:  float = 0.6
 var axis_weight_forward:  float = 0.8
 var axis_weight_backward: float = 1.0
 
+## ── SLOUCH: SOLO HACIA ADELANTE ───────────────────────────────────────────────────────────────────
+## El encorvado es `chest` y `neck` inclinándose hacia adelante, y nada más.
+##
+## Antes era una **S**: `higher_spine` se arqueaba hacia ATRÁS (+0.6 rad) y `chest`/`neck` hacia
+## adelante (−0.6), así que los hombros quedaban casi en su lugar y lo único que se veía encorvado era
+## la cabeza. Mucha maquinaria para poca lectura, y difícil de tunear porque los dos términos se
+## cancelaban entre sí. Ahora los grados que se piden son los grados que se ven.
+##
+## Los máximos bajaron al sacar el contra-arqueo: sin nada que compense, el 0.6 del pecho inclinaba el
+## torso entero 34°. `chest` 0.35 (20°) + `neck` 0.45 (26°) acumulan 46° en la cabeza, que es un
+## encorvado marcado sin doblar al personaje al medio.
+##
+## LOS DOS ARRANCAN EN CERO. El cuello tenía un piso de 0.2 rad que compensaba el reposo del modelo
+## viejo; el esqueleto se re-posicionó para que **derecho sea la postura natural**, así que ese piso
+## dejó de tener sentido y además ensuciaría un futuro parámetro de largo de cuello.
 var slouchiness_chest: float
-var slouchiness_center_spine: float
 var slouchiness_neck: float
+## ── POSTURA DE HOMBRO, en radianes ────────────────────────────────────────────────────────────────
+## Salen de sus propios knobs de arquetipo (`shoulders_forward` / `shoulders_drop`), NO del slouch.
+##
+## Los dos son giros sobre ejes del MUNDO y van espejados entre lados, así que las dos articulaciones
+## se mueven juntas en vez de rotar el torso: `forward` sobre la vertical, `drop` sobre el eje frontal.
+##
+## Los topes son chicos a propósito. Los hombros no "se cierran" mucho aunque la espalda esté vencida,
+## y pasarse acá se lee como brazos cruzados y no como postura.
+##
+## ⚠ NO pasan por `lerp_range`, que clampea a 0..1: acá el knob es un factor CON SIGNO. Negativo es una
+## postura tan válida como positiva —hombros atrás y pecho abierto, o hombros levantados— y clamparla
+## a cero las perdía sin avisar.
+const SHOULDER_FORWARD_MAX := 0.12
+const SHOULDER_DROP_MAX := 0.10
+var shoulder_forward: float
+var shoulder_drop: float
 
 var arm_openness_angle: float
 var arm_bentness: float
@@ -113,13 +161,14 @@ const CONST_HEAD_RADIUS_XZ := 0.19
 # metros. Consecuencia buscada: `height` deja de ser una entrada y pasa a ser un RESULTADO — ver
 # `total_height`. Si un arquetipo quisiera un largo fuera del rango, gana el rango.
 #
-# EL MODELO ES EL 0.5. El largo esculpido de cada cadena es el valor en 0.5, y se LEE DEL RIG — no se
-# transcribe. Antes eran constantes copiadas de un volcado, y quedaban viejas en silencio en cuanto se
-# re-exportaba el modelo: el rig lógico seguía pidiendo las proporciones de la versión anterior y el
-# espejo estiraba la malla para cumplirlas.
+# SOLO QUEDA EL TORSO ACÁ. El brazo y la pierna ya tienen sus dos extremos autorados en Blender y
+# pasan por `authored_chain`: para ellos el modelo es el 0.0 y el 1.0 es el modelo × factor.
 #
-# ⚠ Los EXTREMOS siguen siendo provisorios: factores sobre el largo esculpido, hasta que estén
-# modelados en Blender y sepamos los reales. Ver technical/character-blender-length-variable.md.
+# Para el torso el esquema sigue siendo provisorio: el largo esculpido es el 0.5 y los extremos son
+# factores sobre él, hasta que estén modelados. El largo esculpido se LEE DEL RIG — no se transcribe.
+# Antes eran constantes copiadas de un volcado, y quedaban viejas en silencio en cuanto se re-exportaba
+# el modelo: el rig lógico seguía pidiendo las proporciones de la versión anterior y el espejo estiraba
+# la malla para cumplirlas. Ver technical/character-blender-length-variable.md.
 const LENGTH_MIN_FACTOR := 0.65
 const LENGTH_MAX_FACTOR := 1.30
 
@@ -133,16 +182,54 @@ const LENGTH_MAX_FACTOR := 1.30
 ## 1.49 m de hombro a muñeca. Así que el arquetipo elige PROPORCIÓN DE CUERPO dentro de esta banda, y
 ## el agarre es lo único que empuja por encima de ella.
 ##
-## 0.08..0.28 da 0.46..0.69 m de cadena sobre el modelo actual, con el genérico (0.5) en 0.57 m — la
-## proporción humana para 1.71 m de altura, que es a lo que está escalado el modelo.
-const ARM_EXT_MIN := 0.08
-const ARM_EXT_MAX := 0.28
+## Calibrada contra hombro→PUNTA DE LOS DEDOS, no contra hombro→muñeca. La mano son 0.158 m más allá
+## de la muñeca y es lo que se ve; medir solo la cadena daba un brazo que en pantalla llegaba casi a
+## la rodilla.
+##
+## EL PISO ES 0.00 y es el brazo tal cual se esculpió en Blender: no hay nada más corto. Ahí vive
+## `kid`, y para eso se acortó la base del brazo en Blender (0.471 → 0.330). Antes de ese re-baseo el
+## chico tenía los brazos proporcionalmente MÁS LARGOS que cualquiera, y no había número acá que lo
+## arreglara.
+##
+## EL TECHO NO ES A OJO, SE DERIVA. El brazo más largo, estirado al máximo por el agarre, tiene que
+## caer JUSTO en el máximo autorado en Blender — ni más (el correctivo se clampea y la malla se ve de
+## goma) ni mucho menos (se desperdicia rango esculpido). Eso es:
+##
+##     cadena(ext) · stretch = cadena_modelo · F        ⇒  ext = (F/stretch − 1) / (F − 1)
+##
+## Con F = 4 y stretch = 2 da exactamente 1/3, o sea que el arquetipo más largo tiene el DOBLE del
+## brazo del modelo y estirado llega al ×4 justo. Antes esto era un número puesto a mano (0.09, después
+## 0.15) y `tall_lanky` se pasaba un 3%.
+##
+## ⚠ SUBIR EL TECHO ALARGA A TODOS, porque `arms_length` es una fracción de la banda. Cada vez que se
+## mueve hay que re-pinchar el `arms_length` de los arquetipos para que solo cambie el que se quiere
+## cambiar. Con el techo en 1/3 la cuenta es directa: `k = largo_deseado / cadena_modelo − 1`.
+##
+## ⚠ Estos números dependen de `rig.arm_chain`, que sale del .glb. Si se remodela el brazo en Blender,
+## HAY QUE REVISAR ESTA BANDA: ya pasó — la cadena creció de 0.372 a 0.471 en un remodelado y un
+## recorte del 12%% acá terminó dando un brazo más largo que antes.
+##
+## Calibrada contra hombro→PUNTA DE LOS DEDOS: la mano son 0.180 m más allá de la muñeca y es lo que
+## se ve.
+const ARM_EXT_MIN := 0.00
+## El estirón para el que se dimensiona la banda. Es el `arm_stretch` que usan todos los arquetipos;
+## `MAX_ARM_STRETCH` es aparte y es solo un tope de seguridad.
+const DESIGN_ARM_STRETCH := 2.0
+const ARM_EXT_MAX := (ReferenceRig.ARM_MODEL_FACTOR / DESIGN_ARM_STRETCH - 1.0) / (ReferenceRig.ARM_MODEL_FACTOR - 1.0)
 
 
 
-## Extensión máxima del brazo en reposo, en fracción de su cadena. Nunca 1.0: a extensión total el
-## codo queda colineal, el plano de flexión se indefine y la torsión de la mano sale arbitraria.
-const ARM_REST_EXTENSION := 0.97
+## Extensión máxima del brazo en reposo, en fracción de su cadena.
+##
+## NUNCA 1.0: a extensión total el codo queda colineal, el plano de flexión se indefine y la torsión de
+## la mano sale arbitraria — resuelta por una cuenta en espacio mundo, o sea distinta según hacia dónde
+## mire el personaje. Fue el bug de las manos dadas vuelta.
+##
+## Es el PISO de la flexión: con `arm_bentness = 0` el codo se queda con lo que este tope deje.
+##   0.97 → 28°     0.985 → 20°     0.99 → 16°     1.0 → 0° y roto
+## En 0.985 el codo sigue claramente fuera del eje, así que el pole tiene plano definido y sobra
+## margen. Si alguna vez vuelven a aparecer manos dadas vuelta, este es el primer sospechoso.
+const ARM_REST_EXTENSION := 0.99
 
 ## Techo ABSOLUTO del estiramiento, en múltiplos del largo en reposo. Es una red de seguridad, no la
 ## perilla: quien elige cuánto estira cada personaje es `EntityArchetype.arm_stretch`. Esto solo
@@ -158,22 +245,32 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var rig := ReferenceRig.get_rig()
 
 	# Las tres cadenas paramétricas: 0..1 del arquetipo → metros, dentro del rango del modelo.
-	var new_leg_height   := _chain(rig.leg_chain, entityStats.legs_length)
-	var new_torso_height := _chain(rig.torso_chain,   entityStats.torso_length)
+	var new_leg_height   := leg_chain_for(rig, entityStats.legs_length)
+	var new_torso_height := torso_chain_for(rig, entityStats.torso_length)
 	var new_arm_length   := arm_chain_for(rig, lerp_range(ARM_EXT_MIN, ARM_EXT_MAX, entityStats.arms_length))
 	# Cuánto se aparta esta pierna de la del modelo: escala lo que se lee del rig (estancia, tobillo).
 	var leg_scale: float = new_leg_height / rig.leg_chain if rig.leg_chain > 0.0 else 1.0
 	# Todavía sin parametrizar (fase 3): quedan en el largo esculpido.
 	# Todavía sin parametrizar (fase 3): quedan en el largo esculpido, leído del rig.
 	var new_head_height       := rig.neck_len + rig.head_len
-	var new_hips_width        := rig.hip_len
-	var new_shoulders_width   := rig.shoulder_len
+	# EL ANCHO DEL FRAME SALE DE LA MASA, no de un knob propio. El hueso de hombro y el de cadera están
+	# horizontales en el modelo, así que alargarlos mueve el brazo y la pierna hacia AFUERA sin bajarlos
+	# — `upper.arm` y `higher.leg` son hijos y los siguen gratis (con `Inherit Scale = None`, para que se
+	# corran sin engordarse).
+	var new_hips_width        := authored_chain(rig.hip_len, ReferenceRig.HIPS_MODEL_FACTOR, entityStats.fat)
+	var new_shoulders_width   := authored_chain(rig.shoulder_len, ReferenceRig.FRAME_MODEL_FACTOR, entityStats.muscle)
 
 	skelSizes.arm_reach = new_arm_length
 	# Alcance de interacción: hasta dónde puede agarrar, derivado del brazo y no autorado. El 0.97 es
 	# el GRAB_MIN_BEND_FACTOR de ArmsController — con ese techo el brazo nunca se estira más de
 	# MAX_ARM_STRETCH veces su largo esculpido.
-	skelSizes.arm_stretch = minf(entityStats.arm_stretch, MAX_ARM_STRETCH)
+	# El estirón nunca puede pedir más brazo del que se esculpió: pasado `cadena_modelo × F` el
+	# correctivo se clampea en 1 y la malla se estira sin nada que corrija la silueta — se ve de goma.
+	# El tope sale del MODELO, no de una constante, así que no puede quedar viejo cuando se re-esculpe.
+	# Con la banda derivada de arriba esto no llega a activarse; está para que no pueda volver a pasar.
+	var authored_max := rig.arm_chain * ReferenceRig.ARM_MODEL_FACTOR
+	skelSizes.arm_stretch = minf(minf(entityStats.arm_stretch, MAX_ARM_STRETCH),
+		authored_max / maxf(new_arm_length, 0.001))
 	skelSizes.interaction_reach = new_arm_length * skelSizes.arm_stretch * 0.97
 	# `height` ya no es una entrada: es esto. Lo lee la cápsula, la cámara y el panel de debug.
 	skelSizes.total_height = new_leg_height + new_torso_height + new_head_height
@@ -185,7 +282,14 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	# La estancia sale del MODELO, no del ancho de cadera. Si el pie en reposo no cae donde el modelo lo
 	# tiene, la tibia queda girada respecto de él y el pie —que cuelga rígido de la tibia— hereda ese
 	# giro: eran los pies apuntando para adentro. `stance_width` queda como multiplicador encima.
-	skelSizes.raycast_stance_offset = rig.foot_rest_x * leg_scale * inst.arch_final.stance_width
+	# LA ESTANCIA ES EL ANCHO DE CADERA, literalmente. En el modelo la pierna es vertical —la punta de
+	# `hip.L` y `foot.L` comparten X exacto—, así que el pie cae justo debajo de la articulación y no hay
+	# nada más que calcular.
+	#
+	# Antes era `foot_rest_x * leg_scale`, de cuando la pierna venía inclinada en el modelo y el pie no
+	# caía bajo la cadera. Ese `leg_scale` hacía que **alargar la pierna separara los pies**: el genérico,
+	# con la pierna a 1.59×, se paraba con 0.411 m entre pies contra los 0.2585 del modelo.
+	skelSizes.raycast_stance_offset = new_hips_width * inst.arch_final.stance_width
 	skelSizes.shoulders_width = new_shoulders_width
 
 	if entityStats.has_neck:
@@ -204,9 +308,6 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var higher_spine_l_radius : float = lerp_range(0.1, 0.3, entityStats.fatness)
 	skelSizes.higher_spine_size = Vector3(higher_spine_u_radius, new_torso_height * 0.25, higher_spine_l_radius)
 
-	var middle_spine_u_radius : float = lerp_range(0.1, 0.55, entityStats.fatness)
-	var middle_spine_l_radius : float = lerp_range(0.1, 0.5, entityStats.fatness)
-	skelSizes.middle_spine_size = Vector3(middle_spine_u_radius, new_torso_height * 0.25, middle_spine_l_radius)
 
 	var lower_spine_u_radius : float = lerp_range(0.1, 0.35, entityStats.fatness)
 	var lower_spine_l_radius : float = lerp_range(0.1, 0.35, entityStats.fatness)
@@ -242,7 +343,6 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	# Los radios (.x/.z) NO se tocan: son la forma de la cápsula del CustomBone, que ya no se dibuja.
 	# Hueso hoja = no estira malla, así que `foot_size` se queda con su fórmula derivada.
 	skelSizes.lower_spine_size.y  = _share(rig, "lower_spine",  new_torso_height, rig.torso_chain)
-	skelSizes.middle_spine_size.y = _share(rig, "middle_spine", new_torso_height, rig.torso_chain)
 	skelSizes.higher_spine_size.y = _share(rig, "higher_spine", new_torso_height, rig.torso_chain)
 	skelSizes.chest_size.y        = _share(rig, "chest",        new_torso_height, rig.torso_chain)
 	skelSizes.neck_size.y         = rig.neck_len if entityStats.has_neck else 0.0
@@ -250,7 +350,7 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.shoulder_width.y    = rig.shoulder_len
 	skelSizes.upper_arm_size.y    = _share(rig, "left_upper_arm",  new_arm_length, rig.arm_chain)
 	skelSizes.lower_arm_size.y    = _share(rig, "left_lower_arm",  new_arm_length, rig.arm_chain)
-	skelSizes.hip_size.y          = rig.hip_len
+	skelSizes.hip_size.y          = new_hips_width
 	skelSizes.higher_leg_size.y   = _share(rig, "left_higher_leg", new_leg_height, rig.leg_chain)
 	skelSizes.lower_leg_size.y    = _share(rig, "left_lower_leg",  new_leg_height, rig.leg_chain)
 
@@ -275,8 +375,21 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	# tiene a 0.8885 sobre una cadena de 0.863, o sea que la pierna no llegaba al piso ni estirada del
 	# todo — el personaje flotaba y nunca daba un paso. Del modelo sale solo la altura de TOBILLO (el
 	# grosor de pie/zapato, que ningún hueso puede decir), y encima va lo que la pierna alcanza.
-	skelSizes.ankle_height = rig.ankle_rest_height * leg_scale
-	skelSizes.standing_pelvis_height = skelSizes.ankle_height + new_leg_height * STAND_EXTENSION
+	# ALTURA DEL TOBILLO SOBRE EL PISO: es el grosor del zapato, y NO escala con nada.
+	#
+	# ⚠ Este número tiene que coincidir con lo que hace la MALLA, no con lo que sería ideal. `foot` no
+	# está en ninguna cadena de STRETCH_CHAINS y `_detach_children_of_stretched` lo desprende de la
+	# tibia, así que `shoes_mesh` es RÍGIDO: mide 3 cm en todos los personajes.
+	#
+	# Estaba multiplicado por `leg_scale`, o sea asumiendo que el pie crecía con la pierna. El resultado
+	# era que la IK plantaba el tobillo más arriba de lo que la suela baja y **todos los personajes
+	# flotaban**: 18 mm el genérico, 25 el tall_lanky, proporcional al estirado de su pierna.
+	#
+	# Si algún día el pie escala (entra a una cadena, o se le da su propio factor), este número tiene
+	# que volver a escalar CON ÉL.
+	skelSizes.ankle_height = rig.ankle_rest_height
+	var stand_extension := lerp_range(STAND_EXTENSION_STRAIGHT, STAND_EXTENSION_BENT, entityStats.leg_bentness)
+	skelSizes.standing_pelvis_height = skelSizes.ankle_height + new_leg_height * stand_extension
 	skelSizes.distance_from_ground = new_leg_height - skelSizes.standing_pelvis_height
 	skelSizes.foot_reach = new_leg_height * lerp_range(FOOT_REACH_MIN, FOOT_REACH_MAX, inst.stride)
 	skelSizes.current_duty = DUTY_WALK
@@ -287,9 +400,10 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.pole_distance = new_leg_height
 	skelSizes.raycast_start_y_offset = new_leg_height * 0.35
 
-	skelSizes.slouchiness_chest        = lerp_range(0.0, 0.6, entityStats.slouch)
-	skelSizes.slouchiness_center_spine = lerp_range(0.0, 0.6, entityStats.slouch)
-	skelSizes.slouchiness_neck         = lerp_range(0.2, 0.6, entityStats.slouch)
+	skelSizes.slouchiness_chest        = lerp_range(0.0, 0.35, entityStats.slouch)
+	skelSizes.slouchiness_neck         = lerp_range(0.0, 0.45, entityStats.slouch)
+	skelSizes.shoulder_forward         = clampf(entityStats.shoulders_forward, -1.0, 1.0) * SHOULDER_FORWARD_MAX
+	skelSizes.shoulder_drop            = clampf(entityStats.shoulders_drop, -1.0, 1.0) * SHOULDER_DROP_MAX
 
 	skelSizes.arm_openness_angle   = lerp_range(0.0, -PI * 0.25, entityStats.arm_openness)
 	skelSizes.arm_bentness         = entityStats.arm_bentness
@@ -308,10 +422,8 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 static func _compute_arm_shoulder_local(left: bool, s: SkeletonSizesUtil) -> Vector3:
 	var pos := Vector3.ZERO
 	pos += Vector3(0, s.lower_spine_size.y, 0)
-	var b := Basis.from_euler(Vector3(s.slouchiness_center_spine, 0, 0))
-	pos += b * Vector3(0, s.middle_spine_size.y, 0)
 	pos += Vector3(0, s.higher_spine_size.y, 0)
-	b = Basis.from_euler(Vector3(-s.slouchiness_chest, 0, 0))
+	var b := Basis.from_euler(Vector3(-s.slouchiness_chest, 0, 0))
 	pos += b * Vector3(0, s.chest_size.y, 0)
 	if left:
 		b = Basis.from_euler(Vector3(0, 0, deg_to_rad(90)))
@@ -386,14 +498,23 @@ static func lerp_range(min_val: float, max_val: float, t: float) -> float:
 ## como fue esculpido, y los extremos se modelan a mano sin obligación de quedar simétricos. Esa
 ## asimetría ES el control artístico — con un lerp de dos extremos, el genérico saldría del promedio
 ## en vez de salir del modelo.
-## Largo de la cadena del brazo para un valor del rango de Blender (0 = el modelo tal cual, 1 = el
-## modelo × ARM_MODEL_FACTOR). Es la misma cuenta que hace el driver de Blender, y su inversa la usa
-## el agarre para despejar cuánto puede estirar.
-static func arm_chain_for(rig: ReferenceRig, ext: float) -> float:
-	return rig.arm_chain * (1.0 + (ReferenceRig.ARM_MODEL_FACTOR - 1.0) * ext)
+## Largo de una cadena CON LOS DOS EXTREMOS AUTORADOS EN BLENDER: el modelo es el 0.0 y el 1.0 es ese
+## modelo × factor. Es la MISMA cuenta que hace el driver de Blender — si las dos se separan, el
+## preview de Blender miente. Su inversa la usa el agarre para despejar cuánto puede estirar el brazo.
+static func authored_chain(model_len: float, factor: float, t: float) -> float:
+	return model_len * (1.0 + (factor - 1.0) * t)
 
-## Largo de una cadena TODAVÍA SIN AUTORAR (pierna, torso): el esculpido es el 0.5 y los extremos son
-## factores provisorios sobre él. El brazo ya no pasa por acá — ver arm_chain_for.
+static func arm_chain_for(rig: ReferenceRig, ext: float) -> float:
+	return authored_chain(rig.arm_chain, ReferenceRig.ARM_MODEL_FACTOR, ext)
+
+static func leg_chain_for(rig: ReferenceRig, t: float) -> float:
+	return authored_chain(rig.leg_chain, ReferenceRig.LEGS_MODEL_FACTOR, t)
+
+static func torso_chain_for(rig: ReferenceRig, t: float) -> float:
+	return authored_chain(rig.torso_chain, ReferenceRig.TORSO_MODEL_FACTOR, t)
+
+## Largo de una cadena TODAVÍA SIN AUTORAR (solo el torso): el esculpido es el 0.5 y los extremos son
+## factores provisorios sobre él. Brazo y pierna ya no pasan por acá — ver authored_chain.
 static func _chain(sculpted: float, t: float) -> float:
 	return lerp_three(sculpted * LENGTH_MIN_FACTOR, sculpted, sculpted * LENGTH_MAX_FACTOR, t)
 

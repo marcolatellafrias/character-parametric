@@ -10,9 +10,30 @@ var creative_mode: bool = false
 var fly_speed: float = 12.0
 var fly_sprint_multiplier: float = 2.0
 
+## Las tres escalas globales que convierten los stats del arquetipo en física. Mueven a TODOS los
+## personajes a la vez; los arquetipos solo eligen su lugar relativo dentro de eso.
+##
+## ⚠ ESTAS TRES DEFINEN LA CAMINATA Y ESTÁN APROBADAS. La inercia tipo carreras vive en el SPRINT
+## (ver SPRINT_TOP_ACCEL), no acá. Hubo un intento de meterla bajando `ACCEL_SCALE` a 3.5, y el efecto
+## fue el equivocado: enlenteció el andar normal, que es el 90% del juego.
 const SPEED_SCALE := 10.0
 const ACCEL_SCALE := 10.0
 const BRAKE_FACTOR := 0.375
+
+## ── LA BANDA DE SPRINT ────────────────────────────────────────────────────────────────────────────
+## Multiplicador de aceleración EN EL TOPE del sprint. Por debajo de la velocidad de caminata acelera
+## igual que caminando, y a medida que sube hacia el tope del sprint la aceleración cae hasta esto.
+##
+## Así el sprint es una banda que hay que GANAR: la velocidad extra tarda en llegar, y el personaje
+## agarra peso a medida que corre. Con el genérico —caminata 3.0 m/s, sprint 6.6— son ~1.7 s desde la
+## caminata hasta el tope, contra los 0.3 s de antes.
+##
+## Antes el sprint MULTIPLICABA la aceleración por `sprint_multiplier`, o sea que cuanto más rápido
+## podías ir, más rápido llegabas: el tope alto no costaba nada y no se sentía.
+##
+## Empieza en 1.0 y no menos, a propósito: arrancando de cero con sprint apretado la aceleración es la
+## misma que caminando, nunca peor. Apretar sprint jamás te frena.
+const SPRINT_TOP_ACCEL := 0.25
 
 ## Resistencia a voltearse (ragdoll por choque). El umbral de impacto escala con el PESO relativo a
 ## este peso de referencia: un pesado necesita un golpe mucho más fuerte para caerse que un liviano.
@@ -85,6 +106,9 @@ var _impact_xz_vel: Vector2 = Vector2.ZERO
 var _impact_y_vel: float = 0.0
 var _prev_velocity: Vector3 = Vector3.ZERO
 var _frame_force: Vector3 = Vector3.ZERO
+## DEBUG: mayor velocidad horizontal vista desde el último reseteo. La lee y resetea el botón
+## "Medir velocidad" del panel. No afecta nada.
+var debug_peak_speed: float = 0.0
 
 var _last_impact_xz_magnitude: float = 0.0
 
@@ -317,7 +341,15 @@ func _apply_movement_force() -> void:
 
 	var direction := (right * side_component + forward * forward_component).normalized()
 	var is_changing_direction := horizontal_vel.dot(direction) < 0.0
-	var effective_accel := current_accel * (sprint_multiplier if is_sprinting and not is_changing_direction else 1.0)
+	var effective_accel := current_accel
+	if is_sprinting and not is_changing_direction:
+		# `effective_max` ya trae el sprint y el crouch; dividir por el multiplicador devuelve el tope de
+		# caminata con las mismas correcciones aplicadas.
+		var walk_max: float = effective_max / maxf(sprint_multiplier, 0.001)
+		var over: float = clampf((horizontal_vel.length() - walk_max) / maxf(effective_max - walk_max, 0.001), 0.0, 1.0)
+		effective_accel = current_accel * lerpf(1.0, SPRINT_TOP_ACCEL, over)
+
+	debug_peak_speed = maxf(debug_peak_speed, horizontal_vel.length())
 
 	if horizontal_vel.length() < effective_max or is_changing_direction:
 		var force := direction * effective_accel

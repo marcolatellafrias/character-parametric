@@ -124,7 +124,7 @@ func _preset_steering_wheel() -> DashboardPreset:
 	wheel_def.type                = ControlDefinition.ControlType.ROTATING
 	wheel_def.grid_size           = Vector2i(2, 2)
 	wheel_def.rotation_axis_local = Vector3.BACK
-	wheel_def.rotate_sensitivity  = 0.3
+	wheel_def.rotate_sensitivity  = 0.2
 	wheel_def.height_offset       = 0.16
 	wheel_def.auto_return         = true
 

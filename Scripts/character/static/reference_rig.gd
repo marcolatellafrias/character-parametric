@@ -23,7 +23,6 @@ const MODEL_PATH := "res://Models/character.glb"
 ## nadie todavía (ver "Deferred — hands and fingers" en technical/skinned-character-migration.md).
 const BONE_MAP := {
 	"lower_spine":      "lower.spine",
-	"middle_spine":     "middle.spine",
 	"higher_spine":     "higher.spine",
 	"chest":            "chest",
 	"neck":             "neck",
@@ -57,14 +56,36 @@ const BONE_MAP := {
 ## pasa a 0.0 y no hay que tocar nada más.
 const MODEL_FORWARD_YAW := PI
 
-## ── FACTOR DE ESTIRAMIENTO DEL BRAZO ──────────────────────────────────────────────────────────────
-## La ESCALA DE POSE que se le aplicó a `upper.arm.L/R` en Blender para esculpir el shape key
-## `arms_length_max`, o sea cuánto mide el brazo en el extremo 1.0 respecto del 0.0.
+## ── FACTORES DE ESTIRAMIENTO POR CADENA ───────────────────────────────────────────────────────────
+## La ESCALA DE POSE que se le aplicó en Blender al PRIMER hueso de la cadena para esculpir su shape
+## key, o sea cuánto mide la cadena en el extremo 1.0 respecto del 0.0.
 ##
-## Es el ÚNICO número del brazo que no sale del .glb, y no por descuido: glTF no exporta escala de
-## pose, así que el archivo solo puede contar el extremo 0.0 (`arm_chain`). Si se re-esculpe con otro
-## factor, se cambia acá y nada más. Ver technical/character-blender-length-variable.md.
+## Son los ÚNICOS números de cada cadena que no salen del .glb, y no por descuido: glTF no exporta
+## escala de pose, así que el archivo solo puede contar el extremo 0.0 (`arm_chain`, `leg_chain`). Si
+## se re-esculpe con otro factor, se cambia acá y nada más.
+##
+## ⚠ EL MODELO ES EL MÍNIMO DE LA CADENA, no el medio. Vale para las dos: la pierna se acortó al 65%
+## en Blender justo para que el 0.0 fuera un extremo real. Un arquetipo que quiera el largo esculpido
+## original pide un valor INTERMEDIO, no 0.5 por default — ver `EntityArchetype.generic_arch`.
+##
+## Ver technical/character-blender-length-variable.md.
 const ARM_MODEL_FACTOR := 4.0
+const LEGS_MODEL_FACTOR := 2.0
+const TORSO_MODEL_FACTOR := 2.0
+
+## ── ANCHO DE FRAME Y DE CADERA ────────────────────────────────────────────────────────────────────
+## Cuánto se ensancha el hombro al máximo de músculo, y la cadera al máximo de grasa.
+##
+## NO tienen shape key propia y no la van a tener: su correctivo es `muscle_max` / `fat_max`, que ya
+## se esculpen con el hueso posado en su factor. Por eso el bulto cuadrático que obliga a la curva
+## `F·v/s` en las cadenas de largo acá no importa — a factor 1.3 el error a mitad de rango es del
+## **1.7%**, contra el 56% que da el ×4 del brazo. Ver technical/character-appearance-system.md.
+##
+## Van colgados de `muscle` y `fat` a propósito, sin knob propio: hombros anchos y músculo son la
+## misma variable en este personaje, igual que caderas anchas y grasa. Se puede desacoplar después
+## agregando dos campos al arquetipo, sin tocar nada más.
+const FRAME_MODEL_FACTOR := 1.3
+const HIPS_MODEL_FACTOR := 1.3
 
 static var _cached: ReferenceRig = null
 
@@ -139,7 +160,7 @@ func _load() -> void:
 		foot_rest_x = absf(skel.get_bone_global_rest(ankle_idx).origin.x)
 	leg_chain = float(lengths.get("left_higher_leg", 0.0)) + float(lengths.get("left_lower_leg", 0.0))
 	arm_chain    = float(lengths.get("left_upper_arm", 0.0)) + float(lengths.get("left_lower_arm", 0.0))
-	torso_chain  = float(lengths.get("lower_spine", 0.0)) + float(lengths.get("middle_spine", 0.0)) + float(lengths.get("higher_spine", 0.0)) + float(lengths.get("chest", 0.0))
+	torso_chain  = float(lengths.get("lower_spine", 0.0)) + float(lengths.get("higher_spine", 0.0)) + float(lengths.get("chest", 0.0))
 	shoulder_len = float(lengths.get("left_shoulder", 0.0))
 	hip_len      = float(lengths.get("left_hip", 0.0))
 	neck_len     = float(lengths.get("neck", 0.0))

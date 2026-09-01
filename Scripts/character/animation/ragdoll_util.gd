@@ -71,7 +71,7 @@ static func create(bones_util: CustomBonesUtil, skel_rb_node: Node3D, joints_nod
 
 func _build_bodies(bu: CustomBonesUtil) -> void:
 	var all_bones: Array = [
-		bu.lower_spine, bu.middle_spine, bu.higher_spine, bu.chest,
+		bu.lower_spine, bu.higher_spine, bu.chest,
 		bu.left_hip, bu.right_hip,
 		bu.left_higher_leg, bu.left_lower_leg,
 		bu.right_higher_leg, bu.right_lower_leg,
@@ -129,8 +129,7 @@ func _build_joints() -> void:
 	var bu := _bones_util
 
 	var pairs: Array = [
-		[bu.lower_spine,  bu.middle_spine,    55.0, 6.0, -20.0, 20.0, -30.0, 30.0, -20.0, 20.0],
-		[bu.middle_spine, bu.higher_spine,     55.0, 6.0, -20.0, 20.0, -30.0, 30.0, -20.0, 20.0],
+		[bu.lower_spine,  bu.higher_spine,     55.0, 6.0, -20.0, 20.0, -30.0, 30.0, -20.0, 20.0],
 		[bu.higher_spine,  bu.chest,           50.0, 6.0, -20.0, 20.0, -25.0, 25.0, -20.0, 20.0],
 		[bu.lower_spine,  bu.left_hip,        40.0, 5.0, -30.0, 30.0, -40.0, 40.0, -30.0, 30.0],
 		[bu.lower_spine,  bu.right_hip,       40.0, 5.0, -30.0, 30.0, -40.0, 40.0, -30.0, 30.0],
@@ -300,7 +299,6 @@ func activate(char_rb: CharacterRigidBody3D, skeleton_root: CustomBone) -> void:
 
 		var upper_bones: Array = [
 			_bodies.get(_bones_util.lower_spine,    null),
-			_bodies.get(_bones_util.middle_spine,   null),
 			_bodies.get(_bones_util.higher_spine,    null),
 			_bodies.get(_bones_util.chest,          null),
 			_bodies.get(_bones_util.left_shoulder,  null),

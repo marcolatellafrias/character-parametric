@@ -28,24 +28,99 @@ const FIRST_PERSON_VISIBLE: Array[String] = ["hand", "nail"]
 ## y el tramo del medio del brazo —que pesa 100% al padre— se queda quieto. Se ve como una junta que
 ## se abre, no como un brazo largo.
 ##
-## Por ahora solo los brazos, que son los únicos con extremos autorados en Blender. Piernas y torso
-## entran acá cuando tengan su shape key; hasta entonces su escala da 1.0 y no cambia nada.
-const STRETCH_BONES: Array[String] = [
-	"left_upper_arm", "right_upper_arm", "left_lower_arm", "right_lower_arm",
+## Una CADENA por entrada, con los huesos que la componen, el nombre de su shape key correctivo y el
+## factor con el que se esculpió en Blender. Es una tabla y no una lista suelta porque cada cadena
+## tiene su propio factor: agregar el torso es una entrada más y ni una línea de lógica.
+##
+## Los huesos van TODOS, no solo el primero. En Blender se escala únicamente el hueso raíz de la
+## cadena y el resto hereda; acá no puede ser así, porque `_detach_children_of_stretched` saca a los
+## hijos de la jerarquía —no les queda padre del cual heredar— y el espejo le escribe a cada hueso su
+## global directo. Cada uno se escala solo, con su propio `cb.length / _rest_len`, y como `_share`
+## reparte la cadena en la proporción del modelo el resultado es el mismo estiramiento uniforme.
+##
+## UNA CADENA PUEDE ESTAR ACÁ SIN QUE SU SHAPE KEY EXISTA TODAVÍA, y hace falta que esté. Los huesos
+## se escalan igual —eso sale de `cb.length / _rest_len`, no del blend shape— y sin eso los huesos se
+## separan sin estirar la malla, que es la junta abierta que describe el doc. El escritor del shape
+## simplemente no encuentra la key y no escribe nada. Así se puede probar un largo en el juego antes de
+## tener el correctivo esculpido.
+const STRETCH_CHAINS: Array[Dictionary] = [
+	{
+		"shape": "arms_length_max",
+		"factor": ReferenceRig.ARM_MODEL_FACTOR,
+		"bones": ["left_upper_arm", "right_upper_arm", "left_lower_arm", "right_lower_arm"],
+	},
+	{
+		"shape": "legs_length_max",
+		"factor": ReferenceRig.LEGS_MODEL_FACTOR,
+		"bones": ["left_higher_leg", "right_higher_leg", "left_lower_leg", "right_lower_leg"],
+	},
+	{
+		"shape": "torso_length_max",
+		"factor": ReferenceRig.TORSO_MODEL_FACTOR,
+		"bones": ["lower_spine", "higher_spine", "chest"],
+	},
+	# ANCHO DE FRAME Y CADERA: escalan el hueso pero NO tienen correctivo propio — su shape key es
+	# `muscle_max` / `fat_max`, que se escriben aparte por STATIC_SHAPES. `shape` vacío significa
+	# exactamente eso: escalá el hueso y no busques ninguna key.
+	{
+		"shape": "",
+		"factor": ReferenceRig.FRAME_MODEL_FACTOR,
+		"bones": ["left_shoulder", "right_shoulder"],
+	},
+	{
+		"shape": "",
+		"factor": ReferenceRig.HIPS_MODEL_FACTOR,
+		"bones": ["left_hip", "right_hip"],
+	},
 ]
+
+## LOS DOS EJES DE MASA: solo malla, sin hueso detrás. `nombre del key` → `campo del arquetipo`.
+##
+## No son "grosor de brazo", "panza", "cuello": son **el cuerpo entero al máximo de músculo** y **al
+## máximo de grasa**, esculpidos cada uno de una vez sobre todas las mallas que participan. Esa es la
+## decisión que evita el problema de acoplamiento — con una key por parte del cuerpo habría que
+## mantener el torso en sincronía con el brazo a mano; con una key por ESTADO del cuerpo, encajan por
+## construcción porque se esculpieron juntas.
+##
+## Se suman: `flaco + m·(musculoso − flaco) + f·(gordo − flaco)`. Con `m + f = 1` da un promedio entre
+## los dos extremos; por encima de 1 se apilan, que es la zona del gordo fuerte y es a propósito.
+##
+##
+## Se escriben UNA SOLA VEZ al construir el personaje y no se vuelven a tocar. Esa es toda la
+## diferencia con STRETCH_CHAINS: el brazo se estira con cada agarre, así que su key se recalcula por
+## frame; una panza no cambia mientras el personaje existe.
+##
+## Se escriben LINEALES, con el valor del arquetipo tal cual. La curva `F·v/s` de `_write_shape` sería
+## un error acá: existe para cancelar la escala de un hueso y estas keys no tienen ninguno detrás.
+##
+## Un key que el modelo todavía no tenga simplemente no se encuentra y no pasa nada — por eso esto
+## puede entrar antes de que el arte exista.
+const STATIC_SHAPES := {
+	"fat_max":    "fat",
+	"muscle_max": "muscle",
+}
+
+## En qué cadena está un hueso, o −1 si no estira.
+static func _chain_of(field: String) -> int:
+	for c in STRETCH_CHAINS.size():
+		var bones: Array = STRETCH_CHAINS[c]["bones"]
+		if bones.has(field):
+			return c
+	return -1
 
 ## Hueso RÍGIDO que cuelga de un hueso estirable y que NO tiene que crecer con él. No está en
 ## BONE_MAP porque nadie lo anima —la mano y los 30 huesos de dedos van rígidos colgando del
 ## antebrazo—, así que si no se lo maneja acá hereda la escala del padre y la mano crece con el brazo.
 ## Es el `Inherit Scale = None` que el doc de Blender pide en `wrist.L/R`, del lado de Godot.
+##
+## LA PIERNA NO NECESITA UNA: `foot.L/R` sí está en BONE_MAP, o sea que es un hueso MANEJADO y el
+## espejo le escribe su propio global (el que sale de la IK). Al estar desprendido de la tibia por
+## `_detach_children_of_stretched` y no figurar en ninguna cadena, su `_rest_len` es 0 y nadie lo
+## escala. Eso es, del lado de Godot, el `Inherit Scale = None` que el doc de Blender pide en `foot`.
 const RIGID_TIP := {
 	"left_lower_arm":  "wrist.L",
 	"right_lower_arm": "wrist.R",
 }
-
-## Nombre del blend shape que corrige la silueta del brazo estirado. Lo escribe el sync a partir de
-## la MISMA escala que va al hueso, así no pueden desincronizarse.
-const ARM_SHAPE_NAME := "arms_length_max"
 
 var skeleton: Skeleton3D
 var meshes: Array[MeshInstance3D] = []
@@ -72,11 +147,19 @@ var _rest_len: PackedFloat32Array = PackedFloat32Array()
 ## Punta rígida colgada de este hueso (−1 si no hay), y su pose de reposo relativa al hueso.
 var _tip_idx: PackedInt32Array = PackedInt32Array()
 var _tip_rest: Array[Transform3D] = []
-## Dónde escribir el blend shape del brazo.
-var _arm_shape_mesh: MeshInstance3D = null
-var _arm_shape_idx: int = -1
-## Escala escrita en el frame anterior, para no reescribir el blend shape si no cambió.
-var _arm_shape_written: float = -1.0
+## Cadena a la que pertenece cada hueso manejado (índice en STRETCH_CHAINS), o −1 si no estira.
+var _chain_idx: PackedInt32Array = PackedInt32Array()
+## Escala de cada cadena en el frame actual. Miembro y no local para no allocar por frame.
+var _chain_scale: PackedFloat32Array = PackedFloat32Array()
+## Por cadena: TODAS las mallas que tienen su blend shape, no la primera.
+##
+## El brazo lo cubren varias mallas (la manga y el puño), y todas necesitan su correctivo con el MISMO
+## nombre. Manejar solo la primera dejaba a la otra sin corregir — se veía como una costura que se abre
+## al estirar, y no había nada que lo avisara.
+var _shape_meshes: Array[Array] = []
+var _shape_idxs: Array[PackedInt32Array] = []
+## Escala escrita en el frame anterior por cadena, para no reescribir el blend shape si no cambió.
+var _shape_written: PackedFloat32Array = PackedFloat32Array()
 
 
 ## Construye el espejo y se cuelga de `parent` (la cápsula).
@@ -130,7 +213,7 @@ func _sync(bodies: Dictionary) -> void:
 	if skeleton == null:
 		return
 	var root_inv := skeleton.global_transform.affine_inverse()
-	var arm_scale := 1.0
+	_chain_scale.fill(1.0)
 	for k in _driven_idx.size():
 		var idx := _driven_idx[k]
 		var cb := _driven_bone[k]
@@ -151,7 +234,7 @@ func _sync(bodies: Dictionary) -> void:
 			# del hueso: escalar Y en local estira a lo LARGO del hueso, igual que el `S Y Y` de Blender.
 			var s: float = cb.length / _rest_len[k]
 			stretched.basis = rigid.basis.scaled_local(Vector3(1.0, s, 1.0))
-			arm_scale = s
+			_chain_scale[_chain_idx[k]] = s
 		_global[idx] = stretched
 		var p := skeleton.get_bone_parent(idx)
 		var parent_g: Transform3D = _global[p] if p >= 0 else Transform3D.IDENTITY
@@ -165,21 +248,23 @@ func _sync(bodies: Dictionary) -> void:
 			var tip := _tip_rest[k]
 			skeleton.set_bone_pose(ti, Transform3D((rigid * tip).basis, (stretched * tip).origin))
 
-	_write_arm_shape(arm_scale)
+	for c in STRETCH_CHAINS.size():
+		_write_shape(c, _chain_scale[c])
 
 
 ## El blend shape sale de la MISMA escala que fue al hueso, invirtiendo el factor con el que se
-## esculpió en Blender. No hay un segundo número que mantener en sincronía: si el brazo mide 1.54×,
-## el shape va en 0.18 y punto — incluido el estirón del agarre, que sube los dos a la vez.
-func _write_arm_shape(arm_scale: float) -> void:
-	if _arm_shape_idx < 0 or not is_instance_valid(_arm_shape_mesh):
+## esculpió esa cadena en Blender. No hay un segundo número que mantener en sincronía: si el brazo
+## mide 1.54×, el shape va en 0.18 y punto — incluido el estirón del agarre, que sube los dos a la vez.
+func _write_shape(chain: int, scale: float) -> void:
+	var targets: Array = _shape_meshes[chain]
+	if targets.is_empty():
 		return
-	if is_equal_approx(arm_scale, _arm_shape_written):
+	if is_equal_approx(scale, _shape_written[chain]):
 		return
-	_arm_shape_written = arm_scale
-	var f := ReferenceRig.ARM_MODEL_FACTOR
+	_shape_written[chain] = scale
+	var f: float = STRETCH_CHAINS[chain]["factor"]
 	var w := 0.0
-	if f > 1.0 and arm_scale > 0.0:
+	if f > 1.0 and scale > 0.0:
 		# w = F·v/s, NO w = v. Y la diferencia no es cosmética.
 		#
 		# La malla final es (escala del hueso) × (mezcla del shape key). Las dos son lineales, así que
@@ -187,7 +272,7 @@ func _write_arm_shape(arm_scale: float) -> void:
 		# en el medio. Concreto con F=4: el codo está esculpido para conservar su tamaño, o sea que en
 		# el reposo largo mide 1/4; a mitad de camino el reposo mezclado da 0.625 y el hueso escala
 		# 2.5, así que el codo se hincha 1.5625×. La cota es (1+F)²/(4F), y crece con el factor: +56%
-		# a ×4, +12% a ×2. Además el corrector queda subaplicado (0.18 donde iba 0.47), y por eso el
+		# a ×4, +12.5% a ×2. Además el corrector queda subaplicado (0.18 donde iba 0.47), y por eso el
 		# resultado se parecía al hueso escalado a secas.
 		#
 		# Esta curva lo cancela EXACTO: pedir que `s·(1 − w(1−1/F)) = 1` para todo s despeja en
@@ -195,10 +280,17 @@ func _write_arm_shape(arm_scale: float) -> void:
 		# todos los valores intermedios, no solo en los extremos. Lo que se esculpió para escalar
 		# proporcional no lo toca (su reposo no cambia entre los dos extremos, así que w le da igual).
 		#
+		# La PIERNA lo necesita más que el brazo, aunque su factor sea menor: el personaje genérico vive
+		# en 0.5385, o sea casi exactamente en el medio del rango, que es donde el error es máximo.
+		#
 		# El driver de Blender tiene que usar la MISMA expresión o el preview miente. Ver
 		# technical/character-blender-length-variable.md.
-		w = clampf((1.0 - 1.0 / arm_scale) / (1.0 - 1.0 / f), 0.0, 1.0)
-	_arm_shape_mesh.set_blend_shape_value(_arm_shape_idx, w)
+		w = clampf((1.0 - 1.0 / scale) / (1.0 - 1.0 / f), 0.0, 1.0)
+	var idxs: PackedInt32Array = _shape_idxs[chain]
+	for i in targets.size():
+		var mi: MeshInstance3D = targets[i]
+		if is_instance_valid(mi):
+			mi.set_blend_shape_value(idxs[i], w)
 
 
 ## Aplica FIRST_PERSON_VISIBLE. Perdemos la granularidad por hueso que daba
@@ -236,17 +328,51 @@ func _find_skeleton(node: Node) -> Skeleton3D:
 	return null
 
 
+## Escribe las keys de clase B con los valores del arquetipo. La llama `initialize_skeleton` una vez,
+## después de construir el espejo.
+func apply_static_shapes(arch: EntityArchetype) -> void:
+	if arch == null:
+		return
+	for shape_name in STATIC_SHAPES:
+		var value: float = arch.get(STATIC_SHAPES[shape_name])
+		for mi in meshes:
+			if not is_instance_valid(mi):
+				continue
+			var found := mi.find_blend_shape_by_name(shape_name)
+			if found >= 0:
+				mi.set_blend_shape_value(found, clampf(value, 0.0, 1.0))
+
+
+## Recolecta las mallas y, de paso, dónde vive el blend shape de cada cadena. Se llama una sola vez,
+## desde `create`, así que acá se dimensionan los arrays por cadena.
 func _collect_meshes(node: Node) -> void:
+	var n := STRETCH_CHAINS.size()
+	_shape_meshes.resize(n)
+	_shape_idxs.resize(n)
+	_shape_written.resize(n)
+	_chain_scale.resize(n)
+	for c in n:
+		_shape_meshes[c] = []
+		_shape_idxs[c] = PackedInt32Array()
+		_shape_written[c] = -1.0
+	_collect_meshes_rec(node)
+
+
+func _collect_meshes_rec(node: Node) -> void:
 	if node is MeshInstance3D:
 		var mi := node as MeshInstance3D
 		meshes.append(mi)
-		if _arm_shape_idx < 0:
-			var found := mi.find_blend_shape_by_name(ARM_SHAPE_NAME)
+		for c in STRETCH_CHAINS.size():
+			var shape_name: String = STRETCH_CHAINS[c]["shape"]
+			var found := mi.find_blend_shape_by_name(shape_name)
 			if found >= 0:
-				_arm_shape_mesh = mi
-				_arm_shape_idx = found
+				var targets: Array = _shape_meshes[c]
+				targets.append(mi)
+				var idxs: PackedInt32Array = _shape_idxs[c]
+				idxs.append(found)
+				_shape_idxs[c] = idxs
 	for child in node.get_children():
-		_collect_meshes(child)
+		_collect_meshes_rec(child)
 
 
 ## Busca un hueso tolerando el sufijo `_2` que agrega el importador de Godot.
@@ -293,6 +419,7 @@ func _bind(bones: CustomBonesUtil) -> void:
 	_driven_bone.resize(pairs.size())
 	_fix.resize(pairs.size())
 	_rest_len.resize(pairs.size())
+	_chain_idx.resize(pairs.size())
 	_tip_idx.resize(pairs.size())
 	_tip_rest.resize(pairs.size())
 	for k in pairs.size():
@@ -321,7 +448,8 @@ func _bind(bones: CustomBonesUtil) -> void:
 		# la IK del brazo (el pole del codo), no esto. Es el lugar honesto para arreglarlo.
 		_fix[k] = (rig.bases[field] as Basis).inverse() * (forward_fix * skeleton.get_bone_global_rest(idx).basis)
 
-		_rest_len[k] = float(rig.lengths.get(field, 0.0)) if STRETCH_BONES.has(field) else 0.0
+		_chain_idx[k] = _chain_of(field)
+		_rest_len[k] = float(rig.lengths.get(field, 0.0)) if _chain_idx[k] >= 0 else 0.0
 		_tip_idx[k] = -1
 		_tip_rest[k] = Transform3D.IDENTITY
 		if RIGID_TIP.has(field):

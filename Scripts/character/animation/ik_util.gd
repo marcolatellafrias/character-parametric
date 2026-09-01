@@ -73,6 +73,11 @@ var _gait_speed: float = 0.0
 ## de MIN_SWING_RATE aplicado si hay un paso en curso. La lee la predicción de aterrizaje.
 var _gait_rate: float = 0.0
 
+## Cuánto está nivelado cada pie, 0..1. Es un blend suavizado y no un booleano: sin él el pie salta
+## de golpe a horizontal en el instante en que apoya.
+var _left_level: float = 0.0
+var _right_level: float = 0.0
+
 var _left_swinging: bool = false
 var _right_swinging: bool = false
 var _left_swing_from: Vector3 = Vector3.ZERO
@@ -370,6 +375,7 @@ func update_ik_raycast(
 		indicator_b.visible = false
 		indicator_c.visible = false
 		solve_two_bone_ik(higher_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
+		_level_foot(left, bones, inputs)
 		return
 
 	indicator_b.visible = gizmos_visible
@@ -511,6 +517,67 @@ func update_ik_raycast(
 		_set_indicator_color(indicator_c, raycast_color if active_candidate_idx == 2 else inactive_raycast_color)
 
 	solve_two_bone_ik(higher_leg, lower_leg, leg.current_target.global_position, leg.pole.global_position)
+	_level_foot(left, bones, inputs)
+
+
+## Rapidez del blend de nivelado, en fracción por segundo.
+const FOOT_LEVEL_SPEED := 12.0
+
+
+## NIVELA EL PIE mientras está apoyado: le saca la orientación que hereda de la tibia y lo deja
+## horizontal, mirando hacia donde mira el personaje.
+##
+## ── EL PROBLEMA QUE RESUELVE ──────────────────────────────────────────────────────────────────────
+## `solve_two_bone_ik` resuelve DOS huesos y el pie cuelga rígido del segundo, así que hereda la
+## inclinación de la tibia. Con la pierna inclinada —el pie adelantado o atrasado respecto de la
+## cadera— el pie se inclina con ella y **mete la punta o el talón dentro del piso**. No es un problema
+## de altura sino de ángulo, y por eso subir el tobillo no lo arregla.
+##
+## De paso arregla el otro síntoma: el pole define el ROLL de la tibia, así que cualquier cosa que
+## mueva el pole —el temblor, por ejemplo— torcía el pie y se leía como que patinaba.
+##
+## ── QUÉ CUENTA COMO "APOYADO" ─────────────────────────────────────────────────────────────────────
+## Las dos condiciones a la vez, y son preguntas distintas:
+##
+##   `inputs.grounded`  → si el CUERPO está en el piso (raycast del rigidbody)
+##   `not _swinging`    → cuál de los DOS PIES está abajo (fase del paso)
+##
+## Sin la primera, un personaje saltando tendría los pies snapeando a un suelo que no está tocando.
+## Sin la segunda, el pie en vuelo iría plano, que se ve peor que inclinado.
+##
+## Es HORIZONTAL, no alineado a la normal del piso. En una ciudad plana el resultado es idéntico y no
+## tiene ningún caso patológico —rampas, bordes, un rayo que pega raro—. Seguir la normal es aditivo:
+## se cambia `Vector3.UP` por la normal guardada del raycast y se le pone un clamp de inclinación.
+func _level_foot(left: bool, bones: CustomBonesUtil, inputs: AnimationInputs) -> void:
+	var foot: CustomBone = bones.left_foot if left else bones.right_foot
+	if not is_instance_valid(foot):
+		return
+
+	var planted: bool = inputs.grounded and not (_left_swinging if left else _right_swinging)
+	var target: float = 1.0 if planted else 0.0
+	var t: float = clampf(inputs.delta * FOOT_LEVEL_SPEED, 0.0, 1.0)
+	if left:
+		_left_level = lerpf(_left_level, target, t)
+	else:
+		_right_level = lerpf(_right_level, target, t)
+	var blend: float = _left_level if left else _right_level
+	if blend <= 0.001:
+		return
+
+	# LA BASE NIVELADA ES EL REPOSO DEL HUESO CON EL YAW DEL PERSONAJE ENCIMA, y nada más.
+	#
+	# ⚠ No re-derivarla con `ReferenceRig._conventional_basis(frente_en_el_mundo)`. Esa función snapea
+	# primero al EJE DEL MUNDO más parecido, que es una decisión discreta: para un pie horizontal salta
+	# entre ±X y ±Z cada 45° de giro, y cada eje trae su propia convención de roll. Pasarle una dirección
+	# que rota con el personaje hace que el roll pegue un salto al cruzar esas fronteras — **la suela
+	# quedaba mirando de costado según hacia dónde mirara el personaje**. La función no está mal: está
+	# pensada para una dirección de reposo FIJA en el marco del personaje, que es como la usa ReferenceRig.
+	#
+	# El reposo ya trae el roll correcto por construcción, y el yaw es continuo. Y sale más barato.
+	var rest: Basis = ReferenceRig.get_rig().bases.get("left_foot" if left else "right_foot", Basis.IDENTITY)
+	var level := Basis(Vector3.UP, inputs.basis.get_euler().y) * rest
+	foot.global_basis = foot.global_basis.slerp(level, blend).orthonormalized()
+
 
 ## PASO DE ASENTAMIENTO. Al frenar los pies quedan asimétricos (uno adelante, uno atrás) porque el
 ## ciclo se cortó donde se cortó. Acá el pie más desplazado da un pasito para meterse bajo la cadera

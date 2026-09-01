@@ -157,7 +157,7 @@ The point of this phase is isolation: **in Phase 1 the mesh must never deform.**
 
 1. ✅ **`SkinnedBodyUtil`** — the name map, the per-bone axis correction, and the per-frame sync (see [The mirror](#the-mirror) below).
 2. ✅ **`SkeletonSizesUtil.USE_REFERENCE_MODEL`** — the `REF_*` constants measured in Phase 0 replace the archetype-derived bone lengths, for every archetype. Aggregates are overridden early (everything derived — gait, raycasts, poles, capsule — reads them) and the per-bone lengths after the fraction split, because the fractions don't match the model: the code makes the forearm longer than the upper arm (0.45/0.55) and the model is the reverse (0.57/0.43).
-3. ✅ **`EntityArchetype.generic` + `EntityInstantiation.FORCE_GENERIC_ARCHETYPE`** — one neutral archetype for everyone: no slouch, no dropped shoulders, no crippled legs, narrow stance, arms barely bent. It exists to *look at the model*, not to be a game character, and it is excluded from the population roll (`archetype_frequency = 0`). The two flags turn on and off together.
+3. ✅ **`EntityArchetype.generic` + `EntityInstantiation.FORCE_ARCHETYPE`** — one neutral archetype for everyone: no slouch, no dropped shoulders, no crippled legs, narrow stance, arms barely bent. It exists to *look at the model*, not to be a game character, and it is excluded from the population roll (`archetype_frequency = 0`).
 4. ✅ `CustomBone` meshes hidden when the skinned model exists; ragdoll bodies permanently invisible with the mirror reading them instead; first-person hides the head mesh.
 
 **Blender work:** none.
@@ -217,7 +217,8 @@ Note that the character's size, camera height and gait all change in this phase 
 - `SkeletonSizesUtil` converts them to metres over `MIN_*`/`MAX_*`, and splits each chain by the **model's** internal fractions — not the code's old ones, which had the forearm longer than the upper arm (0.45/0.55) where the model is the reverse (0.57/0.43).
 - **`height` is now an output**, `SkeletonSizesUtil.total_height`. `EntityArchetype.height` and the four `*_proportion` fields are vestigial (kept as author reference; hips/shoulders/neck/head stay pinned to the sculpt until Phase 3).
 - **`reach` and `reach_multiplier` are gone from the archetype.** The arm chain is `arm_reach`, and the interaction range is derived: `interaction_reach = arm_reach × MAX_ARM_STRETCH × 0.97`. One source of truth, and the arm can never be asked to stretch past the cap. `EntitySpecie.reach_multiplier` was already dead and stays unused.
-- `EntityInstantiation.FORCE_GENERIC_ARCHETYPE` is now `false`; flip it to `true` for the Phase 1 zero-deformation view at any time.
+- **`EntityInstantiation.FORCE_ARCHETYPE`** replaced the old boolean. It is an archetype *or* `-1`, so the Phase 1 view is one value among many rather than a special case. It stays `const` on purpose: a mutable global would make a proxy resolve a different character from the same seed.
+- **Per-spawn archetype choice** lives in the debug panel (tab *Arquetipos*) and works by **encoding the archetype in the seed** (`DEBUG_SEED_BASE`, band `900000+`). The seed is the only thing that crosses the wire, so this needs no protocol change and every machine lands on the same character. It replaced an older hack that mapped seeds `0..4` to archetypes — those could be rolled naturally and did not cover every archetype.
 
 Resulting characters (head fixed at 0.302 m until Phase 3):
 

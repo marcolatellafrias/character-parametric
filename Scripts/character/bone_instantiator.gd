@@ -37,6 +37,9 @@ var animation_inputs: AnimationInputs
 
 var anim_mod: AnimationModifiers
 var bone_animations: BoneAnimations
+## Capa pasiva: respiración y temblor. Ver passive_animations.gd.
+var passive_animations: PassiveAnimations
+var passive_state: PassiveState
 var arms_controller: ArmsController
 
 var player_controller: PlayerController
@@ -157,6 +160,9 @@ func initialize_skeleton() -> void:
 	# resolvieron o no. Durante un tiempo sí dependía, y era un bug: la pose viva trae la torsión que
 	# eligió la IK ese frame, y cada respawn congelaba un roll distinto en las manos.
 	skinned_body = SkinnedBodyUtil.create(custom_bones_util, char_rigidbody)
+	if is_instance_valid(skinned_body) and entity_instantiation != null:
+		# Panza y grosor de pierna: se escriben acá y nunca más. No varían en runtime.
+		skinned_body.apply_static_shapes(entity_instantiation.arch_final)
 
 	procedural_animator = ProceduralBoneAnimator.create(locomotion_signals)
 
@@ -164,6 +170,14 @@ func initialize_skeleton() -> void:
 	add_child(bone_animations)
 	bone_animations.bi = self
 	bone_animations.register_all()
+
+	# La capa pasiva va DESPUÉS de la de marcha: registra sobre el mismo animador, y el orden de
+	# registro no importa porque todo se suma sobre el reset por frame. Se separa por responsabilidad.
+	passive_state = PassiveState.create(master_seed)
+	passive_animations = PassiveAnimations.new()
+	add_child(passive_animations)
+	passive_animations.bi = self
+	passive_animations.register_all()
 
 	ragdoll_util = RagdollUtil.create(custom_bones_util, skel_rigidbodies, joints)
 	ragdoll_util.ik_util = ik_util  # para que el IK de recuperación use el mismo pole que la locomoción
@@ -173,6 +187,7 @@ func initialize_skeleton() -> void:
 
 	# Los visualizadores de debug son estado GLOBAL: un personaje que spawnea o respawnea nace con lo
 	# que esté prendido, sin que nadie tenga que volver a tocar el panel.
+	CharacterAppearance.apply_to(self)
 	CharacterDebugView.apply_to(self)
 
 	# Primera persona: se aplica ACÁ, al final. PlayerController.rebind (que corre en
@@ -226,6 +241,10 @@ func _clear_prior_generations() -> void:
 	if is_instance_valid(bone_animations):
 		bone_animations.queue_free()
 		bone_animations = null
+	if is_instance_valid(passive_animations):
+		passive_animations.queue_free()
+		passive_animations = null
+	passive_state = null
 
 	player_camera = null
 
@@ -256,7 +275,7 @@ func _physics_process(delta: float) -> void:
 		solve_delta = delta * 2.0
 
 	_update_ragdoll_ext_state()
-	_update_animation_inputs()          # productor: llena animation_inputs desde la cápsula
+	_update_animation_inputs(delta)     # productor: llena animation_inputs desde la cápsula
 	_update_local_targets_positions()   # consumidor: lee animation_inputs (ya no la cápsula)
 
 	if is_instance_valid(ragdoll_util):
@@ -414,6 +433,7 @@ func _repin_legs_seated() -> void:
 ## hace que _apply_root_offsets no toque el spine y el procedural saltea POS_Y/POS_Z de la raíz, así
 ## que acá no hay nada que ramificar.
 func _pose_procedural(delta: float) -> void:
+	_update_passive_state(delta)
 	procedural_animator.update()
 	if is_instance_valid(anim_mod):
 		anim_mod.jump_squat_t = jump_squat_t
@@ -483,7 +503,7 @@ func _update_local_targets_positions() -> void:
 
 ## Productor de la entrada de animación. Hoy lee la cápsula física (igual que antes lo hacían los
 ## módulos directo); a futuro un proxy la llenará desde la red. Ver technical/character-animation.md.
-func _update_animation_inputs() -> void:
+func _update_animation_inputs(delta: float = 0.0) -> void:
 	if not is_instance_valid(char_rigidbody) or animation_inputs == null:
 		return
 	var t := char_rigidbody.global_transform
@@ -491,6 +511,7 @@ func _update_animation_inputs() -> void:
 	animation_inputs.basis        = t.basis
 	animation_inputs.origin       = t.origin
 	animation_inputs.grounded     = char_rigidbody.is_grounded
+	animation_inputs.delta        = delta
 	animation_inputs.ground_point = char_rigidbody.get_ground_collision_point()
 	animation_inputs.impact_y     = char_rigidbody.impact_y
 	animation_inputs.impact_xz    = char_rigidbody.impact_xz
@@ -544,7 +565,7 @@ func _setup_char_grabbable() -> void:
 	var full_height    := skel_sizes_util.leg_height + skel_sizes_util.torso_height + skel_sizes_util.head_height
 	var ground_local_y := char_rigidbody._capsule_stand_y_offset - full_height * 0.5
 	var handle_y       := ground_local_y + skel_sizes_util.leg_height \
-		+ skel_sizes_util.lower_spine_size.y + skel_sizes_util.middle_spine_size.y
+		+ skel_sizes_util.lower_spine_size.y
 	var handle_x := skel_sizes_util.shoulders_width * 0.5
 
 	grabbable.add_handle_point_local(Vector3(-handle_x, handle_y, 0.0))
@@ -574,12 +595,11 @@ func get_interaction_origin() -> Vector3:
 		var z_offset    : float = sizes.higher_leg_size.y - current_seat.seat_area.z * 0.5
 		var spine_world := Vector3(seat_pos.x, seat_pos.y + current_seat.height, seat_pos.z) + backward * z_offset
 		return spine_world + Vector3(0.0,
-			sizes.lower_spine_size.y + sizes.middle_spine_size.y + sizes.higher_spine_size.y + sizes.chest_size.y,
+			sizes.lower_spine_size.y + sizes.higher_spine_size.y + sizes.chest_size.y,
 			0.0)
 
 	var chest_tip_y := ground_y + sizes.leg_height \
-		+ sizes.lower_spine_size.y + sizes.middle_spine_size.y \
-		+ sizes.higher_spine_size.y + sizes.chest_size.y
+		+ sizes.lower_spine_size.y + sizes.higher_spine_size.y + sizes.chest_size.y
 
 	chest_tip_y -= sizes.leg_height * 0.35 * crouch_t
 
@@ -632,6 +652,21 @@ var _pelvis_drop_smooth: float = 0.0
 ## Mide el déficit de alcance de las dos piernas y deja el resultado suavizado en anim_mod. Corre
 ## DESPUÉS de colocar los pies (necesita sus targets) y ANTES de la capa procedural (que es la que
 ## aplica el offset de raíz).
+## Avanza el reloj pasivo y el esfuerzo. El esfuerzo sale de la VELOCIDAD, no de la stamina, y eso es
+## deliberado: la velocidad ya viaja por la red, así que un proxy lo calcula solo y **los NPC lo tienen
+## gratis con el mismo código**. Ver PassiveState.
+func _update_passive_state(delta: float) -> void:
+	if passive_state == null or not is_instance_valid(char_rigidbody):
+		return
+	var v := char_rigidbody.linear_velocity
+	var speed: float = Vector2(v.x, v.z).length()
+	# El esfuerzo arranca antes del tope de caminata: caminar ligero ya cansa un poco.
+	var floor_speed: float = char_rigidbody.max_speed_forward * 0.6
+	var top: float = char_rigidbody.max_speed_forward * char_rigidbody.sprint_multiplier
+	var effort: float = clampf((speed - floor_speed) / maxf(top - floor_speed, 0.001), 0.0, 1.0)
+	passive_state.update(delta, effort)
+
+
 func _update_pelvis_drop(delta: float) -> void:
 	if not is_instance_valid(anim_mod):
 		return

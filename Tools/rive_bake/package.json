@@ -1,0 +1,13 @@
+{
+  "name": "rive-bake",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hornea los artboards de Art/rive/*.riv a PNG en Textures/character/. Herramienta de desarrollo: el juego no la necesita para correr, solo para iterar sobre el arte sin exportar ocho archivos a mano.",
+  "scripts": {
+    "bake": "node bake.js"
+  },
+  "dependencies": {
+    "@rive-app/canvas": "^2.21.0",
+    "puppeteer": "^24.15.0"
+  }
+}

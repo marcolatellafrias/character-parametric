@@ -19,7 +19,6 @@ func register_all() -> void:
 	var right_hip      := bi.custom_bones_util.right_hip
 	var left_hip       := bi.custom_bones_util.left_hip
 	var lower_spine    := bi.custom_bones_util.lower_spine
-	var middle_spine   := bi.custom_bones_util.middle_spine
 	var higher_spine    := bi.custom_bones_util.higher_spine
 	var chest          := bi.custom_bones_util.chest
 	var right_shoulder := bi.custom_bones_util.right_shoulder
@@ -33,7 +32,7 @@ func register_all() -> void:
 	pa.register(right_hip, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.1 * hip_swing)
 	pa.register(left_hip,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.1 * hip_swing)
 
-	var hips_rotation := _spine_local_weight(0, 5, _bottom_spine_rotation, _top_spine_rotation)
+	var hips_rotation := _spine_local_weight(0, 4, _bottom_spine_rotation, _top_spine_rotation)
 	pa.register(right_hip, PA.Axis.ROT_X, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -hips_rotation)
 	pa.register(left_hip,  PA.Axis.ROT_X, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  hips_rotation)
 
@@ -49,43 +48,53 @@ func register_all() -> void:
 		func(): return ls.foot_spread_unified.x * (0.01 + 0.04 * ls.speed_norm),
 		1.0)
 
-	var lower_spine_rotation  := _spine_local_weight(1, 5, _bottom_spine_rotation, _top_spine_rotation)
-	var middle_spine_rotation := _spine_local_weight(2, 5, _bottom_spine_rotation, _top_spine_rotation)
-	var higher_spine_rotation  := _spine_local_weight(3, 5, _bottom_spine_rotation, _top_spine_rotation)
-	var chest_rotation        := _spine_local_weight(4, 5, _bottom_spine_rotation, _top_spine_rotation)
+	var lower_spine_rotation  := _spine_local_weight(1, 4, _bottom_spine_rotation, _top_spine_rotation)
+	var higher_spine_rotation := _spine_local_weight(2, 4, _bottom_spine_rotation, _top_spine_rotation)
+	var chest_rotation        := _spine_local_weight(3, 4, _bottom_spine_rotation, _top_spine_rotation)
 
 	pa.register(lower_spine,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, lower_spine_rotation)
-	pa.register(middle_spine, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, middle_spine_rotation)
-	pa.register(higher_spine,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, higher_spine_rotation)
+	pa.register(higher_spine, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, higher_spine_rotation)
 	pa.register(chest,        PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, chest_rotation)
 
 	# ─── SPINE BOW ───────────────────────────────────────────────────────────────
 
 	var bow_w := 0.15
-	pa.register(lower_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  bow_w * 0.5)
-	pa.register(middle_spine, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  bow_w * 1.0)
-	pa.register(higher_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -bow_w * 1.0)
+	# La curva del bow repartida en tres en vez de cuatro: `middle` aportaba +1.0 y su mitad se fue a
+	# cada vecino, así que la suma sigue dando cero y el torso no queda torcido en neto.
+	pa.register(lower_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  bow_w * 1.0)
+	pa.register(higher_spine, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -bow_w * 0.5)
 	pa.register(chest,        PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -bow_w * 0.5)
 	pa.register(lower_spine,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z,  0.03)
 
 	# ─── SPINE TILT ──────────────────────────────────────────────────────────────
 
+	# SIGNO INVERTIDO respecto de la versión original: el torso se inclinaba HACIA EL LADO CONTRARIO al
+	# que corre. Provisorio — cuando lo detallemos, esto probablemente quiera depender de la aceleración
+	# y no de la velocidad (inclinarse al arrancar y al frenar, no mientras se corre a velocidad pareja).
 	var tilt_weight := 0.05
-	pa.register(lower_spine, PA.Axis.ROT_X, PA.SignalType.H_VEL_Z, -tilt_weight)
-	pa.register(lower_spine, PA.Axis.ROT_Z, PA.SignalType.H_VEL_X, -tilt_weight)
+	pa.register(lower_spine, PA.Axis.ROT_X, PA.SignalType.H_VEL_Z, tilt_weight)
+	pa.register(lower_spine, PA.Axis.ROT_Z, PA.SignalType.H_VEL_X, tilt_weight)
 
 	# ─── SHOULDERS ───────────────────────────────────────────────────────────────
 
-	pa.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  shoulder_swing * 0.1)
-	pa.register(left_shoulder,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  shoulder_swing * 0.1)
-	pa.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -0.3)
-	pa.register(left_shoulder,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -0.3)
-	pa.register(right_shoulder, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -0.95)
-	pa.register(left_shoulder,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, -0.95)
-	pa.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  0.0)
-	pa.register(left_shoulder,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  0.0)
-	pa.register(right_shoulder, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.5)
-	pa.register(left_shoulder,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_X, -0.5)
+	# `shoulder_swing` ESCALA LAS SEIS REGISTRACIONES, no una. Antes solo multiplicaba la primera —la más
+	# chica de todas— así que el arquetipo creía tener control del hombro y en la práctica no movía nada:
+	# el balanceo real venía del -0.95 hardcodeado de más abajo.
+	#
+	# 1.0 = el andar de referencia. No es un rango 0..1: por debajo de 1 el hombro se apaga (el viejo),
+	# por encima se exagera (el giga). Cuando haga falta separar vertical de horizontal, esto se parte en
+	# dos variables y cada grupo de abajo toma la suya.
+	pa.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  shoulder_swing * 0.05)
+	pa.register(left_shoulder,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_X,  shoulder_swing * 0.05)
+	# Subida y bajada de hombros al caminar. Los dos con el mismo signo, o sea que suben y bajan JUNTOS
+	# con la zancada — no es el balanceo alternado, que es el ROT_Y de abajo. Estaba en -0.3 y se leía
+	# como un rebote antinatural.
+	pa.register(right_shoulder, PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, shoulder_swing * -0.12)
+	pa.register(left_shoulder,  PA.Axis.ROT_Z, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, shoulder_swing * -0.12)
+	pa.register(right_shoulder, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, shoulder_swing * -0.95)
+	pa.register(left_shoulder,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_Z, shoulder_swing * -0.95)
+	pa.register(right_shoulder, PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * -0.5)
+	pa.register(left_shoulder,  PA.Axis.ROT_Y, PA.SignalType.FOOT_SPREAD_UNIFIED_X, shoulder_swing * -0.5)
 
 	# ─── HEAD / NECK PITCH ───────────────────────────────────────────────────────
 
@@ -220,17 +229,14 @@ func _register_camera_pitch_animations() -> void:
 		pa.register_formula(bi.custom_bones_util.neck,     PA.Axis.ROT_X, pitch_callable, 0.25)
 	pa.register_formula(bi.custom_bones_util.chest,        PA.Axis.ROT_X, pitch_callable, 0.12)
 	pa.register_formula(bi.custom_bones_util.higher_spine,  PA.Axis.ROT_X, pitch_callable, 0.08)
-	pa.register_formula(bi.custom_bones_util.middle_spine, PA.Axis.ROT_X, pitch_callable, 0.05)
 
 	# ─── EXTRA SPINE BEND SOLO AL MIRAR ABAJO ────────────────────────────────
 	var look_down_extra := 0.12
 	var lower_spine     := bi.custom_bones_util.lower_spine
-	var middle_spine    := bi.custom_bones_util.middle_spine
 	var higher_spine     := bi.custom_bones_util.higher_spine
 	var chest           := bi.custom_bones_util.chest
 	var down_callable   := func() -> float: return -min(0.0, pitch_callable.call())
 	pa.register_formula(lower_spine,  PA.Axis.ROT_X, down_callable, -look_down_extra * 0.4)
-	pa.register_formula(middle_spine, PA.Axis.ROT_X, down_callable, -look_down_extra * 0.7)
 	pa.register_formula(higher_spine,  PA.Axis.ROT_X, down_callable, -look_down_extra * 1.0)
 	pa.register_formula(chest,        PA.Axis.ROT_X, down_callable, -look_down_extra * 0.5)
 	pa.register_formula(lower_spine,  PA.Axis.POS_Y, down_callable, -look_down_extra * 0.6)
@@ -246,7 +252,6 @@ func refresh_camera_animations() -> void:
 		bi.custom_bones_util.neck,
 		bi.custom_bones_util.chest,
 		bi.custom_bones_util.higher_spine,
-		bi.custom_bones_util.middle_spine,
 	]
 	for bone in bones:
 		if is_instance_valid(bone):

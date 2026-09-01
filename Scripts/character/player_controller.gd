@@ -12,9 +12,18 @@ var camera_yaw: float = 0.0
 var camera_y_smooth: float = 0.0
 const CAMERA_Y_SMOOTH: float = 8.0
 
+## ── STAMINA ───────────────────────────────────────────────────────────────────────────────────────
+## Se gasta corriendo y se recupera al soltar, después de `stamina_refractory_time`.
+##
+## Los números están puestos en TIEMPO, no en unidades: con el máximo en 5.0, el drenaje es
+## `5 / segundos_de_sprint` y la regeneración `5 / segundos_de_recarga`.
+##
+##   sprint continuo  →  10 s        recarga completa  →  10 s
+##
+## El drenaje estaba en 0.01, o sea **500 segundos** de sprint: la barra existía pero nunca se vaciaba.
 var stamina_max: float = 5.0
-var stamina_drain_rate: float = 0.01
-var stamina_regen_rate: float = 0.75
+var stamina_drain_rate: float = 0.5
+var stamina_regen_rate: float = 0.5
 var stamina_refractory_time: float = 2.0
 var _stamina: float = 5.0
 var _refractory_timer: float = 0.0
@@ -180,10 +189,12 @@ func _input(event: InputEvent) -> void:
 					ic.release_interact()
 			MOUSE_BUTTON_RIGHT:
 				if ic: ic.set_rotating(event.pressed)
+			# La rueda emite un evento pressed y otro released por cada muesca: sin el guard de
+			# pressed cada muesca aplicaría el paso dos veces (rotación y distancia de agarre).
 			MOUSE_BUTTON_WHEEL_UP:
-				if ic: ic.adjust_distance(-1.0)
+				if ic and event.pressed: ic.adjust_distance(-1.0)
 			MOUSE_BUTTON_WHEEL_DOWN:
-				if ic: ic.adjust_distance(1.0)
+				if ic and event.pressed: ic.adjust_distance(1.0)
 
 	# ── Keyboard ──────────────────────────────────────────────────────────────
 	elif event is InputEventKey and not event.echo:
@@ -492,7 +503,6 @@ func _switch_to(target: BoneInstantiator) -> void:
 		target.custom_bones_util.neck,
 		target.custom_bones_util.chest,
 		target.custom_bones_util.higher_spine,
-		target.custom_bones_util.middle_spine,
 	]
 	for bone in bones_to_clear:
 		if is_instance_valid(bone):
@@ -527,7 +537,7 @@ func _respawn() -> void:
 
 	# Reconstruir el esqueleto con seed nueva. initialize_skeleton → on_skeleton_built → rebind
 	# re-vincula todo (cápsula, IC, cámara, HUD); acá solo reposicionamos y reseteamos estado.
-	bi.master_seed = randi() % 100000
+	bi.master_seed = DebugArchetype.respawn_seed()
 	bi.initialize_skeleton()
 	if is_instance_valid(bi.net_sync):
 		bi.net_sync.broadcast_seed()  # multiplayer: reconstruir mi proxy en las demás máquinas
@@ -628,6 +638,25 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Ver esqueleto",             func(): CharacterDebugView.toggle_skeleton(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver colisionadores",        func(): CharacterDebugView.toggle_colliders(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver gizmos de marcha",      func(): CharacterDebugView.toggle_gait_gizmos(get_tree()))
+	_debug_panel.add_action("Acciones", "Medir piernas (consola)",   _debug_measure_legs)
+	_debug_panel.add_action("Acciones", "Medir velocidad (consola)", _debug_measure_speed)
+	# Apariencia: también globales, y se repintan en el momento.
+	_debug_panel.add_action("Acciones", "Shader on/off",             func(): CharacterAppearance.toggle_flat_geometry(get_tree()))
+	_debug_panel.add_action("Acciones", "Monocromo on/off",          func(): CharacterAppearance.toggle_monochrome(get_tree()))
+
+	# ── Arquetipos ──
+	# Dos acciones por arquetipo, y son distintas: "Ser" cambia TU personaje y además deja la P pegada
+	# a ese arquetipo (apretarla repetido da otra variación del mismo); "Spawnear" deja un NPC al lado
+	# sin tocar la selección, para comparar dos siluetas a la vez.
+	_debug_panel.add_text("Arquetipos", "P respawnea como: %s" % DebugArchetype.label())
+	_debug_panel.add_action("Arquetipos", "Ser: aleatorio", func(): _respawn_as(DebugArchetype.NONE))
+	for a in EntityArchetype.Archetype.values():
+		var be_name := str(EntityArchetype.Archetype.keys()[a])
+		_debug_panel.add_action("Arquetipos", "Ser: %s" % be_name, func(): _respawn_as(a))
+	for b in EntityArchetype.Archetype.values():
+		var spawn_name := str(EntityArchetype.Archetype.keys()[b])
+		_debug_panel.add_action("Arquetipos", "Spawnear: %s" % spawn_name,
+			func(): _debug_spawn_character(DebugArchetype.seed_for(b)))
 
 	# ── Spawn ──
 	_debug_panel.add_action("Spawn", "Go to start",        _go_to_start)
@@ -664,7 +693,8 @@ func _character_stats_text(inst: EntityInstantiation) -> String:
 		"speed     %.1f" % arch.speed,
 		"strength  %.2f" % arch.strenght,
 		"jump      %.2fm" % arch.jump_height,
-		"arm       %.2f m  (reach %.2f)" % [sizes.arm_reach, sizes.interaction_reach],
+		"arm       %.2f m  (reach %.2f)  k %.2f" % [sizes.arm_reach, sizes.interaction_reach, arch.arms_length],
+		"leg       %.2f m                k %.2f" % [sizes.leg_height, arch.legs_length],
 		"fatness   %.2f" % arch.fatness,
 		"muscle    %.2f" % arch.muscularity,
 	]
@@ -674,6 +704,72 @@ func _character_stats_text(inst: EntityInstantiation) -> String:
 func _debug_spawn_pos() -> Vector3:
 	var fwd := -player_camera.global_transform.basis.z
 	return char_rigidbody.global_position + fwd * 2.5 + Vector3.UP
+
+
+## Reporta el PICO de velocidad realmente alcanzado contra el tope teórico, y resetea el pico.
+##
+## Existe porque el tope es una cota, no un objetivo: el personaje acelera hasta que la fuerza aplicada
+## se equilibra con lo que lo frena, y eso puede quedar por debajo del tope sin que nada avise. Mirar
+## el número en movimiento es imposible (el mouse está capturado), así que se acumula el pico y se
+## consulta después.
+##
+## Uso: apretás el botón para resetear, esprintás en línea recta unos segundos, volvés y lo apretás.
+func _debug_measure_speed() -> void:
+	var rb := char_rigidbody
+	if not is_instance_valid(rb):
+		return
+	var walk: float = rb.max_speed_forward
+	var top: float = walk * rb.sprint_multiplier
+	print("── VELOCIDAD ────────────────────────────────────────────────────────────────")
+	print("  tope caminando %.2f m/s   tope sprint %.2f m/s" % [walk, top])
+	print("  PICO alcanzado %.2f m/s   (%.0f%% del tope de sprint)" % [
+		rb.debug_peak_speed, 100.0 * rb.debug_peak_speed / maxf(top, 0.001)])
+	print("  actual %.2f m/s   accel base %.2f m/s²   freno %.2f m/s²" % [
+		Vector3(rb.linear_velocity.x, 0.0, rb.linear_velocity.z).length(),
+		rb.accel_forward / maxf(rb.mass, 0.001), rb.brake_forward / maxf(rb.mass, 0.001)])
+	rb.debug_peak_speed = 0.0
+	print("  (pico reseteado)")
+
+
+## Vuelca la geometría REAL de las piernas de todos los personajes en escena, a la consola.
+##
+## Existe porque la flexión de rodilla la fijan cuatro cosas a la vez —`leg_bentness`, la altura de la
+## cápsula, la caída de pelvis y dónde el raycast planta el pie— y calcularla sobre el papel ya falló
+## una vez: `MAX_EXTENSION` estaba por debajo del reposo pedido y la pelvis bajaba sola estando quieta.
+## Acá se mide lo que efectivamente pasa, con el personaje parado en el juego.
+func _debug_measure_legs() -> void:
+	print("── PIERNAS ──────────────────────────────────────────────────────────────────")
+	for rb in get_tree().get_nodes_in_group(CharacterRigidBody3D.CHARACTER_GROUP):
+		var bi := (rb as Node).get_parent() as BoneInstantiator
+		if not is_instance_valid(bi) or bi.entity_instantiation == null:
+			continue
+		var sz := bi.skel_sizes_util
+		var arch := bi.entity_instantiation.arch_final
+		var name_txt := str(EntityArchetype.Archetype.keys()[bi.entity_instantiation.archetype_type])
+		var hip: Node3D = bi.custom_bones_util.left_higher_leg
+		var tgt: Node3D = bi.ik_util.left_leg_current_target if is_instance_valid(bi.ik_util) else null
+		if not (is_instance_valid(hip) and is_instance_valid(tgt)):
+			continue
+		var span: float = hip.global_position.distance_to(tgt.global_position)
+		var a: float = sz.higher_leg_size.y
+		var b: float = sz.lower_leg_size.y
+		var cosk: float = clampf((a * a + b * b - span * span) / (2.0 * a * b), -1.0, 1.0)
+		var knee: float = 180.0 - rad_to_deg(acos(cosk))
+		var drop: float = bi.anim_mod.pelvis_drop if is_instance_valid(bi.anim_mod) else 0.0
+		print("  %-11s bent %.2f | pedido %.4f  real %.4f  (drop %.4f)  RODILLA %.1f°" % [
+			name_txt, arch.leg_bentness, sz.standing_pelvis_height - sz.ankle_height, span, drop, knee])
+		print("               cadera y=%.4f  pie y=%.4f  dx=%.4f dz=%.4f  |  max IK %.4f" % [
+			hip.global_position.y, tgt.global_position.y,
+			absf(hip.global_position.x - tgt.global_position.x),
+			absf(hip.global_position.z - tgt.global_position.z),
+			sz.leg_height * SkeletonSizesUtil.MAX_EXTENSION])
+
+
+## Elige el arquetipo con el que respawnea la P, y respawnea ya. La elección QUEDA PEGADA: después
+## alcanza con apretar P para ver otra variación del mismo arquetipo, que es el bucle de autoría.
+func _respawn_as(archetype: int) -> void:
+	DebugArchetype.selected = archetype
+	_respawn()
 
 
 func _go_to_start() -> void:
@@ -692,7 +788,12 @@ func _net_status_text() -> String:
 	return "Solo (local)"
 
 
-func _debug_spawn_character() -> void:
+## Deja un NPC parado al lado. No pasa por NetSpawner a propósito: es una ayuda de autoría para mirar
+## dos siluetas juntas, no un objeto de la partida.
+##
+## Sin seed explícita usa la del arquetipo elegido en el panel; los botones "Spawnear: X" pasan la de
+## un arquetipo puntual, que NO cambia la selección — así podés ser `kid` y rodearte de `giga`.
+func _debug_spawn_character(character_seed: int = -1) -> void:
 	var scene := load("res://Scenes/player.tscn") as PackedScene
 	if scene == null:
 		return
@@ -700,7 +801,7 @@ func _debug_spawn_character() -> void:
 	if inst == null:
 		return
 	inst.is_active = false
-	inst.master_seed = randi() % 100000
+	inst.master_seed = character_seed if character_seed >= 0 else DebugArchetype.respawn_seed()
 	get_tree().current_scene.add_child(inst)
 	inst.global_position = _debug_spawn_pos()
 
@@ -712,7 +813,7 @@ func _debug_spawn(type_name: String) -> void:
 	if type_name == "seat":
 		pos = _snap_to_ground(pos)
 	elif type_name == "dashboard":
-		pos = _snap_to_ground(pos) + Vector3.UP * 1.2
+		pos = _snap_to_ground(pos) + Vector3.UP * 1.5
 	NetSpawner.request_spawn(type_name, Transform3D(Basis(), pos))
 
 ## Baja un punto hasta el piso con un raycast (para spawnear objetos estáticos apoyados).
