@@ -1,49 +1,94 @@
-# Archivos del sistema
-.DS_Store
-Thumbs.db
-desktop.ini
+# =============================================================
+#  Nuevos Aires Delivery — Godot 4.5 (GDScript)
+# =============================================================
 
-# Archivos de Godot
-.import/
-export.cfg
-export_presets.cfg
-
-# Cache y temporales
-*.import
-*.tmp
-*.log
-*.bak
-
-# Configuración local del editor
-.editor_settings-*
-.cache/
+# ─── Godot ───────────────────────────────────────────────────
+# Cache del editor y de importacion. Se regenera solo al abrir el proyecto.
 .godot/
+.import/
 
-# Carpetas ocultas o personales
+# Config local del editor / usuario. No viaja entre maquinas.
+.editor_settings-*
+*.editorconfig.local
+
+# Presets de exportacion: pueden traer paths locales y passwords de keystore.
+export_presets.cfg
+export_credentials.cfg
+
+# Build de Android generado por "Install Android Build Template".
+/android/
+
+# OJO: *.import y *.uid SI van al repo.
+#   .import  = ajustes de importacion por asset (filtro, mipmaps, compresion).
+#              Sin el, un clon nuevo reimporta con defaults y las texturas
+#              salen distintas (las caras de Textures/character/ dependen de esto).
+#   .uid     = identidad estable del recurso; sin el se rompen referencias.
+
+# ─── Salidas de exportacion / build ──────────────────────────
+/build/
+/dist/
+/exports/
+/bin/
+*.pck
+*.apk
+*.aab
+*.dmg
+
+# ─── Node (Tools/rive_bake) ──────────────────────────────────
+# El horneador Rive -> PNG baja Chromium via puppeteer: ~4000 archivos, 58 MB.
+# Se reinstala con `npm install` desde package-lock.json, que si va al repo.
+node_modules/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.puppeteer_cache/
+
+# ─── Logs y temporales ───────────────────────────────────────
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.log
+/out.txt
+/err.txt
+crash_*.txt
+logs/
+
+# ─── Sistema operativo ───────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ─── Editores / herramientas ─────────────────────────────────
 .idea/
-.vscode/
+.vs/
 *.code-workspace
+*.swp
+*~
+.claude/settings.local.json
 
-# Archivos de build (si usas C#)
+# ─── C# / Mono (por si algun dia se usa) ─────────────────────
 .mono/
-.data_*/
-*.dll
-*.exe
-*.pdb
-*.mdb
-*.so
-*.a
-*.lib
-*.obj
-*.o
+/*.sln
+/*.csproj
+obj/
 
-# Archivos de exportación
-bin/
-build/
-dist/
-exports/
+# OJO: no ignorar *.dll / *.so / *.lib en general.
+# addons/godotsteam/ son binarios GDExtension: sin ellos el proyecto
+# clonado no arranca. Si algun dia hay binarios propios de build,
+# que vivan en /bin/ o /build/ (ya ignorados arriba).
 
-# Si usas Godot con GDScript y no C#, puedes ignorar estos:
-# project.sln
-# .vs/
-# .nuget/
+# ZIPs sueltos en la raiz (backups olvidados tipo asd.zip).
+/*.zip
+
+# Si preferis no ver los .import como untracked, descomenta:
+#*.import
