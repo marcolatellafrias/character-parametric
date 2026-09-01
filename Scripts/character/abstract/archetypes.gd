@@ -562,7 +562,7 @@ static func old_arch() -> EntityArchetype:
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 1.0
 	arch.leg_bentness = 0.30
-	arch.tremor = 1.0
+	arch.tremor = 0.75
 	arch.shoulders_forward = 1.0
 	arch.shoulders_drop = 1.0
 	arch.arm_openness = 0.25

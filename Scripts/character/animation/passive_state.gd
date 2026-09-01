@@ -39,6 +39,19 @@ var breath_phase: float = 0.0
 ## Tiempo acumulado, para los efectos que no son cíclicos (el temblor).
 var time: float = 0.0
 
+## ⚠ FALSE MIENTRAS SE REGISTRAN LAS ANIMACIONES, y por una razón que no se ve venir.
+##
+## `ProceduralBoneAnimator` guarda como línea de base **el valor del driver en el momento del
+## registro**, y después resta eso siempre. Para las señales de marcha es correcto (el reposo del
+## hueso corresponde al valor de reposo de la señal). Para un OSCILADOR es un bug: `time` arranca en
+## un valor sembrado al azar, así que la base sale un número cualquiera y queda un **corrimiento
+## permanente** — una mano colgando 10 mm fuera de lugar, distinta en cada respawn, y el pecho fijo
+## medio inhalado.
+##
+## Con esto en false los drivers devuelven 0 durante el registro, la base queda en 0, y la oscilación
+## sale centrada en el reposo. Lo prende `PassiveAnimations.register_all()` al terminar.
+var active: bool = false
+
 
 static func create(character_seed: int) -> PassiveState:
 	var s := PassiveState.new()
@@ -67,6 +80,8 @@ func update(delta: float, effort: float) -> void:
 ##
 ## La pausa se acorta con el esfuerzo — jadeando no hay descanso entre ciclos.
 func breath() -> float:
+	if not active:
+		return 0.0
 	var pause: float = lerpf(0.20, 0.02, exertion)
 	var inhale: float = (1.0 - pause) * 0.40
 	var exhale: float = (1.0 - pause) - inhale
@@ -83,12 +98,34 @@ func breath_amplitude() -> float:
 	return 1.0 + exertion * 1.8
 
 
+## Piso del envolvente del temblor: la amplitud nunca baja de esta fracción del pico.
+##
+## Es LA perilla del carácter del temblor. En 1.0 tiembla parejo y se lee mecánico; en 0.1 se apaga por
+## completo entre ondas y parece que se cura y recae.
+##
+## En 0.2 baja bastante, pero NO tanto como sugiere el número: el sesgo hacia arriba y las dos
+## frecuencias hacen que el valle profundo sea raro en vez de periódico.
+const TREMOR_FLOOR := 0.2
+
 ## Temblor cuasi-periódico, −1..1. `offset` desfasa articulaciones entre sí.
 ##
-## No es ruido blanco: un temblor real ronda los 5 Hz con la amplitud vagando. `randf()` por frame se
-## lee como un error de render y además depende de los FPS.
+## Tres decisiones en el envolvente, todas para que no se lea como una onda:
+##
+##   1. **Dos senos a frecuencias inconmensurables** (1.7 y 0.73). Con uno solo el sube-y-baja tiene un
+##      período fijo de ~3.7 s y el ojo lo aprende. Con dos que no encajan, los valles rara vez
+##      coinciden y el patrón tarda decenas de segundos en repetirse.
+##   2. **Sesgo hacia arriba** (`pow(mix, 0.6)`). Un seno pasa tanto tiempo abajo como arriba; el sesgo
+##      lo empuja al techo, así que tiembla casi siempre y solo baja un instante.
+##   3. **Reescalado sobre TREMOR_FLOOR**, para que el valle no llegue a cero.
+##
+## Y `fast` no es ruido blanco: un temblor real ronda los 5 Hz. `randf()` por frame se lee como un error
+## de render y además depende de los FPS.
 func tremor(offset: float) -> float:
+	if not active:
+		return 0.0
 	var t: float = time + offset
 	var fast: float = sin(t * 31.4)
-	var wander: float = 0.55 + 0.45 * sin(t * 1.7 + offset)
-	return fast * wander
+	var slow_a: float = 0.5 + 0.5 * sin(t * 1.70 + offset)
+	var slow_b: float = 0.5 + 0.5 * sin(t * 0.73 + offset * 2.0 + 2.1)
+	var mix: float = pow(slow_a * 0.6 + slow_b * 0.4, 0.6)
+	return fast * (TREMOR_FLOOR + (1.0 - TREMOR_FLOOR) * mix)

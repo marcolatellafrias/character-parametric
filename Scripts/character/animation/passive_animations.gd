@@ -40,6 +40,8 @@ func register_all() -> void:
 		return
 	_register_breathing(st)
 	_register_tremor(st)
+	# Recién ahora los drivers devuelven valores reales. Ver PassiveState.active.
+	st.active = true
 
 
 ## ── RESPIRACIÓN ───────────────────────────────────────────────────────────────────────────────────
@@ -77,6 +79,10 @@ func _register_breathing(st: PassiveState) -> void:
 ##     rodilla bambolea sobre el eje que las une. Es como se ve un temblor de piernas de verdad.
 ##   - **Crece hacia la punta de la cadena.** La mano tiembla más que el hombro, porque el temblor se
 ##     amplifica a lo largo del brazo. Sale solo registrando pesos distintos por hueso.
+##   - **En los brazos, el TARGET de la IK, no los huesos.** `_pose_arms` corre DESPUÉS de la capa
+##     procedural y `arms_controller` re-resuelve los dos huesos del brazo todos los frames, agarre o
+##     no: lo que se escriba en `upper_arm`/`lower_arm` se pisa. Ese mismo `_pose_arms` conserva a
+##     propósito el desplazamiento que el animador dejó sobre el NODO target, que es la vía prevista.
 ##   - **Desfasados MUY POCO entre sí.** Un temblor sale de una sola oscilación nerviosa: el cuerpo
 ##     tiembla casi en fase, con un retardo chico entre articulaciones. Los offsets están en SEGUNDOS y
 ##     a 5 Hz un valor grande da vuelta el ciclo entero y quedás en fase pseudo-aleatoria — que se lee
@@ -94,13 +100,17 @@ func _register_tremor(st: PassiveState) -> void:
 	var right := func() -> float: return st.tremor(0.018)
 	var core  := func() -> float: return st.tremor(0.009)
 
-	pa.register_formula(cb.left_lower_arm,  PA.Axis.ROT_X, left,  amount * 0.030)
-	pa.register_formula(cb.left_lower_arm,  PA.Axis.ROT_Z, left,  amount * 0.022)
-	pa.register_formula(cb.right_lower_arm, PA.Axis.ROT_X, right, amount * 0.030)
-	pa.register_formula(cb.right_lower_arm, PA.Axis.ROT_Z, right, amount * 0.022)
-
-	pa.register_formula(cb.left_upper_arm,  PA.Axis.ROT_X, left,  amount * 0.010)
-	pa.register_formula(cb.right_upper_arm, PA.Axis.ROT_X, right, amount * 0.010)
+	# ── LA BASE: EL CUERPO ENTERO ─────────────────────────────────────────────────────────────────
+	# Un giro mínimo de la raíz. Es lo que hace que el temblor pertenezca a UN CUERPO en vez de ser
+	# articulaciones sueltas: todo el tren superior lo hereda, **los brazos incluidos**, porque sus
+	# targets se anclan a `left_upper_arm.global_position`. Y como las piernas se re-clavan al final del
+	# frame, los pies no se enteran.
+	#
+	# ⚠ MUY CHICO, y no solo por gusto: la altura de cámara sigue al hueso de la cabeza, así que esto
+	# **vibra la cámara en primera persona**. A 0.004 rad la cabeza se mueve ~4 mm. Si marea, este es el
+	# peso a bajar, y se puede llevar a cero sin tocar nada más.
+	pa.register_formula(cb.lower_spine, PA.Axis.ROT_X, core, amount * 0.004)
+	pa.register_formula(cb.lower_spine, PA.Axis.ROT_Z, core, amount * 0.003)
 
 	if is_instance_valid(cb.head):
 		pa.register_formula(cb.head,  PA.Axis.ROT_X, core, amount * 0.008)
@@ -117,7 +127,7 @@ func _register_tremor(st: PassiveState) -> void:
 	# es el largo de la pierna entera (~0.92 m), y un brazo de palanca largo da MENOS ángulo por
 	# milímetro, no más. La cuenta es `desplazamiento = pole_distance · tan(ángulo)`:
 	#
-	#   0.006 m → 0.4° (invisible)      0.02 m → 1.25°      0.05 m → 3.1° (demasiado)
+	#   0.006 m → 0.4° (invisible)      0.014 m → 0.87°      0.02 m → 1.25°      0.05 m → 3.1°
 	#
 	# El peso es el desplazamiento en metros en el pico del temblor.
 	#
@@ -129,8 +139,26 @@ func _register_tremor(st: PassiveState) -> void:
 	# Para pasar de ahí habría que darle al pie una orientación propia en vez de heredar la de la tibia,
 	# que es otro trabajo.
 	var ik := bi.ik_util
-	if is_instance_valid(ik):
-		if is_instance_valid(ik.left_leg_pole):
-			pa.register_node_formula(ik.left_leg_pole,  Vector3.RIGHT, left,  amount * 0.02)
-		if is_instance_valid(ik.right_leg_pole):
-			pa.register_node_formula(ik.right_leg_pole, Vector3.RIGHT, right, amount * 0.02)
+	if not is_instance_valid(ik):
+		return
+
+	# ── LOS BRAZOS NO SE REGISTRAN ────────────────────────────────────────────────────────────────
+	# Tiemblan igual, pero HEREDADO de la raíz: sus targets se anclan a `left_upper_arm.global_position`,
+	# así que si el torso tiembla, la mano tiembla con él. Alcanza, y un temblor propio de mano distraía
+	# demasiado — es lo primero que mira el ojo.
+	#
+	# Si alguna vez se quiere de vuelta, va sobre `ik.left/right_arm_ik_target` con
+	# `register_node_formula`, NUNCA sobre `upper_arm`/`lower_arm` (ver la nota de arriba). Dos cosas
+	# aprendidas y que conviene no volver a descubrir:
+	#
+	#   - La LATERAL tiene que mandar por lejos. Una mano que cuelga al costado se recorta contra el
+	#     cuerpo: unos milímetros verticales saltan a la vista y los laterales se pierden hacia adentro,
+	#     así que con pesos parejos el temblor parece puro arriba-abajo.
+	#   - NO hace falta apagarlo al agarrar. `_apply_arm_grab` termina en
+	#     `ik_target.global_position.lerp(handle_world, blend)`, o sea que con el agarre completo el
+	#     target PASA A SER el handle y el temblor se apaga solo, con el mismo blend del agarre.
+
+	if is_instance_valid(ik.left_leg_pole):
+		pa.register_node_formula(ik.left_leg_pole,  Vector3.RIGHT, left,  amount * 0.014)
+	if is_instance_valid(ik.right_leg_pole):
+		pa.register_node_formula(ik.right_leg_pole, Vector3.RIGHT, right, amount * 0.014)
