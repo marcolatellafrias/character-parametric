@@ -73,8 +73,12 @@ static func create(seed: int) -> EntityInstantiation:
 
 	# El arquetipo puede venir forzado por dos vías, y LA SEED GANA: es una elección explícita hecha
 	# desde el panel, mientras que el candado global es apenas el default de la sesión.
+	# Tres casos, no dos: la seed nombra un arquetipo, la seed pide sorteo libre, o la seed no dice
+	# nada y recién ahí manda el candado global.
 	var forced := archetype_in_seed(seed)
-	if forced < 0:
+	if forced == SEED_FREE_DRAW:
+		forced = -1
+	elif forced < 0:
 		forced = FORCE_ARCHETYPE
 	if forced >= 0:
 		inst.archetype_type = forced as EntityArchetype.Archetype
@@ -108,18 +112,34 @@ static func create(seed: int) -> EntityInstantiation:
 	return inst
 
 
+## Lo que devuelve `archetype_in_seed` cuando la seed pide SORTEO LIBRE: el arquetipo se rifa como en
+## la ciudad —mezclas incluidas— **ignorando `FORCE_ARCHETYPE`**.
+##
+## Hace falta un valor propio y no alcanza con −1 porque −1 significa "esta seed no dice nada", y ahí
+## es justamente donde entra el candado global. Sin distinguir los dos casos, con el candado puesto el
+## botón "aleatorio" devolvía siempre el mismo arquetipo — que es lo que pasaba hasta ahora.
+const SEED_FREE_DRAW := -2
+
 ## Seed que reproduce `archetype` con una variación propia. La usa el panel de debug.
 static func debug_seed(archetype: EntityArchetype.Archetype, variation: int) -> int:
 	return DEBUG_SEED_BASE + int(archetype) * DEBUG_SEED_SPAN + posmod(variation, DEBUG_SEED_SPAN)
 
 
-## El arquetipo codificado en una seed, o −1 si es una seed normal.
+## Seed de sorteo libre. Vive en la banda inmediatamente posterior a la del último arquetipo, así que
+## no hay tabla que mantener: agregar un arquetipo la corre sola.
+static func free_draw_seed(variation: int) -> int:
+	return DEBUG_SEED_BASE + EntityArchetype.Archetype.size() * DEBUG_SEED_SPAN 		+ posmod(variation, DEBUG_SEED_SPAN)
+
+
+## El arquetipo codificado en una seed, `SEED_FREE_DRAW` si pide sorteo libre, o −1 si es normal.
 static func archetype_in_seed(seed: int) -> int:
 	if seed < DEBUG_SEED_BASE:
 		return -1
 	@warning_ignore("integer_division")
 	var idx: int = (seed - DEBUG_SEED_BASE) / DEBUG_SEED_SPAN
-	return idx if idx < EntityArchetype.Archetype.size() else -1
+	if idx < EntityArchetype.Archetype.size():
+		return idx
+	return SEED_FREE_DRAW if idx == EntityArchetype.Archetype.size() else -1
 
 
 func _resolve(rng: RandomNumberGenerator) -> void:

@@ -38,6 +38,8 @@ func register_all() -> void:
 	var st := bi.passive_state
 	if st == null:
 		return
+	st.breath_rate = lerpf(1.0, PassiveState.BREATH_RATE_MAX,
+		clampf(bi.entity_instantiation.arch_final.breath_rate, 0.0, 1.0))
 	_register_breathing(st)
 	_register_tremor(st)
 	# Recién ahora los drivers devuelven valores reales. Ver PassiveState.active.
@@ -63,11 +65,16 @@ func _register_breathing(st: PassiveState) -> void:
 	var cb := bi.custom_bones_util
 	var breath := func() -> float: return st.breath() * st.breath_amplitude()
 
-	pa.register_formula(cb.chest,        PA.Axis.ROT_X, breath,  0.075)
-	pa.register_formula(cb.higher_spine, PA.Axis.ROT_X, breath,  0.034)
+	# `breath_depth` multiplica las CUATRO parejo, el cuello incluido. Escalar solo el pecho rompería la
+	# compensación y el personaje pasaría de respirar a asentir. Ver la nota de los pesos arriba.
+	var d: float = lerpf(1.0, PassiveState.BREATH_DEPTH_MAX,
+		clampf(bi.entity_instantiation.arch_final.breath_depth, 0.0, 1.0))
+
+	pa.register_formula(cb.chest,        PA.Axis.ROT_X, breath,  0.075 * d)
+	pa.register_formula(cb.higher_spine, PA.Axis.ROT_X, breath,  0.034 * d)
 	if is_instance_valid(cb.neck):
-		pa.register_formula(cb.neck,     PA.Axis.ROT_X, breath, -0.084)
-	pa.register_formula(cb.lower_spine,  PA.Axis.POS_Y, breath,  0.012)
+		pa.register_formula(cb.neck,     PA.Axis.ROT_X, breath, -0.084 * d)
+	pa.register_formula(cb.lower_spine,  PA.Axis.POS_Y, breath,  0.012 * d)
 
 
 ## ── TEMBLOR ───────────────────────────────────────────────────────────────────────────────────────

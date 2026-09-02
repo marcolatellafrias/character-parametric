@@ -653,6 +653,8 @@ func _setup_debug_panel() -> void:
 	for a in EntityArchetype.Archetype.values():
 		var be_name := str(EntityArchetype.Archetype.keys()[a])
 		_debug_panel.add_action("Arquetipos", "Ser: %s" % be_name, func(): _respawn_as(a))
+	_debug_panel.add_action("Arquetipos", "Spawnear: aleatorio",
+		func(): _debug_spawn_character(DebugArchetype.free_seed()))
 	for b in EntityArchetype.Archetype.values():
 		var spawn_name := str(EntityArchetype.Archetype.keys()[b])
 		_debug_panel.add_action("Arquetipos", "Spawnear: %s" % spawn_name,

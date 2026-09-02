@@ -227,7 +227,19 @@ const LENGTH_MAX_FACTOR := 1.30
 const ARM_EXT_MIN := 0.00
 ## El estirón para el que se dimensiona la banda. Es el `arm_stretch` que usan todos los arquetipos;
 ## `MAX_ARM_STRETCH` es aparte y es solo un tope de seguridad.
-const DESIGN_ARM_STRETCH := 2.0
+##
+## SUBIR ESTO ACORTA EL BRAZO MÁS LARGO POSIBLE, y bajarlo lo alarga: la banda se dimensiona para que
+## el brazo al tope, estirado `DESIGN_ARM_STRETCH` veces, no pase de lo esculpido (`ARM_MODEL_FACTOR`).
+##
+## Bajó de 2.0 a 1.85 para darle brazos más largos al `tall_lanky`, que ya estaba clavado en
+## `arms_length = 1.0`. **No costó alcance**: su `arm_stretch` ya venía clampeado por
+## `authored_max / new_arm_length`, así que el techo de agarre —que es `rig.arm_chain × 4 × 0.97`, o
+## sea 1.282 m— es el mismo de antes. Lo único que cambió es cómo se reparte entre largo y estirón.
+##
+## ⚠ CAMBIARLO RE-MAPEA `arms_length` DE LOS SEIS. Si volvés a tocarlo, hay que recalibrar los seis
+## valores con `t = (escala_deseada - 1) / (ARM_MODEL_FACTOR / DESIGN_ARM_STRETCH - 1)` o a todos les
+## cambia el brazo de rebote.
+const DESIGN_ARM_STRETCH := 1.85
 const ARM_EXT_MAX := (ReferenceRig.ARM_MODEL_FACTOR / DESIGN_ARM_STRETCH - 1.0) / (ReferenceRig.ARM_MODEL_FACTOR - 1.0)
 
 

@@ -13,7 +13,12 @@ class_name DebugArchetype
 ## personajes a la vez. El candado global sigue existiendo (`EntityInstantiation.FORCE_ARCHETYPE`)
 ## para cuando querés que TODA la ciudad sea un arquetipo; esto es para elegir de a uno mientras jugás.
 
-## Sin arquetipo elegido: manda el sorteo normal (o el candado global, si está puesto).
+## Sin arquetipo elegido: SORTEO LIBRE, mezclas incluidas, ignorando `EntityInstantiation.
+## FORCE_ARCHETYPE`.
+##
+## Antes esto caía en el candado global y con el candado puesto —que es lo normal mientras se modela—
+## el botón "aleatorio" daba siempre el mismo personaje. El candado sigue mandando para la ciudad; lo
+## que pide el panel es una elección explícita y le gana.
 const NONE := -1
 
 ## Arquetipo con el que respawnea la P. Lo escribe el panel de debug.
@@ -30,8 +35,13 @@ static func label() -> String:
 ## si no hay ninguno elegido. La variación es lo que hace que apretar P dos veces no dé dos clones.
 static func respawn_seed() -> int:
 	if selected == NONE:
-		return randi() % 100000
+		return free_seed()
 	return seed_for(selected)
+
+
+## Seed de un sorteo libre nuevo, sin tocar la selección. La usa el botón "Spawnear: aleatorio".
+static func free_seed() -> int:
+	return EntityInstantiation.free_draw_seed(randi())
 
 
 ## Seed para UN arquetipo puntual, sin tocar la selección. La usan los botones "Spawnear: X".

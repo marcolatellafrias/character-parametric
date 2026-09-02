@@ -25,6 +25,15 @@ extends RefCounted
 const BREATH_PERIOD_REST := 4.6
 const BREATH_PERIOD_HARD := 1.5
 
+## Techo de `EntityArchetype.breath_depth`: a qué multiplica la amplitud cuando el knob está en 1.
+##
+## Vive acá y no en el arquetipo porque es una propiedad de ESTA capa: el knob dice "qué tan hondo
+## respira este personaje" en abstracto, y cuánto es eso en radianes lo sabe quien registra los huesos.
+const BREATH_DEPTH_MAX := 3.0
+
+## Techo de `EntityArchetype.breath_rate`: cuántas veces más rápido respira con el knob en 1.
+const BREATH_RATE_MAX := 2.4
+
 ## Cuánto sube `exertion` por segundo esprintando a fondo, y cuánto baja descansando.
 ##
 ## La bajada es MÁS LENTA que la subida a propósito: seguir jadeando después de frenar es justo el
@@ -38,6 +47,12 @@ var exertion: float = 0.0
 var breath_phase: float = 0.0
 ## Tiempo acumulado, para los efectos que no son cíclicos (el temblor).
 var time: float = 0.0
+
+## Divisor del período respiratorio, ya resuelto desde `EntityArchetype.breath_rate`. 1.0 = normal.
+##
+## Se guarda acá y no se lee del arquetipo en cada frame porque este es el único estado que corre por
+## personaje y por frame; el arquetipo se consulta una vez, al registrar.
+var breath_rate: float = 1.0
 
 ## ⚠ FALSE MIENTRAS SE REGISTRAN LAS ANIMACIONES, y por una razón que no se ve venir.
 ##
@@ -68,7 +83,9 @@ func update(delta: float, effort: float) -> void:
 	var rate: float = EXERTION_RISE * effort - EXERTION_FALL * (1.0 - effort)
 	exertion = clampf(exertion + rate * delta, 0.0, 1.0)
 
-	var period: float = lerpf(BREATH_PERIOD_REST, BREATH_PERIOD_HARD, exertion)
+	# El esfuerzo elige el período y el carácter lo divide, en ese orden. Al revés —un período fijo por
+	# arquetipo— el hiperactivo dejaría de acelerar al cansarse, que es el efecto que más se ve.
+	var period: float = lerpf(BREATH_PERIOD_REST, BREATH_PERIOD_HARD, exertion) / maxf(breath_rate, 0.01)
 	breath_phase = fposmod(breath_phase + TAU * delta / maxf(period, 0.01), TAU)
 	time += delta
 

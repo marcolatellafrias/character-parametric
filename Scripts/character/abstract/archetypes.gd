@@ -111,6 +111,26 @@ var shoulders_drop : float = 0.0
 ## Es su propia variable y no se deduce de la edad a propósito: así el mismo efecto sirve después para
 ## un personaje herido, con frío o asustado, sin tocar nada.
 var tremor : float = 0.0
+
+## PROFUNDIDAD EXTRA DE LA RESPIRACIÓN, 0..1. **0 = normal**, no "sin respirar".
+##
+## Sube cuánto se abre el pecho SIN tocar el ritmo: el período sale solo de `exertion` en
+## `PassiveState`, así que un gordo al que le cuesta respirar se lee por lo hondo, no por lo rápido.
+##
+## Normalizado como el resto de los knobs de cuerpo —0 neutro y el máximo declarado en un solo lugar,
+## `PassiveState.BREATH_DEPTH_MAX`— y no como multiplicador crudo. Un multiplicador mezcla bien igual,
+## pero el número no significa nada hasta que abrís el archivo que lo consume.
+var breath_depth : float = 0.0
+
+## FRECUENCIA EXTRA DE LA RESPIRACIÓN, 0..1. **0 = normal.** Acorta el período sin tocar la amplitud.
+##
+## Es el eje INDEPENDIENTE de `breath_depth`, y tenerlos separados es todo el punto: hondo y lento lee
+## como "le cuesta respirar" (el gordo), rápido y normal lee como nervioso o hiperactivo (el giga). Con
+## una sola perilla los dos personajes respirarían igual, más fuerte.
+##
+## Se compone con el esfuerzo en vez de reemplazarlo: `exertion` sigue acelerando desde acá, así que un
+## personaje hiperactivo que además corrió jadea más rápido todavía. Techo en `PassiveState`.
+var breath_rate : float = 0.0
 var arm_openness: float = 0.5
 var arm_bentness: float = 0.3
 
@@ -127,6 +147,25 @@ var has_neck: bool = true
 ## Reemplazan a `height` + `legs_to_feet_proportion` + `chest_to_low_spine_proportion` + `reach`:
 ## ahora el modelo define lo posible y el arquetipo elige adentro. Ver
 ## technical/skinned-character-migration.md.
+##
+## ── EL TORSO PUEDE SER NEGATIVO, Y ESTÁ BIEN ──────────────────────────────────────────────────────
+## `torso_chain_for` no clampea, así que un valor negativo ENCOGE respecto de lo esculpido. El nene, el
+## flaco y el viejo lo usan. No es un bug ni un valor a "arreglar".
+##
+## Es la consecuencia de re-basar el torso al MEDIO del rango usado (×1.4547 en Blender) en vez de al
+## extremo corto. El motivo fue de sombreado, no de proporción: el espejo escala el hueso solo en su
+## eje Y (`SkinnedBodyUtil`, `scaled_local(1, s, 1)`) y el skinning transforma las normales con esa
+## misma matriz, cuando a una normal le corresponde la inversa transpuesta. El error crece con
+## `|s − 1|`, y el giga —el más estirado, con s = 1.70— se veía mal en hombros y panza.
+##
+## Centrando la base, la desviación máxima cayó de 0.75 a 0.20 y el sombreado se limpió para los seis.
+## Las proporciones NO cambiaron: los seis valores se recalibraron con `t = s_viejo / 1.4547 − 1`.
+##
+## ⚠ `TORSO_MODEL_FACTOR` sigue en 2.0 y ahora sobra: nadie pasa de 1.20. Da igual mientras no exista
+## `torso_length_max` (sin key, el factor solo alimenta una `w` que no se escribe), pero el día que se
+## esculpa hay que bajarlo a ~1.25 o el correctivo queda autorado para un rango que nadie usa.
+##
+## Piernas y brazos tienen el mismo problema de normales sin resolver, con desviaciones parecidas.
 var legs_length  : float = 0.5
 var arms_length  : float = 0.5
 var torso_length : float = 0.5
@@ -264,10 +303,14 @@ static func generic_arch() -> EntityArchetype:
 	# 0.985 haciendo ese trabajo, lo único que agregaban era un codo doblado de más. Vuelve a ser un
 	# knob por arquetipo cuando haya una razón de postura para diferenciarlos.
 	#
-	# `arm_openness` está IGUALADO EN LOS SEIS por el mismo criterio. Los valores viejos (0.2 a 0.58)
-	# eran de cuando la postura era lo único que distinguía a un arquetipo de otro; ahora esa variedad
-	# la dan largo de cadena, músculo y grasa, y abrir los brazos encima solo agregaba ruido. Igual que
-	# `stance_width`, vuelve a diferenciarse cuando haya una razón de postura y no de proporción.
+	# `arm_openness` y `stance_width` estuvieron IGUALADOS EN LOS SEIS un tiempo: los valores viejos
+	# (0.2 a 0.58) eran de cuando la postura era lo único que distinguía a un arquetipo de otro, y con
+	# la variedad viniendo de largo de cadena, músculo y grasa, abrir los brazos encima solo era ruido.
+	#
+	# El `fat_man` es el primero que los vuelve a mover, y con la razón que faltaba: no es gusto de
+	# postura, es que el cuerpo OCUPA LUGAR. Con la cadera a 1.62× los muslos se tocan y con ese torso
+	# los brazos no pueden colgar pegados. Los dos números salen de la geometría, no del estilo — y ese
+	# es el criterio para que otro arquetipo los toque.
 	arch.arm_openness = 0.18
 	arch.arm_bentness = 0.0
 	arch.fatness = 0.5
@@ -285,8 +328,8 @@ static func generic_arch() -> EntityArchetype:
 	#   brazo:  ver ARM_EXT_MIN/MAX — el arquetipo se mueve en una banda angosta del rango ×4
 	#   torso:  todavía provisorio ⇒ 0.5
 	arch.legs_length  = 0.589
-	arch.arms_length  = 0.680
-	arch.torso_length = 0.589
+	arch.arms_length  = 0.5851
+	arch.torso_length = 0.09232
 	# El genérico es la malla tal cual: deformación cero también en las de clase B.
 	arch.muscle        = 0.0
 	arch.fat           = 0.0
@@ -344,27 +387,33 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.slouch = 0.0
 	arch.leg_bentness = 0.25
 	arch.tremor = 0.0
-	arch.shoulders_scale = 1.0
-	arch.hips_scale = 1.0
-	arch.shoulders_forward = 0.0
+	# DESPEJADAS contra la masa, no medidas solas. El ancho final es `masa × escala`, y las medidas de
+	# Blender son 1.61765 de cadera y 1.45811 de hombro: con `fat 1.0` la cadera ya trae ×1.3 puesto, y
+	# con `muscle 0.0` el hombro no trae nada y la medida va entera acá.
+	# ⚠ Si algún día se mueve `fat` o `muscle`, estos dos hay que volver a despejarlos.
+	arch.shoulders_scale = 1.27
+	arch.hips_scale = 1.24435
+	arch.breath_depth = 0.6
+	arch.breath_rate = 0.0
+	arch.shoulders_forward = -0.70
 	arch.shoulders_drop = 0.0
-	arch.arm_openness = 0.25
+	arch.arm_openness = 0.36
 	arch.arm_bentness = 0.0
 	arch.fatness = 1.0
 	arch.muscularity = 0.9
 	arch.has_neck = true
 	# Torso grande sobre piernas cortas. ≈1.74 m.
-	arch.legs_length  = 0.45
-	arch.arms_length  = 0.617
-	arch.torso_length = 0.4933
-	arch.muscle        = 0.60
-	arch.fat           = 0.95
+	arch.legs_length  = 0.60
+	arch.arms_length  = 0.7245
+	arch.torso_length = 0.20198
+	arch.muscle        = 0.0
+	arch.fat           = 1.0
 	arch.height = 1.85
 	arch.chest_to_low_spine_proportion = 0.28
 	arch.legs_to_feet_proportion = 0.42
 	arch.shoulder_width_proportion = 0.13
 	arch.head_neck_ratio = 0.4
-	arch.stance_width = 1.0
+	arch.stance_width = 1.18
 	return arch
 
 static func kid_arch() -> EntityArchetype:
@@ -418,8 +467,8 @@ static func kid_arch() -> EntityArchetype:
 	# 0.0 es el PISO REAL: el brazo tal cual se esculpió en Blender. No hay más corto que esto
 	# sin re-esculpir la base, y para un personaje de 1.43 m sigue quedando proporcionalmente
 	# largo — el mismo re-baseo que hubo que hacerle a la pierna le va a hacer falta al brazo.
-	arch.arms_length  = 0.42
-	arch.torso_length = 0.21
+	arch.arms_length  = 0.3614
+	arch.torso_length = -0.16821
 	arch.muscle        = 0.0
 	arch.fat           = 0.0
 	arch.height = 1.45
@@ -464,27 +513,27 @@ static func tall_lanky_arch() -> EntityArchetype:
 	# Zancada larga y suelta: el que más estira el paso para su pierna (que además es la más larga).
 	arch.stride = 0.85
 	arch.leg_cripple_chance = 0.0
-	arch.slouch = 0.5
+	arch.slouch = 0.68
 	arch.leg_bentness = 0.05
 	arch.tremor = 0.0
-	arch.shoulders_scale = 0.95
-	arch.hips_scale = 0.95
+	arch.shoulders_scale = 0.94
+	arch.hips_scale = 0.97
 	arch.shoulders_forward = 0.0
 	arch.shoulders_drop = 0.0
-	arch.arm_openness = 0.25
+	arch.arm_openness = 0.18
 	arch.arm_bentness = 0.0
 	arch.fatness = 0.37
 	arch.muscularity = 0.27
 	arch.has_neck = true
 	# Piernas y brazos largos, torso medio: el desgarbado. ≈1.89 m.
-	arch.legs_length  = 0.85
+	arch.legs_length  = 0.98
 	# Techo de la banda del arquetipo (ARM_EXT_MAX). El 1.0 del rango de Blender NO es esto:
 	# ese está reservado para el estirón del agarre.
 	arch.arms_length  = 1.0
-	arch.torso_length = 0.3733
+	arch.torso_length = -0.14759
 	# Enjuto: se queda en la malla esculpida, que es el extremo flaco.
 	arch.muscle        = 0.20
-	arch.fat           = 0.10
+	arch.fat           = 0.20
 	arch.height = 1.95
 	arch.chest_to_low_spine_proportion = 0.28
 	arch.legs_to_feet_proportion = 0.52
@@ -528,21 +577,27 @@ static func giga_arch() -> EntityArchetype:
 	arch.stride = 0.75
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.0
-	arch.leg_bentness = 0.10
+	arch.leg_bentness = 0.00
 	arch.tremor = 0.0
-	arch.shoulders_scale = 1.0
-	arch.hips_scale = 1.0
+	# DESPEJADAS contra la masa, igual que en el fat_man. Medida de Blender: 1.20519 de cadera, con
+	# `fat 0.10` aportando ×1.03. El hombro se midió en 1.61738 (con `muscle 1.0` trayendo ×1.3) y
+	# después se bajó a ojo a 1.391: el ancho esculpido se leía de más una vez puesto el `muscle_max`.
+	# La cadera siguió el mismo camino, de 1.20519 a 1.1610.
+	# ⚠ Si se mueve `muscle` o `fat`, hay que volver a despejarlas.
+	arch.shoulders_scale = 1.07
+	arch.hips_scale = 1.12718
 	arch.shoulders_forward = 0.0
-	arch.shoulders_drop = 0.0
+	arch.breath_rate = 0.85
+	arch.shoulders_drop = -0.50
 	arch.arm_openness = 0.25
 	arch.arm_bentness = 0.0
 	arch.fatness = 0.5
 	arch.muscularity = 1.0
 	arch.has_neck = true
 	# Tronco enorme sobre piernas medias: el macizo. ≈1.85 m.
-	arch.legs_length  = 0.60
-	arch.arms_length  = 0.675
-	arch.torso_length = 0.5733
+	arch.legs_length  = 0.3824
+	arch.arms_length  = 0.7857
+	arch.torso_length = 0.07281
 	# Grande y macizo, no gordo: pierna al máximo, panza moderada.
 	arch.muscle        = 1.00
 	arch.fat           = 0.10
@@ -602,8 +657,8 @@ static func old_arch() -> EntityArchetype:
 	arch.has_neck = true
 	# Encogido: todo por debajo de la media. ≈1.59 m.
 	arch.legs_length  = 0.560
-	arch.arms_length  = 0.560
-	arch.torso_length = 0.330
+	arch.arms_length  = 0.4819
+	arch.torso_length = -0.08572
 	arch.muscle        = 0.0
 	arch.fat           = 0.0
 	arch.height = 1.65
@@ -649,6 +704,8 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.slouch                        = lerpf(slouch, b.slouch, t)
 	r.leg_bentness                  = lerpf(leg_bentness, b.leg_bentness, t)
 	r.tremor                        = lerpf(tremor, b.tremor, t)
+	r.breath_depth                  = lerpf(breath_depth, b.breath_depth, t)
+	r.breath_rate                   = lerpf(breath_rate, b.breath_rate, t)
 	r.shoulders_scale               = lerpf(shoulders_scale, b.shoulders_scale, t)
 	r.hips_scale                    = lerpf(hips_scale, b.hips_scale, t)
 	r.shoulders_forward             = lerpf(shoulders_forward, b.shoulders_forward, t)
@@ -657,6 +714,9 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.muscle                        = lerpf(muscle, b.muscle, t)
 	r.fat                           = lerpf(fat, b.fat, t)
 	r.muscularity                   = lerpf(muscularity, b.muscularity, t)
+	r.arm_stretch                   = lerpf(arm_stretch, b.arm_stretch, t)
+	# DISCRETO A PROPÓSITO, y por eso se copia de A en vez de promediarse: no es una proporción, es de
+	# qué está hecho el personaje. Un robot puede no tener cuello; medio cuello no existe.
 	r.has_neck                      = has_neck
 	r.legs_length                   = lerpf(legs_length, b.legs_length, t)
 	r.arms_length                   = lerpf(arms_length, b.arms_length, t)
