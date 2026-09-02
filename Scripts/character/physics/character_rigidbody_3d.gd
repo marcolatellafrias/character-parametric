@@ -106,10 +106,6 @@ var _impact_xz_vel: Vector2 = Vector2.ZERO
 var _impact_y_vel: float = 0.0
 var _prev_velocity: Vector3 = Vector3.ZERO
 var _frame_force: Vector3 = Vector3.ZERO
-## DEBUG: mayor velocidad horizontal vista desde el último reseteo. La lee y resetea el botón
-## "Medir velocidad" del panel. No afecta nada.
-var debug_peak_speed: float = 0.0
-
 var _last_impact_xz_magnitude: float = 0.0
 
 var is_snapshot_active: bool = true
@@ -348,8 +344,6 @@ func _apply_movement_force() -> void:
 		var walk_max: float = effective_max / maxf(sprint_multiplier, 0.001)
 		var over: float = clampf((horizontal_vel.length() - walk_max) / maxf(effective_max - walk_max, 0.001), 0.0, 1.0)
 		effective_accel = current_accel * lerpf(1.0, SPRINT_TOP_ACCEL, over)
-
-	debug_peak_speed = maxf(debug_peak_speed, horizontal_vel.length())
 
 	if horizontal_vel.length() < effective_max or is_changing_direction:
 		var force := direction * effective_accel

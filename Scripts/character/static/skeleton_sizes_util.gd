@@ -48,7 +48,7 @@ var raycast_stance_offset: float
 ## Esa es la razón de que sea 0.99 y no un número "cómodo": el margen para terreno irregular ya lo da
 ## la caída de pelvis, que existe justo para eso. Este techo no tiene que aportar margen, tiene que
 ## dejar que el reposo se cumpla.
-const MAX_EXTENSION := 0.99
+const MAX_EXTENSION := 0.995
 ## Extensión de la pierna PARADO, en fracción de su largo. NO es un margen de seguridad (la pelvis ya
 ## baja sola cuando no llega): es la GARANTÍA de que la pierna alcanza el piso estando parado. Subirlo
 ## hacia 1.0 endereza la pierna y acerca el reposo al modelo, a cambio de trabar antes en terreno
@@ -56,13 +56,22 @@ const MAX_EXTENSION := 0.99
 ## Cuánto de su largo usa la pierna estando parada. Es lo que fija la FLEXIÓN DE RODILLA en reposo, y
 ## el arquetipo elige dónde cae dentro de esta banda con `leg_bentness`.
 ##
-##   0.99 → ~16° de rodilla      0.985 → 20°      0.97 → 28°      0.95 → 37°      0.90 → ~52°
+##   0.995 → ~12°      0.99 → 16°      0.985 → 20°      0.97 → 28°      0.95 → 37°      0.90 → ~52°
+##
+## La curva es MUY poco lineal cerca del tope —el último 1% de largo vale 16° de rodilla—, así que un
+## paso chico acá se ve mucho. Subió de 0.99 a 0.995 porque con 16° todos los arquetipos se leían
+## agachados incluso con `leg_bentness = 0`, que es el piso del knob: no había forma de enderezarlos
+## desde el arquetipo. Cuesta ~4 mm de altura a cada uno y nada más.
+##
+## ⚠ SUBIRLO OBLIGA A SUBIR `MAX_EXTENSION` con él. Si el reposo pide más extensión de la que la IK
+## permite, la pose es inalcanzable y la pelvis baja sola para compensar — y el efecto es al revés de
+## lo que uno espera: cuanto MÁS derecho pide un arquetipo, más se agacha. Ya pasó una vez.
 ##
 ## ⚠ El techo NO puede acercarse a 1.0, y no es un margen de seguridad: es **la garantía de que la
 ## pierna llega al piso estando parada**. Con la pierna estirada al 100% el objetivo de la IK queda
 ## justo en el límite del alcance, cualquier irregularidad del terreno lo deja fuera, y el pie se pliega
 ## hacia su objetivo aéreo — el personaje flota y no da un paso. Ver technical/character-animation.md.
-const STAND_EXTENSION_STRAIGHT := 0.99
+const STAND_EXTENSION_STRAIGHT := 0.995
 const STAND_EXTENSION_BENT := 0.90
 
 ## Excursión máxima del pie desde la cadera, en fracción del largo de pierna, mapeada desde `stride`.

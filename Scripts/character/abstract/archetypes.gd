@@ -519,7 +519,7 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.shoulders_scale = 0.94
 	arch.hips_scale = 0.97
 	arch.shoulders_forward = 0.0
-	arch.shoulders_drop = 0.0
+	arch.shoulders_drop = 0.58
 	arch.arm_openness = 0.18
 	arch.arm_bentness = 0.0
 	arch.fatness = 0.37
@@ -588,7 +588,7 @@ static func giga_arch() -> EntityArchetype:
 	arch.hips_scale = 1.12718
 	arch.shoulders_forward = 0.0
 	arch.breath_rate = 0.85
-	arch.shoulders_drop = -0.50
+	arch.shoulders_drop = -0.32
 	arch.arm_openness = 0.25
 	arch.arm_bentness = 0.0
 	arch.fatness = 0.5

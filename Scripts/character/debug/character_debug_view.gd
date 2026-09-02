@@ -21,6 +21,23 @@ static var ragdoll_color:  bool = false
 ## son ayudas de autoría de la marcha y ensucian la vista el resto del tiempo.
 static var show_gait_gizmos: bool = false
 
+## WIREFRAME. **Es del VIEWPORT, no por objeto**: Godot no tiene modo de alambre por material ni por
+## instancia, así que lo único que se puede elegir es QUÉ se dibuja, no CÓMO se dibuja cada cosa.
+##
+## Por eso, para que en la práctica sea "wireframe del personaje", el toggle además esconde la ciudad
+## y los autos. Lo que queda es el personaje en alambre sobre el vacío — que es justo lo que se quiere
+## para mirar topología, y de paso no hay piso que tape las líneas de los pies.
+##
+## Se intentó la versión por objeto —una malla de `PRIMITIVE_LINES` por malla, con los mismos huesos y
+## pesos— y se descartó: rompía el spawn del personaje y encima no seguía las shape keys, porque
+## `surface_get_blend_shape_arrays` devuelve vacío sobre estas mallas importadas en Godot 4.5.
+static var show_wireframe: bool = false
+
+## Lo que se esconde mientras el wireframe está prendido. Son los NODOS RAÍZ de cada cosa, no las
+## mallas: esconder un padre esconde a los hijos, así que un auto o un edificio que nazca DESPUÉS de
+## prender el toggle también nace escondido, sin tener que reaplicar nada.
+const WIRE_HIDDEN_GROUPS: Array[String] = ["city_generator", "car_manager", "area_instantiator"]
+
 static func toggle_hide_character(tree: SceneTree) -> void:
 	hide_character = not hide_character
 	apply_all(tree)
@@ -48,6 +65,26 @@ static func toggle_ragdoll_color(tree: SceneTree) -> void:
 static func toggle_gait_gizmos(tree: SceneTree) -> void:
 	show_gait_gizmos = not show_gait_gizmos
 	apply_all(tree)
+
+## `set_debug_generate_wireframes` va ANTES de pedirle el modo al viewport: sin eso no hay índices de
+## línea generados y la vista sale igual que siempre, sin error ni aviso.
+##
+## Es el único toggle de acá que NO pasa por `apply_all`: no hay nada que aplicarle a cada personaje.
+static func toggle_wireframe(tree: SceneTree) -> void:
+	show_wireframe = not show_wireframe
+	RenderingServer.set_debug_generate_wireframes(show_wireframe)
+	var vp: Viewport = tree.root
+	if vp != null:
+		vp.debug_draw = Viewport.DEBUG_DRAW_WIREFRAME if show_wireframe else Viewport.DEBUG_DRAW_DISABLED
+	# El negro sale del material, no del modo de alambre: ver CharacterAppearance.WIREFRAME_BLACK.
+	CharacterAppearance.WIREFRAME_BLACK = show_wireframe
+	CharacterAppearance.reapply_all(tree)
+	for g in WIRE_HIDDEN_GROUPS:
+		for n in tree.get_nodes_in_group(g):
+			var n3: Node3D = n as Node3D
+			if n3 != null:
+				n3.visible = not show_wireframe
+
 
 static func apply_all(tree: SceneTree) -> void:
 	if tree == null:

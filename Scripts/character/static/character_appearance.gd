@@ -69,7 +69,7 @@ const PLANE_ROLE := {
 ## combinación — aceptable para un modo de autoría, y otra razón para no dejarlo prendido.
 ##
 ## Poner en `false` para volver al shader. No hay nada más que tocar.
-static var FLAT_GEOMETRY := false
+static var FLAT_GEOMETRY := true
 
 ## ── MODO MONOCROMO ────────────────────────────────────────────────────────────────────────────────
 ## Pinta TODO de un solo color neutro, con el shader normal. Sirve para juzgar el SOMBREADO aislado:
@@ -132,6 +132,28 @@ static func reapply_all(tree: SceneTree) -> void:
 		apply_to((rb as Node).get_parent() as BoneInstantiator)
 
 
+## WIREFRAME: pinta TODO el personaje de negro plano, sin sombreado.
+##
+## Vive acá y no en `CharacterDebugView` por una razón estructural: el modo de alambre del viewport no
+## tiene color propio —dibuja los mismos materiales en modo línea— así que el color de las líneas **es**
+## el material. Y el material lo decide este archivo, en un solo lugar, para todos los personajes.
+##
+## Que la decisión esté DENTRO de `apply_to` es lo que hace que no haya nada que mantener: `apply_to`
+## ya corre al final de cada `initialize_skeleton`, así que un personaje que spawnee con el wireframe
+## prendido nace negro solo. Y apagarlo no restaura nada guardado — simplemente vuelve a pasar por el
+## camino normal, que reconstruye el material desde cero.
+static var WIREFRAME_BLACK := false
+
+static var _wire_mat: StandardMaterial3D = null
+
+static func _wire_material() -> StandardMaterial3D:
+	if _wire_mat == null:
+		_wire_mat = StandardMaterial3D.new()
+		_wire_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_wire_mat.albedo_color = Color.BLACK
+	return _wire_mat
+
+
 static func toggle_flat_geometry(tree: SceneTree) -> void:
 	FLAT_GEOMETRY = not FLAT_GEOMETRY
 	reapply_all(tree)
@@ -150,6 +172,14 @@ static func apply_to(bi: BoneInstantiator) -> void:
 	var inst := bi.entity_instantiation
 	if inst == null:
 		return
+	# Corta seco y antes que nada: en wireframe no hay rol, ni tinte, ni textura que valga. Ver
+	# WIREFRAME_BLACK.
+	if WIREFRAME_BLACK:
+		for m in bi.skinned_body.meshes:
+			if is_instance_valid(m):
+				m.material_override = _wire_material()
+		return
+
 	RiveBake.ensure_baked()  # DEV: borrar junto con rive_bake.gd cuando el arte esté cerrado
 	for m in bi.skinned_body.meshes:
 		if not is_instance_valid(m):

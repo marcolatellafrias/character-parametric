@@ -638,8 +638,7 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Ver esqueleto",             func(): CharacterDebugView.toggle_skeleton(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver colisionadores",        func(): CharacterDebugView.toggle_colliders(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver gizmos de marcha",      func(): CharacterDebugView.toggle_gait_gizmos(get_tree()))
-	_debug_panel.add_action("Acciones", "Medir piernas (consola)",   _debug_measure_legs)
-	_debug_panel.add_action("Acciones", "Medir velocidad (consola)", _debug_measure_speed)
+	_debug_panel.add_action("Acciones", "Ver wireframe",             func(): CharacterDebugView.toggle_wireframe(get_tree()))
 	# Apariencia: también globales, y se repintan en el momento.
 	_debug_panel.add_action("Acciones", "Shader on/off",             func(): CharacterAppearance.toggle_flat_geometry(get_tree()))
 	_debug_panel.add_action("Acciones", "Monocromo on/off",          func(): CharacterAppearance.toggle_monochrome(get_tree()))
@@ -706,65 +705,6 @@ func _character_stats_text(inst: EntityInstantiation) -> String:
 func _debug_spawn_pos() -> Vector3:
 	var fwd := -player_camera.global_transform.basis.z
 	return char_rigidbody.global_position + fwd * 2.5 + Vector3.UP
-
-
-## Reporta el PICO de velocidad realmente alcanzado contra el tope teórico, y resetea el pico.
-##
-## Existe porque el tope es una cota, no un objetivo: el personaje acelera hasta que la fuerza aplicada
-## se equilibra con lo que lo frena, y eso puede quedar por debajo del tope sin que nada avise. Mirar
-## el número en movimiento es imposible (el mouse está capturado), así que se acumula el pico y se
-## consulta después.
-##
-## Uso: apretás el botón para resetear, esprintás en línea recta unos segundos, volvés y lo apretás.
-func _debug_measure_speed() -> void:
-	var rb := char_rigidbody
-	if not is_instance_valid(rb):
-		return
-	var walk: float = rb.max_speed_forward
-	var top: float = walk * rb.sprint_multiplier
-	print("── VELOCIDAD ────────────────────────────────────────────────────────────────")
-	print("  tope caminando %.2f m/s   tope sprint %.2f m/s" % [walk, top])
-	print("  PICO alcanzado %.2f m/s   (%.0f%% del tope de sprint)" % [
-		rb.debug_peak_speed, 100.0 * rb.debug_peak_speed / maxf(top, 0.001)])
-	print("  actual %.2f m/s   accel base %.2f m/s²   freno %.2f m/s²" % [
-		Vector3(rb.linear_velocity.x, 0.0, rb.linear_velocity.z).length(),
-		rb.accel_forward / maxf(rb.mass, 0.001), rb.brake_forward / maxf(rb.mass, 0.001)])
-	rb.debug_peak_speed = 0.0
-	print("  (pico reseteado)")
-
-
-## Vuelca la geometría REAL de las piernas de todos los personajes en escena, a la consola.
-##
-## Existe porque la flexión de rodilla la fijan cuatro cosas a la vez —`leg_bentness`, la altura de la
-## cápsula, la caída de pelvis y dónde el raycast planta el pie— y calcularla sobre el papel ya falló
-## una vez: `MAX_EXTENSION` estaba por debajo del reposo pedido y la pelvis bajaba sola estando quieta.
-## Acá se mide lo que efectivamente pasa, con el personaje parado en el juego.
-func _debug_measure_legs() -> void:
-	print("── PIERNAS ──────────────────────────────────────────────────────────────────")
-	for rb in get_tree().get_nodes_in_group(CharacterRigidBody3D.CHARACTER_GROUP):
-		var bi := (rb as Node).get_parent() as BoneInstantiator
-		if not is_instance_valid(bi) or bi.entity_instantiation == null:
-			continue
-		var sz := bi.skel_sizes_util
-		var arch := bi.entity_instantiation.arch_final
-		var name_txt := str(EntityArchetype.Archetype.keys()[bi.entity_instantiation.archetype_type])
-		var hip: Node3D = bi.custom_bones_util.left_higher_leg
-		var tgt: Node3D = bi.ik_util.left_leg_current_target if is_instance_valid(bi.ik_util) else null
-		if not (is_instance_valid(hip) and is_instance_valid(tgt)):
-			continue
-		var span: float = hip.global_position.distance_to(tgt.global_position)
-		var a: float = sz.higher_leg_size.y
-		var b: float = sz.lower_leg_size.y
-		var cosk: float = clampf((a * a + b * b - span * span) / (2.0 * a * b), -1.0, 1.0)
-		var knee: float = 180.0 - rad_to_deg(acos(cosk))
-		var drop: float = bi.anim_mod.pelvis_drop if is_instance_valid(bi.anim_mod) else 0.0
-		print("  %-11s bent %.2f | pedido %.4f  real %.4f  (drop %.4f)  RODILLA %.1f°" % [
-			name_txt, arch.leg_bentness, sz.standing_pelvis_height - sz.ankle_height, span, drop, knee])
-		print("               cadera y=%.4f  pie y=%.4f  dx=%.4f dz=%.4f  |  max IK %.4f" % [
-			hip.global_position.y, tgt.global_position.y,
-			absf(hip.global_position.x - tgt.global_position.x),
-			absf(hip.global_position.z - tgt.global_position.z),
-			sz.leg_height * SkeletonSizesUtil.MAX_EXTENSION])
 
 
 ## Elige el arquetipo con el que respawnea la P, y respawnea ya. La elección QUEDA PEGADA: después
