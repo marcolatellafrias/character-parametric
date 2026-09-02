@@ -85,6 +85,24 @@ var leg_bentness : float = 0.0
 ##
 ## Y van SEPARADAS entre sí porque son dos lecturas distintas: adelantar cierra el pecho, bajar afloja
 ## el cuello y alarga la silueta. Un viejo hace las dos, pero no en la misma proporción.
+## ── ANCHO DE ESQUELETO ────────────────────────────────────────────────────────────────────────────
+## Multiplican el hueso de hombro y el de cadera. 1.0 = el modelo.
+##
+## NO tienen shape key ni cuestan una escultura: son dos huesos horizontales, y escalarlos se lleva el
+## brazo y la pierna con ellos. Es la perilla más barata de todo el sistema de proporciones.
+##
+## Existen porque `muscle` y `fat` solo pueden ENSANCHAR desde el modelo, que es la esquina más angosta.
+## El nene los necesitaba más angostos todavía —con el ancho de un adulto y 1.35 m se leía como petiso
+## y no como chico— y ningún valor de masa podía darle eso.
+##
+## Van SEPARADOS porque la RELACIÓN hombro/cadera es de las que más dice: en un adulto ronda 1.5 y en un
+## chico está mucho más cerca de 1. Con un solo multiplicador esa relación quedaba clavada.
+##
+## Se aplican DESPUÉS de la masa, así que componen: un chico gordito es más ancho que un chico flaco, y
+## los dos entran en un esqueleto de chico.
+var shoulders_scale : float = 1.0
+var hips_scale : float = 1.0
+
 var shoulders_forward : float = 0.0
 var shoulders_drop : float = 0.0
 
@@ -229,6 +247,8 @@ static func generic_arch() -> EntityArchetype:
 	arch.slouch = 0.0
 	arch.leg_bentness = 0.00
 	arch.tremor = 0.0
+	arch.shoulders_scale = 1.0
+	arch.hips_scale = 1.0
 	arch.shoulders_forward = -0.25
 	arch.shoulders_drop = 0.0
 	# Brazos casi rectos al costado, apenas separados del torso. `arm_openness` en 0.0 los mete dentro
@@ -324,6 +344,8 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.slouch = 0.0
 	arch.leg_bentness = 0.25
 	arch.tremor = 0.0
+	arch.shoulders_scale = 1.0
+	arch.hips_scale = 1.0
 	arch.shoulders_forward = 0.0
 	arch.shoulders_drop = 0.0
 	arch.arm_openness = 0.25
@@ -380,24 +402,26 @@ static func kid_arch() -> EntityArchetype:
 	arch.stride = 0.40
 	arch.leg_cripple_chance = 0.0
 	arch.slouch = 0.1
-	arch.leg_bentness = 0.15
+	arch.leg_bentness = 0.00
 	arch.tremor = 0.0
+	arch.shoulders_scale = 0.901
+	arch.hips_scale = 0.9224
 	arch.shoulders_forward = 0.0
-	arch.shoulders_drop = 0.0
+	arch.shoulders_drop = 0.55
 	arch.arm_openness = 0.25
 	arch.arm_bentness = 0.0
 	arch.fatness = 0.23
 	arch.muscularity = 0.17
 	arch.has_neck = true
 	# El más chico de todos. ≈1.38 m.
-	arch.legs_length  = 0.15
+	arch.legs_length  = 0.26
 	# 0.0 es el PISO REAL: el brazo tal cual se esculpió en Blender. No hay más corto que esto
 	# sin re-esculpir la base, y para un personaje de 1.43 m sigue quedando proporcionalmente
 	# largo — el mismo re-baseo que hubo que hacerle a la pierna le va a hacer falta al brazo.
 	arch.arms_length  = 0.42
-	arch.torso_length = 0.1000
-	arch.muscle        = 0.10
-	arch.fat           = 0.25
+	arch.torso_length = 0.21
+	arch.muscle        = 0.0
+	arch.fat           = 0.0
 	arch.height = 1.45
 	arch.chest_to_low_spine_proportion = 0.27
 	arch.legs_to_feet_proportion = 0.48
@@ -443,6 +467,8 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.slouch = 0.5
 	arch.leg_bentness = 0.05
 	arch.tremor = 0.0
+	arch.shoulders_scale = 0.95
+	arch.hips_scale = 0.95
 	arch.shoulders_forward = 0.0
 	arch.shoulders_drop = 0.0
 	arch.arm_openness = 0.25
@@ -504,6 +530,8 @@ static func giga_arch() -> EntityArchetype:
 	arch.slouch = 0.0
 	arch.leg_bentness = 0.10
 	arch.tremor = 0.0
+	arch.shoulders_scale = 1.0
+	arch.hips_scale = 1.0
 	arch.shoulders_forward = 0.0
 	arch.shoulders_drop = 0.0
 	arch.arm_openness = 0.25
@@ -563,6 +591,8 @@ static func old_arch() -> EntityArchetype:
 	arch.slouch = 1.0
 	arch.leg_bentness = 0.30
 	arch.tremor = 0.75
+	arch.shoulders_scale = 1.0
+	arch.hips_scale = 0.97
 	arch.shoulders_forward = 1.0
 	arch.shoulders_drop = 1.0
 	arch.arm_openness = 0.25
@@ -619,6 +649,8 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.slouch                        = lerpf(slouch, b.slouch, t)
 	r.leg_bentness                  = lerpf(leg_bentness, b.leg_bentness, t)
 	r.tremor                        = lerpf(tremor, b.tremor, t)
+	r.shoulders_scale               = lerpf(shoulders_scale, b.shoulders_scale, t)
+	r.hips_scale                    = lerpf(hips_scale, b.hips_scale, t)
 	r.shoulders_forward             = lerpf(shoulders_forward, b.shoulders_forward, t)
 	r.shoulders_drop                = lerpf(shoulders_drop, b.shoulders_drop, t)
 	r.fatness                       = lerpf(fatness, b.fatness, t)

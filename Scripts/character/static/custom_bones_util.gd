@@ -45,13 +45,16 @@ static func create(sizes: SkeletonSizesUtil, inst: EntityInstantiation) -> Custo
 	var stats := inst.arch_final
 	var rig := ReferenceRig.get_rig()
 
-	u.lower_spine  = _bone(rig, "lower_spine", sizes.lower_spine_size)
+	# La lumbar se arquea hacia ATRÁS con el slouch, de contrapeso al pecho. Ver
+	# SkeletonSizesUtil.slouchiness_lower_spine.
+	u.lower_spine  = _bone(rig, "lower_spine", sizes.lower_spine_size, null, true,
+		sizes.slouchiness_lower_spine)
 	# LA COLUMNA SON TRES HUESOS. Era cuatro; `middle.spine` se disolvió en Blender cuando el modelo
 	# pasó a low poly — con esa densidad de malla, cuatro articulaciones de torso no tenían geometría
 	# suficiente para deformar y solo agregaban costo.
 	#
-	# La columna NO lleva slouch: el encorvado son `chest` y `neck` inclinándose hacia adelante, sin
-	# contra-arqueo. Ver SkeletonSizesUtil.slouchiness_chest.
+	# `higher_spine` es el único de los cuatro que NO lleva slouch: el encorvado son `chest` y `neck`
+	# hacia adelante, con `lower_spine` hacia atrás de contrapeso. Ver SkeletonSizesUtil.slouchiness_chest.
 	u.higher_spine = _bone(rig, "higher_spine", sizes.higher_spine_size, u.lower_spine, true)
 	u.chest        = _bone(rig, "chest", sizes.chest_size, u.higher_spine, true, -sizes.slouchiness_chest)
 

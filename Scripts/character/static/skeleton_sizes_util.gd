@@ -119,6 +119,19 @@ var axis_weight_backward: float = 1.0
 ## dejó de tener sentido y además ensuciaría un futuro parámetro de largo de cuello.
 var slouchiness_chest: float
 var slouchiness_neck: float
+## CONTRAPESO: la lumbar se va para ATRÁS (pitch positivo, al revés que los otros dos).
+##
+## Sin esto el encorvado se lee desbalanceado, todo el cuerpo volcado hacia adelante, como si estuviera
+## por caerse. Un encorvado real no es el torso rotando entero: es la lumbar arqueándose hacia atrás
+## para sostener el peso del pecho que se fue adelante.
+##
+## No hace falta que sea mucho porque no compite con el pecho en ángulo, sino en POSICIÓN: inclinar la
+## lumbar no gira nada de lo que está arriba —cada hueso tiene su reposo global propio— solo corre el
+## punto donde arranca el resto del torso. A 0.10 rad son ~2 cm de pecho hacia atrás.
+##
+## Y por la misma razón NO toca las piernas: las caderas cuelgan de la BASE de la lumbar, que no se
+## mueve, y su orientación es global.
+var slouchiness_lower_spine: float
 ## ── POSTURA DE HOMBRO, en radianes ────────────────────────────────────────────────────────────────
 ## Salen de sus propios knobs de arquetipo (`shoulders_forward` / `shoulders_drop`), NO del slouch.
 ##
@@ -253,12 +266,16 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	# Todavía sin parametrizar (fase 3): quedan en el largo esculpido.
 	# Todavía sin parametrizar (fase 3): quedan en el largo esculpido, leído del rig.
 	var new_head_height       := rig.neck_len + rig.head_len
-	# EL ANCHO DEL FRAME SALE DE LA MASA, no de un knob propio. El hueso de hombro y el de cadera están
-	# horizontales en el modelo, así que alargarlos mueve el brazo y la pierna hacia AFUERA sin bajarlos
-	# — `upper.arm` y `higher.leg` son hijos y los siguen gratis (con `Inherit Scale = None`, para que se
-	# corran sin engordarse).
-	var new_hips_width        := authored_chain(rig.hip_len, ReferenceRig.HIPS_MODEL_FACTOR, entityStats.fat)
-	var new_shoulders_width   := authored_chain(rig.shoulder_len, ReferenceRig.FRAME_MODEL_FACTOR, entityStats.muscle)
+	# El hueso de hombro y el de cadera están horizontales en el modelo, así que alargarlos mueve el brazo
+	# y la pierna hacia AFUERA sin bajarlos — `upper.arm` y `higher.leg` son hijos y los siguen gratis
+	# (con `Inherit Scale = None`, para que se corran sin engordarse).
+	#
+	# Las escalas de esqueleto van ENCIMA de la masa, no en vez de ella: la masa ensancha desde el modelo
+	# y esto escala el hueso. Compuestas, un chico gordito es más ancho que un chico flaco y los dos
+	# siguen dentro de un esqueleto de chico. Y como los dos huesos son horizontales, brazo y pierna se
+	# van con ellos: no hay costura que arreglar ni escultura que hacer.
+	var new_hips_width        := authored_chain(rig.hip_len, ReferenceRig.HIPS_MODEL_FACTOR, entityStats.fat) * entityStats.hips_scale
+	var new_shoulders_width   := authored_chain(rig.shoulder_len, ReferenceRig.FRAME_MODEL_FACTOR, entityStats.muscle) * entityStats.shoulders_scale
 
 	skelSizes.arm_reach = new_arm_length
 	# Alcance de interacción: hasta dónde puede agarrar, derivado del brazo y no autorado. El 0.97 es
@@ -337,17 +354,22 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	var hip_l_radius : float = lerp_range(0.1, 0.2, entityStats.fatness)
 	skelSizes.hip_size = Vector3(hip_u_radius, new_hips_width, hip_l_radius)
 
-	# Largo de cada hueso: la cadena repartida en las proporciones del MODELO, leídas del rig. Va DESPUÉS del bloque que
-	# arma los tamaños (que fija los radios) y ANTES de todo lo derivado (marcha, poles, targets de
-	# reposo de brazos), que lee estos campos.
+	# ⚠ ESTE BLOQUE ES EL QUE MANDA. El `.y` de cada Vector3 ES el largo del hueso: `CustomBone.length`
+	# lee `capsule_dimensions.y` y nada más. Lo que se haya puesto arriba en el `.y` se pisa acá.
+	#
 	# Los radios (.x/.z) NO se tocan: son la forma de la cápsula del CustomBone, que ya no se dibuja.
 	# Hueso hoja = no estira malla, así que `foot_size` se queda con su fórmula derivada.
+	#
+	# El hombro decía `rig.shoulder_len` —el largo crudo del modelo— y por eso ni `muscle` ni la escala
+	# de esqueleto llegaban NUNCA al hueso: se calculaban, se guardaban en `shoulders_width`, y el hueso
+	# seguía midiendo lo mismo en todos los personajes. La cadera sí usaba su valor derivado; el hombro
+	# quedó atrás. Cualquier campo nuevo tiene que llegar hasta ACÁ o no existe.
 	skelSizes.lower_spine_size.y  = _share(rig, "lower_spine",  new_torso_height, rig.torso_chain)
 	skelSizes.higher_spine_size.y = _share(rig, "higher_spine", new_torso_height, rig.torso_chain)
 	skelSizes.chest_size.y        = _share(rig, "chest",        new_torso_height, rig.torso_chain)
 	skelSizes.neck_size.y         = rig.neck_len if entityStats.has_neck else 0.0
 	skelSizes.head_size.y         = rig.head_len if entityStats.has_neck else new_head_height
-	skelSizes.shoulder_width.y    = rig.shoulder_len
+	skelSizes.shoulder_width.y    = new_shoulders_width
 	skelSizes.upper_arm_size.y    = _share(rig, "left_upper_arm",  new_arm_length, rig.arm_chain)
 	skelSizes.lower_arm_size.y    = _share(rig, "left_lower_arm",  new_arm_length, rig.arm_chain)
 	skelSizes.hip_size.y          = new_hips_width
@@ -400,8 +422,9 @@ static func create(inst: EntityInstantiation) -> SkeletonSizesUtil:
 	skelSizes.pole_distance = new_leg_height
 	skelSizes.raycast_start_y_offset = new_leg_height * 0.35
 
-	skelSizes.slouchiness_chest        = lerp_range(0.0, 0.35, entityStats.slouch)
+	skelSizes.slouchiness_chest        = lerp_range(0.0, 0.42, entityStats.slouch)
 	skelSizes.slouchiness_neck         = lerp_range(0.0, 0.45, entityStats.slouch)
+	skelSizes.slouchiness_lower_spine  = lerp_range(0.0, 0.10, entityStats.slouch)
 	skelSizes.shoulder_forward         = clampf(entityStats.shoulders_forward, -1.0, 1.0) * SHOULDER_FORWARD_MAX
 	skelSizes.shoulder_drop            = clampf(entityStats.shoulders_drop, -1.0, 1.0) * SHOULDER_DROP_MAX
 
