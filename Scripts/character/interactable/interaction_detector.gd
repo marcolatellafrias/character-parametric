@@ -6,10 +6,15 @@ var char_rigidbody:  CharacterRigidBody3D
 var ray_length:      float = 10.0
 var max_reach:       float = 3.0
 var outline_color:   Color = Color(1, 1, 0, 1)
-var outline_size:    float = 0.01
+## Grosor del contorno EN METROS. Bajó de 0.01 a 0.003 junto con el recorte por stencil: sin las
+## costuras internas compitiendo, un trazo fino se lee mejor que uno grueso.
+var outline_size:    float = 0.003
 
 var _hovered:          Interactable           = null
 var _hovered_meshes:   Array[MeshInstance3D]  = []
+## El material que se cuelga en `material_overlay` es el de MÁSCARA; el de contorno va encadenado en su
+## `next_pass`. Los dos pases viajan juntos, así que el resto del código sigue manejando un material.
+var _mask_material:    ShaderMaterial         = null
 var _outline_material: ShaderMaterial         = null
 var _own_bi:           BoneInstantiator       = null
 
@@ -125,7 +130,7 @@ func _apply_outline_to(interactable: Interactable) -> void:
 			_collect_meshes_recursive(target, _hovered_meshes)
 	for mesh in _hovered_meshes:
 		if is_instance_valid(mesh):
-			mesh.material_overlay = _outline_material
+			mesh.material_overlay = _mask_material
 
 func _clear_outline() -> void:
 	for mesh in _hovered_meshes:
@@ -139,12 +144,25 @@ func _collect_meshes_recursive(node: Node, result: Array[MeshInstance3D]) -> voi
 	for child in node.get_children():
 		_collect_meshes_recursive(child, result)
 
+## DOS PASES ENCADENADOS: la máscara marca el stencil sin dibujar, el contorno dibuja el casco inflado
+## solo donde la máscara no llegó. Ver los comentarios de los dos shaders.
+##
+## ⚠ LAS PRIORIDADES SON EL CONTRATO, no un detalle. Cada malla hovereada cuelga su propia cadena
+## (máscara → contorno), y sin ordenarlas el contorno de una malla puede dibujarse ANTES de que otra
+## malla del mismo objeto haya marcado su stencil — y ahí vuelve la costura. Con la máscara en 0 y el
+## contorno en 1, y las dos en el pase transparente, TODAS las máscaras van antes que TODOS los
+## contornos, entre mallas distintas.
 func _build_outline_material() -> void:
-	var shader         := load("res://shaders/outline.gdshader") as Shader
-	_outline_material   = ShaderMaterial.new()
-	_outline_material.shader = shader
+	_outline_material = ShaderMaterial.new()
+	_outline_material.shader = load("res://shaders/outline.gdshader") as Shader
 	_outline_material.set_shader_parameter("color",             outline_color)
 	_outline_material.set_shader_parameter("outline_thickness", outline_size)
+	_outline_material.render_priority = 1
+
+	_mask_material = ShaderMaterial.new()
+	_mask_material.shader = load("res://shaders/outline_mask.gdshader") as Shader
+	_mask_material.render_priority = 0
+	_mask_material.next_pass = _outline_material
 
 
 func _get_nearest_interactable_point(interactable: Interactable) -> Vector3:

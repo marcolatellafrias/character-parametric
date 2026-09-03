@@ -526,11 +526,11 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.muscularity = 0.27
 	arch.has_neck = true
 	# Piernas y brazos largos, torso medio: el desgarbado. ≈1.89 m.
-	arch.legs_length  = 0.98
+	arch.legs_length  = 1.0790
 	# Techo de la banda del arquetipo (ARM_EXT_MAX). El 1.0 del rango de Blender NO es esto:
 	# ese está reservado para el estirón del agarre.
 	arch.arms_length  = 1.0
-	arch.torso_length = -0.14759
+	arch.torso_length = -0.10497
 	# Enjuto: se queda en la malla esculpida, que es el extremo flaco.
 	arch.muscle        = 0.20
 	arch.fat           = 0.20

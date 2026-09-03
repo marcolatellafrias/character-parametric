@@ -96,7 +96,8 @@ const MONOCHROME_GREYS := {
 	Role.HAIR:    0.07,   # casi negro
 	Role.LEATHER: 0.32,   # gris medio — zapatos
 	Role.LINE:    0.44,   # arrugas: más oscuro que la piel, o no se ven
-	Role.PROP:    0.72,
+	# PROP NO ESTÁ ACÁ A PROPÓSITO: es el rol "sin teñir", y eso vale también en monocromo. Ver
+	# _color_for. Estuvo en 0.72 y el efecto era que los blancos de los ojos salían grises.
 }
 
 const SHADER_PATH := "res://Materials/character.gdshader"
@@ -280,6 +281,20 @@ static func _darken(c: Color, k: float) -> Color:
 
 
 static func _color_for(role: Role, inst: EntityInstantiation) -> Color:
+	# PROP ES "SIN TEÑIR" POR DEFINICIÓN, y eso manda también en monocromo — por eso va ANTES.
+	#
+	# El tinte multiplica (`ALBEDO = tex.rgb * tint.rgb`), así que devolver blanco es lo mismo que
+	# multiplicar por 1: la textura pasa literal. Es lo que hace que un plano de ojo dibujado en Rive
+	# conserve su contorno negro Y su blanco interior, y en general su escala de grises entera.
+	#
+	# Con el gris de monocromo encima, el negro seguía negro —negro por cualquier cosa es negro— pero
+	# todo lo claro se apagaba. O sea que el filtro se comía justo el rango que el dibujo usa.
+	#
+	# Esto NO rompe el propósito del monocromo: el arte de features ya viene en escala de grises, así
+	# que dejarlo literal sigue siendo monocromo. El día que un prop tenga color de verdad (una tarjeta,
+	# por ejemplo), va a aparecer a todo color en este modo — y ahí sí querrá su propio rol.
+	if role == Role.PROP:
+		return Color.WHITE
 	if MONOCHROME:
 		var g: float = MONOCHROME_GREYS.get(role, 0.8)
 		return Color(g, g, g, 1.0)
