@@ -18,12 +18,40 @@ render_mode specular_disabled, cull_back, depth_draw_opaque;
 // 3. CASI SIN SOMBRA. La cara lleva las features DIBUJADAS, y una sombra fuerte se las come. Es lo
 //    que hace legible el estilo (Animal Crossing hace exactamente esto).
 //
-// El COLOR sigue viniendo por `instance uniform`, así que una arruga se tiñe con el color de piel del
-// personaje y un pelo con el de pelo — una textura compartida por toda la ciudad, un color por cada
-// uno. Por eso las texturas se exportan en BLANCO o escala de grises: el tinte multiplica, y negro
-// por cualquier cosa sigue siendo negro.
+// El COLOR viene por `instance uniform`, así que una arruga se tiñe con el color de piel del personaje
+// y un pelo con el de pelo — una textura compartida por toda la ciudad, un color por cada uno.
+//
+// ── DOS FAMILIAS DE COLOR EN LA MISMA TEXTURA ─────────────────────────────────────────────────────
+// Un mismo plano necesita las dos cosas: el ojo lleva líneas que se tiñen con la piel y una esclerótica
+// que tiene que quedarse blanca pase lo que pase. La regla que las separa es:
+//
+//   • **NEUTRO (R = G = B) → SE TIÑE.** Blanco puro, negros y toda la escala de grises. Blanco = tinte
+//     a full, gris = tinte atenuado, negro = negro.
+//   • **CON COLOR → LITERAL.** Sale tal cual. Para un blanco de ojo se usa **#FFFFEE**.
+//
+// Se decide por CROMA y no comparando contra un color exacto, y eso importa: un color exacto no
+// sobrevive la conversión sRGB→lineal del sampler. La neutralidad sí, porque la conversión es la misma
+// función en los tres canales.
+//
+// ⚠ EXIGE QUE EL ARTE ESTÉ SEPARADO EN CAPAS. Si una línea blanca se dibuja PEGADA a un relleno de
+// color, el rasterizador promedia el borde y esos píxeles quedan con croma — o sea del lado literal, y
+// la línea se lee sin teñir. Pasó con la boca. Sobre fondo transparente no ocurre: ahí el antialiasing
+// se va al canal alpha y el píxel sigue siendo blanco puro.
 
 instance uniform vec4 tint : source_color = vec4(1.0);
+
+// 1.0 = espeja la textura en X. Es POR INSTANCIA y no un uniform común porque los dos ojos comparten
+// material (se cachea por textura), así que un uniform normal los voltearía a los dos.
+//
+// Existe porque los planos de ojo son geometría ESPEJADA en Blender con el MISMO mapeo UV (medido: las
+// dos superficies tienen idéntico signo de área en UV). Misma textura sobre malla reflejada = dibujo
+// dado vuelta. Voltear el UV de uno cancela el espejado de la malla.
+instance uniform float uv_flip_x = 0.0;
+
+// 1.0 = decodificar sRGB a mano. Lo necesitan las texturas que vienen de Rive: son render targets, no
+// traen la marca de sRGB que sí trae un PNG importado, así que el `source_color` de abajo no las
+// convierte y la imagen sale lavada. Un PNG normal va en 0.0 y no se toca nada.
+instance uniform float srgb_decode = 0.0;
 
 uniform sampler2D albedo_texture : source_color, hint_default_white;
 uniform float alpha_threshold : hint_range(0.0, 1.0) = 0.5;
@@ -31,6 +59,8 @@ uniform float alpha_threshold : hint_range(0.0, 1.0) = 0.5;
 uniform float normal_offset : hint_range(0.0, 0.01) = 0.0008;
 // Mismo modelo de sombra que character.gdshader, pero apenas aplicado: la cara lleva las features
 // dibujadas y una sombra fuerte se las come.
+// Debajo de esto un píxel se considera NEUTRO (gris) y se tiñe; por encima sale literal.
+uniform float literal_threshold : hint_range(0.0, 0.5) = 0.03;
 uniform float shadow_value : hint_range(0.0, 1.0) = 0.7;
 uniform float shadow_saturation : hint_range(0.0, 2.0) = 1.2;
 uniform vec4 shadow_hue : source_color = vec4(0.45, 0.52, 0.80, 1.0);
@@ -52,8 +82,12 @@ void vertex() {
 }
 
 void fragment() {
-	vec4 tex = texture(albedo_texture, UV);
-	ALBEDO = tex.rgb * tint.rgb;
+	vec2 uv = vec2(mix(UV.x, 1.0 - UV.x, uv_flip_x), UV.y);
+	vec4 tex = texture(albedo_texture, uv);
+	tex.rgb = mix(tex.rgb, pow(tex.rgb, vec3(2.2)), srgb_decode);
+	// Croma = cuánto se aparta el píxel del gris. Ver el bloque de arriba.
+	float chroma = max(tex.r, max(tex.g, tex.b)) - min(tex.r, min(tex.g, tex.b));
+	ALBEDO = mix(tex.rgb * tint.rgb, tex.rgb, step(literal_threshold, chroma));
 	ALPHA = tex.a * tint.a;
 	ALPHA_SCISSOR_THRESHOLD = alpha_threshold;
 	SPECULAR = 0.0;

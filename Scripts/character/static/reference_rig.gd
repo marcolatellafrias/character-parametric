@@ -252,12 +252,18 @@ static func _minimal_rotation(from: Vector3, to: Vector3) -> Basis:
 	return Basis(from.cross(to).normalized(), acos(d))
 
 ## Tope de la malla de la cabeza, para medir el largo del hueso hoja `head`.
+## El punto más alto de cualquier malla cuyo nombre contenga "head". Alimenta `head_len`, y de ahí la
+## altura total, la cápsula y la altura de cámara.
+##
+## Toma el MÁXIMO de todas, no la primera que encuentra. Con una sola malla da igual, pero con dos
+## —una cabeza duplicada, o la cabeza partida del cuello— devolver la primera dependía del orden en que
+## el .glb las lista, y si esa era la de abajo el personaje quedaba medido más bajo de lo que es.
 func _top_of_head(node: Node) -> float:
+	var best := 0.0
 	var mi := node as MeshInstance3D
 	if mi != null and mi.name.to_lower().contains("head"):
 		var ab: AABB = mi.get_aabb()
-		return ab.position.y + ab.size.y
-	var best := 0.0
+		best = ab.position.y + ab.size.y
 	for child in node.get_children():
 		best = maxf(best, _top_of_head(child))
 	return best

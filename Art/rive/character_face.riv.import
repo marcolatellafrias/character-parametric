@@ -1,0 +1,14 @@
+[remap]
+
+importer="rive.import"
+type="RiveFile"
+uid="uid://b0f8h1liyybg7"
+path="res://.godot/imported/character_face.riv-ba3c9c9b52c065369b9296aaf74f7704.res"
+
+[deps]
+
+source_file="res://Art/rive/character_face.riv"
+dest_files=["res://.godot/imported/character_face.riv-ba3c9c9b52c065369b9296aaf74f7704.res"]
+
+[params]
+

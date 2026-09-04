@@ -301,7 +301,10 @@ func set_first_person(first_person: bool) -> void:
 		if not is_instance_valid(m):
 			continue
 		if not first_person:
-			m.visible = true
+			# `face_hidden` lo pone CharacterAppearance para los planos que NO van visibles (los que
+			# reemplazó una malla 3D, y las arrugas en un arquetipo que no las tiene). Sin respetarlo,
+			# salir de primera persona los volvía a encender a todos.
+			m.visible = not m.get_meta("face_hidden", false)
 			continue
 		var lower_name := m.name.to_lower()
 		var keep := false

@@ -22,9 +22,19 @@ enum Role { SKIN, CLOTH, HAIR, LEATHER, LINE, PROP }
 ## agreguen después.
 const MESH_ROLE := {
 	"head_mesh":  Role.SKIN,
+	"neck_mesh":  Role.SKIN,   # separada de la cabeza para poder pintarle máscaras propias
 	"hands_mesh": Role.SKIN,
+	# Piezas 3D de la cara. Los nombres traen espacios porque así salieron del modelo de los ojos.
+	# Los párpados y la nariz son piel: si conservaran el material del .glb se leerían como una pieza
+	# pegada encima en vez de como parte de la cara.
+	"nose":                Role.SKIN,
+	"left higher eyelid":  Role.SKIN,
+	"left lower eyelid":   Role.SKIN,
+	"right higher eyelid": Role.SKIN,
+	"right lower eyelid":  Role.SKIN,
 	"body_mesh":  Role.CLOTH,
 	"arms_mesh":  Role.CLOTH,
+	"shirt_mesh": Role.CLOTH,
 	"hair_mesh":  Role.HAIR,
 	"hair_mesh2": Role.HAIR,   # el nombre que tiene hoy en Blender
 	"wrist_mesh": Role.SKIN,   # piel, igual que la mano
@@ -35,8 +45,14 @@ const MESH_ROLE := {
 ## sombreado interno en escala de grises; el color sale del seed.
 ##
 ## Por eso las arrugas se tiñen con la PIEL y las cejas con el PELO: una sola textura compartida por
-## toda la ciudad se adapta sola a cualquier tono. `Role.PROP` = sin teñir, la textura manda (ojos,
-## boca, nariz, tarjeta).
+## toda la ciudad se adapta sola a cualquier tono. `Role.PROP` = tinte blanco, o sea la textura entera
+## sale literal.
+##
+## BOCA Y OJOS VAN EN `LINE`, no en `PROP`: con la regla de neutro/literal del shader un mismo plano
+## puede tener las dos cosas, así que el delineado va en gris y se tiñe con la piel mientras el color
+## propio (labio, esclerótica en #FFFFEE) sale literal.
+##
+## Depende de que el arte esté SEPARADO EN CAPAS — ver la advertencia en character_plane.gdshader.
 ##
 ## Un plano que no esté acá conserva el material del .glb, que es lo seguro para lo que se agregue.
 const PLANE_ROLE := {
@@ -48,11 +64,11 @@ const PLANE_ROLE := {
 	"cheekbones_plane_mesh":  Role.LINE,
 	"teartrough_plane_mesh":  Role.LINE,   # sin la h, como está en Blender
 	"chin_plane_mesh":        Role.LINE,
-	"eye_left_plane_mesh":    Role.PROP,
-	"eye_right_plane_mesh":   Role.PROP,
-	"eyes_plane_mesh":        Role.PROP,   # por si no se separan
-	"mouth_plane_mesh":       Role.PROP,
-	"nose_plane_mesh":        Role.PROP,
+	"eye_left_plane_mesh":    Role.LINE,
+	"eye_right_plane_mesh":   Role.LINE,
+	"eyes_plane_mesh":        Role.LINE,   # por si no se separan
+	"mouth_plane_mesh":       Role.LINE,
+	"nose_plane_mesh":        Role.LINE,
 	"nametag_plane_mesh":     Role.PROP,
 }
 
@@ -100,6 +116,40 @@ const MONOCHROME_GREYS := {
 	# _color_for. Estuvo en 0.72 y el efecto era que los blancos de los ojos salían grises.
 }
 
+## ── QUÉ PLANOS DE CARA SE VEN — TEMPORAL ──────────────────────────────────────────────────────────
+## Mientras los planos dibujados conviven con las piezas 3D nuevas (ojos, nariz, boca), la decisión no
+## es un toggle de debug: depende de la pieza y del arquetipo. Por eso vive acá y no en
+## `CharacterDebugView` — ahí solo quedó un "esconder todo" manual, encima de esto.
+##
+## Se borra cuando el modelo termine de migrar a 3D y la tabla deje de tener excepciones.
+##
+## REEMPLAZADOS por malla 3D. No se muestran nunca, ni con el toggle de debug prendido.
+const PLANES_REPLACED := [
+	"eye_left_plane_mesh", "eye_right_plane_mesh", "eyes_plane_mesh",
+	"mouth_plane_mesh", "nose_plane_mesh",
+]
+## Arrugas: solo si el arquetipo las pide (`has_wrinkles`). Hoy, únicamente el viejo.
+const PLANES_WRINKLE := [
+	"forehead_plane_mesh", "cheekbones_plane_mesh", "teartrough_plane_mesh", "chin_plane_mesh",
+]
+
+## Esconde TODOS los planos de cara. Es un override manual del panel, por encima de la regla de arriba.
+static var HIDE_FACE_PLANES := false
+
+static func toggle_face_planes(tree: SceneTree) -> void:
+	HIDE_FACE_PLANES = not HIDE_FACE_PLANES
+	reapply_all(tree)
+
+
+## Las cejas y cualquier plano que no esté en las dos tablas se ven siempre.
+static func _plane_visible(mesh_name: String, inst: EntityInstantiation) -> bool:
+	if HIDE_FACE_PLANES or PLANES_REPLACED.has(mesh_name):
+		return false
+	if PLANES_WRINKLE.has(mesh_name):
+		return inst.arch_final.has_wrinkles
+	return true
+
+
 const SHADER_PATH := "res://Materials/character.gdshader"
 const PLANE_SHADER_PATH := "res://Materials/character_plane.gdshader"
 ## Carpeta donde se buscan las texturas de los planos, por nombre de malla. Ver _source_texture.
@@ -112,7 +162,36 @@ const PLANE_TEXTURE_DIR := "res://Textures/character/"
 ##
 ## Y no es `skin_color` a secas, que fue el primer intento: una línea del mismo color que la
 ## superficie sobre la que está, sencillamente no se ve.
-const LINE_DARKEN := 0.28
+## ── COLOR DE LAS ARRUGAS ──────────────────────────────────────────────────────────────────────────
+## No es "la piel multiplicada por un número". Eso daba una línea gris sucia: multiplicar en RGB baja
+## el brillo Y desatura, así que a 0.28 la arruga perdía toda relación con el tono del personaje.
+##
+## Se hace en HSV y con tres movimientos separados, que es como se ve una arruga de verdad — piel en
+## sombra, no tinta:
+##
+##   - **Valor** bastante más bajo, pero no al 28%: sigue siendo piel.
+##   - **Saturación** un poco más ALTA. La piel en pliegue se ve más roja, no más gris.
+##   - **Hue corrido hacia el rojo**, apenas. Es lo que la despega del tono base y evita que se lea como
+##     una capa de opacidad encima.
+const LINE_VALUE := 0.62
+const LINE_SATURATION := 1.25
+const LINE_HUE_SHIFT := -0.02
+
+## OPACIDAD de la arruga, 0..1. 1 = el color de arriba tal cual; 0 = invisible (igual a la piel).
+##
+## ⚠ NO se puede bajar el ALPHA para esto, y es la trampa central de estos planos: el shader hace
+## `ALPHA = tex.a * tint.a` con alpha scissor en 0.5, así que un alpha bajo no atenúa la línea —
+## **descarta el plano entero**. Ya pasó una vez.
+##
+## Se hace mezclando hacia la PIEL, que sobre un fondo de piel da exactamente el mismo resultado que
+## mezclar por alpha: la arruga está apoyada sobre la cara, así que el fondo siempre es piel.
+const LINE_OPACITY := 0.45
+
+## Planos cuya textura se espeja en X. Ver `uv_flip_x` en character_plane.gdshader.
+##
+## Tabla explícita y no "el que termina en _right", por la misma razón que MESH_ROLE lo es: si mañana
+## el par espejado es otro, se ve acá y no hay que deducirlo de una convención.
+const PLANE_UV_FLIP_X: Array[String] = ["eye_right_plane_mesh"]
 
 ## Un material por ROL, compartido por TODOS los personajes. Se crean una vez por sesión: cada rol
 ## necesita su propio material porque el look base difiere (la piel casi no se sombrea, la tela sí),
@@ -155,6 +234,17 @@ static func _wire_material() -> StandardMaterial3D:
 	return _wire_mat
 
 
+## TEMPORAL — rol → Color, escrito por el StyleLab. Ver `_color_for`. Se borra con el lab.
+static var COLOR_OVERRIDE: Dictionary = {}
+
+
+## El ShaderMaterial de un rol, creándolo si hace falta. Existe para que el StyleLab pueda escribirle
+## uniforms sin meter mano en `_materials`: es UNO por rol y lo comparte toda la ciudad, así que mover
+## un valor acá se ve al instante en todos los personajes, sin repintar nada.
+static func material_for_role(role: Role) -> ShaderMaterial:
+	return _material_for(role)
+
+
 static func toggle_flat_geometry(tree: SceneTree) -> void:
 	FLAT_GEOMETRY = not FLAT_GEOMETRY
 	reapply_all(tree)
@@ -189,22 +279,77 @@ static func apply_to(bi: BoneInstantiator) -> void:
 			var role: Role = MESH_ROLE[m.name]
 			var col := _color_for(role, inst)
 			if FLAT_GEOMETRY:
-				m.material_override = _flat_material_for(col, null)
+				m.material_override = _flat_material_for(col)
 			else:
 				m.material_override = _material_for(role)
 				m.set_instance_shader_parameter("tint", col)
 		elif PLANE_ROLE.has(m.name):
-			var plane_role: Role = PLANE_ROLE[m.name]
-			var plane_col := _color_for(plane_role, inst)
-			if FLAT_GEOMETRY:
-				var tex := _source_texture(m)
-				if tex != null:
-					m.material_override = _flat_material_for(plane_col, tex)
-			else:
-				var mat := _plane_material_for(m)
-				if mat != null:
-					m.material_override = mat
-					m.set_instance_shader_parameter("tint", plane_col)
+			# LOS PLANOS NO MIRAN `FLAT_GEOMETRY`. Esa bandera existe para juzgar la ESCULTURA con
+			# iluminación estándar, y un plano de feature no es escultura: es un dibujo. Mandarlo por
+			# `StandardMaterial3D` además perdía la regla de neutro/literal, que solo sabe hacer el
+			# shader — o sea que en el modo por defecto los ojos salían teñidos.
+			# ⚠ NO ALCANZA CON ESCRIBIR `visible`. `SkinnedBodyUtil.set_first_person(false)` pone
+			# `visible = true` en TODAS las mallas y corre DESPUÉS de esto (vía
+			# `CharacterDebugView.apply_to` → `set_character_visible`), así que pisaba la decisión: al
+			# nene le aparecían arrugas y seguían viéndose los planos reemplazados por malla 3D.
+			#
+			# La marca queda en el nodo y `set_first_person` la respeta. Así el dueño de la decisión
+			# sigue siendo este archivo, sin que las dos clases tengan que conocerse.
+			var vis := _plane_visible(m.name, inst)
+			m.set_meta("face_hidden", not vis)
+			m.visible = vis
+			var mat := _plane_material_for(m)
+			if mat != null:
+				m.material_override = mat
+				m.set_instance_shader_parameter("tint", _color_for(PLANE_ROLE[m.name], inst))
+				m.set_instance_shader_parameter("uv_flip_x",
+					1.0 if PLANE_UV_FLIP_X.has(m.name) else 0.0)
+				m.set_instance_shader_parameter("srgb_decode",
+					1.0 if RiveFace.is_live(_source_texture(m)) else 0.0)
+				# Si el artboard acepta el color ANTES de rasterizar, se lo damos ahí y el tinte de
+				# arriba pasa a ser blanco: teñir dos veces oscurecería de más.
+				var line_col := _line_color(inst.skin_color)
+				if RiveFace.set_line_color(m.name, line_col, m.get_tree()):
+					m.set_instance_shader_parameter("tint", Color.WHITE)
+		else:
+			_disable_vertex_color_albedo(m)
+
+
+## ⚠ RED DE SEGURIDAD PARA MALLAS NO REGISTRADAS.
+##
+## Una malla que no está en `MESH_ROLE` ni en `PLANE_ROLE` conserva el material del .glb — y ese
+## material MULTIPLICA POR EL COLOR DE VÉRTICE, porque el importador de glTF le prende
+## `vertex_color_use_as_albedo` a todo lo que traiga COLOR_0.
+##
+## Desde que el color de vértice pasó a ser DATO (las máscaras de `pack_vertex_masks.py`) eso es una
+## bomba: una malla cuyas máscaras están casi todas en cero se dibuja casi negra. Ya pasó — una cabeza
+## duplicada que no estaba en las tablas salió completamente negra, y el síntoma no apunta para nada a
+## su causa.
+##
+## En este proyecto el color de vértice NUNCA es color. Apagando esto, olvidarse de registrar una malla
+## cuesta "se ve con el material de Blender" en vez de "se ve negra".
+static func _disable_vertex_color_albedo(m: MeshInstance3D) -> void:
+	var mesh := m.mesh
+	if mesh == null:
+		return
+	for s in mesh.get_surface_count():
+		var mat := mesh.surface_get_material(s) as BaseMaterial3D
+		if mat != null and mat.vertex_color_use_as_albedo:
+			mat.vertex_color_use_as_albedo = false
+
+
+## Material de `FLAT_GEOMETRY`: PBR estándar, sin shader propio. Solo para las mallas de CUERPO — los
+## planos de feature ya no pasan por acá, así que no necesita textura, ni recorte, ni volteo de UV.
+static func _flat_material_for(color: Color) -> StandardMaterial3D:
+	var key := color.to_html(false)
+	if _flat_materials.has(key):
+		return _flat_materials[key]
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 1.0
+	mat.metallic = 0.0
+	_flat_materials[key] = mat
+	return mat
 
 
 ## Material de recorte para un plano de feature, con la textura que trajo el .glb.
@@ -239,6 +384,11 @@ static func _plane_material_for(mi: MeshInstance3D) -> ShaderMaterial:
 ##
 ## Si no hay archivo, cae al material del .glb, así que asignar la textura en Blender también sirve.
 static func _source_texture(mi: MeshInstance3D) -> Texture2D:
+	# RIVE VIVO PRIMERO, PNG DESPUÉS. Cuando `RiveFace` está apagado o falla devuelve null y esto sigue
+	# igual que siempre, así que la migración se puede hacer de a un artboard sin ramas nuevas.
+	var live := RiveFace.texture_for(mi.name, mi.get_tree())
+	if live != null:
+		return live
 	var tex := _load_png(mi.name)
 	if tex != null:
 		return tex
@@ -247,6 +397,9 @@ static func _source_texture(mi: MeshInstance3D) -> Texture2D:
 	# dejar `eye_right_plane_mesh.png` en la carpeta — lo específico gana sobre lo genérico, sin código.
 	var generic := mi.name.replace("_left", "").replace("_right", "")
 	if generic != mi.name:
+		var live_generic := RiveFace.texture_for(generic, mi.get_tree())
+		if live_generic != null:
+			return live_generic
 		tex = _load_png(generic)
 		if tex != null:
 			return tex
@@ -276,8 +429,20 @@ static func _load_png(base: String) -> Texture2D:
 
 
 ## Oscurece un color CONSERVANDO el alpha en 1. Ver el aviso en _color_for.
-static func _darken(c: Color, k: float) -> Color:
-	return Color(c.r * k, c.g * k, c.b * k, 1.0)
+## Color de arruga a partir del de piel. Ver LINE_VALUE.
+##
+## ⚠ EL ALPHA VUELVE EN 1.0 SIEMPRE, y no es cosmético: el shader hace `ALPHA = tex.a * tint.a` y el
+## alpha scissor descarta a 0.5, así que un tinte con alpha bajo no atenúa la línea — **borra el plano
+## entero**. Fue el bug de `skin_color * LINE_DARKEN`, que en Godot multiplica también el alpha.
+static func _line_color(skin: Color) -> Color:
+	var full := Color.from_hsv(
+		fposmod(skin.h + LINE_HUE_SHIFT, 1.0),
+		clampf(skin.s * LINE_SATURATION, 0.0, 1.0),
+		clampf(skin.v * LINE_VALUE, 0.0, 1.0),
+		1.0)
+	var out := skin.lerp(full, LINE_OPACITY)
+	out.a = 1.0
+	return out
 
 
 static func _color_for(role: Role, inst: EntityInstantiation) -> Color:
@@ -295,6 +460,10 @@ static func _color_for(role: Role, inst: EntityInstantiation) -> Color:
 	# por ejemplo), va a aparecer a todo color en este modo — y ahí sí querrá su propio rol.
 	if role == Role.PROP:
 		return Color.WHITE
+	# TEMPORAL — lo escribe el StyleLab. Pisa el color del preset para poder probar combinaciones sin
+	# editar `AppearancePreset.PRESETS`, que es `const`. Vacío = no interfiere.
+	if COLOR_OVERRIDE.has(role):
+		return COLOR_OVERRIDE[role]
 	if MONOCHROME:
 		var g: float = MONOCHROME_GREYS.get(role, 0.8)
 		return Color(g, g, g, 1.0)
@@ -303,76 +472,29 @@ static func _color_for(role: Role, inst: EntityInstantiation) -> Color:
 		Role.CLOTH:   return inst.cloth_color
 		Role.HAIR:    return inst.hair_color
 		Role.LEATHER: return inst.leather_color
-		# ⚠ NO `skin_color * LINE_DARKEN`: en Godot multiplicar un Color por un float multiplica TAMBIÉN
-		# el alpha. El tint salía con a=0.28, el shader hace `ALPHA = tex.a * tint.a`, y el alpha
-		# scissor (0.5) descartaba el plano ENTERO. No es que la línea se viera tenue — no se dibujaba.
-		Role.LINE:    return _darken(inst.skin_color, LINE_DARKEN)
+		Role.LINE:    return _line_color(inst.skin_color)
 		_:            return Color.WHITE
 
 
-## El look base por rol. Son los números que se van a tunear cuando se mire el personaje de verdad;
-## lo que importa acá es que sean POCOS materiales, no cuáles.
-## Material de FLAT_GEOMETRY: PBR estándar, sin shader propio. Con textura sale con alpha scissor,
-## igual que el shader de recorte, para que un plano de cara no se dibuje como un cuadrado negro.
+## Un material por ROL, compartido por TODOS los personajes. Se crea una vez por sesión: cada rol puede
+## querer un look base distinto (la piel casi no se sombrea, la tela sí), pero el COLOR no vive acá —
+## viaja por `instance uniform`, o sea por personaje.
 ##
-## Se cachea por (color, textura) y no por rol, porque acá el color vive EN el material: dos personajes
-## del mismo color siguen compartiendo uno.
-static func _flat_material_for(color: Color, tex: Texture2D) -> StandardMaterial3D:
-	var key := "%s|%d" % [color.to_html(false), tex.get_instance_id() if tex != null else 0]
-	if _flat_materials.has(key):
-		return _flat_materials[key]
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.roughness = 1.0
-	mat.metallic = 0.0
-	if tex != null:
-		mat.albedo_texture = tex
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-		mat.alpha_scissor_threshold = 0.5
-		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_flat_materials[key] = mat
-	return mat
-
-
+## SIN VALORES POR ROL: los cuatro arrancan en los defaults del shader, que son el NEUTRO — iluminación
+## estándar, indistinguible del modo sin shader. Ese es el punto de partida elegido: el estilo se
+## construye desde ahí con el StyleLab (F2), no desde un preset que ya decidió cosas.
+##
+## Acá vivía una calibración por rol despejada a mano (piel `shadow_value` 0.42, `shadow_saturation`
+## 1.67, y equivalentes para tela, pelo y cuero). Estaba resuelta para el modelo ANTERIOR del shader,
+## donde el terminador era half-lambert fijo y las bandas siempre activas, así que esos números ya no
+## significan lo mismo. Quedan en el historial de git como referencia.
+##
+## Cuando el StyleLab devuelva un look cerrado, los valores vuelven acá como un `match role:` otra vez
+## y el lab se borra.
 static func _material_for(role: Role) -> ShaderMaterial:
 	if _materials.has(role):
 		return _materials[role]
-	var shader: Shader = load(SHADER_PATH)
 	var mat := ShaderMaterial.new()
-	mat.shader = shader
-	match role:
-		Role.SKIN:
-			# Estos tres números NO son a ojo: son la solución de `shadow_of()` para que la piel del
-			# preset (81,54,47) dé la sombra de referencia (60,32,20). Despejado en espacio LINEAL,
-			# que es donde el shader trabaja — hacer la cuenta en sRGB da otro resultado.
-			#
-			#   piel   → lineal (0.0825, 0.0370, 0.0283), luminancia 0.0460
-			#   sombra → lineal (0.0450, 0.0143, 0.0069)
-			#   ⇒ value 0.42, saturation 1.67  →  reproduce (60, 30, 20) contra (60, 32, 20) pedido
-			#
-			# El sesgo de tono va en CERO: la sombra de referencia es más CÁLIDA que la piel, no más
-			# fría, así que el azul del cielo empujaría para el lado contrario. Es el caso donde
-			# "la sombra es el propio color, más oscuro y más saturado" se cumple literal.
-			mat.set_shader_parameter("shadow_value", 0.42)
-			mat.set_shader_parameter("shadow_saturation", 1.67)
-			mat.set_shader_parameter("shadow_hue_amount", 0.0)
-			mat.set_shader_parameter("rim_strength", 0.25)
-		Role.CLOTH:
-			mat.set_shader_parameter("shadow_value", 0.34)
-			mat.set_shader_parameter("shadow_saturation", 1.2)
-			mat.set_shader_parameter("shadow_hue_amount", 0.3)
-			mat.set_shader_parameter("rim_strength", 0.35)
-		Role.HAIR:
-			mat.set_shader_parameter("shadow_value", 0.30)
-			mat.set_shader_parameter("shadow_saturation", 1.15)
-			mat.set_shader_parameter("shadow_hue_amount", 0.25)
-			mat.set_shader_parameter("rim_strength", 0.35)
-		Role.LEATHER:
-			mat.set_shader_parameter("shadow_value", 0.28)
-			mat.set_shader_parameter("shadow_saturation", 1.1)
-			mat.set_shader_parameter("shadow_hue_amount", 0.3)
-			mat.set_shader_parameter("rim_strength", 0.5)
-		_:
-			pass
+	mat.shader = load(SHADER_PATH)
 	_materials[role] = mat
 	return mat

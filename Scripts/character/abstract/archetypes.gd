@@ -122,6 +122,22 @@ var tremor : float = 0.0
 ## pero el número no significa nada hasta que abrís el archivo que lo consume.
 var breath_depth : float = 0.0
 
+## ── OJOS Y CARA — TEMPORAL ────────────────────────────────────────────────────────────────────────
+## Perillas de la prueba de ojos 3D. Cuando los párpados tengan huesos propios, esto se rehace bien y
+## estas cuatro se van con `EyeRig`.
+##
+## `eye_openness`: 1 = ojo abierto normal, abajo de 1 entrecerrado. Es la mitad del carácter de una
+## mirada — un viejo cansado y un nene despierto se distinguen antes por esto que por el movimiento.
+var eye_openness : float = 1.0
+## Cuánto se mueve la mirada. Multiplica la amplitud Y la frecuencia de las sacadas, porque un ojo
+## inquieto hace las dos cosas: salta más lejos y más seguido.
+var gaze_restlessness : float = 1.0
+## Multiplicador de frecuencia de parpadeo. >1 parpadea más seguido.
+var blink_rate : float = 1.0
+## TEMPORAL: prende los planos de arruga (frente, pómulos, ojera, mentón). Las cejas se muestran
+## siempre y no dependen de esto.
+var has_wrinkles : bool = false
+
 ## FRECUENCIA EXTRA DE LA RESPIRACIÓN, 0..1. **0 = normal.** Acorta el período sin tocar la amplitud.
 ##
 ## Es el eje INDEPENDIENTE de `breath_depth`, y tenerlos separados es todo el punto: hondo y lento lee
@@ -288,6 +304,10 @@ static func generic_arch() -> EntityArchetype:
 	arch.tremor = 0.0
 	arch.shoulders_scale = 1.0
 	arch.hips_scale = 1.0
+	arch.eye_openness = 1.00
+	arch.gaze_restlessness = 1.00
+	arch.blink_rate = 1.00
+	arch.has_wrinkles = false
 	arch.shoulders_forward = -0.25
 	arch.shoulders_drop = 0.0
 	# Brazos casi rectos al costado, apenas separados del torso. `arm_openness` en 0.0 los mete dentro
@@ -395,6 +415,10 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.hips_scale = 1.24435
 	arch.breath_depth = 0.6
 	arch.breath_rate = 0.0
+	arch.eye_openness = 0.93
+	arch.gaze_restlessness = 0.70
+	arch.blink_rate = 1.25
+	arch.has_wrinkles = false
 	arch.shoulders_forward = -0.70
 	arch.shoulders_drop = 0.0
 	arch.arm_openness = 0.36
@@ -455,6 +479,10 @@ static func kid_arch() -> EntityArchetype:
 	arch.tremor = 0.0
 	arch.shoulders_scale = 0.901
 	arch.hips_scale = 0.9224
+	arch.eye_openness = 1.40
+	arch.gaze_restlessness = 1.90
+	arch.blink_rate = 1.45
+	arch.has_wrinkles = false
 	arch.shoulders_forward = 0.0
 	arch.shoulders_drop = 0.55
 	arch.arm_openness = 0.25
@@ -518,6 +546,10 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.tremor = 0.0
 	arch.shoulders_scale = 0.94
 	arch.hips_scale = 0.97
+	arch.eye_openness = 1.10
+	arch.gaze_restlessness = 1.35
+	arch.blink_rate = 0.85
+	arch.has_wrinkles = false
 	arch.shoulders_forward = 0.0
 	arch.shoulders_drop = 0.58
 	arch.arm_openness = 0.18
@@ -586,6 +618,10 @@ static func giga_arch() -> EntityArchetype:
 	# ⚠ Si se mueve `muscle` o `fat`, hay que volver a despejarlas.
 	arch.shoulders_scale = 1.07
 	arch.hips_scale = 1.12718
+	arch.eye_openness = 0.88
+	arch.gaze_restlessness = 0.45
+	arch.blink_rate = 0.70
+	arch.has_wrinkles = false
 	arch.shoulders_forward = 0.0
 	arch.breath_rate = 0.85
 	arch.shoulders_drop = -0.32
@@ -648,6 +684,10 @@ static func old_arch() -> EntityArchetype:
 	arch.tremor = 0.75
 	arch.shoulders_scale = 1.0
 	arch.hips_scale = 0.97
+	arch.eye_openness = 0.78
+	arch.gaze_restlessness = 0.60
+	arch.blink_rate = 0.75
+	arch.has_wrinkles = true
 	arch.shoulders_forward = 1.0
 	arch.shoulders_drop = 1.0
 	arch.arm_openness = 0.25
@@ -706,6 +746,11 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.tremor                        = lerpf(tremor, b.tremor, t)
 	r.breath_depth                  = lerpf(breath_depth, b.breath_depth, t)
 	r.breath_rate                   = lerpf(breath_rate, b.breath_rate, t)
+	r.eye_openness                  = lerpf(eye_openness, b.eye_openness, t)
+	r.gaze_restlessness             = lerpf(gaze_restlessness, b.gaze_restlessness, t)
+	r.blink_rate                    = lerpf(blink_rate, b.blink_rate, t)
+	# Discreto: o tiene arrugas o no. Se toma el del primario, como has_neck.
+	r.has_wrinkles                  = has_wrinkles
 	r.shoulders_scale               = lerpf(shoulders_scale, b.shoulders_scale, t)
 	r.hips_scale                    = lerpf(hips_scale, b.hips_scale, t)
 	r.shoulders_forward             = lerpf(shoulders_forward, b.shoulders_forward, t)

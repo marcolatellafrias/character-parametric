@@ -36,7 +36,9 @@ var _is_crouched: bool = false
 var _was_ragdoll_active: bool = false
 
 var _debug_cam_mode: int = 0
-var _debug_camera: Camera3D = null
+var _debug_camera: Camera3D
+## TEMPORAL: ojos 3D de prueba. Ver EyeRig.
+var _eye_rig: EyeRig = null
 ## Zoom de la cámara de debug, ADIMENSIONAL: multiplica la distancia a la que el personaje entra justo
 ## en cuadro. 1.0 = encuadrado exacto, y no se puede acercar más que eso. Al ser un múltiplo y no una
 ## medida en metros, se ajusta solo a cualquier altura de personaje. Numpad +/- mientras se mantienen
@@ -84,6 +86,10 @@ func _construct_persistent(target: BoneInstantiator, cam: Camera3D) -> void:
 	_debug_camera = Camera3D.new()
 	_debug_camera.current = false
 	add_child(_debug_camera)
+
+	# TEMPORAL: ojos 3D de prueba. Se borra con esta linea, la de rebind, y su carpeta. Ver EyeRig.
+	_eye_rig = EyeRig.new()
+	add_child(_eye_rig)
 
 ## Re-vincula el controlador (persistente) al esqueleto target: refs de cápsula/brazos/anim, el
 ## InteractionController, reparenta la cámara y recrea el HUD. Único lugar donde se re-cablea:
@@ -615,6 +621,8 @@ func _setup_debug_panel() -> void:
 		_debug_panel.queue_free()
 	_debug_panel = DebugPanel.new()
 	add_child(_debug_panel)
+	# TEMPORAL: laboratorio de estilo (F2). Se borra con esta línea y su carpeta. Ver StyleLab.
+	add_child(StyleLab.new())
 
 	# ── Info (stats del personaje generado + mundo + red) ──
 	var bi := _get_bi()
@@ -639,9 +647,11 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Ver colisionadores",        func(): CharacterDebugView.toggle_colliders(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver gizmos de marcha",      func(): CharacterDebugView.toggle_gait_gizmos(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver wireframe",             func(): CharacterDebugView.toggle_wireframe(get_tree()))
+	_debug_panel.add_action("Acciones", "Ocultar planos de cara",    func(): CharacterAppearance.toggle_face_planes(get_tree()))
 	# Apariencia: también globales, y se repintan en el momento.
 	_debug_panel.add_action("Acciones", "Shader on/off",             func(): CharacterAppearance.toggle_flat_geometry(get_tree()))
 	_debug_panel.add_action("Acciones", "Monocromo on/off",          func(): CharacterAppearance.toggle_monochrome(get_tree()))
+	_debug_panel.add_action("Acciones", "Caras con Rive on/off",     _toggle_rive_faces)
 
 	# ── Arquetipos ──
 	# Dos acciones por arquetipo, y son distintas: "Ser" cambia TU personaje y además deja la P pegada
@@ -709,6 +719,24 @@ func _debug_spawn_pos() -> Vector3:
 
 ## Elige el arquetipo con el que respawnea la P, y respawnea ya. La elección QUEDA PEGADA: después
 ## alcanza con apretar P para ver otra variación del mismo arquetipo, que es el bucle de autoría.
+## Prende o apaga las texturas de cara en vivo. Apagado por default: `RiveGD` es un GDExtension WIP y
+## un fallo tiene que costar los PNG de siempre, no la partida. Ver RiveFace.
+func _toggle_rive_faces() -> void:
+	RiveFace.ENABLED = not RiveFace.ENABLED
+	RiveFace.reset()
+	print("[RiveFace] %s" % ("ENCENDIDO" if RiveFace.ENABLED else "apagado"))
+	CharacterAppearance.reapply_all(get_tree())
+	# SEGUNDA PASADA UN PAR DE FRAMES DESPUÉS. El canvas se crea en la primera y puede no tener textura
+	# hasta haber renderizado; sin este reintento eso se vería igual que "no funciona".
+	_reapply_faces_soon()
+
+
+func _reapply_faces_soon() -> void:
+	for i in 3:
+		await get_tree().process_frame
+	CharacterAppearance.reapply_all(get_tree())
+
+
 func _respawn_as(archetype: int) -> void:
 	DebugArchetype.selected = archetype
 	_respawn()
