@@ -126,9 +126,18 @@ var breath_depth : float = 0.0
 ## Perillas de la prueba de ojos 3D. Cuando los párpados tengan huesos propios, esto se rehace bien y
 ## estas cuatro se van con `EyeRig`.
 ##
-## `eye_openness`: 1 = ojo abierto normal, abajo de 1 entrecerrado. Es la mitad del carácter de una
-## mirada — un viejo cansado y un nene despierto se distinguen antes por esto que por el movimiento.
-var eye_openness : float = 1.0
+## ── APERTURA DE CADA PÁRPADO, por separado ────────────────────────────────────────────────────────
+## 1 = normal, abajo de 1 el párpado está más cerrado, arriba de 1 más abierto.
+##
+## Van SEPARADOS porque juntos son solo "qué tan abierto"; separados son EXPRESIÓN, y sale de la
+## asimetría entre los dos:
+##
+##   párpado de abajo abierto  +  el de arriba caído   →  cara de enojado
+##   párpado de arriba abierto +  el de abajo subido   →  cara de contento
+##
+## Un viejo cansado y un nene despierto se distinguen por esto antes que por el movimiento.
+var eye_upper_openness : float = 1.0
+var eye_lower_openness : float = 1.0
 ## Cuánto se mueve la mirada. Multiplica la amplitud Y la frecuencia de las sacadas, porque un ojo
 ## inquieto hace las dos cosas: salta más lejos y más seguido.
 var gaze_restlessness : float = 1.0
@@ -304,7 +313,8 @@ static func generic_arch() -> EntityArchetype:
 	arch.tremor = 0.0
 	arch.shoulders_scale = 1.0
 	arch.hips_scale = 1.0
-	arch.eye_openness = 1.00
+	arch.eye_upper_openness = 1.00
+	arch.eye_lower_openness = 1.00
 	arch.gaze_restlessness = 1.00
 	arch.blink_rate = 1.00
 	arch.has_wrinkles = false
@@ -415,7 +425,8 @@ static func fat_man_arch() -> EntityArchetype:
 	arch.hips_scale = 1.24435
 	arch.breath_depth = 0.6
 	arch.breath_rate = 0.0
-	arch.eye_openness = 0.93
+	arch.eye_upper_openness = 1.30
+	arch.eye_lower_openness = 0.70
 	arch.gaze_restlessness = 0.70
 	arch.blink_rate = 1.25
 	arch.has_wrinkles = false
@@ -479,7 +490,8 @@ static func kid_arch() -> EntityArchetype:
 	arch.tremor = 0.0
 	arch.shoulders_scale = 0.901
 	arch.hips_scale = 0.9224
-	arch.eye_openness = 1.40
+	arch.eye_upper_openness = 1.50
+	arch.eye_lower_openness = 1.35
 	arch.gaze_restlessness = 1.90
 	arch.blink_rate = 1.45
 	arch.has_wrinkles = false
@@ -546,7 +558,8 @@ static func tall_lanky_arch() -> EntityArchetype:
 	arch.tremor = 0.0
 	arch.shoulders_scale = 0.94
 	arch.hips_scale = 0.97
-	arch.eye_openness = 1.10
+	arch.eye_upper_openness = 1.10
+	arch.eye_lower_openness = 1.05
 	arch.gaze_restlessness = 1.35
 	arch.blink_rate = 0.85
 	arch.has_wrinkles = false
@@ -618,7 +631,8 @@ static func giga_arch() -> EntityArchetype:
 	# ⚠ Si se mueve `muscle` o `fat`, hay que volver a despejarlas.
 	arch.shoulders_scale = 1.07
 	arch.hips_scale = 1.12718
-	arch.eye_openness = 0.88
+	arch.eye_upper_openness = 0.77
+	arch.eye_lower_openness = 1.62
 	arch.gaze_restlessness = 0.45
 	arch.blink_rate = 0.70
 	arch.has_wrinkles = false
@@ -684,7 +698,8 @@ static func old_arch() -> EntityArchetype:
 	arch.tremor = 0.75
 	arch.shoulders_scale = 1.0
 	arch.hips_scale = 0.97
-	arch.eye_openness = 0.78
+	arch.eye_upper_openness = 0.78
+	arch.eye_lower_openness = 0.90
 	arch.gaze_restlessness = 0.60
 	arch.blink_rate = 0.75
 	arch.has_wrinkles = true
@@ -746,7 +761,8 @@ func blend_with(b: EntityArchetype, t: float) -> EntityArchetype:
 	r.tremor                        = lerpf(tremor, b.tremor, t)
 	r.breath_depth                  = lerpf(breath_depth, b.breath_depth, t)
 	r.breath_rate                   = lerpf(breath_rate, b.breath_rate, t)
-	r.eye_openness                  = lerpf(eye_openness, b.eye_openness, t)
+	r.eye_upper_openness            = lerpf(eye_upper_openness, b.eye_upper_openness, t)
+	r.eye_lower_openness            = lerpf(eye_lower_openness, b.eye_lower_openness, t)
 	r.gaze_restlessness             = lerpf(gaze_restlessness, b.gaze_restlessness, t)
 	r.blink_rate                    = lerpf(blink_rate, b.blink_rate, t)
 	# Discreto: o tiene arrugas o no. Se toma el del primario, como has_neck.

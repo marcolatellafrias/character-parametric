@@ -72,7 +72,8 @@ const LOWER_CLOSE := -0.22
 ## quedaba en unos pocos grados.
 const REST_SCALE := 1.7
 ## Cuanto puede ABRIR de mas un arquetipo con `eye_openness` > 1, en las mismas unidades que el cierre.
-const REST_OPEN_MAX := 0.7
+## Subido de 0.7 a 1.1: el nene tocaba el tope y todavia quedaba recorrido en la geometria.
+const REST_OPEN_MAX := 1.1
 
 const BLINK_TIME := 0.13
 ## ⚠ ACELERADO PARA PROBAR. Los realistas son 2.0 y 6.5 — a ese ritmo, con un parpadeo de 0.13 s, es
@@ -119,7 +120,8 @@ class Eyes:
 	var brow_pivot := Vector3.ZERO
 
 	# Del arquetipo. Ver EntityArchetype.eye_openness y compania.
-	var openness := 1.0
+	var upper_openness := 1.0
+	var lower_openness := 1.0
 	var restless := 1.0
 	var blink_mult := 1.0
 
@@ -218,7 +220,8 @@ func _setup(e: Eyes) -> void:
 	# que por cualquier otra cosa de la cara.
 	var arch := e.bi.entity_instantiation.arch_final if e.bi.entity_instantiation != null else null
 	if arch != null:
-		e.openness = arch.eye_openness
+		e.upper_openness = arch.eye_upper_openness
+		e.lower_openness = arch.eye_lower_openness
 		e.restless = arch.gaze_restlessness
 		e.blink_mult = maxf(arch.blink_rate, 0.05)
 
@@ -326,8 +329,10 @@ func _animate(e: Eyes, delta: float) -> void:
 	# El piso del clamp es NEGATIVO a proposito. Con el piso en 0, un `eye_openness` por encima de 1
 	# no hacia absolutamente nada —el nene no podia abrir mas que el resto— porque el valor de reposo
 	# le quedaba por debajo y se recortaba. Ahora abrir de mas es tan posible como cerrar de mas.
-	var rest: float = (1.0 - e.openness) * REST_SCALE
-	var lid: float = clampf(rest + e.blink, -REST_OPEN_MAX, 1.0)
+	# UN VALOR POR PARPADO. Juntos serian solo "que tan abierto"; separados dan expresion, y sale de
+	# la asimetria: el de abajo abierto con el de arriba caido lee como enojo, y al reves como alegria.
+	var lid_up: float = clampf((1.0 - e.upper_openness) * REST_SCALE + e.blink, -REST_OPEN_MAX, 1.0)
+	var lid_low: float = clampf((1.0 - e.lower_openness) * REST_SCALE + e.blink, -REST_OPEN_MAX, 1.0)
 
 	var head_now := e.skel.global_transform * e.skel.get_bone_global_pose(e.head_idx)
 	for side in e.parts:
@@ -336,8 +341,8 @@ func _animate(e: Eyes, delta: float) -> void:
 		var look := Basis(e.axis_up, aim.x * LOOK_YAW) * Basis(e.axis_right, aim.y * LOOK_PITCH)
 		_place(e, side, "ball", head_now, pivot, look)
 		_place(e, side, "pupil", head_now, pivot, look)
-		_place(e, side, "upper", head_now, pivot, Basis(e.axis_right, lid * UPPER_CLOSE))
-		_place(e, side, "lower", head_now, pivot, Basis(e.axis_right, lid * LOWER_CLOSE))
+		_place(e, side, "upper", head_now, pivot, Basis(e.axis_right, lid_up * UPPER_CLOSE))
+		_place(e, side, "lower", head_now, pivot, Basis(e.axis_right, lid_low * LOWER_CLOSE))
 
 	_place_brows(e, head_now, t, aim)
 
