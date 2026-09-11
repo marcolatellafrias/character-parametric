@@ -2,7 +2,7 @@ class_name CharacterAppearance
 
 ## COLOR DE PERSONAJE POR SEED, con UN material compartido.
 ##
-## Cada malla del modelo cumple un ROL (piel, tela, pelo, cuero…), y cada rol tiene un color que sale
+## Cada malla del modelo cumple un ROL (piel, tela, pelo, cuero), y cada rol tiene un color que sale
 ## del seed. Lo que NO pasa es que cada personaje tenga su propio material: el color viaja por un
 ## `instance uniform`, que vive en el MeshInstance3D y no en el material, así que toda la ciudad
 ## comparte un material y un pipeline.
@@ -11,7 +11,7 @@ class_name CharacterAppearance
 ## multiplica draw calls y memoria de textura, y sacarlo implica reescribir cómo se pinta todo.
 ## Ver technical/character-appearance-system.md.
 
-enum Role { SKIN, CLOTH, HAIR, LEATHER, LINE, PROP }
+enum Role { SKIN, CLOTH, HAIR, LEATHER }
 
 ## Malla del .glb → rol de color. Tabla explícita y no una convención de nombres, por la misma razón
 ## que ReferenceRig.BONE_MAP lo es: el modelo se sigue moviendo en Blender, y un nombre que cambia
@@ -29,31 +29,6 @@ const MESH_ROLE := {
 	"hair_mesh2": Role.HAIR,   # el nombre que tiene hoy en Blender
 	"wrist_mesh": Role.SKIN,   # piel, igual que la mano
 	"shoes_mesh": Role.LEATHER,
-}
-
-## PLANOS DE FEATURE → de qué color se tiñen. La textura aporta la FORMA (por el alpha) y opcionalmente
-## sombreado interno en escala de grises; el color sale del seed.
-##
-## Por eso las arrugas se tiñen con la PIEL y las cejas con el PELO: una sola textura compartida por
-## toda la ciudad se adapta sola a cualquier tono. `Role.PROP` = sin teñir, la textura manda (ojos,
-## boca, nariz, tarjeta).
-##
-## Un plano que no esté acá conserva el material del .glb, que es lo seguro para lo que se agregue.
-const PLANE_ROLE := {
-	"brows_plane_mesh":       Role.HAIR,
-	"chest_hair_plane_mesh":  Role.HAIR,
-	"back_hair_plane_mesh":   Role.HAIR,
-	"hands_plane_mesh":       Role.HAIR,
-	"forehead_plane_mesh":    Role.LINE,
-	"cheekbones_plane_mesh":  Role.LINE,
-	"teartrough_plane_mesh":  Role.LINE,   # sin la h, como está en Blender
-	"chin_plane_mesh":        Role.LINE,
-	"eye_left_plane_mesh":    Role.PROP,
-	"eye_right_plane_mesh":   Role.PROP,
-	"eyes_plane_mesh":        Role.PROP,   # por si no se separan
-	"mouth_plane_mesh":       Role.PROP,
-	"nose_plane_mesh":        Role.PROP,
-	"nametag_plane_mesh":     Role.PROP,
 }
 
 ## ── MODO GEOMETRÍA ────────────────────────────────────────────────────────────────────────────────
@@ -95,32 +70,15 @@ const MONOCHROME_GREYS := {
 	Role.CLOTH:   0.55,   # gris medio-claro
 	Role.HAIR:    0.07,   # casi negro
 	Role.LEATHER: 0.32,   # gris medio — zapatos
-	Role.LINE:    0.44,   # arrugas: más oscuro que la piel, o no se ven
-	# PROP NO ESTÁ ACÁ A PROPÓSITO: es el rol "sin teñir", y eso vale también en monocromo. Ver
-	# _color_for. Estuvo en 0.72 y el efecto era que los blancos de los ojos salían grises.
 }
 
 const SHADER_PATH := "res://Materials/character.gdshader"
-const PLANE_SHADER_PATH := "res://Materials/character_plane.gdshader"
-## Carpeta donde se buscan las texturas de los planos, por nombre de malla. Ver _source_texture.
-const PLANE_TEXTURE_DIR := "res://Textures/character/"
-
-## Cuánto se oscurece la piel para dibujar una arruga encima. MÁS CHICO = MÁS OSCURO.
-##
-## Es piel oscurecida y no negro: una línea negra sobre piel clara se lee bien, pero sobre piel oscura
-## salta como un rayón de tinta. Derivarla del color de piel la hace correcta en todos los tonos.
-##
-## Y no es `skin_color` a secas, que fue el primer intento: una línea del mismo color que la
-## superficie sobre la que está, sencillamente no se ve.
-const LINE_DARKEN := 0.28
 
 ## Un material por ROL, compartido por TODOS los personajes. Se crean una vez por sesión: cada rol
 ## necesita su propio material porque el look base difiere (la piel casi no se sombrea, la tela sí),
 ## pero el COLOR no vive acá — viaja por instancia.
 static var _materials: Dictionary = {}
-## Materiales de plano, cacheados POR TEXTURA — dos personajes con la misma ceja comparten material.
-static var _plane_materials: Dictionary = {}
-## Materiales de FLAT_GEOMETRY, cacheados por (color, textura). Ver _flat_material_for.
+## Materiales de FLAT_GEOMETRY, cacheados por color. Ver _flat_material_for.
 static var _flat_materials: Dictionary = {}
 
 
@@ -173,128 +131,26 @@ static func apply_to(bi: BoneInstantiator) -> void:
 	var inst := bi.entity_instantiation
 	if inst == null:
 		return
-	# Corta seco y antes que nada: en wireframe no hay rol, ni tinte, ni textura que valga. Ver
-	# WIREFRAME_BLACK.
+	# Corta seco y antes que nada: en wireframe no hay rol ni tinte que valga. Ver WIREFRAME_BLACK.
 	if WIREFRAME_BLACK:
 		for m in bi.skinned_body.meshes:
 			if is_instance_valid(m):
 				m.material_override = _wire_material()
 		return
 
-	RiveBake.ensure_baked()  # DEV: borrar junto con rive_bake.gd cuando el arte esté cerrado
 	for m in bi.skinned_body.meshes:
-		if not is_instance_valid(m):
+		if not is_instance_valid(m) or not MESH_ROLE.has(m.name):
 			continue
-		if MESH_ROLE.has(m.name):
-			var role: Role = MESH_ROLE[m.name]
-			var col := _color_for(role, inst)
-			if FLAT_GEOMETRY:
-				m.material_override = _flat_material_for(col, null)
-			else:
-				m.material_override = _material_for(role)
-				m.set_instance_shader_parameter("tint", col)
-		elif PLANE_ROLE.has(m.name):
-			var plane_role: Role = PLANE_ROLE[m.name]
-			var plane_col := _color_for(plane_role, inst)
-			if FLAT_GEOMETRY:
-				var tex := _source_texture(m)
-				if tex != null:
-					m.material_override = _flat_material_for(plane_col, tex)
-			else:
-				var mat := _plane_material_for(m)
-				if mat != null:
-					m.material_override = mat
-					m.set_instance_shader_parameter("tint", plane_col)
-
-
-## Material de recorte para un plano de feature, con la textura que trajo el .glb.
-##
-## La textura se AUTORA EN BLENDER (asignás el PNG al material del plano) y acá se la re-monta sobre
-## el shader de recorte. Así el flujo de trabajo es "pegá el PNG en Blender y listo", sin que haya que
-## registrar cada textura del lado de Godot.
-##
-## Se cachea POR TEXTURA, no por personaje: dos personajes con la misma ceja comparten material y
-## pipeline. Solo las texturas que sean únicas por personaje (la animada de Rive, el nametag) van a
-## necesitar su propia instancia, y son las únicas que deberían.
-static func _plane_material_for(mi: MeshInstance3D) -> ShaderMaterial:
-	var tex := _source_texture(mi)
-	if tex == null:
-		return null  # todavía sin textura: se deja el material del .glb, que al menos se ve
-	if _plane_materials.has(tex):
-		return _plane_materials[tex]
-	var mat := ShaderMaterial.new()
-	mat.shader = load(PLANE_SHADER_PATH)
-	mat.set_shader_parameter("albedo_texture", tex)
-	_plane_materials[tex] = mat
-	return mat
-
-
-## La textura de un plano, buscada POR NOMBRE en la carpeta de texturas antes que en el .glb.
-##
-## `forehead_plane_mesh` → `res://Textures/character/forehead_plane_mesh.png`.
-##
-## Buscar por convención y no por una tabla es a propósito: exportás el PNG desde Rive, lo guardás
-## encima del archivo, y Godot lo recarga — sin re-exportar el .glb ni tocar código. Iterar sobre el
-## dibujo es el bucle que más veces se va a repetir, así que es el que tiene que ser corto.
-##
-## Si no hay archivo, cae al material del .glb, así que asignar la textura en Blender también sirve.
-static func _source_texture(mi: MeshInstance3D) -> Texture2D:
-	var tex := _load_png(mi.name)
-	if tex != null:
-		return tex
-	# Un par L/R cae al nombre SIN lado: `eye_left_plane_mesh` → `eye_plane_mesh`. Así un solo artboard
-	# de Rive viste los dos ojos, que es el caso normal, y el día que uno tenga un parche alcanza con
-	# dejar `eye_right_plane_mesh.png` en la carpeta — lo específico gana sobre lo genérico, sin código.
-	var generic := mi.name.replace("_left", "").replace("_right", "")
-	if generic != mi.name:
-		tex = _load_png(generic)
-		if tex != null:
-			return tex
-	var mesh := mi.mesh
-	if mesh == null or mesh.get_surface_count() == 0:
-		return null
-	var src := mesh.surface_get_material(0) as BaseMaterial3D
-	return src.albedo_texture if src != null else null
-
-
-## En el EDITOR lee el PNG del disco, no el recurso importado.
-##
-## Godot importa los PNG a su propio caché, y un juego ya corriendo no se entera de que el archivo
-## cambió. Como RiveBake reescribe las texturas justo antes de que se usen, leer el recurso importado
-## mostraría siempre el dibujo de la corrida ANTERIOR — el bucle de iteración quedaría desfasado un
-## run, que es exactamente lo que este camino venía a evitar.
-##
-## Exportado no aplica: ahí no hay bake, el PNG fuente puede no estar, y el recurso importado es lo
-## correcto y lo más rápido.
-static func _load_png(base: String) -> Texture2D:
-	var path := PLANE_TEXTURE_DIR + base + ".png"
-	if OS.has_feature("editor"):
-		var img := Image.new()
-		if img.load(ProjectSettings.globalize_path(path)) == OK:
-			return ImageTexture.create_from_image(img)
-	return load(path) as Texture2D if ResourceLoader.exists(path) else null
-
-
-## Oscurece un color CONSERVANDO el alpha en 1. Ver el aviso en _color_for.
-static func _darken(c: Color, k: float) -> Color:
-	return Color(c.r * k, c.g * k, c.b * k, 1.0)
+		var role: Role = MESH_ROLE[m.name]
+		var col := _color_for(role, inst)
+		if FLAT_GEOMETRY:
+			m.material_override = _flat_material_for(col)
+		else:
+			m.material_override = _material_for(role)
+			m.set_instance_shader_parameter("tint", col)
 
 
 static func _color_for(role: Role, inst: EntityInstantiation) -> Color:
-	# PROP ES "SIN TEÑIR" POR DEFINICIÓN, y eso manda también en monocromo — por eso va ANTES.
-	#
-	# El tinte multiplica (`ALBEDO = tex.rgb * tint.rgb`), así que devolver blanco es lo mismo que
-	# multiplicar por 1: la textura pasa literal. Es lo que hace que un plano de ojo dibujado en Rive
-	# conserve su contorno negro Y su blanco interior, y en general su escala de grises entera.
-	#
-	# Con el gris de monocromo encima, el negro seguía negro —negro por cualquier cosa es negro— pero
-	# todo lo claro se apagaba. O sea que el filtro se comía justo el rango que el dibujo usa.
-	#
-	# Esto NO rompe el propósito del monocromo: el arte de features ya viene en escala de grises, así
-	# que dejarlo literal sigue siendo monocromo. El día que un prop tenga color de verdad (una tarjeta,
-	# por ejemplo), va a aparecer a todo color en este modo — y ahí sí querrá su propio rol.
-	if role == Role.PROP:
-		return Color.WHITE
 	if MONOCHROME:
 		var g: float = MONOCHROME_GREYS.get(role, 0.8)
 		return Color(g, g, g, 1.0)
@@ -303,37 +159,27 @@ static func _color_for(role: Role, inst: EntityInstantiation) -> Color:
 		Role.CLOTH:   return inst.cloth_color
 		Role.HAIR:    return inst.hair_color
 		Role.LEATHER: return inst.leather_color
-		# ⚠ NO `skin_color * LINE_DARKEN`: en Godot multiplicar un Color por un float multiplica TAMBIÉN
-		# el alpha. El tint salía con a=0.28, el shader hace `ALPHA = tex.a * tint.a`, y el alpha
-		# scissor (0.5) descartaba el plano ENTERO. No es que la línea se viera tenue — no se dibujaba.
-		Role.LINE:    return _darken(inst.skin_color, LINE_DARKEN)
 		_:            return Color.WHITE
 
 
-## El look base por rol. Son los números que se van a tunear cuando se mire el personaje de verdad;
-## lo que importa acá es que sean POCOS materiales, no cuáles.
-## Material de FLAT_GEOMETRY: PBR estándar, sin shader propio. Con textura sale con alpha scissor,
-## igual que el shader de recorte, para que un plano de cara no se dibuje como un cuadrado negro.
+## Material de FLAT_GEOMETRY: PBR estándar, sin shader propio.
 ##
-## Se cachea por (color, textura) y no por rol, porque acá el color vive EN el material: dos personajes
-## del mismo color siguen compartiendo uno.
-static func _flat_material_for(color: Color, tex: Texture2D) -> StandardMaterial3D:
-	var key := "%s|%d" % [color.to_html(false), tex.get_instance_id() if tex != null else 0]
+## Se cachea por color y no por rol, porque acá el color vive EN el material: dos personajes del mismo
+## color siguen compartiendo uno.
+static func _flat_material_for(color: Color) -> StandardMaterial3D:
+	var key := color.to_html(false)
 	if _flat_materials.has(key):
 		return _flat_materials[key]
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 1.0
 	mat.metallic = 0.0
-	if tex != null:
-		mat.albedo_texture = tex
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-		mat.alpha_scissor_threshold = 0.5
-		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_flat_materials[key] = mat
 	return mat
 
 
+## El look base por rol. Son los números que se van a tunear cuando se mire el personaje de verdad;
+## lo que importa acá es que sean POCOS materiales, no cuáles.
 static func _material_for(role: Role) -> ShaderMaterial:
 	if _materials.has(role):
 		return _materials[role]
@@ -372,7 +218,5 @@ static func _material_for(role: Role) -> ShaderMaterial:
 			mat.set_shader_parameter("shadow_saturation", 1.1)
 			mat.set_shader_parameter("shadow_hue_amount", 0.3)
 			mat.set_shader_parameter("rim_strength", 0.5)
-		_:
-			pass
 	_materials[role] = mat
 	return mat
