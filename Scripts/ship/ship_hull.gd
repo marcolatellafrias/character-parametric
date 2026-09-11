@@ -1,102 +1,111 @@
 class_name ShipHull
+extends RefCounted
 
-## CASCO DE LA NAVE — un domo de vidrio sobre un piso con su misma planta, y un anillo de consolas
-## pegado al vidrio.
+## CASCO DE LA NAVE — lo que comparten todas las formas: el anillo de módulos, los asientos, los botones
+## de la compuerta, las piezas y sus colores. Cada forma pone lo suyo —la cáscara, el piso, cómo se mueve
+## la compuerta, dónde está la pared y qué módulos lleva cada lado—: `DomeHull`, un domo de vidrio, y
+## `BoxHull`, una caja. Las dos se siguen probando, y Ship elige cuál arma.
 ##
 ## Es provisorio a propósito: el modelo de verdad viene después, desde Blender. Mientras tanto la nave
 ## tiene que existir en su tamaño real para probar cómo se vuela y cómo se usa por dentro. Se arma con
-## piezas simples —caras planas, placas y un prisma—, cada una malla Y collider de la misma forma, y cada
-## una de un color distinto a su vecina —salvo el domo: el vidrio es cristalino y parejo, y el casco
-## opaco de un solo color oscuro—: se ve de un vistazo qué pieza es cuál. El día
-## que llegue el modelo, esto se reemplaza entero sin que ninguna otra parte de la nave dependa de cómo
-## estaba hecho.
-##
-## ── EL DOMO ─────────────────────────────────────────────────────────────────────────────────────
-## Un hemisferio de esfera UV: `SEGMENTS` gajos alrededor —los mismos lados que el piso, así sus bordes
-## coinciden— y `RINGS` anillos del piso al polo, cada cara una placa plana. Los anillos de `OPAQUE_RINGS`
-## y la compuerta son opacos; el resto, de vidrio.
-##
-## Las caras opacas son placas de `WALL` de espesor que van de `DOME_RADIUS` hacia afuera, dibujadas
-## enteras —sus dos caras y los cantos—; su cara de afuera queda al ras del borde del piso, así el domo
-## mide lo mismo que la base. El vidrio es un plano sin espesor justo ahí, en `GLASS_RADIUS` (ver
-## `_glass_face`).
-##
-## Cada cara es su PROPIO objeto, malla y collider: Godot ordena lo transparente por objeto y no por
-## cara, así que un domo de una sola malla, visto desde adentro, dibujaría caras de atrás encima de las
-## de adelante.
+## piezas simples, cada una malla Y collider de la misma forma, y cada una de un color distinto a su
+## vecina: se ve de un vistazo qué pieza es cuál. El día que llegue el modelo, esto se reemplaza entero
+## sin que ninguna otra parte de la nave dependa de cómo estaba hecho.
 ##
 ## ── SE MIDE EN CELDAS DE DASHBOARD ──────────────────────────────────────────────────────────────
-## La unidad de la nave es la celda, no el metro: el radio, y el ancho y el alto de las consolas. Los
-## dashboards son grillas de celdas, y cada consola tiene que alojar un número entero de ellas. Las caras
-## del domo y la compuerta salen de los segmentos, así que no dan celdas justas.
+## La unidad de la nave es la celda, no el metro: el ancho, el alto y los módulos. Los dashboards son
+## grillas de celdas, y cada módulo tiene que alojar un número entero de ellas. La celda es
+## `ProceduralDashboard.CELL`: 4 cm, sin separación.
 ##
-## La celda es `ProceduralDashboard.CELL`: 4 cm, sin separación.
+## ── EL ANILLO DE MÓDULOS ─────────────────────────────────────────────────────────────────────────
+## Un polígono regular que mira al centro, lo más afuera que se puede. Cada LADO es una fila recta de
+## MÓDULOS pegados (ver `_side_modules`): el domo, redondo, lleva muchos lados de un módulo; la caja,
+## cuadrada, un octógono de lados de tres. El módulo del medio de cada lado es el PRINCIPAL: el que mira el
+## asiento, y en el frente el que lleva el tablero de vuelo; siempre es un atril de `MAIN_COLUMNS`. Llevan
+## módulos todos los lados menos los que se meterían en el pasillo de carga, que es el hueco entre la
+## compuerta y los tableros (ver `console_indices`).
+##
+## Tipos de módulo (ver ModuleType). Todos se arman CONTRA LA PARED: el casco dice hasta dónde se puede
+## construir a cada altura (`_wall_distance`) y el módulo llega hasta ahí —recto en la caja, siguiendo la
+## curva en el domo—.
+##   · ATRIL (el tablero común): tablero inclinado, plano de abajo que deja lugar a las rodillas y un
+##     estante cosmético hasta la pared.
+##   · GABINETE ALTO: un bloque con el tablero en la cara de adelante, a altura de alguien parado.
+##   · GABINETE BAJO: a la altura de la cintura, con el tablero arriba. La cara de adelante queda libre
+##     para más adelante.
+##   · TABLERO VOLADOR (opcional, sobre un módulo): un bloque colgado de la pared arriba del que está
+##     sentado, con la esquina de abajo de adentro cortada a la inclinación del atril, pero para abajo: ahí
+##     va el tablero, mirándolo.
+## Todo tablero que no tenga un preset lleva controles de relleno, para ver cómo queda (ver `_dummy_preset`).
 ##
 ## Ejes: X a la derecha, Y arriba, −Z al frente, +Z atrás (la compuerta). El origen es el centro de la
-## base del piso, así que la altura de la nave es la de su panza. El centro de la esfera está sobre el
-## piso.
+## base del piso, así que la altura de la nave es la de su panza. Las alturas de los módulos se miden
+## desde el piso de adentro.
 
 const CELL := ProceduralDashboard.CELL
-
-## Radio interior del domo: 115 celdas, 4,60 m, un 10 % menos que el doble del largo del cubo de antes.
-## Las placas del domo van de acá `WALL` hacia afuera, y terminan al ras del piso (ver EL DOMO).
-const DOME_RADIUS := 115.0 * CELL
-## Radio de la cara de afuera del domo: donde terminan las placas opacas, donde está el plano del vidrio y
-## hasta donde llega el piso.
-const GLASS_RADIUS := DOME_RADIUS + WALL
-## Espesor del piso, del vidrio y de la compuerta.
+## Medio ancho interior —el radio del domo, la mitad del lado de la caja—: 126 celdas, 5,04 m. Las dos
+## formas tienen la misma planta, para compararlas de igual a igual.
+const HALF_WIDTH := 126.0 * CELL
+## Espesor del piso, las paredes y la compuerta.
 const WALL := 4.0 * CELL
-## Gajos alrededor —del domo y del piso— y anillos del piso al polo, como una esfera UV.
-const SEGMENTS := 32
-const RINGS := 8
-## Anillos opacos, contando desde el piso: el del piso y la cúspide. Los del medio son de vidrio.
-const OPAQUE_RINGS: Array[int] = [0, 7]
-## El vidrio: cristalino, parejo en todo el domo.
-const GLASS_COLOR := Color(0.75, 0.88, 1.0, 0.25)
-## Color del casco opaco del domo: todo igual, oscuro.
-const SHELL_COLOR := Color(0.2, 0.22, 0.26)
+## Opacidad de la cáscara con el toggle de paredes traslúcidas prendido (ver Ship.translucent_walls).
+const SHELL_ALPHA := 0.25
 
-## ── LA COMPUERTA ─────────────────────────────────────────────────────────────────────────────────
-## Los gajos de atrás, desde el piso: el del medio (SEGMENTS / 2) y `DOOR_HALF_WIDTH` a cada lado —2,67 m
-## al nivel del piso, que es también el diámetro del cilindro de carga—, y `DOOR_RINGS` anillos de alto
-## (2,56 m). Va por FUERA del vidrio, a `DOOR_GAP`, para que al subir deslizándose por el domo pase sobre
-## él sin tocarlo (ver ShipDoor).
-const DOOR_SEGMENT := 16
-const DOOR_HALF_WIDTH := 1
-const DOOR_RINGS := 3
-const DOOR_GAP := 0.02
+enum ModuleType { LECTERN, TALL, SHORT }
 
-## ── EL ANILLO DE CONSOLAS ────────────────────────────────────────────────────────────────────────
-## Consolas de `CONSOLE_COLUMNS`, una al lado de la otra, formando un polígono que mira al centro. No
-## sigue los gajos del domo: va lo más afuera que se puede, con el estante casi tocando el vidrio, y
-## tiene tantos lados como consolas entran pegadas a esa distancia (ver `console_sides`). Llevan consola
-## todos los lados menos los que se meterían en el pasillo de carga, que es el hueco entre la compuerta
-## y los tableros (ver `console_indices`).
-##
-## Columnas por consola. Con 32 (1,28 m) entran los controles de vuelo y los brazos cortos llegan casi a
-## todo el tablero.
-const CONSOLE_COLUMNS := 32
+## Columnas del módulo principal de cada lado: las del tablero de vuelo. Con 32 (1,28 m) entran los
+## controles de vuelo y los brazos cortos llegan casi a todo el tablero.
+const MAIN_COLUMNS := 32
+
+## ── ATRIL ────────────────────────────────────────────────────────────────────────────────────────
 ## Filas del tablero: tan profundo como el volante, el control más grande.
 const CONSOLE_ROWS := 12
-## Altura de la BISAGRA de cada consola, desde el piso: el borde de abajo del tablero, del lado de quien
-## lo usa. Desde ahí el tablero sube hacia afuera y el plano de abajo baja hacia afuera.
+## Altura de la BISAGRA, desde el piso: el borde de abajo del tablero, del lado de quien lo usa. Desde ahí
+## el tablero sube hacia afuera y el plano de abajo baja hacia afuera.
 const CONSOLE_HEIGHT := 0.75
 ## Inclinación del tablero desde la vertical: a 45° queda de frente a la mira del que está sentado.
 const PANEL_TILT_DEG := 45.0
 ## Cuánto se mete hacia afuera, en el piso, el borde del plano de abajo. Inclinado así deja lugar para
 ## las rodillas debajo del tablero, y el asiento puede ir más cerca (ver Ship._add_seats).
 const LOWER_SETBACK := 0.5
-## Profundidad mínima del estante cosmético. Llega desde el borde de arriba del tablero hasta el vidrio
-## (ver `shelf_depth`); esto es lo menos que tiene que medir, y pone hasta dónde puede ir el anillo.
+## Profundidad mínima del estante cosmético, que llega hasta la pared: lo menos que tiene que medir pone
+## hasta dónde puede ir el anillo (ver `_ring_fits`).
 const SHELF_MIN_DEPTH := 0.3
-## Aire entre las esquinas de afuera del estante y el vidrio.
-const CONSOLE_GLASS_GAP := 0.02
+
+## ── GABINETES Y TABLERO VOLADOR ──────────────────────────────────────────────────────────────────
+## Gabinete alto: su alto, y su tablero —en la cara de adelante, a altura de alguien parado—.
+const TALL_HEIGHT := 2.0
+const TALL_PANEL_BOTTOM := 0.9
+const TALL_PANEL_ROWS := 24
+## Gabinete bajo: alto del borde de adelante, cuánto sube hacia atrás su tapa y las filas del tablero de
+## arriba.
+const SHORT_HEIGHT := 0.95
+const SHORT_TILT_DEG := 15.0
+const SHORT_PANEL_ROWS := 14
+## Tablero volador: su punto más bajo —lo justo para que el más chico lo alcance sentado, sin rozarle la
+## cabeza—, las filas del tablero y cuánto sigue el bloque hacia arriba después del tablero.
+const OVERHEAD_BOTTOM := 1.45
+const OVERHEAD_PANEL_ROWS := 12
+const OVERHEAD_LIP := 0.15
+
+## Aire entre los módulos y la pared.
+const CONSOLE_WALL_GAP := 0.02
 const PLATE_THICKNESS := 0.03
-## Cuánto va la placa por detrás del plano de los controles.
+## Cuánto va la placa del atril por detrás del plano de los controles.
 const PLATE_BACK := 0.035
 
-## Botones de la compuerta: en la cara vecina a ella, a esta altura del piso y a esta distancia del borde
-## del hueco.
+## Controles de relleno: [tipo, lado en celdas, peso]. Botones chicos y grandes, y perillas chicas y
+## grandes —nunca tan grandes como el volante, que es de 12—.
+const DUMMIES := [
+	["button", 2, 4.0],
+	["button", 4, 2.0],
+	["knob", 3, 2.0],
+	["knob", 6, 1.0],
+]
+## De cada lugar posible —uno cada dos celdas—, la proporción que se intenta llenar.
+const DUMMY_DENSITY := 0.45
+
+## Botones de la compuerta: a esta altura del piso y a esta distancia del borde del hueco.
 const BUTTON_HEIGHT := 1.2
 const BUTTON_SIDE_GAP := 0.35
 ## Placa detrás de cada botón.
@@ -104,105 +113,163 @@ const BUTTON_PLATE := 6.0 * CELL
 ## El botón, en celdas: más grande que el estándar (`ProceduralDashboard.BUTTON`), para encontrarlo
 ## sin buscarlo.
 const DOOR_BUTTON := Vector2i(4, 4)
-## Cuánto se separan los botones del vidrio.
+## Cuánto se separan los botones de la pared.
 const BUTTON_STANDOFF := 0.06
+
+
+## Un módulo de un lado del anillo: qué es, cuántas columnas de ancho, y si lleva tablero volador arriba.
+class Module:
+	var type: ShipHull.ModuleType
+	var columns: int
+	var overhead: bool
+
+	func _init(module_type: ShipHull.ModuleType, module_columns: int, with_overhead: bool = false) -> void:
+		type = module_type
+		columns = module_columns
+		overhead = with_overhead
 
 
 ## Lo que la nave necesita tocar después de construido el casco.
 class Parts:
-	## Las caras de la compuerta y cómo se deslizan para abrir (ver ShipDoor).
-	var door_faces: Array[CollisionShape3D] = []
-	var door_pivot := Vector3.ZERO
-	var door_axis := Vector3.RIGHT
-	var door_travel := 0.0
-	## Una por lado ocupado del anillo, en el orden de `console_indices`: la primera es la del frente.
+	## Cómo se mueve la compuerta: recibe cuánto está abierta, de 0 a 1 (ver ShipDoor).
+	var door_motion: Callable
+	## El tablero del módulo principal de cada lado, en el orden de `console_indices`: el primero es el del
+	## frente.
 	var consoles: Array[ProceduralDashboard] = []
 	## El de adentro y el de afuera de la compuerta.
 	var door_buttons: Array[ProceduralDashboard] = []
+	## La cáscara que el toggle de paredes traslúcidas vuelve traslúcida.
+	var shell: Array[MeshInstance3D] = []
 
 
-static var _color_index := 0
+var _color_index := 0
 
 
-## El centro de la esfera del domo: sobre el piso, en el medio.
-static func dome_center() -> Vector3:
+# ── Lo que pone cada forma ────────────────────────────────────────────────────────────────────────
+
+## Arma el piso, la cáscara y la compuerta —con su `door_motion`—, y anota en `parts.shell` lo que el
+## toggle de paredes traslúcidas puede transparentar.
+func _build_shell(_ship: RigidBody3D, _parts: Parts) -> void:
+	pass
+
+
+## Los dos botones de la compuerta, el de adentro y el de afuera, con `_build_button`.
+func _build_door_buttons(_ship: RigidBody3D, _parts: Parts) -> void:
+	pass
+
+
+## Lados del anillo.
+func console_sides() -> int:
+	return 8
+
+
+## Los módulos de un lado, de izquierda a derecha vistos desde adentro. Todos los lados suman lo mismo, y
+## el del medio es el principal (ver EL ANILLO DE MÓDULOS).
+func _side_modules(_side_index: int) -> Array:
+	return [Module.new(ModuleType.LECTERN, MAIN_COLUMNS)]
+
+
+## Cuánto hay desde `point` hasta la pared yendo en la dirección horizontal `dir`, a `height` sobre el
+## piso, dejando `CONSOLE_WALL_GAP` de aire. `point` es horizontal, en el espacio de la nave.
+func _wall_distance(_point: Vector3, _dir: Vector3, _height: float) -> float:
+	return 0.0
+
+
+## Ancho de la compuerta, que es el del pasillo de carga que el anillo deja libre.
+func door_width() -> float:
+	return 0.0
+
+
+## Frente a qué lados va un asiento, por tamaño de tripulación —mirando al módulo principal—. El 0 es el
+## piloto, frente al tablero de vuelo; los demás, repartidos por el anillo sin necesidad de simetría.
+func _seat_layouts() -> Dictionary:
+	return {1: [0]}
+
+
+## El centro de masa: el del volumen de la forma.
+func center_of_mass() -> Vector3:
 	return Vector3.UP * WALL
 
 
-## Rumbo de un gajo del domo: 0 es el frente, y crece hacia la derecha.
-static func segment_angle(index: float) -> float:
-	return index * TAU / SEGMENTS
+# ── El anillo ─────────────────────────────────────────────────────────────────────────────────────
 
-
-## Ancho de la compuerta al nivel del piso: el de sus gajos.
-static func door_width() -> float:
-	return 2.0 * DOME_RADIUS * sin(segment_angle(float(DOOR_HALF_WIDTH) + 0.5))
-
-
-## Lados del anillo de consolas: los más que entran con consolas pegadas unas a otras sin que su estante
-## toque el vidrio. Más lados es un anillo más grande, así que es el primero que ya no entra, menos uno.
-static func console_sides() -> int:
-	var limit := _max_console_apothem()
-	var n := 3
-	while _apothem_for(n + 1) <= limit:
-		n += 1
-	return n
-
-
-## Distancia del centro a la bisagra de cada consola: cada lado del polígono mide exactamente
-## `CONSOLE_COLUMNS` celdas, y lado = 2 · a · tan(180° / lados).
-static func console_apothem() -> float:
-	return _apothem_for(console_sides())
-
-
-static func _apothem_for(sides: int) -> float:
-	return float(CONSOLE_COLUMNS) * CELL / (2.0 * tan(PI / sides))
-
-
-## La distancia más grande a la que puede ir la bisagra: la que todavía deja un estante de
-## `SHELF_MIN_DEPTH` antes del vidrio.
-static func _max_console_apothem() -> float:
-	return _to_glass_at_shelf() - _panel_reach() - SHELF_MIN_DEPTH
-
-
-## Profundidad del estante: desde el borde de arriba del tablero hasta casi tocar el vidrio.
-static func shelf_depth() -> float:
-	return _to_glass_at_shelf() - console_apothem() - _panel_reach()
-
-
-## Cuánto sale el tablero hacia afuera, de la bisagra a su borde de arriba.
-static func _panel_reach() -> float:
-	return float(CONSOLE_ROWS) * CELL * sin(deg_to_rad(PANEL_TILT_DEG))
-
-
-## Hasta qué distancia del centro, sobre la línea de una consola, puede llegar su estante: lo que deja
-## sus esquinas de afuera —lo que queda más cerca del vidrio— a `CONSOLE_GLASS_GAP` de él.
-static func _to_glass_at_shelf() -> float:
-	var half_width := float(CONSOLE_COLUMNS) * CELL * 0.5
-	var glass := _glass_distance(panel_top_height()) - CONSOLE_GLASS_GAP
-	return sqrt(glass * glass - half_width * half_width)
-
-
-## Distancia horizontal del centro al plano del vidrio, a `height` sobre el piso —donde se choca en los
-## anillos de vidrio—, contada por lo bajo: las caras son planas y quedan más adentro que la esfera, lo más
-## en el medio de cada una.
-static func _glass_distance(height: float) -> float:
-	var sphere := sqrt(maxf(GLASS_RADIUS * GLASS_RADIUS - height * height, 0.0))
-	return sphere * cos(PI / SEGMENTS) * cos(_ring_step() * 0.5)
-
-
-## Los lados del anillo que llevan consola, con signo —negativos a la izquierda—: el del frente primero, y
-## después alternando izquierda y derecha hacia atrás. Quedan afuera los que se meterían en el pasillo de
-## carga, del ancho de la compuerta, que va de ella al centro.
-static func console_indices() -> Array[int]:
+## Arma el casco completo como hijos de `ship`. `main_presets` es lado → preset del módulo principal; los
+## demás tableros llevan controles de relleno.
+func build(ship: RigidBody3D, main_presets: Dictionary) -> Parts:
+	_color_index = 0
+	var parts := Parts.new()
+	_build_shell(ship, parts)
 	var sides := console_sides()
 	var apothem := console_apothem()
-	var half_width := float(CONSOLE_COLUMNS) * CELL * 0.5
+	var width := float(side_columns()) * CELL
+	for side_index in console_indices():
+		var theta := float(side_index) * TAU / sides
+		# El marco del lado: en el piso, sobre la línea de las bisagras; −Z hacia afuera, +Z hacia el centro.
+		var side := Transform3D(Basis(Vector3.UP, -theta), _outward(theta) * apothem + Vector3.UP * WALL)
+		var tag := _side_tag(side_index)
+		var modules := _side_modules(side_index)
+		var x := -width * 0.5
+		for i in modules.size():
+			var module: Module = modules[i]
+			var w := float(module.columns) * CELL
+			var center := x + w * 0.5
+			x += w
+			var frame := side * Transform3D(Basis(), Vector3(center, 0.0, 0.0))
+			var main := absf(center) < 0.001
+			var module_name := tag if main else "%s_%d" % [tag, i]
+			var preset: DashboardPreset = main_presets.get(side_index) if main else null
+			var dash := _build_module(ship, frame, module, module_name, preset, hash([side_index, i]))
+			if main:
+				parts.consoles.append(dash)
+	_build_door_buttons(ship, parts)
+	return parts
+
+
+## Columnas de cada lado: las de sus módulos.
+func side_columns() -> int:
+	var total := 0
+	for module: Module in _side_modules(0):
+		total += module.columns
+	return total
+
+
+## Los lados con asiento para una tripulación. Cada uno tiene que llevar módulos.
+func seat_sides(crew: int) -> Array[int]:
+	var sides: Array[int] = []
+	sides.assign(_seat_layouts().get(crew, [0]))
+	return sides
+
+
+## Distancia del centro a la línea de las bisagras: cada lado del polígono mide exactamente sus columnas,
+## y lado = 2 · a · tan(180° / lados).
+func console_apothem() -> float:
+	return _apothem_for(console_sides(), side_columns())
+
+
+static func _apothem_for(sides: int, columns: int) -> float:
+	return float(columns) * CELL / (2.0 * tan(PI / sides))
+
+
+## ¿Entra un anillo de `sides` lados? Sí, si al estante de un atril del ancho del lado —en sus esquinas, lo
+## más cerca de la pared— le queda al menos `SHELF_MIN_DEPTH`.
+func _ring_fits(sides: int) -> bool:
+	var frame := Transform3D(Basis(), Vector3(0.0, WALL, -_apothem_for(sides, side_columns())))
+	var half_width := float(side_columns()) * CELL * 0.5
+	return _depth_to_wall(frame, half_width, panel_top_height()) - _panel_reach() >= SHELF_MIN_DEPTH
+
+
+## Los lados del anillo que llevan módulos, con signo —negativos a la izquierda—: el del frente primero, y
+## después alternando izquierda y derecha hacia atrás. Quedan afuera los que se meterían en el pasillo de
+## carga, del ancho de la compuerta, que va de ella al centro.
+func console_indices() -> Array[int]:
+	var sides := console_sides()
+	var apothem := console_apothem()
+	var half_width := float(side_columns()) * CELL * 0.5
 	var corridor := door_width() * 0.5
 	var result: Array[int] = [0]
 	var k := 1
 	while 2 * k <= sides:
-		# Qué tan lejos del eje del pasillo queda la esquina de la consola más cercana a él.
+		# Qué tan lejos del eje del pasillo queda la esquina del lado más cercana a él.
 		var from_back := PI - float(k) * TAU / sides
 		var clearance := apothem * sin(from_back) - half_width * cos(from_back)
 		if from_back >= PI * 0.5 or clearance >= corridor:
@@ -212,183 +279,246 @@ static func console_indices() -> Array[int]:
 	return result
 
 
-## Altura del borde de arriba del panel de una consola, desde el piso: lo más alto de un tablero.
+## Cuánto se puede construir hacia afuera desde la línea de un módulo, a `height` sobre el piso: lo que
+## deja la pared en la peor de sus dos esquinas. `frame` es el marco del módulo en el piso (−Z afuera).
+func _depth_to_wall(frame: Transform3D, half_width: float, height: float) -> float:
+	var outward := -frame.basis.z
+	outward.y = 0.0
+	outward = outward.normalized()
+	var depth := INF
+	for sign_x: float in [-1.0, 1.0]:
+		var corner := frame.origin + frame.basis.x * half_width * sign_x
+		corner.y = 0.0
+		depth = minf(depth, _wall_distance(corner, outward, height))
+	return depth
+
+
+## Altura del borde de arriba del tablero del atril, desde el piso: lo más alto de un atril.
 static func panel_top_height() -> float:
 	return CONSOLE_HEIGHT + float(CONSOLE_ROWS) * CELL * cos(deg_to_rad(PANEL_TILT_DEG))
 
 
-## Cuánto se mete el plano de abajo detrás de la bisagra a `height` sobre el piso: el lugar que hay para
-## las rodillas a esa altura.
+## Cuánto se mete el plano de abajo del atril detrás de la bisagra a `height` sobre el piso: el lugar que
+## hay para las rodillas a esa altura.
 static func knee_room_at(height: float) -> float:
 	return LOWER_SETBACK * clampf(1.0 - height / CONSOLE_HEIGHT, 0.0, 1.0)
 
 
-## Colores bien distintos entre piezas vecinas. El tono avanza por la razón áurea, que es la forma más
-## barata de que dos índices seguidos nunca caigan cerca en la rueda de color.
-static func debug_color(index: int) -> Color:
-	return Color.from_hsv(fposmod(float(index) * 0.618034, 1.0), 0.55, 0.9)
+## Cuánto sale el tablero del atril hacia afuera, de la bisagra a su borde de arriba.
+static func _panel_reach() -> float:
+	return float(CONSOLE_ROWS) * CELL * sin(deg_to_rad(PANEL_TILT_DEG))
 
 
-## Arma el casco completo como hijos de `ship`. `console_presets` es lado → preset; los lados que no
-## estén ahí quedan como slots vacíos.
-static func build(ship: RigidBody3D, console_presets: Dictionary) -> Parts:
-	_color_index = 0
-	var parts := Parts.new()
-	_build_floor(ship)
+# ── Los módulos ───────────────────────────────────────────────────────────────────────────────────
 
-	var shell_material := StandardMaterial3D.new()
-	shell_material.albedo_color = SHELL_COLOR
-	var glass_material := _glass_material()
-	for i in SEGMENTS:
-		for j in RINGS:
-			if _is_door(i, j):
-				continue  # el hueco de la compuerta
-			if _is_glass(j):
-				var face := _glass_face(ship, "glass_%d_%d" % [i, j], i, j, glass_material)
-				(face.get_child(0) as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			else:
-				_face(ship, "shell_%d_%d" % [i, j], i, j, DOME_RADIUS, shell_material)
-
-	var door_material := _opaque_material()
-	for i in range(DOOR_SEGMENT - DOOR_HALF_WIDTH, DOOR_SEGMENT + DOOR_HALF_WIDTH + 1):
-		for j in DOOR_RINGS:
-			parts.door_faces.append(_face(ship, "door_%d_%d" % [i, j], i, j, GLASS_RADIUS + DOOR_GAP, door_material))
-	var door_out := _outward(segment_angle(float(DOOR_SEGMENT)))
-	parts.door_pivot = dome_center()
-	# Girar sobre `hacia afuera × arriba` lleva lo que mira hacia afuera hacia arriba: la compuerta sube.
-	parts.door_axis = door_out.cross(Vector3.UP).normalized()
-	parts.door_travel = float(DOOR_RINGS) * _ring_step()
-
-	var sides := console_sides()
-	for side_index in console_indices():
-		var preset := console_presets.get(side_index) as DashboardPreset
-		parts.consoles.append(_build_console(ship, side_index, sides, preset))
-
-	_build_door_buttons(ship, parts)
-	return parts
+## Arma un módulo en `frame` —su marco en el piso, sobre la línea de las bisagras— y devuelve su tablero
+## de abajo. Sin `preset`, lleva controles de relleno.
+func _build_module(ship: RigidBody3D, frame: Transform3D, module: Module, module_name: String,
+		preset: DashboardPreset, seed_value: int) -> ProceduralDashboard:
+	var dash: ProceduralDashboard
+	match module.type:
+		ModuleType.TALL:
+			dash = _build_tall(ship, frame, module.columns, module_name, preset, seed_value)
+		ModuleType.SHORT:
+			dash = _build_short(ship, frame, module.columns, module_name, preset, seed_value)
+		_:
+			dash = _build_lectern(ship, frame, module.columns, module_name, preset, seed_value)
+	if module.overhead:
+		_build_overhead(ship, frame, module.columns, module_name, seed_value + 1)
+	return dash
 
 
-static func _is_door(segment: int, ring: int) -> bool:
-	return absi(segment - DOOR_SEGMENT) <= DOOR_HALF_WIDTH and ring < DOOR_RINGS
+## El atril: el tablero inclinado con el dashboard encima, el plano de abajo —de la bisagra al piso,
+## inclinado hacia afuera para dejar lugar a las rodillas— y un estante plano sobre el borde de arriba del
+## tablero, hasta la pared, para cosas cosméticas.
+func _build_lectern(ship: RigidBody3D, frame: Transform3D, columns: int, module_name: String,
+		preset: DashboardPreset, seed_value: int) -> ProceduralDashboard:
+	var width := float(columns) * CELL
+	var depth := float(CONSOLE_ROWS) * CELL
+	var tilt := deg_to_rad(PANEL_TILT_DEG)
+	var hinge := frame * Transform3D(Basis(), Vector3.UP * CONSOLE_HEIGHT)
+
+	# Tablero: sube desde la bisagra hacia afuera. En su marco, +Y sube por la pendiente y +Z es la cara.
+	var panel := hinge * Transform3D(Basis(Vector3.RIGHT, -tilt), Vector3.ZERO)
+	_box_xf(ship, "panel_%s" % module_name, Vector3(width, depth, PLATE_THICKNESS),
+		panel * Transform3D(Basis(), Vector3(0.0, depth * 0.5, -PLATE_BACK)))
+
+	# Plano de abajo: de la bisagra al piso, con el borde del piso metido `LOWER_SETBACK` hacia afuera.
+	var lean := atan2(LOWER_SETBACK, CONSOLE_HEIGHT)
+	var lower_length := Vector2(LOWER_SETBACK, CONSOLE_HEIGHT).length()
+	_box_xf(ship, "lower_%s" % module_name, Vector3(width, lower_length, PLATE_THICKNESS),
+		hinge * Transform3D(Basis(Vector3.RIGHT, lean), Vector3(0.0, -CONSOLE_HEIGHT * 0.5, -LOWER_SETBACK * 0.5)))
+
+	# Estante cosmético: plano, del borde de arriba del tablero hasta casi tocar la pared.
+	var top := Vector3(0.0, depth * cos(tilt), -depth * sin(tilt))
+	var shelf := _depth_to_wall(frame, width * 0.5, panel_top_height()) - _panel_reach()
+	_box_xf(ship, "shelf_%s" % module_name, Vector3(width, PLATE_THICKNESS, shelf),
+		hinge * Transform3D(Basis(), top + Vector3(0.0, -PLATE_THICKNESS * 0.5, -shelf * 0.5)))
+
+	return _dashboard_on(ship, "dashboard_%s" % module_name, panel, columns, CONSOLE_ROWS, preset, seed_value)
 
 
-static func _is_glass(ring: int) -> bool:
-	return ring not in OPAQUE_RINGS
+## El gabinete alto: un bloque del piso a `TALL_HEIGHT`, con la cara de adelante sobre la línea del módulo
+## y la de atrás contra la pared. El tablero va en la cara de adelante.
+func _build_tall(ship: RigidBody3D, frame: Transform3D, columns: int, module_name: String,
+		preset: DashboardPreset, seed_value: int) -> ProceduralDashboard:
+	var half := float(columns) * CELL * 0.5
+	_prism(ship, "tall_%s" % module_name, frame, half, PackedVector2Array([
+		Vector2(0.0, 0.0), Vector2(0.0, TALL_HEIGHT),
+		Vector2(_depth_to_wall(frame, half, TALL_HEIGHT), TALL_HEIGHT),
+		Vector2(_depth_to_wall(frame, half, 0.0), 0.0)]))
+	var panel := frame * Transform3D(Basis(), Vector3.UP * TALL_PANEL_BOTTOM)
+	return _dashboard_on(ship, "dashboard_%s" % module_name, panel, columns, TALL_PANEL_ROWS, preset, seed_value)
 
 
-## Cuánto sube cada anillo, en ángulo.
-static func _ring_step() -> float:
-	return PI * 0.5 / RINGS
+## El gabinete bajo: un bloque a la altura de la cintura, contra la pared, con la tapa subiendo
+## `SHORT_TILT_DEG` hacia atrás. El tablero va en la tapa; la cara de adelante queda libre.
+func _build_short(ship: RigidBody3D, frame: Transform3D, columns: int, module_name: String,
+		preset: DashboardPreset, seed_value: int) -> ProceduralDashboard:
+	var half := float(columns) * CELL * 0.5
+	var slope := tan(deg_to_rad(SHORT_TILT_DEG))
+	# Hasta dónde llega la tapa: se mide a la altura de su borde de atrás, que depende de cuánto llega.
+	var back := _depth_to_wall(frame, half, SHORT_HEIGHT)
+	back = minf(back, _depth_to_wall(frame, half, SHORT_HEIGHT + back * slope))
+	_prism(ship, "short_%s" % module_name, frame, half, PackedVector2Array([
+		Vector2(0.0, 0.0), Vector2(0.0, SHORT_HEIGHT),
+		Vector2(back, SHORT_HEIGHT + back * slope),
+		Vector2(_depth_to_wall(frame, half, 0.0), 0.0)]))
+	# El tablero sobre la tapa: desde el borde de adelante, subiendo hacia atrás.
+	var panel := frame * Transform3D(Basis(Vector3.RIGHT, -(PI * 0.5 - deg_to_rad(SHORT_TILT_DEG))),
+		Vector3.UP * SHORT_HEIGHT)
+	return _dashboard_on(ship, "dashboard_%s" % module_name, panel, columns, SHORT_PANEL_ROWS, preset, seed_value)
 
 
-static func _outward(angle: float) -> Vector3:
-	return Vector3(sin(angle), 0.0, -cos(angle))
+## El tablero volador: un bloque colgado de la pared arriba del módulo, con la esquina de abajo de adentro
+## cortada a `PANEL_TILT_DEG` —la del atril, pero para abajo—; en ese corte va el tablero, mirando al que
+## está sentado. Se sostiene en la pared, así que no llega al techo.
+func _build_overhead(ship: RigidBody3D, frame: Transform3D, columns: int, module_name: String, seed_value: int) -> void:
+	var half := float(columns) * CELL * 0.5
+	var tilt := deg_to_rad(PANEL_TILT_DEG)
+	var slant := float(OVERHEAD_PANEL_ROWS) * CELL
+	var cut := Vector2(slant * sin(tilt), slant * cos(tilt))  # cuánto se mete hacia afuera y hacia arriba
+	var top := OVERHEAD_BOTTOM + cut.y + OVERHEAD_LIP
+	_prism(ship, "overhead_%s" % module_name, frame, half, PackedVector2Array([
+		Vector2(0.0, top), Vector2(0.0, OVERHEAD_BOTTOM + cut.y), Vector2(cut.x, OVERHEAD_BOTTOM),
+		Vector2(_depth_to_wall(frame, half, OVERHEAD_BOTTOM), OVERHEAD_BOTTOM),
+		Vector2(_depth_to_wall(frame, half, top), top)]))
+	# El tablero sobre el corte: desde su borde de afuera —el más bajo— subiendo hacia adentro, con la cara
+	# mirando hacia abajo y hacia adentro.
+	var panel := frame * Transform3D(Basis(Vector3.RIGHT, tilt), Vector3(0.0, OVERHEAD_BOTTOM, -cut.x))
+	_dashboard_on(ship, "overhead_dashboard_%s" % module_name, panel, columns, OVERHEAD_PANEL_ROWS, null, seed_value)
 
 
-## Un punto del domo: `lon` es el rumbo (0 al frente) y `lat` la altura en ángulo (0 en el piso).
-static func _dome_point(radius: float, lon: float, lat: float) -> Vector3:
-	return dome_center() + (_outward(lon) * cos(lat) + Vector3.UP * sin(lat)) * radius
+## Un dashboard sobre un tablero. `panel` tiene el origen en el medio del borde de abajo del tablero, +Y
+## subiendo por él y +Z hacia donde mira; la grilla arranca en su esquina de arriba a la izquierda y crece
+## hacia −Y. Sin `preset`, lleva controles de relleno.
+func _dashboard_on(ship: RigidBody3D, dash_name: String, panel: Transform3D, columns: int, rows: int,
+		preset: DashboardPreset, seed_value: int) -> ProceduralDashboard:
+	var dash := ProceduralDashboard.new()
+	dash.name = dash_name
+	dash.grid_columns = columns
+	dash.grid_rows = rows
+	dash.custom_preset = preset if preset != null else _dummy_preset(columns, rows, seed_value)
+	dash.transform = panel * Transform3D(Basis(), Vector3(-float(columns) * CELL * 0.5, float(rows) * CELL, 0.0))
+	ship.add_child(dash)
+	return dash
 
 
-## Las cuatro esquinas de una cara: abajo del lado de rumbo menor, abajo del mayor, arriba del mayor y
-## arriba del menor. En el anillo del polo las dos de arriba coinciden.
-static func _face_corners(radius: float, segment: int, ring: int) -> PackedVector3Array:
-	var lon := segment_angle(float(segment))
-	var half := PI / SEGMENTS
-	var lat0 := float(ring) * _ring_step()
-	var lat1 := float(ring + 1) * _ring_step()
-	return PackedVector3Array([
-		_dome_point(radius, lon - half, lat0), _dome_point(radius, lon + half, lat0),
-		_dome_point(radius, lon + half, lat1), _dome_point(radius, lon - half, lat1)])
+## Controles de relleno, para ver cómo queda cada tablero: se recorre la grilla cada dos celdas y, en cada
+## lugar libre, más o menos `DUMMY_DENSITY` de las veces se prueba un control al azar de `DUMMIES`. Si entra,
+## se reserva su lugar y una celda de aire alrededor: nunca se pisan y queda salpicado, no lleno. Semilla
+## fija, así cada tablero sale siempre igual.
+static func _dummy_preset(columns: int, rows: int, seed_value: int) -> DashboardPreset:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var total := 0.0
+	for kind: Array in DUMMIES:
+		total += float(kind[2])
+	var taken := {}
+	var slots: Array[DashboardSlot] = []
+	for y in range(1, rows - 1, 2):
+		for x in range(1, columns - 1, 2):
+			if taken.has(Vector2i(x, y)) or rng.randf() >= DUMMY_DENSITY:
+				continue
+			var pick := rng.randf() * total
+			var kind: Array = DUMMIES[0]
+			for candidate: Array in DUMMIES:
+				pick -= float(candidate[2])
+				if pick <= 0.0:
+					kind = candidate
+					break
+			var side: int = kind[1]
+			if x + side > columns - 1 or y + side > rows - 1 or not _dummy_fits(taken, x, y, side):
+				continue
+			for dx in range(-1, side + 1):
+				for dy in range(-1, side + 1):
+					taken[Vector2i(x + dx, y + dy)] = true
+			var slot := DashboardSlot.new()
+			slot.cell = Vector2i(x, y)
+			slot.definition = _dummy_control(kind[0], side, rng)
+			slots.append(slot)
+	var p := _empty_preset()
+	p.fixed_slots = slots
+	return p
 
 
-## El piso: un prisma de `SEGMENTS` lados con los vértices justo debajo de los del domo, hasta el borde
-## de afuera del vidrio, así los dos bordes coinciden.
-static func _build_floor(ship: RigidBody3D) -> void:
-	var bottom := PackedVector3Array()
-	var top := PackedVector3Array()
-	for k in SEGMENTS:
-		var corner := _outward(segment_angle(float(k) + 0.5)) * (DOME_RADIUS + WALL)
-		bottom.append(corner)
-		top.append(corner + Vector3.UP * WALL)
-	var points := bottom.duplicate()
-	points.append_array(top)
+static func _dummy_fits(taken: Dictionary, x: int, y: int, side: int) -> bool:
+	for dx in side:
+		for dy in side:
+			if taken.has(Vector2i(x + dx, y + dy)):
+				return false
+	return true
+
+
+## Un control de relleno. Las perillas giran con la ruedita alrededor de la normal del tablero, como un
+## dial, apenas despegadas de él; algunos botones son de los que quedan prendidos.
+static func _dummy_control(kind: String, side: int, rng: RandomNumberGenerator) -> ControlDefinition:
+	var d := ControlDefinition.new()
+	d.grid_size = Vector2i(side, side)
+	if kind == "knob":
+		d.type = ControlDefinition.ControlType.ROTATING
+		d.rotation_axis_local = Vector3.BACK
+		d.height_offset = 0.02
+	else:
+		d.type = ControlDefinition.ControlType.TOUCH
+		d.is_toggle = rng.randf() < 0.3
+	return d
+
+
+## Un bloque: un perfil convexo —puntos (hacia afuera, alto) en el plano del costado del módulo— estirado
+## de lado a lado del módulo. Collider y malla de la misma forma.
+func _prism(ship: RigidBody3D, part_name: String, frame: Transform3D, half_width: float,
+		profile: PackedVector2Array) -> CollisionShape3D:
+	var left := PackedVector3Array()
+	var right := PackedVector3Array()
+	for p in profile:
+		left.append(frame * Vector3(-half_width, p.y, -p.x))
+		right.append(frame * Vector3(half_width, p.y, -p.x))
+	var points := left.duplicate()
+	points.append_array(right)
 	var hull := ConvexPolygonShape3D.new()
 	hull.points = points
-
-	# Normales explícitas: arriba, abajo y el canto hacia afuera.
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for k in SEGMENTS:
-		var n := (k + 1) % SEGMENTS
-		_triangle(st, Vector3.UP, dome_center(), top[k], top[n])
-		_triangle(st, Vector3.DOWN, Vector3.ZERO, bottom[n], bottom[k])
-		var side := ((bottom[k] + bottom[n]) * 0.5).normalized()
-		_triangle(st, side, bottom[k], top[k], top[n])
-		_triangle(st, side, bottom[k], top[n], bottom[n])
-	_part(ship, "floor", hull, st.commit(), Transform3D.IDENTITY, _opaque_material())
-
-
-## Un triángulo que mira hacia `normal`. Godot toma como frente el lado desde el que las esquinas giran en
-## sentido horario —su normal es (c − a) × (b − a)—, así que si vienen al revés se las da vuelta. Importa
-## aunque la normal vaya explícita: con un material de dos caras Godot invierte la normal del lado de
-## atrás, y un triángulo al revés quedaba iluminado del lado contrario — el techo del domo se veía más
-## claro desde adentro que desde afuera.
-static func _triangle(st: SurfaceTool, normal: Vector3, a: Vector3, b: Vector3, c: Vector3) -> void:
-	var corners := [a, b, c] if (c - a).cross(b - a).dot(normal) >= 0.0 else [a, c, b]
-	for corner: Vector3 in corners:
-		st.set_normal(normal)
-		st.add_vertex(corner)
-
-
-## Una cara del domo: una placa de espesor `WALL` hacia afuera desde `radius`, dibujada entera.
-static func _face(ship: RigidBody3D, part_name: String, segment: int, ring: int, radius: float,
-		material: Material) -> CollisionShape3D:
-	var inner := _face_corners(radius, segment, ring)
-	var outer := _face_corners(radius + WALL, segment, ring)
-	var points := inner.duplicate()
-	points.append_array(outer)
-	var hull := ConvexPolygonShape3D.new()
-	hull.points = points
-	return _part(ship, part_name, hull, _slab_mesh(inner, outer), Transform3D.IDENTITY, material)
-
-
-## Una cara de vidrio: un plano sin espesor en `GLASS_RADIUS`, al ras de la cara de afuera de las opacas,
-## que se ve de los dos lados. Su collider sí tiene espesor —con una placa muy fina, lo que va rápido la
-## atravesaría—: `WALL`, arrancando en el plano y hacia afuera. Así por dentro se choca justo donde se ve
-## el vidrio, y el espesor queda del lado de afuera, donde casi no se nota.
-static func _glass_face(ship: RigidBody3D, part_name: String, segment: int, ring: int,
-		material: Material) -> CollisionShape3D:
-	var pane := _face_corners(GLASS_RADIUS, segment, ring)
-	var points := pane.duplicate()
-	points.append_array(_face_corners(GLASS_RADIUS + WALL, segment, ring))
-	var hull := ConvexPolygonShape3D.new()
-	hull.points = points
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	_quad(st, dome_center(), pane[0], pane[1], pane[2], pane[3])
-	return _part(ship, part_name, hull, st.commit(), Transform3D.IDENTITY, material)
-
-
-## La malla de una placa: sus dos caras y los cuatro cantos, así se ve su espesor.
-static func _slab_mesh(inner: PackedVector3Array, outer: PackedVector3Array) -> ArrayMesh:
 	var center := Vector3.ZERO
-	for k in 4:
-		center += inner[k] + outer[k]
-	center /= 8.0
+	for p in points:
+		center += p
+	center /= float(points.size())
+
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	_quad(st, center, inner[0], inner[1], inner[2], inner[3])
-	_quad(st, center, outer[0], outer[1], outer[2], outer[3])
-	for k in 4:
-		var n := (k + 1) % 4
-		_quad(st, center, inner[k], inner[n], outer[n], outer[k])
-	return st.commit()
+	var n := profile.size()
+	for k in n:
+		var j := (k + 1) % n
+		_quad(st, center, left[k], left[j], right[j], right[k])
+	# Las dos tapas, en abanico: un cuadrilátero con las dos últimas esquinas iguales es un triángulo.
+	for k in range(1, n - 1):
+		_quad(st, center, left[0], left[k], left[k + 1], left[k + 1])
+		_quad(st, center, right[0], right[k], right[k + 1], right[k + 1])
+	return _part(ship, part_name, hull, st.commit(), Transform3D.IDENTITY, _opaque_material())
 
 
 ## Un cuadrilátero en dos triángulos, mirando hacia el lado contrario a `center`: las esquinas no vienen
 ## en el mismo orden en todas las caras, así que hacia dónde mira sale de ahí, y `_triangle` las ordena.
-## Los triángulos sin área —en el polo, donde dos esquinas coinciden— se saltean.
+## Los triángulos sin área —donde dos esquinas coinciden— se saltean.
 static func _quad(st: SurfaceTool, center: Vector3, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
 	for tri: Array in [[a, b, c], [a, c, d]]:
 		var p0: Vector3 = tri[0]
@@ -403,80 +533,48 @@ static func _quad(st: SurfaceTool, center: Vector3, a: Vector3, b: Vector3, c: V
 		_triangle(st, normal, p0, p1, p2)
 
 
-## Un lado del anillo, hecho de placas: el tablero inclinado con el dashboard encima, el plano de abajo
-## —de la bisagra al piso, inclinado hacia afuera para dejar lugar a las rodillas— y un estante plano
-## sobre el borde de arriba del tablero, hacia el vidrio, para cosas cosméticas.
-##
-## El dashboard de `ProceduralDashboard` es una grilla en su plano XY con la cara hacia +Z local, que
-## arranca en su esquina superior izquierda y crece hacia −Y. Inclinado como atril, la fila de arriba
-## queda del lado de afuera y la de abajo del lado de quien lo usa, que es lo natural.
-static func _build_console(ship: RigidBody3D, side_index: int, sides: int, preset: DashboardPreset) -> ProceduralDashboard:
-	var theta := float(side_index) * TAU / sides
-	# Origen en la bisagra; −Z local apunta hacia afuera y +Z hacia el centro, para donde mira el tablero.
-	var hinge := Transform3D(Basis(Vector3.UP, -theta),
-		_outward(theta) * console_apothem() + Vector3.UP * (WALL + CONSOLE_HEIGHT))
-	var tag := _side_tag(side_index)
-	var width := float(CONSOLE_COLUMNS) * CELL
-	var depth := float(CONSOLE_ROWS) * CELL
-	var tilt := deg_to_rad(PANEL_TILT_DEG)
-
-	# Tablero: sube desde la bisagra hacia afuera. En su marco, +Y sube por la pendiente y +Z es la cara.
-	var panel := hinge * Transform3D(Basis(Vector3.RIGHT, -tilt), Vector3.ZERO)
-	_box_xf(ship, "panel_%s" % tag, Vector3(width, depth, PLATE_THICKNESS),
-		panel * Transform3D(Basis(), Vector3(0.0, depth * 0.5, -PLATE_BACK)))
-
-	# Plano de abajo: de la bisagra al piso, con el borde del piso metido `LOWER_SETBACK` hacia afuera.
-	var lean := atan2(LOWER_SETBACK, CONSOLE_HEIGHT)
-	var lower_length := Vector2(LOWER_SETBACK, CONSOLE_HEIGHT).length()
-	_box_xf(ship, "lower_%s" % tag, Vector3(width, lower_length, PLATE_THICKNESS),
-		hinge * Transform3D(Basis(Vector3.RIGHT, lean), Vector3(0.0, -CONSOLE_HEIGHT * 0.5, -LOWER_SETBACK * 0.5)))
-
-	# Estante cosmético: plano, del borde de arriba del tablero hasta casi tocar el vidrio.
-	var top := Vector3(0.0, depth * cos(tilt), -depth * sin(tilt))
-	var shelf := shelf_depth()
-	_box_xf(ship, "shelf_%s" % tag, Vector3(width, PLATE_THICKNESS, shelf),
-		hinge * Transform3D(Basis(), top + Vector3(0.0, -PLATE_THICKNESS * 0.5, -shelf * 0.5)))
-
-	var dash := ProceduralDashboard.new()
-	dash.name = "dashboard_%s" % tag
-	dash.grid_columns = CONSOLE_COLUMNS
-	dash.grid_rows = CONSOLE_ROWS
-	dash.custom_preset = preset if preset != null else _empty_preset()
-	# La grilla arranca en su esquina superior izquierda: el borde de arriba del tablero, a la izquierda.
-	dash.transform = panel * Transform3D(Basis(), Vector3(-width * 0.5, depth, 0.0))
-	ship.add_child(dash)
-	return dash
+## Un triángulo que mira hacia `normal`. Godot toma como frente el lado desde el que las esquinas giran en
+## sentido horario —su normal es (c − a) × (b − a)—, así que si vienen al revés se las da vuelta. Importa
+## aunque la normal vaya explícita: con un material de dos caras Godot invierte la normal del lado de
+## atrás, y un triángulo al revés quedaba iluminado del lado contrario — el techo del domo se veía más
+## claro desde adentro que desde afuera.
+static func _triangle(st: SurfaceTool, normal: Vector3, a: Vector3, b: Vector3, c: Vector3) -> void:
+	var corners := [a, b, c] if (c - a).cross(b - a).dot(normal) >= 0.0 else [a, c, b]
+	for corner: Vector3 in corners:
+		st.set_normal(normal)
+		st.add_vertex(corner)
 
 
-## Los botones de la compuerta, en la cara vecina a ella —adentro y afuera, inclinados como la cara—, a
-## `BUTTON_HEIGHT` del piso y a `BUTTON_SIDE_GAP` del borde del hueco.
-static func _build_door_buttons(ship: RigidBody3D, parts: Parts) -> void:
-	var ring := int(asin(BUTTON_HEIGHT / DOME_RADIUS) / _ring_step())
-	var face := _face_corners(GLASS_RADIUS, DOOR_SEGMENT + DOOR_HALF_WIDTH + 1, ring)
-	# La esquina 0 y la 3 son el borde que comparte con la compuerta.
-	var toward_door := (face[0] - face[1]).normalized()
-	var up := ((face[2] + face[3]) - (face[0] + face[1])).normalized()
-	var normal := toward_door.cross(up).normalized()
-	if normal.dot(face[0] - dome_center()) < 0.0:
-		normal = -normal
-	# Subiendo por el borde del hueco hasta la altura de los botones, y de ahí alejándose de él.
-	var edge := (face[3] - face[0]).normalized()
-	var on_edge := face[0] + edge * ((WALL + BUTTON_HEIGHT - face[0].y) / edge.y)
-	var spot := on_edge - toward_door * BUTTON_SIDE_GAP
+# ── Piezas ────────────────────────────────────────────────────────────────────────────────────────
 
-	# El de adentro va contra el vidrio. El de afuera, pasando el collider del vidrio —si no, el rayo de
-	# interacción pegaría primero en él—, con la placa cubriendo ese espesor hasta el vidrio.
-	var inside := Basis(up.cross(-normal), up, -normal)
-	parts.door_buttons.append(_build_button(ship, "door_button_inside",
-		Transform3D(inside, spot - normal * BUTTON_STANDOFF), BUTTON_STANDOFF))
-	var outside := Basis(up.cross(normal), up, normal)
-	parts.door_buttons.append(_build_button(ship, "door_button_outside",
-		Transform3D(outside, spot + normal * (WALL + BUTTON_STANDOFF)), WALL + BUTTON_STANDOFF))
+## Radio del círculo que encierra cualquier casco, medido desde el centro: el de la esquina de la caja.
+static func bounding_radius() -> float:
+	return (HALF_WIDTH + WALL) * sqrt(2.0)
+
+
+## Hacia afuera, en el rumbo `angle`: 0 es el frente (−Z), y crece hacia la derecha.
+static func _outward(angle: float) -> Vector3:
+	return Vector3(sin(angle), 0.0, -cos(angle))
+
+
+## Colores bien distintos entre piezas vecinas. El tono avanza por la razón áurea, que es la forma más
+## barata de que dos índices seguidos nunca caigan cerca en la rueda de color.
+static func debug_color(index: int) -> Color:
+	return Color.from_hsv(fposmod(float(index) * 0.618034, 1.0), 0.55, 0.9)
+
+
+## Pasa una pieza de la cáscara a medio traslúcida o de vuelta a opaca, conservando su color.
+static func set_translucent(mesh: MeshInstance3D, on: bool) -> void:
+	var mat := mesh.material_override as StandardMaterial3D
+	if mat == null:
+		return
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if on else BaseMaterial3D.TRANSPARENCY_DISABLED
+	mat.albedo_color.a = SHELL_ALPHA if on else 1.0
 
 
 ## Un botón de la compuerta: una placa y un dashboard del tamaño justo del botón. `at` es el centro del
-## botón, con su +Z hacia donde mira; `backing`, cuánto va la placa hacia atrás, hasta el vidrio.
-static func _build_button(ship: RigidBody3D, part_name: String, at: Transform3D, backing: float) -> ProceduralDashboard:
+## botón, con su +Z hacia donde mira; `backing`, cuánto va la placa hacia atrás, hasta la pared.
+func _build_button(ship: RigidBody3D, part_name: String, at: Transform3D, backing: float) -> ProceduralDashboard:
 	_box_xf(ship, "%s_plate" % part_name, Vector3(BUTTON_PLATE, BUTTON_PLATE, backing),
 		at * Transform3D(Basis(), Vector3(0.0, 0.0, -backing * 0.5)))
 	var dash := ProceduralDashboard.new()
@@ -498,8 +596,8 @@ static func _side_tag(side_index: int) -> String:
 	return "%s_%d" % ["right" if side_index > 0 else "left", absi(side_index)]
 
 
-## Un slot vacío. Hace falta un preset explícito: sin preset, `ProceduralDashboard` rellena la grilla
-## con controles al azar.
+## Un tablero sin controles. Hace falta un preset explícito: sin preset, `ProceduralDashboard` rellena la
+## grilla con controles al azar.
 static func _empty_preset() -> DashboardPreset:
 	var p := DashboardPreset.new()
 	p.fill_remaining_random = false
@@ -522,25 +620,21 @@ static func _button_preset() -> DashboardPreset:
 	return p
 
 
-## Cristalino y de las dos caras: el vidrio es un plano solo, que se ve de adentro y de afuera. Con las
-## esquinas bien ordenadas (ver `_triangle`), Godot ilumina bien cada lado.
-static func _glass_material() -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = GLASS_COLOR
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	return mat
-
-
 ## Opaco, en el próximo color de la secuencia: cada pieza sale de un color distinto a su vecina.
-static func _opaque_material() -> StandardMaterial3D:
+func _opaque_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = debug_color(_color_index)
 	_color_index += 1
 	return mat
 
 
-static func _box_xf(ship: RigidBody3D, part_name: String, size: Vector3, xform: Transform3D) -> CollisionShape3D:
+## Anota una pieza como parte de la cáscara que el toggle transparenta. Devuelve la misma pieza.
+static func _shell(parts: Parts, piece: CollisionShape3D) -> CollisionShape3D:
+	parts.shell.append(piece.get_child(0) as MeshInstance3D)
+	return piece
+
+
+func _box_xf(ship: RigidBody3D, part_name: String, size: Vector3, xform: Transform3D) -> CollisionShape3D:
 	var box := BoxShape3D.new()
 	box.size = size
 	var mesh := BoxMesh.new()
@@ -552,7 +646,7 @@ static func _box_xf(ship: RigidBody3D, part_name: String, size: Vector3, xform: 
 ##
 ## ⚠ EL COLLIDER VA DIRECTO BAJO LA NAVE, nunca anidado en un nodo intermedio: un `CollisionShape3D`
 ## solo le da forma al cuerpo del que es hijo DIRECTO. Por eso cada pieza trae su transform ya
-## calculado en el espacio de la nave, en vez de colgar de un nodo "consola" o "domo".
+## calculado en el espacio de la nave, en vez de colgar de un nodo "consola" o "pared".
 static func _part(ship: RigidBody3D, part_name: String, shape: Shape3D, mesh: Mesh, xform: Transform3D,
 		material: Material) -> CollisionShape3D:
 	var collider := CollisionShape3D.new()

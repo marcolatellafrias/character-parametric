@@ -591,6 +591,7 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Ver gizmos de marcha",      func(): CharacterDebugView.toggle_gait_gizmos(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver wireframe",             func(): CharacterDebugView.toggle_wireframe(get_tree()))
 	_debug_panel.add_action("Acciones", "Indicadores de tráfico",    func(): TrafficDebugDrawer.ENABLED = not TrafficDebugDrawer.ENABLED)
+	_debug_panel.add_action("Acciones", "Nave: paredes traslúcidas", func(): Ship.toggle_translucent_walls(get_tree()))
 
 	# ── Arquetipos ──
 	# Dos acciones por arquetipo, y son distintas: "Ser" cambia TU personaje y además deja la P pegada
@@ -619,9 +620,11 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Spawn", "Caja pesada ▭",      func(): _debug_spawn("box_heavy_xlong"))
 	_debug_panel.add_action("Spawn", "Dashboard",          func(): _debug_spawn("dashboard"))
 	_debug_panel.add_action("Spawn", "Seat",               func(): _debug_spawn("seat"))
-	_debug_panel.add_action("Spawn", "Nave (1 jugador)",   func(): _debug_spawn_ship(1))
-	_debug_panel.add_action("Spawn", "Nave (4 jugadores)", func(): _debug_spawn_ship(4))
-	_debug_panel.add_action("Spawn", "Limpiar spawns",     func(): NetSpawner.request_clear_all())
+	_debug_panel.add_action("Spawn", "Nave domo (1 jugador)",     func(): _debug_spawn_ship(Ship.Shape.DOME, 1))
+	_debug_panel.add_action("Spawn", "Nave domo (4 jugadores)",   func(): _debug_spawn_ship(Ship.Shape.DOME, 4))
+	_debug_panel.add_action("Spawn", "Nave cúbica (1 jugador)",   func(): _debug_spawn_ship(Ship.Shape.BOX, 1))
+	_debug_panel.add_action("Spawn", "Nave cúbica (4 jugadores)", func(): _debug_spawn_ship(Ship.Shape.BOX, 4))
+	_debug_panel.add_action("Spawn", "Limpiar spawns",     _clear_spawns)
 
 
 func _character_stats_text(inst: EntityInstantiation) -> String:
@@ -709,34 +712,54 @@ func _debug_spawn(type_name: String) -> void:
 		pos = _snap_to_ground(pos) + Vector3.UP * 1.5
 	NetSpawner.request_spawn(type_name, Transform3D(Basis(), pos))
 
-## Cuánto adelante del jugador aparece el centro de la nave: el radio del domo más un metro y medio,
+## Cuánto adelante del jugador aparece el centro de la nave: su medio ancho más un metro y medio,
 ## así el casco no nace encima de nadie y la compuerta queda a mano.
-const SHIP_SPAWN_DISTANCE := ShipHull.DOME_RADIUS + ShipHull.WALL + 1.5
+const SHIP_SPAWN_DISTANCE := ShipHull.HALF_WIDTH + ShipHull.WALL + 1.5
 
 ## Deja la nave prototipo adelante del jugador, apoyada en el piso, con la compuerta mirándolo.
 ##
 ## Como el NPC de `_debug_spawn_character`, NO pasa por NetSpawner: NetSpawner le cuelga sync de red
 ## y un Grabbable a todo RigidBody3D que spawnea, y la nave terminaría siendo algo que se puede agarrar.
 ## Hay una sola: spawnear otra reemplaza la anterior.
-func _debug_spawn_ship(crew: int) -> void:
+func _debug_spawn_ship(shape: Ship.Shape, crew: int) -> void:
 	var scene_root := get_tree().current_scene
-	var old := scene_root.get_node_or_null(^"ship_debug")
-	if is_instance_valid(old):
-		# `free` y no `queue_free`: el rayo que busca el piso para la nueva le pegaría al techo de la vieja.
-		old.free()
 	var fwd := -player_camera.global_transform.basis.z
 	fwd.y = 0.0
 	if fwd.length_squared() < 0.0001:
 		fwd = Vector3.FORWARD
 	fwd = fwd.normalized()
-	var ground := _snap_to_ground(char_rigidbody.global_position + fwd * SHIP_SPAWN_DISTANCE)
+	# Las naves conviven: la nueva se corre hacia adelante hasta no tocar ninguna. Si naciera encima de otra,
+	# el rayo que busca el piso le pegaría a su techo; si naciera adentro, el motor las separaría de golpe.
+	var at := char_rigidbody.global_position + fwd * SHIP_SPAWN_DISTANCE
+	var separation := 2.0 * ShipHull.bounding_radius() + 0.5
+	for _step in 50:
+		var clear := true
+		for other in get_tree().get_nodes_in_group(Ship.GROUP):
+			var o := (other as Node3D).global_position
+			if Vector2(o.x - at.x, o.z - at.z).length() < separation:
+				clear = false
+				break
+		if clear:
+			break
+		at += fwd
+	var ground := _snap_to_ground(at)
 	var ship := Ship.new()
 	ship.name = "ship_debug"
+	ship.shape = shape
 	ship.crew_size = crew
 	# El frente de la nave (−Z) apunta para donde mira el jugador: la compuerta queda de su lado. El
 	# transform va ANTES de entrar al árbol, así la nave arranca con su altura real.
 	ship.transform = Transform3D(Basis(Vector3.UP, atan2(-fwd.x, -fwd.z)), ground)
-	scene_root.add_child(ship)
+	# Con nombre legible y único: "ship_debug", "ship_debug2"…
+	scene_root.add_child(ship, true)
+
+
+## Limpia todo lo spawneado: lo del NetSpawner y las naves, que se crean aparte (ver `_debug_spawn_ship`).
+## Una nave con alguien sentado lo suelta sola al salir del árbol (ver SeatInteractable._exit_tree).
+func _clear_spawns() -> void:
+	NetSpawner.request_clear_all()
+	for ship in get_tree().get_nodes_in_group(Ship.GROUP):
+		ship.queue_free()
 
 ## Baja un punto hasta el piso con un raycast (para spawnear objetos estáticos apoyados).
 func _snap_to_ground(from: Vector3) -> Vector3:

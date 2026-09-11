@@ -3,7 +3,7 @@ extends RigidBody3D
 
 ## LA NAVE DE LA COMPAÑÍA — prototipo de un jugador.
 ##
-## Domo de vidrio (ver ShipHull), los asientos (ver SEAT_CONSOLES), la consola de vuelo con tres
+## El casco —un domo de vidrio o una caja, ver ShipHull—, los asientos (ver ShipHull.seat_sides), la consola de vuelo con tres
 ## controles y el botón de encendido, y la compuerta trasera con un botón adentro y otro afuera (ver
 ## ShipDoor). Ver conceptual/ship-gameplay.md.
 ##
@@ -44,10 +44,6 @@ extends RigidBody3D
 ## la inclinaría y el autoenderezado se la pasaría peleando contra él.
 const MASS := 2000.0
 const SEAT_SCENE := "res://Scenes/ship/working_seat.tscn"
-## Frente a qué consolas va un asiento, por tamaño de tripulación. El 0 es el piloto, frente a la consola
-## de vuelo; los demás van repartidos por el anillo, sin necesidad de simetría. Cada índice tiene que ser
-## un lado con consola (ver ShipHull.console_indices).
-const SEAT_CONSOLES := {1: [0], 4: [0, -4, 4, 7]}
 ## Aire entre las rodillas del piloto y el plano de abajo de la consola de vuelo. Las rodillas caen en el
 ## borde de adelante del asiento (ver BoneInstantiator._pose_root), a la altura de la pelvis, y el
 ## asiento va lo más cerca que eso deja (ver `_add_seats`).
@@ -61,8 +57,32 @@ const LEVER_TRAVEL_DEG := 70.0
 ## Hasta dónde gira el volante para cada lado, en radianes (~86°): ahí dobla a fondo y hace tope.
 const WHEEL_FULL_LOCK := 1.5
 
-## Para cuántos jugadores está armada: cuántos asientos lleva y frente a qué consolas (ver SEAT_CONSOLES).
-## Se elige antes de meterla al árbol.
+const GROUP := "ship"
+
+## ── PAREDES TRASLÚCIDAS — ayuda de depuración ───────────────────────────────────────────────────
+## En true, la cáscara opaca de la caja (paredes, techo y compuerta) se dibuja medio transparente: desde
+## afuera se ve cómo el personaje agarra las palancas y el volante. El piso y las consolas quedan opacos:
+## sin piso no se lee dónde está parado nadie. El domo no se toca: ya es de vidrio, y sus partes opacas lo
+## son a propósito.
+##
+## Estado global, como los toggles de CharacterDebugView: una nave que aparece después nace con lo que
+## esté prendido. Prendido por default.
+static var translucent_walls := true
+
+
+static func toggle_translucent_walls(tree: SceneTree) -> void:
+	translucent_walls = not translucent_walls
+	for node in tree.get_nodes_in_group(GROUP):
+		var ship := node as Ship
+		if ship != null:
+			ship.apply_wall_visibility()
+
+
+## Qué casco lleva: todavía se prueban las dos formas (ver ShipHull). Se elige antes de meterla al árbol.
+enum Shape { DOME, BOX }
+@export var shape := Shape.DOME
+## Para cuántos jugadores está armada: cuántos asientos lleva y frente a qué consolas (ver
+## ShipHull.seat_sides). Se elige antes de meterla al árbol.
 @export var crew_size := 1
 
 @export_group("Altura")
@@ -115,6 +135,9 @@ var powered := false
 
 var _altitude_ready := false
 var _door: ShipDoor = null
+## El casco armado: la forma, con lo que la nave le pregunta (anillo, asientos, centro de masa).
+var hull: ShipHull = null
+var _shell: Array[MeshInstance3D] = []
 var _hum: AudioStreamPlayer3D = null
 
 
@@ -127,20 +150,28 @@ func _ready() -> void:
 	linear_damp = 0.0
 	angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
 	angular_damp = 0.0
-	# Centro de masa fijo, el del volumen del domo: 3/8 del radio sobre el piso. Calculado de las formas se
-	# correría al abrir la compuerta —que se mueve— y la nave se inclinaría sola cada vez.
+	if shape == Shape.BOX:
+		hull = BoxHull.new()
+	else:
+		hull = DomeHull.new()
+	# Centro de masa fijo, el del volumen del casco. Calculado de las formas se correría al abrir la
+	# compuerta —que se mueve— y la nave se inclinaría sola cada vez.
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
-	center_of_mass = Vector3(0.0, ShipHull.WALL + ShipHull.DOME_RADIUS * 0.375, 0.0)
+	center_of_mass = hull.center_of_mass()
+
+	add_to_group(GROUP)
 
 	_hum = TestSounds.hum_player()
 	_hum.position = center_of_mass
 	add_child(_hum)
-	var parts := ShipHull.build(self, {0: _flight_preset()})
+	var parts := hull.build(self, {0: _flight_preset()})
+	_shell = parts.shell
+	apply_wall_visibility()
 
 	_door = ShipDoor.new()
 	_door.name = "Door"
 	add_child(_door)
-	_door.setup(parts.door_faces, parts.door_pivot, parts.door_axis, parts.door_travel)
+	_door.setup(parts.door_motion)
 	for button in parts.door_buttons:
 		var touch := _control(button, 0) as TouchComponent
 		if touch != null:
@@ -151,7 +182,14 @@ func _ready() -> void:
 	_ignore_own_bodies(self)
 
 
-## Consola de vuelo, 32 × 12 celdas. Todo va contra el borde de ABAJO, el más cercano al piloto (la
+func apply_wall_visibility() -> void:
+	for mesh in _shell:
+		if is_instance_valid(mesh):
+			ShipHull.set_translucent(mesh, translucent_walls)
+
+
+## Consola de vuelo: el tablero del módulo principal del frente, de 32 × 12 celdas en las dos formas (ver
+## ShipHull). Todo va contra el borde de ABAJO, el más cercano al piloto (la
 ## grilla crece de la pared hacia él), con el volante centrado, una palanca a cada lado y el encendido
 ## junto al acelerador, todos pegados: el margen de cada control ya deja aire entre vecinos.
 ##
@@ -259,9 +297,9 @@ func _add_seats() -> void:
 	var scene := load(SEAT_SCENE) as PackedScene
 	if scene == null:
 		return
-	var sides := ShipHull.console_sides()
-	for side_index: int in SEAT_CONSOLES.get(crew_size, [0]):
-		assert(side_index in ShipHull.console_indices(), "Ship: no hay consola en el lado %d" % side_index)
+	var sides := hull.console_sides()
+	for side_index in hull.seat_sides(crew_size):
+		assert(side_index in hull.console_indices(), "Ship: no hay consola en el lado %d" % side_index)
 		var seat := scene.instantiate() as SeatInteractable
 		seat.name = "pilot_seat" if side_index == 0 else "seat_%d" % side_index
 		seat.eye_height = ShipHull.panel_top_height() + EYE_OVER_PANEL
@@ -274,7 +312,7 @@ func _add_seats() -> void:
 		var theta := float(side_index) * TAU / sides
 		var outward := Vector3(sin(theta), 0.0, -cos(theta))
 		seat.transform = Transform3D(Basis(Vector3.UP, -theta),
-			outward * (ShipHull.console_apothem() - from_hinge) + Vector3.UP * ShipHull.WALL)
+			outward * (hull.console_apothem() - from_hinge) + Vector3.UP * ShipHull.WALL)
 		add_child(seat)
 
 

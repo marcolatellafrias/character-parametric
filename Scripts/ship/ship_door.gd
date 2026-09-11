@@ -1,12 +1,9 @@
 class_name ShipDoor
 extends Node
 
-## LA COMPUERTA — las caras del gajo de atrás que tapan el hueco de la puerta (ver ShipHull).
-##
-## Para abrir se DESLIZAN HACIA ARRIBA siguiendo el domo: giran alrededor del centro de la esfera, sobre
-## el eje horizontal que cruza la puerta de lado a lado, hasta quedar justo encima del hueco. Girar
-## alrededor del centro de una esfera deja todo sobre la esfera, así que las caras no se despegan del
-## domo en ningún momento. Van por fuera del vidrio y pasan sobre él sin tocarlo.
+## LA COMPUERTA — abre y cierra desde sus botones. CÓMO se mueve lo pone el casco, que sabe de qué está
+## hecha: la del domo se desliza hacia arriba siguiendo el domo, la de la caja se achica hacia arriba (ver
+## DomeHull y BoxHull). Acá queda lo que es igual en las dos: el estado, los botones y el tiempo.
 ##
 ## Es la versión de esqueleto: la pieza de verdad, con su animación, viene con el modelo. Acá alcanza
 ## con que abra y cierre, que es lo que hace falta para probar entrar y salir de la nave.
@@ -14,26 +11,15 @@ extends Node
 ## Segundos de cerrada a abierta.
 const DURATION := 0.9
 
-var _faces: Array[CollisionShape3D] = []
-var _rest: Array[Transform3D] = []
-var _pivot := Vector3.ZERO
-var _axis := Vector3.RIGHT
-var _travel := 0.0
+var _motion: Callable
 var _openness := 0.0
 var _open := false
 var _tween: Tween = null
 
 
-## `faces` son las caras en su lugar de cerrada; `pivot` y `axis`, el centro y el eje del giro; `travel`,
-## cuánto giran para abrir del todo, en radianes.
-func setup(faces: Array[CollisionShape3D], pivot: Vector3, axis: Vector3, travel: float) -> void:
-	_faces = faces
-	_rest.clear()
-	for face in faces:
-		_rest.append(face.transform)
-	_pivot = pivot
-	_axis = axis
-	_travel = travel
+## `motion` recibe cuánto está abierta, de 0 a 1, y mueve las piezas.
+func setup(motion: Callable) -> void:
+	_motion = motion
 
 
 ## Cada vez que se APRIETA el botón, la compuerta cambia de estado. Por eso los botones son momentáneos
@@ -55,8 +41,4 @@ func toggle() -> void:
 
 func _set_openness(value: float) -> void:
 	_openness = value
-	var turn := Basis(_axis, _travel * value)
-	# Girar alrededor de `_pivot`: x' = turn·(x − pivot) + pivot.
-	var slide := Transform3D(turn, _pivot - turn * _pivot)
-	for i in _faces.size():
-		_faces[i].transform = slide * _rest[i]
+	_motion.call(value)
