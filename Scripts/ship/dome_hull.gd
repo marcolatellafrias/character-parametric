@@ -5,8 +5,9 @@ extends ShipHull
 ## asientos, los botones) está en ShipHull; acá va lo que es del domo.
 ##
 ## Un hemisferio de esfera UV: `SEGMENTS` gajos alrededor —los mismos lados que el piso, así sus bordes
-## coinciden— y `RINGS` anillos del piso al polo, cada cara una placa plana. Los anillos de `OPAQUE_RINGS`
-## y la compuerta son opacos; el resto, de vidrio.
+## coinciden— y `RINGS` anillos del piso al polo, cada cara una placa plana. Son opacos los anillos de
+## `OPAQUE_RINGS`, la compuerta y lo de arriba de ella hasta el marco del medio (ver `_is_opaque`); el resto,
+## de vidrio.
 ##
 ## Las caras opacas son placas de `WALL` de espesor que van de `DOME_RADIUS` hacia afuera, dibujadas
 ## enteras —sus dos caras y los cantos—; su cara de afuera queda al ras del borde del piso, así el domo
@@ -15,7 +16,9 @@ extends ShipHull
 ##
 ## Cada cara es su PROPIO objeto, malla y collider: Godot ordena lo transparente por objeto y no por
 ## cara, así que un domo de una sola malla, visto desde adentro, dibujaría caras de atrás encima de las
-## de adelante.
+## de adelante. Aun así se ve SUAVE: cada vértice lleva la normal de la esfera (ver `_smooth_quad`), y como
+## las caras vecinas calculan la misma en sus vértices compartidos, la luz empalma sin corte. Solo los
+## cantos de las placas, los marcos y el piso quedan planos.
 ##
 ## El anillo lleva un módulo de `MAIN_COLUMNS` por lado, tantos lados como entran sin que el estante toque
 ## el vidrio (ver `console_sides`). La cáscara no se transparenta con el toggle: ya es de vidrio, y sus
@@ -27,25 +30,50 @@ const DOME_RADIUS := HALF_WIDTH
 ## Radio de la cara de afuera del domo: donde terminan las placas opacas, donde está el plano del vidrio y
 ## hasta donde llega el piso.
 const GLASS_RADIUS := DOME_RADIUS + WALL
-## Gajos alrededor —del domo y del piso— y anillos del piso al polo, como una esfera UV.
-const SEGMENTS := 32
+## Gajos alrededor —del domo y del piso— y anillos del piso al polo, como una esfera UV. Divisible por
+## tres, para los marcos (ver MARCOS).
+const SEGMENTS := 42
 const RINGS := 8
 ## Anillos opacos, contando desde el piso: el del piso y la cúspide. Los del medio son de vidrio.
 const OPAQUE_RINGS: Array[int] = [0, 7]
-## El vidrio: cristalino, parejo en todo el domo.
-const GLASS_COLOR := Color(0.75, 0.88, 1.0, 0.25)
-## Color del casco opaco del domo: todo igual, oscuro.
-const SHELL_COLOR := Color(0.2, 0.22, 0.26)
+## El vidrio: con los brillos del sol encima y un gradiente marcado —abajo cristalino, arriba oscuro y casi
+## opaco, `GLASS_TOP_COLOR`— (ver Shaders/ship_glass.gdshader).
+const GLASS_COLOR := Color(0.8, 0.9, 1.0, 0.15)
+const GLASS_TOP_COLOR := Color(0.14, 0.17, 0.21, 0.75)
+const GLASS_SHADER := preload("res://Shaders/ship_glass.gdshader")
+## Color de la estructura del domo —la base, la cúspide, la compuerta con lo de arriba de ella, y los
+## marcos—: un gris claro apenas rojizo. El piso, otra sombra del mismo gris, más oscura, para que se
+## distingan.
+const SHELL_COLOR := Color(0.56, 0.51, 0.5)
+const FLOOR_COLOR := Color(0.42, 0.37, 0.36)
 
 ## ── LA COMPUERTA ─────────────────────────────────────────────────────────────────────────────────
-## Los gajos de atrás, desde el piso: el del medio (SEGMENTS / 2) y `DOOR_HALF_WIDTH` a cada lado —2,93 m
+## Los gajos de atrás, desde el piso: el del medio (SEGMENTS / 2) y `DOOR_HALF_WIDTH` a cada lado —2,24 m
 ## al nivel del piso, que es también el diámetro del cilindro de carga—, y `DOOR_RINGS` anillos de alto
 ## (2,80 m). Va por FUERA del vidrio, a `DOOR_GAP`, para que al subir deslizándose por el domo pase sobre
 ## él sin tocarlo.
-const DOOR_SEGMENT := 16
+const DOOR_SEGMENT := 21
 const DOOR_HALF_WIDTH := 1
 const DOOR_RINGS := 3
 const DOOR_GAP := 0.02
+
+## ── MARCOS ───────────────────────────────────────────────────────────────────────────────────────
+## Divisiones del vidrio: barras finas del color de la estructura, solo para la vista —el vidrio ya tiene
+## su collider—, todas en una malla, y solo sobre el vidrio.
+##
+## Uno HORIZONTAL que da toda la vuelta en el borde de abajo del anillo `FRAME_MID_RING`, a media altura. Y
+## `FRAME_COUNT` VERTICALES, parejos y simétricos respecto del eje de la nave: con tres, uno cae sobre el eje
+## atrás, sobre la compuerta, y va del marco del medio a la cúspide —debajo de él, hasta el marco, la
+## compuerta y lo de arriba de ella son opacos—; los otros dos, a ±60° del frente, van de la base al marco
+## del medio, y el paño de adelante del piloto queda libre. Van por el medio de las caras, no por sus
+## bordes: con 42 gajos, uno cada 14.
+const FRAME_MID_RING := 4
+const FRAME_COUNT := 3
+const FRAME_WIDTH := 0.03
+## Cuánto entran hacia adentro y salen hacia afuera del plano del vidrio. Afuera, menos que `DOOR_GAP`: la
+## compuerta pasa por encima al abrir.
+const FRAME_IN := 0.02
+const FRAME_OUT := 0.01
 
 
 func console_sides() -> int:
@@ -116,17 +144,18 @@ func _build_shell(ship: RigidBody3D, parts: ShipHull.Parts) -> void:
 		for j in RINGS:
 			if _is_door(i, j):
 				continue  # el hueco de la compuerta
-			if j in OPAQUE_RINGS:
+			if _is_opaque(i, j):
 				_face(ship, "shell_%d_%d" % [i, j], i, j, DOME_RADIUS, shell_material)
 			else:
 				var face := _glass_face(ship, "glass_%d_%d" % [i, j], i, j, glass_material)
 				(face.get_child(0) as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
-	var door_material := _opaque_material()
+	_build_frames(ship)
+
 	var faces: Array[CollisionShape3D] = []
 	for i in range(DOOR_SEGMENT - DOOR_HALF_WIDTH, DOOR_SEGMENT + DOOR_HALF_WIDTH + 1):
 		for j in DOOR_RINGS:
-			faces.append(_face(ship, "door_%d_%d" % [i, j], i, j, GLASS_RADIUS + DOOR_GAP, door_material))
+			faces.append(_face(ship, "door_%d_%d" % [i, j], i, j, GLASS_RADIUS + DOOR_GAP, shell_material))
 
 	# La compuerta se DESLIZA HACIA ARRIBA siguiendo el domo: gira alrededor del centro de la esfera, sobre
 	# el eje horizontal que la cruza de lado a lado, hasta quedar justo encima del hueco. Girar alrededor
@@ -171,6 +200,12 @@ func _build_door_buttons(ship: RigidBody3D, parts: ShipHull.Parts) -> void:
 
 static func _is_door(segment: int, ring: int) -> bool:
 	return absi(segment - DOOR_SEGMENT) <= DOOR_HALF_WIDTH and ring < DOOR_RINGS
+
+
+## Las caras que no son de vidrio: los anillos de `OPAQUE_RINGS` y los gajos de la compuerta hasta el marco
+## del medio —ella y lo de arriba de ella—.
+static func _is_opaque(segment: int, ring: int) -> bool:
+	return ring in OPAQUE_RINGS or (absi(segment - DOOR_SEGMENT) <= DOOR_HALF_WIDTH and ring < FRAME_MID_RING)
 
 
 ## Cuánto sube cada anillo, en ángulo.
@@ -219,7 +254,9 @@ func _build_floor(ship: RigidBody3D) -> void:
 		var side := ((bottom[k] + bottom[n]) * 0.5).normalized()
 		_triangle(st, side, bottom[k], top[k], top[n])
 		_triangle(st, side, bottom[k], top[n], bottom[n])
-	_part(ship, "floor", hull, st.commit(), Transform3D.IDENTITY, _opaque_material())
+	var floor_material := StandardMaterial3D.new()
+	floor_material.albedo_color = FLOOR_COLOR
+	_part(ship, "floor", hull, st.commit(), Transform3D.IDENTITY, floor_material)
 
 
 ## Una cara del domo: una placa de espesor `WALL` hacia afuera desde `radius`, dibujada entera.
@@ -247,31 +284,115 @@ static func _glass_face(ship: RigidBody3D, part_name: String, segment: int, ring
 	hull.points = points
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	_quad(st, dome_center(), pane[0], pane[1], pane[2], pane[3])
+	_smooth_quad(st, pane[0], pane[1], pane[2], pane[3], false)
 	return _part(ship, part_name, hull, st.commit(), Transform3D.IDENTITY, material)
 
 
-## La malla de una placa: sus dos caras y los cuatro cantos, así se ve su espesor.
+## La malla de una placa del domo: sus dos caras suaves —la de adentro mirando hacia el centro, la de
+## afuera hacia afuera— y los cuatro cantos planos, así se ve su espesor.
 static func _slab_mesh(inner: PackedVector3Array, outer: PackedVector3Array) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	_smooth_quad(st, inner[0], inner[1], inner[2], inner[3], true)
+	_smooth_quad(st, outer[0], outer[1], outer[2], outer[3], false)
 	var center := Vector3.ZERO
 	for k in 4:
 		center += inner[k] + outer[k]
 	center /= 8.0
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	_quad(st, center, inner[0], inner[1], inner[2], inner[3])
-	_quad(st, center, outer[0], outer[1], outer[2], outer[3])
 	for k in 4:
 		var n := (k + 1) % 4
 		_quad(st, center, inner[k], inner[n], outer[n], outer[k])
 	return st.commit()
 
 
-## Cristalino y de las dos caras: el vidrio es un plano solo, que se ve de adentro y de afuera. Con las
-## esquinas bien ordenadas (ver `_triangle`), Godot ilumina bien cada lado.
-static func _glass_material() -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = GLASS_COLOR
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+## Un cuadrilátero sobre la esfera del domo, con sombreado SUAVE: cada vértice lleva la normal de la esfera
+## en ese punto —del centro hacia él, o al revés con `inward`—. Las caras vecinas calculan la misma normal
+## en sus vértices compartidos, así la luz empalma sin corte aunque cada cara sea su propio objeto. Hacia
+## qué lado mira el triángulo —y con eso el orden de sus esquinas, ver `_triangle`— sale del mismo lado.
+## Los triángulos sin área —en el polo, donde dos esquinas coinciden— se saltean.
+static func _smooth_quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, inward: bool) -> void:
+	var side := -1.0 if inward else 1.0
+	for tri: Array in [[a, b, c], [a, c, d]]:
+		var p0: Vector3 = tri[0]
+		var p1: Vector3 = tri[1]
+		var p2: Vector3 = tri[2]
+		if (p1 - p0).cross(p2 - p0).length_squared() < 1e-10:
+			continue
+		var facing := ((p0 + p1 + p2) / 3.0 - dome_center()) * side
+		var corners := [p0, p1, p2] if (p2 - p0).cross(p1 - p0).dot(facing) >= 0.0 else [p0, p2, p1]
+		for corner: Vector3 in corners:
+			st.set_normal((corner - dome_center()).normalized() * side)
+			st.add_vertex(corner)
+
+
+## Una placa entre dos cuadriláteros —sus dos caras y los cuatro cantos— agregada a `st`.
+static func _slab_into(st: SurfaceTool, inner: PackedVector3Array, outer: PackedVector3Array) -> void:
+	var center := Vector3.ZERO
+	for k in 4:
+		center += inner[k] + outer[k]
+	center /= 8.0
+	_quad(st, center, inner[0], inner[1], inner[2], inner[3])
+	_quad(st, center, outer[0], outer[1], outer[2], outer[3])
+	for k in 4:
+		var n := (k + 1) % 4
+		_quad(st, center, inner[k], inner[n], outer[n], outer[k])
+
+
+## Los marcos del vidrio (ver MARCOS): todas las barras en una sola malla, sin collider.
+func _build_frames(ship: RigidBody3D) -> void:
+	assert(SEGMENTS % FRAME_COUNT == 0, "DomeHull: los marcos no quedan parejos con estos gajos")
+	@warning_ignore("integer_division")
+	var spacing := SEGMENTS / FRAME_COUNT
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in FRAME_COUNT:
+		var segment := (DOOR_SEGMENT + k * spacing) % SEGMENTS
+		# El de la compuerta sigue su línea del marco del medio para arriba; los otros van de la base al medio.
+		var rings := range(FRAME_MID_RING, RINGS) if segment == DOOR_SEGMENT else range(0, FRAME_MID_RING)
+		for j: int in rings:
+			if _is_opaque(segment, j):
+				continue  # solo sobre el vidrio
+			# Por el medio de la cara: de la mitad de su borde de abajo a la mitad del de arriba.
+			var face := _face_corners(GLASS_RADIUS, segment, j)
+			_frame_bar(st, (face[0] + face[1]) * 0.5, (face[2] + face[3]) * 0.5)
+	# El horizontal, toda la vuelta por el borde de abajo del anillo del medio: los verticales terminan en él.
+	var lat := float(FRAME_MID_RING) * _ring_step()
+	for i in SEGMENTS:
+		_frame_bar(st, _dome_point(GLASS_RADIUS, segment_angle(float(i) - 0.5), lat),
+			_dome_point(GLASS_RADIUS, segment_angle(float(i) + 0.5), lat))
+	var frames := MeshInstance3D.new()
+	frames.name = "frames"
+	frames.mesh = st.commit()
+	var material := StandardMaterial3D.new()
+	material.albedo_color = SHELL_COLOR
+	frames.material_override = material
+	ship.add_child(frames)
+
+
+## Una barra de marco de `a` a `b`, sobre el plano del vidrio: `FRAME_WIDTH` de ancho, `FRAME_IN` hacia
+## adentro y `FRAME_OUT` hacia afuera. Se estira medio ancho de cada punta, así las juntas no dejan hueco.
+static func _frame_bar(st: SurfaceTool, a: Vector3, b: Vector3) -> void:
+	var along := (b - a).normalized()
+	var side := along.cross((a + b) * 0.5 - dome_center()).normalized()
+	var out := side.cross(along).normalized()  # hacia afuera, perpendicular a la barra
+	var start := a - along * FRAME_WIDTH * 0.5
+	var end := b + along * FRAME_WIDTH * 0.5
+	side *= FRAME_WIDTH * 0.5
+	var inner := -out * FRAME_IN
+	var outer := out * FRAME_OUT
+	_slab_into(st,
+		PackedVector3Array([start - side + inner, end - side + inner, end + side + inner, start + side + inner]),
+		PackedVector3Array([start - side + outer, end - side + outer, end + side + outer, start + side + outer]))
+
+
+## El vidrio: el shader de Shaders/ship_glass.gdshader, con el gradiente entre el vidrio de más abajo —el
+## borde de arriba del anillo de la base— y el de más arriba —el de abajo de la cúspide—.
+static func _glass_material() -> ShaderMaterial:
+	var step := _ring_step()
+	var mat := ShaderMaterial.new()
+	mat.shader = GLASS_SHADER
+	mat.set_shader_parameter("bottom_tint", GLASS_COLOR)
+	mat.set_shader_parameter("top_tint", GLASS_TOP_COLOR)
+	mat.set_shader_parameter("gradient_bottom", WALL + GLASS_RADIUS * sin(float(OPAQUE_RINGS.min() + 1) * step))
+	mat.set_shader_parameter("gradient_top", WALL + GLASS_RADIUS * sin(float(OPAQUE_RINGS.max()) * step))
 	return mat

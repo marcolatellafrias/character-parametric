@@ -41,11 +41,13 @@ This removes the current "solo session at launch" bootstrap: `SessionManager` no
 
 ## Layer 2 — Debug panel (F1), tabbed
 
-Split the single F1 list into tabs:
+Split the single F1 list into tabs, in a panel as tall as the screen so they barely scroll:
 
 - **Info** — unify here: the generated-character info, seeds/date, and session state (solo/host/client + peer list).
 - **Actions** — creative, ragdoll, respawn, go-to-start, etc.
-- **Spawn** — gmod-style list (characters, boxes, …).
+- **Arquetipos** — become, or spawn beside you, a character of a given archetype.
+- **Spawn** — gmod-style list (characters, boxes, ships, …).
+- **Performance** — turns parts of the game off to see what each costs (`PerformanceToggles`): the ships' filler controls (the working ones stay, so you can still fly), cars, buildings, and NPCs (characters no player drives — not yours, not remote players'). Each has separate **draw** and **logic** switches, to tell GPU from CPU cost: they act on the part's root nodes — hidden, and `PROCESS_MODE_DISABLED`, which stops all processing below and takes its bodies out of physics (buildings lose their colliders; cars freeze in place and their spawner stops). Live numbers on top: FPS, frame/process/physics-step ms, draw calls, nodes, and how many of each part (Jolt leaves the physics-body monitors at 0, so they're left out). The state is static: it survives respawns and applies to whatever spawns later.
 
 The console is **not** a tab here (see below).
 

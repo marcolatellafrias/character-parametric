@@ -104,6 +104,8 @@ const DUMMIES := [
 ]
 ## De cada lugar posible —uno cada dos celdas—, la proporción que se intenta llenar.
 const DUMMY_DENSITY := 0.45
+## Grupo de los tableros de relleno: el panel de performance del F1 los apaga (ver PerformanceToggles).
+const DUMMY_GROUP := "ship_dummy_dashboards"
 
 ## Botones de la compuerta: a esta altura del piso y a esta distancia del borde del hueco.
 const BUTTON_HEIGHT := 1.2
@@ -418,7 +420,10 @@ func _dashboard_on(ship: RigidBody3D, dash_name: String, panel: Transform3D, col
 	dash.name = dash_name
 	dash.grid_columns = columns
 	dash.grid_rows = rows
-	dash.custom_preset = preset if preset != null else _dummy_preset(columns, rows, seed_value)
+	if preset == null:
+		preset = _dummy_preset(columns, rows, seed_value)
+		dash.add_to_group(DUMMY_GROUP)
+	dash.custom_preset = preset
 	dash.transform = panel * Transform3D(Basis(), Vector3(-float(columns) * CELL * 0.5, float(rows) * CELL, 0.0))
 	ship.add_child(dash)
 	return dash

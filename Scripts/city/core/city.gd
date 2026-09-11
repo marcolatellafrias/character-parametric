@@ -429,11 +429,21 @@ func _get_building_material() -> StandardMaterial3D:
 		_building_material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
 	return _building_material
 
+# Los edificios —los meshes con sus occluders, y aparte los colliders— cuelgan de un nodo propio anotado
+# en "city_buildings", así se prenden y apagan todos juntos (lo usa el panel de performance del F1).
+func _buildings_container(node_name: String) -> Node3D:
+	var container := Node3D.new()
+	container.name = node_name
+	container.add_to_group("city_buildings")
+	add_child(container)
+	return container
+
 func _visualize_buildings() -> void:
 	var all_block_faces = generator.get_all_block_faces()
 	var total_clusters = 0
 	var total_cells = 0
 	var mat := _get_building_material()
+	var buildings := _buildings_container("Buildings")
 
 	for face_idx in all_block_faces:
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -520,8 +530,8 @@ func _visualize_buildings() -> void:
 			mesh_instance.material_override = mat
 			mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 			mesh_instance.visibility_range_end = WorldSettings.spawn_radius
-			add_child(mesh_instance)
-			_add_box_occluder(array_mesh)
+			buildings.add_child(mesh_instance)
+			_add_box_occluder(array_mesh, buildings)
 
 	print("[Visualizer] Buildings: %d clusters (%d cells total) en %d bloques" % [total_clusters, total_cells, all_block_faces.size()])
 
@@ -532,6 +542,7 @@ func _visualize_building_colliders() -> void:
 	var all_block_faces = generator.get_all_block_faces()
 	var total_colliders = 0
 	var total_blocks = 0
+	var colliders := _buildings_container("BuildingColliders")
 
 	for face_idx in all_block_faces:
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -583,7 +594,7 @@ func _visualize_building_colliders() -> void:
 						collision_body.queue_free()
 
 			if has_colliders:
-				add_child(static_body)
+				colliders.add_child(static_body)
 				total_colliders += 1
 
 		if clusters.size() > 0:
@@ -1104,14 +1115,14 @@ func _get_bridge_material() -> StandardMaterial3D:
 		_bridge_material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
 	return _bridge_material
 
-func _add_box_occluder(mesh: ArrayMesh) -> void:
+func _add_box_occluder(mesh: ArrayMesh, parent: Node3D) -> void:
 	var aabb := mesh.get_aabb()
 	var occ_inst := OccluderInstance3D.new()
 	var box_occ := BoxOccluder3D.new()
 	box_occ.size = aabb.size
 	occ_inst.occluder = box_occ
 	occ_inst.position = aabb.get_center()
-	add_child(occ_inst)
+	parent.add_child(occ_inst)
 
 func _bridge_geo_append(buf: Dictionary, geo: Dictionary, color: Color) -> void:
 	if geo.is_empty():
@@ -1205,7 +1216,7 @@ func _visualize_floating_sidewalk_zones() -> void:
 			mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 			add_child(mesh_instance)
-			_add_box_occluder(array_mesh)
+			_add_box_occluder(array_mesh, self)
 
 		if has_colliders:
 			add_child(block_static_body)

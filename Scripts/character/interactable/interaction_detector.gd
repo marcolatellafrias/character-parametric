@@ -164,13 +164,13 @@ func _collect_meshes_recursive(node: Node, result: Array[MeshInstance3D]) -> voi
 ## contornos, entre mallas distintas.
 func _build_outline_material() -> void:
 	_outline_material = ShaderMaterial.new()
-	_outline_material.shader = load("res://shaders/outline.gdshader") as Shader
+	_outline_material.shader = load("res://Shaders/outline.gdshader") as Shader
 	_outline_material.set_shader_parameter("color",             outline_color)
 	_outline_material.set_shader_parameter("outline_thickness", outline_size)
 	_outline_material.render_priority = 1
 
 	_mask_material = ShaderMaterial.new()
-	_mask_material.shader = load("res://shaders/outline_mask.gdshader") as Shader
+	_mask_material.shader = load("res://Shaders/outline_mask.gdshader") as Shader
 	_mask_material.render_priority = 0
 	_mask_material.next_pass = _outline_material
 

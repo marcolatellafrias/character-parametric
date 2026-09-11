@@ -626,6 +626,9 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Spawn", "Nave cúbica (4 jugadores)", func(): _debug_spawn_ship(Ship.Shape.BOX, 4))
 	_debug_panel.add_action("Spawn", "Limpiar spawns",     _clear_spawns)
 
+	# ── Performance ──
+	PerformanceToggles.build_tab(_debug_panel, get_tree())
+
 
 func _character_stats_text(inst: EntityInstantiation) -> String:
 	var arch := inst.arch_final

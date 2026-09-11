@@ -1,10 +1,14 @@
 class_name DebugPanel
 extends CanvasLayer
 
-# Panel de debug con tabs (Info / Acciones / Arquetipos / Spawn). Se registra desde afuera vía
-# add_info / add_text / add_action; el panel solo renderiza. Su visibilidad y el mouse
+# Panel de debug con tabs (Info / Acciones / Arquetipos / Spawn / Performance). Se registra desde afuera
+# vía add_info / add_text / add_action / add_toggle / add_control; el panel solo renderiza. Ocupa todo el
+# alto de la pantalla, así casi no hace falta scrollear. Su visibilidad y el mouse
 # los maneja UIState (tecla F1). Solo se crea para un personaje con debug_enabled = true.
 # La consola global (tecla º) es aparte. Ver technical/ui.md.
+
+const WIDTH := 480.0
+const MARGIN := 20.0
 
 var _tabs: TabContainer
 var _tab_boxes: Dictionary = {}  # tab_name -> VBoxContainer
@@ -14,16 +18,20 @@ func _ready() -> void:
 	visible = false
 	UIState.changed.connect(_on_ui_changed)
 
+	# Pegado a la izquierda, de `WIDTH` de ancho y de todo el alto menos `MARGIN`: sigue a la pantalla.
 	var panel := PanelContainer.new()
-	panel.position = Vector2(20, 20)
-	panel.custom_minimum_size = Vector2(300, 380)
+	panel.anchor_bottom = 1.0
+	panel.offset_left = MARGIN
+	panel.offset_top = MARGIN
+	panel.offset_right = MARGIN + WIDTH
+	panel.offset_bottom = -MARGIN
 	add_child(panel)
 
 	_tabs = TabContainer.new()
 	panel.add_child(_tabs)
 
 	# Orden fijo de las tabs.
-	for tab_name in ["Info", "Acciones", "Arquetipos", "Spawn"]:
+	for tab_name in ["Info", "Acciones", "Arquetipos", "Spawn", "Performance"]:
 		_get_tab(tab_name)
 
 func _get_tab(tab_name: String) -> VBoxContainer:
@@ -45,6 +53,19 @@ func add_action(tab_name: String, label: String, cb: Callable) -> void:
 	btn.focus_mode = Control.FOCUS_NONE
 	btn.pressed.connect(cb)
 	_get_tab(tab_name).add_child(btn)
+
+# Un interruptor que muestra su estado; `cb` recibe el nuevo.
+func add_toggle(tab_name: String, label: String, pressed: bool, cb: Callable) -> void:
+	var check := CheckButton.new()
+	check.text = label
+	check.button_pressed = pressed
+	check.focus_mode = Control.FOCUS_NONE
+	check.toggled.connect(cb)
+	_get_tab(tab_name).add_child(check)
+
+# Cualquier control armado afuera (un texto que se refresca, un separador…).
+func add_control(tab_name: String, control: Control) -> void:
+	_get_tab(tab_name).add_child(control)
 
 func add_info(label: String, value: String) -> void:
 	var lbl := Label.new()
