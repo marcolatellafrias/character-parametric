@@ -640,9 +640,6 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Ver gizmos de marcha",      func(): CharacterDebugView.toggle_gait_gizmos(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver wireframe",             func(): CharacterDebugView.toggle_wireframe(get_tree()))
 	_debug_panel.add_action("Acciones", "Indicadores de tráfico",    func(): TrafficDebugDrawer.ENABLED = not TrafficDebugDrawer.ENABLED)
-	# Apariencia: también globales, y se repintan en el momento.
-	_debug_panel.add_action("Acciones", "Shader on/off",             func(): CharacterAppearance.toggle_flat_geometry(get_tree()))
-	_debug_panel.add_action("Acciones", "Monocromo on/off",          func(): CharacterAppearance.toggle_monochrome(get_tree()))
 
 	# ── Arquetipos ──
 	# Dos acciones por arquetipo, y son distintas: "Ser" cambia TU personaje y además deja la P pegada

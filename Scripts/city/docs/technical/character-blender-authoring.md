@@ -9,10 +9,12 @@
 - **Low-poly silhouette with baked high-poly normals.** The outline stays faceted (Team Fortress family); the normal map carries the smooth shading so smooth-shaded surfaces don't produce the usual low-poly artefacts.
 - **Five separate meshes**, all skinned to one armature: `arms_mesh`, `hands_mesh`, `head_mesh` (head + neck), `shoes_mesh` (feet), `body_mesh` (torso + legs).
 - **Soft gradient textures**, little fine detail. This is deliberate and load-bearing: the mesh gets stretched and squashed by the parametric system, and gradients survive distortion where detail work would smear visibly.
-- **Facial detail lives on planes**, not in the mesh — flat quads carrying adaptive textures animated in **Rive** (validated as working). Their *placement* is the parametric system's job; what happens *inside* each plane (mouth talking, brows furrowing) is Rive's.
+- **Facial detail** — *retired 2026-09-10.* It lived on flat planes with Rive-drawn textures; those were removed from the model and the code, and the face is being redefined. See the status note in [character-appearance-system.md](character-appearance-system.md).
 - **Accessories** — hats, hair, beard, cigarette, pipe — are attachments whose placement also follows the parameters.
 
 ### The eight planes
+
+> **Retired 2026-09-10** — removed from the model and the code. Kept as the record of that design.
 
 | Plane | Count |
 |---|---|

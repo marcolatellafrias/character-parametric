@@ -49,10 +49,6 @@ var arch_final: EntityArchetype
 var spec: EntitySpecie
 
 var age: int
-var skin_color: Color
-var cloth_color: Color
-var hair_color: Color
-var leather_color: Color
 
 # Parámetros de animación resueltos: arquetipo (ya blendeado) × multiplicador de specie. No hay
 # sorteo por seed acá — la variación entre personajes viene del arquetipo, del blend de dos
@@ -150,21 +146,6 @@ func _resolve(rng: RandomNumberGenerator) -> void:
 	root_bounciness = arch_final.root_bounciness * spec.root_bounciness_multiplier
 	step_height     = arch_final.step_height     * spec.step_height_multiplier
 	stride          = clampf(arch_final.stride   * spec.stride_multiplier, 0.0, 1.0)
-	skin_color      = _pick(rng, spec.skin_colors,    Color(0.9, 0.7, 0.5))
-	cloth_color     = _pick(rng, spec.cloth_colors,   Color(0.35, 0.35, 0.42))
-	hair_color      = _pick(rng, spec.hair_colors,    Color(0.15, 0.11, 0.09))
-	leather_color   = _pick(rng, spec.leather_colors, Color(0.25, 0.18, 0.14))
-	# Va AL FINAL: el rng ya se consumió, así que sacar el candado devuelve el comportamiento de antes
-	# sin desplazar ninguna otra tirada. Ver AppearancePreset.
-	AppearancePreset.apply(self)
-
-
-## Un color de la paleta, o el fallback si la specie todavía no tiene esa paleta cargada. El fallback
-## existe para que agregar un rol nuevo no rompa las species viejas — se ven grises, no crashean.
-static func _pick(rng: RandomNumberGenerator, palette: Array, fallback: Color) -> Color:
-	if palette == null or palette.is_empty():
-		return fallback
-	return palette[rng.randi() % palette.size()]
 
 
 static func _pick_archetype(rng: RandomNumberGenerator) -> EntityArchetype.Archetype:

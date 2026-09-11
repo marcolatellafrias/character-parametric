@@ -6,6 +6,14 @@ and what it costs. The per-variable Blender recipe lives in
 [character-blender-authoring.md](character-blender-authoring.md). **This page is the map** — which
 mechanism each parameter uses and why, and where the system would explode if built the obvious way.
 
+> **Status 2026-09-10.** The face and the colour layer described here were **removed from the code**: the
+> face feature planes and their Rive art, and the seed colour system (`CharacterAppearance`,
+> `Materials/character.gdshader`, the specie palettes, `AppearancePreset`). Characters now render with
+> their Blender materials, and both the face and the shading are being redefined. The sections that
+> describe them — the face planes in class C, *The face, in detail*, *Plane standards*, phases 0, 2
+> and 5, *Shader notes* — stay as the record of that design, not as the current state. Classes A and B,
+> the per-chain notes and the visual-only bone layer are unaffected.
+
 ---
 
 ## The three mechanisms
@@ -201,6 +209,8 @@ The same answer covers `legs_thickness` × `legs_length` and `belly` × `torso_l
 
 ## The face, in detail
 
+> **Retired 2026-09-10** — see the status note at the top. Kept as the record of that design.
+
 ### Two kinds of thing
 
 **Planes** carry appearance in the texture. Swapping the texture swaps the eyebrow, the wrinkle, the
@@ -323,6 +333,8 @@ Selection (which eyebrow, which beard, which accessory) is a **seed → index** 
 ---
 
 ## Plane standards — settled
+
+> **Retired 2026-09-10** — see the status note at the top. Kept as the record of that design.
 
 Conventions agreed while building the generic character's face. Only the decided ones are here.
 
@@ -490,9 +502,9 @@ Ordered by two rules: **de-risk the style before building plumbing for it**, and
 geometry**, because [topology lock](#where-this-actually-gets-expensive) makes a second pass over the
 same mesh expensive in a way a second pass over code is not.
 
-#### 0 — Shader and seed colour · *Godot only* — **plumbing landed, look deferred**
+#### 0 — Shader and seed colour · *Godot only* — **removed 2026-09-10**
 
-What exists: `Materials/character.gdshader` (banded toon, colour on an `instance uniform`),
+What existed until 2026-09-10: `Materials/character.gdshader` (banded toon, colour on an `instance uniform`),
 `CharacterAppearance` (mesh → role table, four shared materials, applied at the end of
 `initialize_skeleton`), and seed-driven skin / cloth / hair / leather palettes on the human specie.
 
@@ -553,7 +565,7 @@ existing per-side grab state.
 Comes after the layer exists rather than driving its design — the layer's contract is simpler if it is
 not shaped around thirty finger bones on the first attempt.
 
-#### 5 — Rive on eyes and mouth · *Godot*
+#### 5 — Rive on eyes and mouth · *Godot* — **retired 2026-09-10**
 
 Last on purpose. It is the highest-risk integration in the list and the **lowest** signal about
 whether the style works: a face that reads well still reads well; a face that does not is not saved by
@@ -561,6 +573,8 @@ blinking. Doing it last also means the per-character-material question is answer
 material rather than a placeholder.
 
 ### Shader notes
+
+> **Retired 2026-09-10** — see the status note at the top. Kept as the record of that design.
 
 **Colour per character without a material per character.** Godot 4 has `instance_uniform`: a uniform
 whose value lives on the `MeshInstance3D` instead of the material. Skin, suit and hair colour should

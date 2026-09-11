@@ -38,6 +38,19 @@ static var show_wireframe: bool = false
 ## prender el toggle también nace escondido, sin tener que reaplicar nada.
 const WIRE_HIDDEN_GROUPS: Array[String] = ["city_generator", "car_manager", "area_instantiator"]
 
+## LAS LÍNEAS SALEN NEGRAS PORQUE EL COLOR ES EL MATERIAL. El modo de alambre del viewport no tiene
+## color propio: dibuja los mismos materiales en modo línea. Así que "alambre negro" es pisarle el
+## material a cada malla del personaje con uno negro sin sombreado, y apagarlo es sacar ese override:
+## las mallas vuelven al material con el que vinieron del .glb.
+static var _wire_mat: StandardMaterial3D = null
+
+static func _wire_material() -> StandardMaterial3D:
+	if _wire_mat == null:
+		_wire_mat = StandardMaterial3D.new()
+		_wire_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_wire_mat.albedo_color = Color.BLACK
+	return _wire_mat
+
 static func toggle_hide_character(tree: SceneTree) -> void:
 	hide_character = not hide_character
 	apply_all(tree)
@@ -68,17 +81,14 @@ static func toggle_gait_gizmos(tree: SceneTree) -> void:
 
 ## `set_debug_generate_wireframes` va ANTES de pedirle el modo al viewport: sin eso no hay índices de
 ## línea generados y la vista sale igual que siempre, sin error ni aviso.
-##
-## Es el único toggle de acá que NO pasa por `apply_all`: no hay nada que aplicarle a cada personaje.
 static func toggle_wireframe(tree: SceneTree) -> void:
 	show_wireframe = not show_wireframe
 	RenderingServer.set_debug_generate_wireframes(show_wireframe)
 	var vp: Viewport = tree.root
 	if vp != null:
 		vp.debug_draw = Viewport.DEBUG_DRAW_WIREFRAME if show_wireframe else Viewport.DEBUG_DRAW_DISABLED
-	# El negro sale del material, no del modo de alambre: ver CharacterAppearance.WIREFRAME_BLACK.
-	CharacterAppearance.WIREFRAME_BLACK = show_wireframe
-	CharacterAppearance.reapply_all(tree)
+	# El negro sale del material, no del modo de alambre: ver `_wire_material`.
+	apply_all(tree)
 	for g in WIRE_HIDDEN_GROUPS:
 		for n in tree.get_nodes_in_group(g):
 			var n3: Node3D = n as Node3D
@@ -100,6 +110,17 @@ static func apply_to(bi: BoneInstantiator) -> void:
 
 	bi.set_character_visible(not hide_character)
 	bi.show_grab_cone = show_grab_cone
+
+	# Se aplica acá y no solo en el toggle, así un personaje que spawnea con el alambre prendido nace
+	# negro. Al apagar se saca SOLO el override propio: si la malla tiene otro, no es de este archivo.
+	if is_instance_valid(bi.skinned_body):
+		for m in bi.skinned_body.meshes:
+			if not is_instance_valid(m):
+				continue
+			if show_wireframe:
+				m.material_override = _wire_material()
+			elif m.material_override == _wire_mat:
+				m.material_override = null
 
 	if is_instance_valid(bi.char_rigidbody) and is_instance_valid(bi.char_rigidbody.mesh_instance):
 		bi.char_rigidbody.mesh_instance.visible = show_capsule

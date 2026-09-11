@@ -263,7 +263,7 @@ What Godot owes this phase:
 
    **No `deltoid` bone.** An earlier version added one per side to keep the shoulder socket from stretching. Authoring the arm extremes removes the need: the socket stretching at `arms_length = 1.0` is a shape you modelled, not a defect to prevent, so the socket hangs off `upper.arm` directly and swings with it. See [why there is no deltoid bone](character-blender-authoring.md#why-there-is-no-deltoid-bone).
 4. **Twist / hand orientation.** The open problem from [twist](#twist-was-never-meaningful-in-the-capsule-rig--and-the-skinned-mesh-exposes-it): the forearm takes its twist from the elbow pole, so the palm rotates with the elbow. A sculpted hand makes that unmissable. Needs a real twist input rather than a by-product of the pole.
-5. **Attachments — a third category.** The eight Rive planes plus hair, hats and the cigarette are neither bones nor shape keys: they don't deform, they're *placed*, and their placement follows the parameters. They need anchor points the parametric system moves, and `Inherit Scale = None` so a future `head_length` never stretches a mouth.
+5. **Attachments — a third category.** Hair, hats and the cigarette are neither bones nor shape keys: they don't deform, they're *placed*, and their placement follows the parameters. They need anchor points the parametric system moves, and `Inherit Scale = None` so a future `head_length` never stretches a mouth.
 6. **Re-measure after the 1.7 m rescale** — every `REF_*` / `MIN_*` / `MAX_*` constant is in metres and all of them shift.
 
 **Exit:** the generic character walks, runs, grabs, ragdolls, sits and reads as finished art. Arms stretch cleanly when reaching — socket holds, hands keep their size, palms face the right way.
@@ -589,5 +589,5 @@ Pre-existing misspellings worth fixing while names are being touched — but as 
 | # | Decision | Blocks |
 |---|---|---|
 | 1 | How twist / hand orientation gets a real input instead of falling out of the elbow pole | Phase 3 |
-| 2 | How attachments (Rive planes, hair, hats, cigarette) anchor and follow the parameters | Phase 3 |
+| 2 | How attachments (hair, hats, cigarette) anchor and follow the parameters | Phase 3 |
 | 3 | The measured `MIN`/`MID`/`MAX` per bone-driven variable — the Blender deliverable | Phase 4a |

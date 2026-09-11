@@ -187,7 +187,6 @@ func initialize_skeleton() -> void:
 
 	# Los visualizadores de debug son estado GLOBAL: un personaje que spawnea o respawnea nace con lo
 	# que esté prendido, sin que nadie tenga que volver a tocar el panel.
-	CharacterAppearance.apply_to(self)
 	CharacterDebugView.apply_to(self)
 
 	# Primera persona: se aplica ACÁ, al final. PlayerController.rebind (que corre en
