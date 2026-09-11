@@ -13,6 +13,7 @@ func get_prompt() -> String:
 
 func start_control() -> void:
 	super()
+	TestSounds.click(self)
 	if is_toggle:
 		is_pressed = !is_pressed
 		_emit_if_changed(1.0 if is_pressed else 0.0)

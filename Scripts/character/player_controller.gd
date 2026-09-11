@@ -35,17 +35,10 @@ var _is_crouched: bool = false
 
 var _was_ragdoll_active: bool = false
 
-var _debug_cam_mode: int = 0
-var _debug_camera: Camera3D = null
-## Zoom de la cámara de debug, ADIMENSIONAL: multiplica la distancia a la que el personaje entra justo
-## en cuadro. 1.0 = encuadrado exacto, y no se puede acercar más que eso. Al ser un múltiplo y no una
-## medida en metros, se ajusta solo a cualquier altura de personaje. Numpad +/- mientras se mantienen
-## apretados; no se resetea al volver a primera persona.
-var _debug_cam_zoom: float = 2.5
-const DEBUG_CAM_ZOOM_SPEED: float = 2.0
-const DEBUG_CAM_ZOOM_MAX:   float = 8.0
-## Aire alrededor del personaje con el zoom al mínimo, para que no quede pegado a los bordes.
-const DEBUG_CAM_FRAME_MARGIN: float = 1.15
+## Tercera persona de debug, con el numpad: ver DebugOrbitCamera. Solo visual — el rayo de interacción
+## sale siempre de `player_camera`.
+var _third_person: bool = false
+var _debug_camera: DebugOrbitCamera = null
 
 var _hud: PlayerHUD = null
 var _impact_debug_hud: ImpactDebugHUD = null
@@ -67,7 +60,7 @@ func on_skeleton_built(target: BoneInstantiator, cam: Camera3D) -> void:
 		_construct_persistent(target, cam)
 		is_ready = true
 	rebind(target)
-	_set_debug_cam(_debug_cam_mode)
+	_set_third_person(_third_person)
 	if target.debug_enabled:
 		_setup_debug_panel()  # refleja el personaje nuevo (se recrea adentro)
 	# El mouse_mode lo maneja UIState (technical/ui.md); acá no lo tocamos.
@@ -81,7 +74,7 @@ func _construct_persistent(target: BoneInstantiator, cam: Camera3D) -> void:
 
 	_impact_debug_hud = ImpactDebugHUD.create()
 
-	_debug_camera = Camera3D.new()
+	_debug_camera = DebugOrbitCamera.new()
 	_debug_camera.current = false
 	add_child(_debug_camera)
 
@@ -105,7 +98,7 @@ func rebind(target: BoneInstantiator) -> void:
 		target.player_camera   = player_camera
 		player_camera.position = Vector3.ZERO
 		player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
-		player_camera.current  = _debug_cam_mode == 0
+		player_camera.current  = not _third_person
 
 	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 
@@ -225,16 +218,11 @@ func _input(event: InputEvent) -> void:
 				KEY_G: _toggle_ragdoll()
 				KEY_P: _respawn()
 
-				# Cámaras de debug
-				KEY_KP_5: _set_debug_cam(0)
-				KEY_KP_1: _set_debug_cam(1)
-				KEY_KP_2: _set_debug_cam(2)
-				KEY_KP_3: _set_debug_cam(3)
-				KEY_KP_4: _set_debug_cam(4)
-				KEY_KP_6: _set_debug_cam(6)
-				KEY_KP_7: _set_debug_cam(7)
-				KEY_KP_8: _set_debug_cam(8)
-				KEY_KP_9: _set_debug_cam(9)
+				# Cámara de debug (numpad): ver DebugOrbitCamera
+				KEY_KP_5: _set_third_person(not _third_person)
+				_:
+					if is_instance_valid(_debug_camera) and _debug_camera.handle_key(event.keycode, camera_yaw):
+						_set_third_person(true)
 
 		else: # released
 			match event.keycode:
@@ -269,11 +257,12 @@ func _physics_process(delta: float) -> void:
 
 	char_rigidbody.rotation.y = camera_yaw
 
-	if _debug_cam_mode == 0:
-		var target_y := head_bone.global_position.y + head_size.y * 0.5
-		camera_y_smooth = lerp(camera_y_smooth, target_y, clamp(delta * CAMERA_Y_SMOOTH, 0.0, 1.0))
-		player_camera.global_position.y = camera_y_smooth
-		apply_camera_pitch(camera_pitch)
+	# La cámara del jugador se mueve también en tercera persona, aunque no esté en pantalla: de ella sale
+	# el rayo de interacción, que tiene que ser el mismo en las dos vistas.
+	var target_y := head_bone.global_position.y + head_size.y * 0.5
+	camera_y_smooth = lerp(camera_y_smooth, target_y, clamp(delta * CAMERA_Y_SMOOTH, 0.0, 1.0))
+	player_camera.global_position.y = camera_y_smooth
+	apply_camera_pitch(camera_pitch)
 
 	_process_stamina(delta)
 
@@ -332,10 +321,9 @@ func _update_hud_throw_jump() -> void:
 
 func _update_ragdoll_camera(_delta: float) -> void:
 	var rd := _get_ragdoll()
-	if _debug_cam_mode == 0:
-		if rd != null and is_instance_valid(rd.head_body):
-			player_camera.global_position = rd.head_body.global_position
-		player_camera.global_rotation = Vector3(camera_pitch, camera_yaw, 0.0)
+	if rd != null and is_instance_valid(rd.head_body):
+		player_camera.global_position = rd.head_body.global_position
+	player_camera.global_rotation = Vector3(camera_pitch, camera_yaw, 0.0)
 	if rd != null and rd.is_recovering:
 		char_rigidbody.rotation.y = camera_yaw
 
@@ -344,61 +332,30 @@ func _update_ragdoll_camera(_delta: float) -> void:
 ## la cabeza y el torso. Lo lee BoneInstantiator al final de initialize_skeleton para aplicar el
 ## estado correcto en el build/respawn, no solo cuando cambiás de cámara.
 func is_first_person_view() -> bool:
-	return _debug_cam_mode == 0
+	return not _third_person
 
-func _set_debug_cam(mode: int) -> void:
-	_debug_cam_mode = mode
-	var bi := _get_bi()
-	if mode == 0:
-		player_camera.current = true
-		_debug_camera.current = false
-		if is_instance_valid(bi):
-			bi.set_first_person_visibility(true)
-	else:
-		_debug_camera.current = true
+func _set_third_person(on: bool) -> void:
+	_third_person = on
+	if on:
+		_debug_camera.ensure_view(camera_yaw)
+		_debug_camera.set_active(true)
 		player_camera.current = false
-		if is_instance_valid(bi):
-			bi.set_first_person_visibility(false)
+	else:
+		player_camera.current = true
+		_debug_camera.set_active(false)
+	var bi := _get_bi()
+	if is_instance_valid(bi):
+		bi.set_first_person_visibility(not on)
 
 
 func _update_debug_camera(delta: float) -> void:
-	if _debug_cam_mode == 0 or not is_instance_valid(_debug_camera):
+	if not _third_person or not is_instance_valid(_debug_camera):
 		return
-
-	# Zoom con numpad +/-. Se lee el estado de la tecla en vez de escuchar eventos porque es una acción
-	# SOSTENIDA: con eventos habría que manejar press/release/echo para lo mismo.
-	var zoom := 0.0
-	if Input.is_key_pressed(KEY_KP_ADD):
-		zoom -= 1.0
-	if Input.is_key_pressed(KEY_KP_SUBTRACT):
-		zoom += 1.0
-	if not is_zero_approx(zoom):
-		_debug_cam_zoom = clampf(_debug_cam_zoom + zoom * DEBUG_CAM_ZOOM_SPEED * delta, 1.0, DEBUG_CAM_ZOOM_MAX)
-
-	# Encuadre derivado del personaje, no de constantes en metros: mira a su CENTRO, y la distancia
-	# mínima es la que lo hace entrar justo en cuadro — trigonometría del FOV. Así funciona igual con un
-	# personaje de 1.38 m que con uno de 1.9 m, sin tocar un número.
+	# Encuadre derivado del personaje, no de constantes en metros: la cámara mira a su CENTRO.
 	var sizes  := _get_bi().skel_sizes_util
 	var ground := char_rigidbody.global_position.y - sizes.standing_pelvis_height
-	var fit    : float = (sizes.total_height * 0.5 * DEBUG_CAM_FRAME_MARGIN) / tan(deg_to_rad(_debug_camera.fov) * 0.5)
-	var _debug_cam_distance := fit * _debug_cam_zoom
-
-	var yaw_basis := Basis(Vector3.UP, camera_yaw)
-	var forward   := -yaw_basis.z
-	var right     := yaw_basis.x
-	var look_target := Vector3(char_rigidbody.global_position.x, ground + sizes.total_height * 0.5, char_rigidbody.global_position.z)
-	var flat_offset := Vector3.ZERO
-	match _debug_cam_mode:
-		1: flat_offset = (-forward - right).normalized() * _debug_cam_distance
-		2: flat_offset = -forward * _debug_cam_distance
-		3: flat_offset = (-forward + right).normalized() * _debug_cam_distance
-		4: flat_offset = -right * _debug_cam_distance
-		6: flat_offset = right * _debug_cam_distance
-		7: flat_offset = (forward - right).normalized() * _debug_cam_distance
-		8: flat_offset = forward * _debug_cam_distance
-		9: flat_offset = (forward + right).normalized() * _debug_cam_distance
-	_debug_camera.global_position = look_target + Vector3(flat_offset.x, 0.0, flat_offset.z)
-	_debug_camera.look_at(look_target, Vector3.UP)
+	var center := Vector3(char_rigidbody.global_position.x, ground + sizes.total_height * 0.5, char_rigidbody.global_position.z)
+	_debug_camera.follow(delta, center, sizes.total_height, interaction_controller.detector.get_aim_point())
 
 
 func _release_jump() -> void:
@@ -514,7 +471,7 @@ func _switch_to(target: BoneInstantiator) -> void:
 	_jump_charge      = 0.0
 	char_rigidbody.crouch_speed_factor = 1.0
 
-	_set_debug_cam(_debug_cam_mode)
+	_set_third_person(_third_person)
 	if is_instance_valid(interaction_controller):
 		interaction_controller.stop_all()
 
@@ -640,6 +597,7 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Ver gizmos de marcha",      func(): CharacterDebugView.toggle_gait_gizmos(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver wireframe",             func(): CharacterDebugView.toggle_wireframe(get_tree()))
 	_debug_panel.add_action("Acciones", "Indicadores de tráfico",    func(): TrafficDebugDrawer.ENABLED = not TrafficDebugDrawer.ENABLED)
+	_debug_panel.add_action("Acciones", "Nave: paredes traslúcidas", func(): Ship.toggle_translucent_walls(get_tree()))
 
 	# ── Arquetipos ──
 	# Dos acciones por arquetipo, y son distintas: "Ser" cambia TU personaje y además deja la P pegada
@@ -668,6 +626,7 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Spawn", "Caja pesada ▭",      func(): _debug_spawn("box_heavy_xlong"))
 	_debug_panel.add_action("Spawn", "Dashboard",          func(): _debug_spawn("dashboard"))
 	_debug_panel.add_action("Spawn", "Seat",               func(): _debug_spawn("seat"))
+	_debug_panel.add_action("Spawn", "Nave (1 jugador)",   _debug_spawn_ship)
 	_debug_panel.add_action("Spawn", "Limpiar spawns",     func(): NetSpawner.request_clear_all())
 
 
@@ -755,6 +714,34 @@ func _debug_spawn(type_name: String) -> void:
 	elif type_name == "dashboard":
 		pos = _snap_to_ground(pos) + Vector3.UP * 1.5
 	NetSpawner.request_spawn(type_name, Transform3D(Basis(), pos))
+
+## Cuánto adelante del jugador aparece la nave. Mide ~5.5 m de largo: a esta distancia la compuerta
+## queda a un par de metros, sin que el casco nazca encima de nadie.
+const SHIP_SPAWN_DISTANCE := 5.5
+
+## Deja la nave prototipo adelante del jugador, apoyada en el piso, con la compuerta mirándolo.
+##
+## Como el NPC de `_debug_spawn_character`, NO pasa por NetSpawner: NetSpawner le cuelga sync de red
+## y un Grabbable a todo RigidBody3D que spawnea, y la nave terminaría siendo algo que se puede agarrar.
+## Hay una sola: spawnear otra reemplaza la anterior.
+func _debug_spawn_ship() -> void:
+	var scene_root := get_tree().current_scene
+	var old := scene_root.get_node_or_null(^"ship_debug")
+	if is_instance_valid(old):
+		# `free` y no `queue_free`: el rayo que busca el piso para la nueva le pegaría al techo de la vieja.
+		old.free()
+	var fwd := -player_camera.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length_squared() < 0.0001:
+		fwd = Vector3.FORWARD
+	fwd = fwd.normalized()
+	var ground := _snap_to_ground(char_rigidbody.global_position + fwd * SHIP_SPAWN_DISTANCE)
+	var ship := Ship.new()
+	ship.name = "ship_debug"
+	# El frente de la nave (−Z) apunta para donde mira el jugador: la compuerta queda de su lado. El
+	# transform va ANTES de entrar al árbol, así la nave arranca con su altura real.
+	ship.transform = Transform3D(Basis(Vector3.UP, atan2(-fwd.x, -fwd.z)), ground)
+	scene_root.add_child(ship)
 
 ## Baja un punto hasta el piso con un raycast (para spawnear objetos estáticos apoyados).
 func _snap_to_ground(from: Vector3) -> Vector3:

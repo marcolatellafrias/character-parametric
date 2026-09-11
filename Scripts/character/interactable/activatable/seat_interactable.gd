@@ -20,6 +20,22 @@ var _visual_occupant: Node = null
 ## Ocupación exclusiva (un solo jugador por asiento), arbitrada por el host. Ver ExclusiveClaim.
 var _claim:         ExclusiveClaim = null
 
+## ── ASIENTO SOBRE ALGO QUE SE MUEVE ─────────────────────────────────────────────────────────────
+## Sentarse es una FOTO: `_sit` pone la cápsula en el asiento una vez y la deja inerte (collider
+## apagado, Y bloqueada). La pose del esqueleto sí sigue al asiento cada frame, y
+## `BoneInstantiator._pose_root` además fija la cápsula en X y Z — pero nada movía su ALTURA ni su
+## rumbo. En un asiento fijo da igual; en la nave, al despegar el piloto quedaba colgando donde se
+## sentó —y la cámara, que es hija de la cápsula, con él—, y al girar la nave seguía mirando al mismo
+## punto del mundo mientras la cabina rotaba alrededor.
+##
+## Mover la cápsula acá es seguro justamente porque está inerte: con el collider apagado no tiene
+## contactos, así que escribirle la posición no pelea con el motor de física.
+##
+## Solo corre en la máquina del ocupante (`_seated_bi` lo setea `_sit`). En las demás la cápsula
+## llega por red, ya movida.
+var _occupant_y_offset := 0.0
+var _last_yaw          := 0.0
+
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		_build_visual()
@@ -143,9 +159,29 @@ func release_occupant_in_place() -> void:
 func _physics_process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	_carry_occupant()
 	if not _is_occupied_by(_visual_occupant):
 		_visual_occupant = null
 		_restore_rest_visual()
+
+## Lleva al ocupante con el asiento: altura y rumbo. Ver ASIENTO SOBRE ALGO QUE SE MUEVE.
+func _carry_occupant() -> void:
+	if not is_instance_valid(_seated_bi):
+		return
+	var char_rb := _seated_bi.get("char_rigidbody") as CharacterRigidBody3D
+	if not is_instance_valid(char_rb):
+		return
+	char_rb.global_position.y = global_position.y + _occupant_y_offset
+	var yaw := global_rotation.y
+	var turned := wrapf(yaw - _last_yaw, -PI, PI)
+	_last_yaw = yaw
+	if absf(turned) < 0.000001:
+		return
+	# El rumbo de la cápsula lo escribe PlayerController desde `camera_yaw` en cada frame, así que es eso
+	# lo que hay que girar: tocar la cápsula directo se pisaría en el frame siguiente.
+	var pc: PlayerController = _seated_bi.get("player_controller")
+	if is_instance_valid(pc):
+		pc.camera_yaw += turned
 
 ## ¿Este personaje sigue realmente sentado acá? Es la MISMA condición que el gate del solve de pose
 ## (BoneInstantiator._solve_frame), así que el visual y el pose no pueden discrepar. Ragdollear cuenta
@@ -193,6 +229,9 @@ func _sit(bi: Node) -> void:
 	char_rb.collider.disabled  = true
 	char_rb.axis_lock_linear_y = true
 	char_rb.is_active          = false
+	# Para `_carry_occupant`: a qué altura quedó la cápsula respecto del asiento, y hacia dónde mira.
+	_occupant_y_offset = char_rb.global_position.y - global_position.y
+	_last_yaw          = global_rotation.y
 
 	char_rb.global_position.x = global_position.x
 	char_rb.global_position.z = global_position.z

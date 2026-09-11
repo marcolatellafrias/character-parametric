@@ -46,7 +46,7 @@ func build_debug_visuals(control_size: Vector3) -> void:
 		_apply_custom_mesh()
 	else:
 		_create_debug_meshes(control_size)
-	_visualize_handle_points()
+	_visualize_handle_points(control_size)
 
 # ── Physics ───────────────────────────────────────────────────────────────────
 
@@ -73,6 +73,12 @@ func _physics_process(delta: float) -> void:
 # (Falta: el estado en reposo no viaja en el snapshot de join — lo trae _request_control_states.)
 
 func _ready() -> void:
+	# EL CONTROL NACE EN SU VALOR DE REPOSO. `default_value` era solo el destino del auto-retorno, así
+	# que una palanca con reposo en el medio nacía en 0 y "volvía" al centro emitiendo todo el recorrido:
+	# la palanca de altura de la nave la hacía bajar sola al aparecer. Quien lo arma (ProceduralDashboard)
+	# setea `default_value` antes de meterlo al árbol, así que acá ya tiene el valor bueno.
+	visual_value   = default_value
+	_network_state = default_value
 	_claim = ExclusiveClaim.new()
 	_claim.name = "Claim"  # nombre estable → mismo path en todas las máquinas
 	add_child(_claim)
@@ -249,8 +255,10 @@ func _clear_debug_meshes() -> void:
 func _setup_handle_points(_control_size: Vector3) -> void:
 	pass
 
-func _visualize_handle_points() -> void:
+## El punto sigue el tamaño del control: con uno fijo, a un botón de 4 cm lo tapaba entero.
+func _visualize_handle_points(control_size: Vector3) -> void:
+	var dot := minf(0.035, minf(control_size.x, control_size.y) * 0.15)
 	for pt in handle_points:
 		if not is_instance_valid(pt):
 			continue
-		pt.add_child(DebugUtil.create_debug_sphere(Color(1.0, 0.75, 0.0), 0.035, true))
+		pt.add_child(DebugUtil.create_debug_sphere(Color(1.0, 0.75, 0.0), dot, true))

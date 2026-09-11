@@ -45,13 +45,10 @@ func get_hovered() -> Interactable:
 func force_clear() -> void:
 	_set_hovered(null)
 
-func _process_hover() -> void:
-	if not is_instance_valid(player_camera):
-		return
-	var vp_size := player_camera.get_viewport().get_visible_rect().size
-	var from    := player_camera.global_position
-	var dir     := player_camera.project_ray_normal(vp_size * 0.5)
-	var query   := PhysicsRayQueryParameters3D.create(from, from + dir * ray_length)
+## Lo que el jugador tiene en la mira: el rayo sale del centro de la cámara de primera persona, esté o
+## no en pantalla. Vacío si no pega en nada dentro de `ray_length`.
+func cast_aim_ray() -> Dictionary:
+	var query := PhysicsRayQueryParameters3D.create(player_camera.global_position, _ray_end())
 	query.collision_mask = 1 | 2
 
 	var excludes: Array[RID] = [char_rigidbody.get_rid()]
@@ -59,8 +56,21 @@ func _process_hover() -> void:
 		for rid in _own_bi.ragdoll_util._ragdoll_rids:
 			excludes.append(rid)
 	query.exclude = excludes
+	return player_camera.get_world_3d().direct_space_state.intersect_ray(query)
 
-	var hit := player_camera.get_world_3d().direct_space_state.intersect_ray(query)
+## Dónde pega la mira, o la punta del rayo si no pega en nada. Lo dibuja la cámara de debug.
+func get_aim_point() -> Vector3:
+	var hit := cast_aim_ray()
+	return hit.position if hit else _ray_end()
+
+func _ray_end() -> Vector3:
+	var vp_size := player_camera.get_viewport().get_visible_rect().size
+	return player_camera.global_position + player_camera.project_ray_normal(vp_size * 0.5) * ray_length
+
+func _process_hover() -> void:
+	if not is_instance_valid(player_camera):
+		return
+	var hit := cast_aim_ray()
 	if hit.is_empty():
 		_set_hovered(null)
 		return

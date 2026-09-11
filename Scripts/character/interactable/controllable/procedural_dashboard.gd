@@ -4,24 +4,46 @@ extends Node3D
 
 enum PresetType { NONE, STEERING_WHEEL }
 
-@export var grid_columns: int        = 4
-@export var grid_rows:    int        = 3
-@export var cell_size:    Vector3    = Vector3(0.3, 0.3, 0.06)
-@export var cell_gap:     float      = 0.02
+## ── LA CELDA ────────────────────────────────────────────────────────────────────────────────────
+## Unidad mínima de ubicación: 4 cm, sin separación entre celdas. Es chica A PROPÓSITO: un control
+## ocupa muchas (un botón 2 × 2, una palanca 6 × 12), y a cambio los controles pueden ser tan chicos
+## como uno real y ubicarse con precisión. Más fina no sirve: 4 cm es lo más chico que se apunta bien
+## con la mira a un brazo de distancia.
+##
+## La nave se mide en esta misma celda (ver ShipHull). Cambiarla cambia el tamaño de todo lo que está
+## contado en celdas —dashboards, controles y casco—: es una decisión de diseño, no una perilla.
+const CELL := 0.04
+## Profundidad de la caja de cada control.
+const CONTROL_DEPTH := 0.06
+## Aire que deja cada control de su lado, dentro de su área, para que dos vecinos no se toquen.
+const CONTROL_MARGIN := 0.01
+
+## Tamaños estándar de control, en celdas.
+const BUTTON := Vector2i(2, 2)
+const LEVER  := Vector2i(6, 12)
+const WHEEL  := Vector2i(12, 12)
+
+## Por defecto, 1.28 × 0.96 m.
+@export var grid_columns: int        = 32
+@export var grid_rows:    int        = 24
 @export var seed_value:   int        = 0
 @export var show_debug:   bool       = true
 @export var preset_type:  PresetType = PresetType.NONE
+## Preset armado desde código. Si está, manda sobre `preset_type`. Existe para quien construye
+## dashboards en tiempo de ejecución —la nave arma los suyos según su layout— sin tener que agregar
+## cada disposición como un caso nuevo del enum.
+@export var custom_preset: DashboardPreset = null
 
-# [type_id, Vector2i size, weight]
+# [type_id, tamaño en celdas, peso]
 const _DEFS: Array = [
-	[0, Vector2i(1, 1), 3.0],
-	[1, Vector2i(1, 1), 2.0],
-	[1, Vector2i(2, 1), 1.5],
-	[1, Vector2i(1, 2), 1.5],
-	[2, Vector2i(1, 1), 2.0],
-	[2, Vector2i(2, 2), 1.0],
-	[3, Vector2i(1, 1), 2.0],
-	[3, Vector2i(2, 2), 1.2],
+	[0, BUTTON, 3.0],
+	[1, Vector2i(6, 6), 2.0],
+	[1, Vector2i(12, 6), 1.5],
+	[1, LEVER, 1.5],
+	[2, Vector2i(6, 6), 2.0],
+	[2, Vector2i(12, 12), 1.0],
+	[3, Vector2i(6, 6), 2.0],
+	[3, WHEEL, 1.2],
 ]
 
 var _grid: Array                 = []
@@ -106,58 +128,58 @@ func generate() -> void:
 # ── Preset builder ────────────────────────────────────────────────────────────
 
 func _build_preset() -> DashboardPreset:
+	if is_instance_valid(custom_preset):
+		return custom_preset
 	match preset_type:
 		PresetType.STEERING_WHEEL:
 			return _preset_steering_wheel()
 	return null
 
-# 4×3 grid layout:
-#   row 0: [btn][btn][btn][btn]
-#   row 1: [btn][wheel  ][lever]
-#   row 2:      [wheel  ][lever]
+# Layout en áreas de 8 × 8 celdas, cada control centrado en la suya:
+#   fila 0: [btn][btn][btn][btn]
+#   fila 1: [btn][volante  ][palanca]
+#   fila 2: [btn][volante  ][palanca]
 func _preset_steering_wheel() -> DashboardPreset:
 	var p                  := DashboardPreset.new()
 	p.fill_remaining_random = false
 
-	# ── Steering wheel — 2×2 RotatingComponent at (1,1) ──────────────────────
+	# ── Volante, en las áreas (1..2, 1..2) ─────────────────────────────────────
 	var wheel_def                := ControlDefinition.new()
 	wheel_def.type                = ControlDefinition.ControlType.ROTATING
-	wheel_def.grid_size           = Vector2i(2, 2)
+	wheel_def.grid_size           = WHEEL
 	wheel_def.rotation_axis_local = Vector3.BACK
 	wheel_def.rotate_sensitivity  = 0.2
 	wheel_def.height_offset       = 0.16
 	wheel_def.auto_return         = true
 
 	var wheel_slot      := DashboardSlot.new()
-	wheel_slot.cell      = Vector2i(1, 1)
+	wheel_slot.cell      = Vector2i(10, 10)
 	wheel_slot.definition = wheel_def
 
-	# ── Lever — 1×2 OneAxisComponent at (3,1) ────────────────────────────────
+	# ── Palanca, en las áreas (3, 1..2) ────────────────────────────────────────
 	var lever_def                := ControlDefinition.new()
 	lever_def.type                = ControlDefinition.ControlType.ONE_AXIS
-	lever_def.grid_size           = Vector2i(1, 2)
+	lever_def.grid_size           = LEVER
 	lever_def.rotation_axis_local = Vector3.RIGHT
 	lever_def.sensitivity         = 0.005
 	lever_def.max_angle_degrees   = 180.0
 	lever_def.auto_return         = false
 
 	var lever_slot      := DashboardSlot.new()
-	lever_slot.cell      = Vector2i(3, 1)
+	lever_slot.cell      = Vector2i(25, 10)
 	lever_slot.definition = lever_def
 
-	# ── Buttons — 1×1 TouchComponent for all remaining cells ─────────────────
-	# Occupied after wheel+lever: (1,1),(2,1),(1,2),(2,2),(3,1),(3,2)
-	# Free: (0,0),(1,0),(2,0),(3,0),(0,1),(0,2)
-	var free_cells: Array[Vector2i] = [
-		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
-		Vector2i(0, 1), Vector2i(0, 2),
+	# ── Un botón en cada área libre ───────────────────────────────────────────
+	var button_cells: Array[Vector2i] = [
+		Vector2i(3, 3), Vector2i(11, 3), Vector2i(19, 3), Vector2i(27, 3),
+		Vector2i(3, 11), Vector2i(3, 19),
 	]
 
 	var slots: Array[DashboardSlot] = [wheel_slot, lever_slot]
-	for cell in free_cells:
+	for cell in button_cells:
 		var btn_def      := ControlDefinition.new()
 		btn_def.type      = ControlDefinition.ControlType.TOUCH
-		btn_def.grid_size = Vector2i(1, 1)
+		btn_def.grid_size = BUTTON
 		btn_def.is_toggle = false
 
 		var btn_slot      := DashboardSlot.new()
@@ -201,34 +223,7 @@ func _occupy(cell: Vector2i, size: Vector2i) -> void:
 # ── Placement ─────────────────────────────────────────────────────────────────
 
 func _place_definition(cell: Vector2i, def: ControlDefinition) -> void:
-	var step_x  := cell_size.x + cell_gap
-	var step_y  := cell_size.y + cell_gap
-	var gs      := def.grid_size
-	var cx      := cell.x * step_x + (gs.x * step_x - cell_gap) * 0.5
-	var cy      := -(cell.y * step_y + (gs.y * step_y - cell_gap) * 0.5)
-	var ctrl_sz := Vector3(gs.x * step_x - cell_gap, gs.y * step_y - cell_gap, cell_size.z)
-
-	var interactable       := _make_control_from_def(def)
-	interactable.grid_size  = gs
-	interactable.name       = "Control"
-
-	var body   := StaticBody3D.new()
-	body.name   = "ctrl_%d" % _ctrl_index  # path estable en todas las máquinas (sync de controllables)
-	_ctrl_index += 1
-	var shape  := CollisionShape3D.new()
-	var bshape := BoxShape3D.new()
-	bshape.size = ctrl_sz
-	shape.shape  = bshape
-	body.add_child(shape)
-	body.add_child(interactable)
-	add_child(body)
-	body.position = Vector3(cx, cy, 0.0)
-
-	if show_debug:
-		_add_area_mesh(body, ctrl_sz)
-		interactable.build_debug_visuals(ctrl_sz)
-	else:
-		interactable.build(ctrl_sz)
+	_spawn(cell, def.grid_size, _make_control_from_def(def))
 
 func _place_at(cell: Vector2i) -> void:
 	var valid: Array = []
@@ -253,34 +248,33 @@ func _place_at(cell: Vector2i) -> void:
 	var type_id: int      = chosen[0]
 	var gs:      Vector2i = chosen[1]
 	_occupy(cell, gs)
+	_spawn(cell, gs, _make_control(type_id))
 
-	var step_x    := cell_size.x + cell_gap
-	var step_y    := cell_size.y + cell_gap
-	var cx        := cell.x * step_x + (gs.x * step_x - cell_gap) * 0.5
-	var cy        := -(cell.y * step_y + (gs.y * step_y - cell_gap) * 0.5)
-	var ctrl_size := Vector3(gs.x * step_x - cell_gap, gs.y * step_y - cell_gap, cell_size.z)
+## Coloca un control que ocupa `size` celdas desde `cell`, su esquina superior izquierda. La grilla
+## crece hacia +X y −Y, con la cara hacia +Z.
+func _spawn(cell: Vector2i, size: Vector2i, interactable: ControllableInteractable) -> void:
+	var area    := Vector2(size) * CELL
+	var ctrl_sz := Vector3(area.x - 2.0 * CONTROL_MARGIN, area.y - 2.0 * CONTROL_MARGIN, CONTROL_DEPTH)
+	interactable.grid_size = size
+	interactable.name      = "Control"
 
-	var interactable            := _make_control(type_id)
-	interactable.grid_size       = gs
-	interactable.name            = "Control"
-
-	var body   := StaticBody3D.new()
-	body.name   = "ctrl_%d" % _ctrl_index  # path estable en todas las máquinas (sync de controllables)
+	var body := StaticBody3D.new()
+	body.name = "ctrl_%d" % _ctrl_index  # path estable en todas las máquinas (sync de controllables)
 	_ctrl_index += 1
 	var shape  := CollisionShape3D.new()
 	var bshape := BoxShape3D.new()
-	bshape.size  = ctrl_size
-	shape.shape  = bshape
+	bshape.size = ctrl_sz
+	shape.shape = bshape
 	body.add_child(shape)
 	body.add_child(interactable)
 	add_child(body)
-	body.position = Vector3(cx, cy, 0.0)
+	body.position = Vector3(cell.x * CELL + area.x * 0.5, -(cell.y * CELL + area.y * 0.5), 0.0)
 
 	if show_debug:
-		_add_area_mesh(body, ctrl_size)
-		interactable.build_debug_visuals(ctrl_size)
+		_add_area_mesh(body, ctrl_sz)
+		interactable.build_debug_visuals(ctrl_sz)
 	else:
-		interactable.build(ctrl_size)
+		interactable.build(ctrl_sz)
 
 # ── Factory ───────────────────────────────────────────────────────────────────
 

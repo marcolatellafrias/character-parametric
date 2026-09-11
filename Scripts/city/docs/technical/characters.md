@@ -69,7 +69,7 @@ Drives the shared interactable model ([interactables.md](../conceptual/interacta
 
 ## Debug affordances (already in code)
 
-`PlayerController` already carries test tools: **G** toggles ragdoll, **P** respawns (regenerating the character from a new seed), numpad keys orbit **debug cameras**, `show_mesh` reveals the physics capsule, and `set_first_person_visibility` hides the aesthetic. These are the seeds of the planned **creative/debug mode** (own doc, TBD).
+`PlayerController` already carries test tools: **G** toggles ragdoll, **P** respawns (regenerating the character from a new seed), the numpad drives a third-person **debug camera** (`DebugOrbitCamera`: orbit, zoom, fixed views, a dot where the character aims; the mouse stays with the character), `show_mesh` reveals the physics capsule, and `set_first_person_visibility` hides the aesthetic. These are the seeds of the planned **creative/debug mode** (own doc, TBD).
 
 ---
 

@@ -53,14 +53,14 @@ A **collection of components arranged in a grid** of a specific size. For exampl
 
 #### How dashboards are built (`ProceduralDashboard`)
 
-A dashboard is generated procedurally onto a **grid of `grid_columns × grid_rows` cells**. Each cell is a fixed-size `cell_size` box separated by `cell_gap`; a control's world size and centre are computed from the cells it spans, and each control is placed as a `StaticBody3D` + box collider carrying the `ControllableInteractable`.
+A dashboard is generated procedurally onto a **grid of `grid_columns × grid_rows` cells**. A cell is `ProceduralDashboard.CELL` — **4 cm**, no gap — the same unit the ship is measured in. It is small on purpose: a control spans many cells (standard sizes `BUTTON` 2 × 2, `LEVER` 6 × 12, `WHEEL` 12 × 12), so controls can be as small as real ones and be placed precisely. A control's world size and centre come from the cells it spans, less a `CONTROL_MARGIN` on each side so neighbours never touch; each control is placed as a `StaticBody3D` + box collider carrying the `ControllableInteractable`.
 
 Two placement passes run:
 
 1. **Preset (fixed) slots** — an optional `DashboardPreset` lists `DashboardSlot`s, each pinning a `ControlDefinition` to a grid cell. These are placed first; a slot that doesn't fit (out of bounds or overlapping) is skipped and its origin cell just marked occupied. A `null` definition marks a deliberately empty cell.
-2. **Seeded random fill** — if the preset allows it (`fill_remaining_random`), leftover cells are filled from a weighted table of control archetypes (`_DEFS`: 1×1 / 2×1 / 1×2 / 2×2 variants of touch, lever, joystick, wheel) using a `RandomNumberGenerator` seeded with `seed_value`, so the same seed always yields the same dashboard.
+2. **Seeded random fill** — if the preset allows it (`fill_remaining_random`), leftover cells are filled from a weighted table of control archetypes (`_DEFS`: buttons, short and long levers, joysticks, knobs and wheels, sized in cells) using a `RandomNumberGenerator` seeded with `seed_value`, so the same seed always yields the same dashboard.
 
-A `ControlDefinition` chooses the control **type** (touch / one-axis / two-axis / rotating) and its per-type parameters — sensitivity, max angle, rotation axis, auto-return, toggle, custom mesh, etc. The built-in `PresetType.STEERING_WHEEL` layout, for example, places a 2×2 wheel at cell (1,1), a 1×2 lever at (3,1), and fills the rest with 1×1 buttons.
+A `ControlDefinition` chooses the control **type** (touch / one-axis / two-axis / rotating) and its per-type parameters — sensitivity, max angle, rotation axis, auto-return, toggle, custom mesh, etc. The built-in `PresetType.STEERING_WHEEL` layout, for example, lays out a wheel, a lever and six buttons on the default 32 × 24 grid.
 
 When `show_debug` is on, each control renders placeholder geometry (arm, joystick, wheel, or button face) plus its handle points; otherwise `build()` applies the control's `custom_mesh`.
 
@@ -81,7 +81,7 @@ Information interactables are fixed to their spot (e.g. the ship manual's set pl
 
 ## Seats
 
-An interactable a player sits in with **E**. *(Details TBD.)*
+An interactable a player sits in with **E**. A seat mounted on something that moves — the ship's pilot seat — **carries its occupant**: height and heading follow the seat every frame. *(The rest TBD.)*
 
 ---
 

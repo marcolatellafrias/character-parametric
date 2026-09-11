@@ -8,11 +8,36 @@ The in-ship half of the loop: players cooperate at the piloting dashboards to mo
 
 A **cubical flying ship** the players use to move packages quickly across the city. Components:
 
-- **Main door** — an elevating door at the **back** of the ship, opened/closed with a button.
+- **Main door** — an elevating door at the **back** of the ship, opened/closed with a button **inside and one outside**.
 - **Dashboards** — collections of controllables ([interactables.md](interactables.md)) for either moving/controlling the ship or performing actions like repairs. Arranged as a **partial octagon ring** around the interior perimeter. Partial because the main-door side has no dashboards, and there's a gap between the main door and the dashboards.
 - **Cosmetic slots** — empty spaces on the dashboards or floor where players place cosmetic items (bought with money — see [run-setup.md](run-setup.md)).
 - **Cargo zone** — where packages are loaded (below).
 - **Ship manual** — a fixed, **non-movable** interactable at a set spot on the dashboards; players read it to know what to repair (see [Damage & repair](#damage--repair)).
+
+### The four ships
+
+A player's four ships (one per crew size — see [Ownership & persistence](#ownership--persistence)) are the **same size**. Three things differ between them:
+
+- **Seats** — how many, and where.
+- **Dashboards** — how many, and how they are laid out. Every control beyond the ones that fly the ship is a **repair** control.
+- **Window openings** — the front wall (opposite the main door) always has one; whether the two side walls do depends on the crew size. *(For now every ship has only the front window.)*
+
+### Measured in dashboard cells
+
+The ship's unit is the **dashboard cell**, not the metre: a `0.04 m` square, with no gap. It is small on purpose — a control spans many cells (a button 2 × 2, a lever 6 × 12, the wheel 12 × 12), so controls can be as small as real ones and everything can be placed precisely. Finer would add nothing: 4 cm is about the smallest target the centre crosshair hits reliably at arm's length. Measuring the hull in the same unit keeps every side of the console ring holding a whole number of cells.
+
+The dashboards form a **partial octagon ring**, inset from the walls and facing the centre. **Five** of the eight sides carry a console: the front, the two front diagonals and the two sides. The door side is open, and so are the two back diagonals — at this distance from the centre they would cut into the cargo corridor right by the door, which is the gap the ring leaves there. Each console is a grid of **empty slots** that gets filled with controls.
+
+Starting measurements, to be tuned by playing:
+
+| | cells | metres |
+|---|---|---|
+| Interior (W × H × L) | 128 × 88 × 128 | 5.12 × 3.52 × 5.12 |
+| Main door (W × H) | 48 × 56 | 1.92 × 2.24 |
+| Front window (W × H), sill 24 cells up | 80 × 48 | 3.20 × 1.92 |
+| Console panel (columns × rows) | 40 × 16 | 1.60 × 0.64 |
+
+The ring's apothem follows from each side holding exactly forty columns: `a = 40 · 0.04 / (2 · tan 22.5°) ≈ 1.93 m`.
 
 ## Cargo zone
 
@@ -56,7 +81,35 @@ Each ship's **control layout** — which control sits where across the dashboard
 
 **Control scheme (coded today):** a player looks at a dashboard control and holds **LMB** to engage it, releasing to let go. While engaged, **mouse drag** moves one-axis levers (along their axis) and two-axis joysticks; the **scroll wheel** rotates a valve/wheel or, for a free-held object, pushes/pulls it; **RMB** switches a grabbed object into free-rotate mode. Touch buttons fire on press (momentary) or flip on each engage (toggle). Levers and joysticks can auto-return to a rest value or snap to discrete positions, and each control exposes its normalised value through `state_changed` for downstream systems to read.
 
-*(Not yet wired: the binding from those control values to actual ship movement — thrust/steering — and the repair mini-mechanics don't exist in code yet. The dashboards currently drive only their own visuals and emit state.)*
+*(Wired in the [prototype](#prototype-coded-today): altitude, yaw and acceleration drive the ship. Pitch and the repair mini-mechanics don't exist in code yet.)*
+
+### Flight model
+
+The ship is a physics body that keeps itself level:
+
+- **Altitude by target, not by force.** The altitude lever raises or lowers a **target altitude** and the ship eases toward it. The target is a **global** height, not a height above the ground: in a city of bridges and floating sidewalks, "above the ground" jumps every time the ship passes over something. Letting go of the lever holds the altitude — which is the idle the loop relies on: the ship **hovers in place** while part of the crew delivers on foot, with nobody at the controls.
+- **Acceleration** pushes along the ship's facing; **yaw** turns it about the vertical.
+- **Anti-drift** brakes sideways velocity, so it flies rather than skates.
+- **Self-righting** keeps the floor level.
+
+For now the ship **does not bank into turns or tilt when accelerating**: with an interior, tilting the ship tilts the floor, and the crew's capsules have zero friction. Tilt can come back later, on purpose, if cargo should shift in turns.
+
+| Function | Control | Behaviour |
+|---|---|---|
+| Altitude | lever that springs back to centre | off-centre moves the target altitude; released holds it |
+| Yaw | wheel that springs back to centre | turned = the ship turns |
+| Acceleration | lever that stays where it is left | a cruise throttle: it sets the forward speed |
+| Pitch | — | not in the prototype |
+
+**Piloting is seated** for now.
+
+### Standing aboard a moving ship — open
+
+Not solved yet, which is why the prototype is flown seated. A character is a zero-friction rigid body whose movement is computed from its *world* velocity, so on a moving floor "standing still" means being left behind. Three ways out were weighed:
+
+- **Velocity relative to the floor** *(preferred)* — the character reads the velocity of what it stands on (it already has a ground ray) and moves relative to it. One physics world, so the door, jumping out mid-flight, grabbing across the door and cargo sliding in a jolt all work without special cases. Two catches: impact detection must use relative velocity too, or every jolt knocks the crew down; and players must be synced in ship-local coordinates while aboard, or observers see them swim on the deck.
+- **Carrying by transform while inside** — fastest to get working, but writing a dynamic body's transform fights Jolt (the launches documented in [multiplayer.md](multiplayer.md)), cargo stops sliding, and the in/out edge cases are the common case in this loop.
+- **A separate, static interior world** — perfectly stable at any speed, but crossing the door means moving bodies between physics spaces, and crossing the door is the core of the loop.
 
 ---
 
@@ -85,6 +138,14 @@ A breakage degrades a specific system:
 - **Information systems** — e.g. the **radar** goes down.
 
 Breakages are fixed **in flight, at the dashboards**: a repair is a sequence of dashboard-controllable actions ([interactables.md](interactables.md)). To know **what** to fix and **how**, players read the **ship manual** — a fixed interactable at a set place on the dashboards. Because the manual **cannot be moved**, only the player standing at it can read it, while others work the controls it describes. This deliberate **asymmetric information** forces the crew to talk and coordinate ("valve three, then the left lever") — a core co-op tension, by design, not an accident.
+
+---
+
+## Prototype (coded today)
+
+A one-player ship built from **primitive cubes**, each a different colour so the pieces read at a glance until the real model exists. `Ship` (`Scripts/ship/ship.gd`) is the body and the flight model; `ShipHull` builds the hull, the console ring and the door buttons, all measured in cells; `ShipDoor` is the main door — a cube that shrinks upward to open, from a button inside and one outside. There is one pilot seat and one working console, the front one, with altitude, yaw, acceleration and a **power button**; the other four consoles are empty slots. The ship starts **off**: off, it applies no force of its own and rests wherever it is (switched off in the air, it falls); switched on, it holds the height it is at. The **walls, door and ceiling** are drawn half-transparent by default, so the character can be watched working the controls from outside; **Acciones → Nave: paredes traslúcidas** toggles it (floor and consoles stay opaque). Buttons click and the ship hums while on — **test sounds**, generated in code (`TestSounds`), to be deleted when real audio arrives.
+
+Spawned from the debug panel (**Spawn → Nave (1 jugador)**), locally: `NetSpawner` attaches network sync and a grab handle to every rigid body it spawns, which would make the ship grabbable. **Not networked yet.**
 
 ---
 
