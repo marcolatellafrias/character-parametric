@@ -1,35 +1,39 @@
 class_name ShipDoor
 extends Node
 
-## COMPUERTA TRASERA — un cubo que se achica hacia arriba al abrirse.
+## LA COMPUERTA — las caras del gajo de atrás que tapan el hueco de la puerta (ver ShipHull).
 ##
-## Es la versión de esqueleto de la compuerta elevadiza: la pieza de verdad, con su animación, viene
-## con el modelo. Acá alcanza con que abra y cierre, que es lo que hace falta para probar entrar y
-## salir de la nave.
+## Para abrir se DESLIZAN HACIA ARRIBA siguiendo el domo: giran alrededor del centro de la esfera, sobre
+## el eje horizontal que cruza la puerta de lado a lado, hasta quedar justo encima del hueco. Girar
+## alrededor del centro de una esfera deja todo sobre la esfera, así que las caras no se despegan del
+## domo en ningún momento. Van por fuera del vidrio y pasan sobre él sin tocarlo.
 ##
-## Se achica ANCLADA ARRIBA: el borde de arriba queda fijo y el de abajo sube. Es lo que hace una
-## compuerta elevadiza, y además nunca le aparece geometría nueva de golpe a alguien parado en el hueco.
-##
-## ⚠ ABIERTA, EL COLLIDER SE APAGA en vez de quedar con alto cero. Una caja de tamaño cero es una forma
-## degenerada para el motor de física; apagada, el hueco queda limpio.
+## Es la versión de esqueleto: la pieza de verdad, con su animación, viene con el modelo. Acá alcanza
+## con que abra y cierre, que es lo que hace falta para probar entrar y salir de la nave.
 
 ## Segundos de cerrada a abierta.
 const DURATION := 0.9
 
-var _shape: CollisionShape3D
-var _mesh: MeshInstance3D
-var _full_height := 0.0
-var _top_y := 0.0
+var _faces: Array[CollisionShape3D] = []
+var _rest: Array[Transform3D] = []
+var _pivot := Vector3.ZERO
+var _axis := Vector3.RIGHT
+var _travel := 0.0
 var _openness := 0.0
 var _open := false
 var _tween: Tween = null
 
 
-func setup(shape: CollisionShape3D, mesh: MeshInstance3D) -> void:
-	_shape = shape
-	_mesh = mesh
-	_full_height = (shape.shape as BoxShape3D).size.y
-	_top_y = shape.position.y + _full_height * 0.5
+## `faces` son las caras en su lugar de cerrada; `pivot` y `axis`, el centro y el eje del giro; `travel`,
+## cuánto giran para abrir del todo, en radianes.
+func setup(faces: Array[CollisionShape3D], pivot: Vector3, axis: Vector3, travel: float) -> void:
+	_faces = faces
+	_rest.clear()
+	for face in faces:
+		_rest.append(face.transform)
+	_pivot = pivot
+	_axis = axis
+	_travel = travel
 
 
 ## Cada vez que se APRIETA el botón, la compuerta cambia de estado. Por eso los botones son momentáneos
@@ -51,12 +55,8 @@ func toggle() -> void:
 
 func _set_openness(value: float) -> void:
 	_openness = value
-	var height := _full_height * (1.0 - value)
-	var solid := height > 0.01
-	_shape.disabled = not solid
-	_mesh.visible = solid
-	if not solid:
-		return
-	(_shape.shape as BoxShape3D).size.y = height
-	(_mesh.mesh as BoxMesh).size.y = height
-	_shape.position.y = _top_y - height * 0.5
+	var turn := Basis(_axis, _travel * value)
+	# Girar alrededor de `_pivot`: x' = turn·(x − pivot) + pivot.
+	var slide := Transform3D(turn, _pivot - turn * _pivot)
+	for i in _faces.size():
+		_faces[i].transform = slide * _rest[i]

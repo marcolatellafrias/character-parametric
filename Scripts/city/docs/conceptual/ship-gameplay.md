@@ -6,38 +6,38 @@ The in-ship half of the loop: players cooperate at the piloting dashboards to mo
 
 ## The company ship
 
-A **cubical flying ship** the players use to move packages quickly across the city. Components:
+A **glass-domed flying ship** the players use to move packages quickly across the city. Components:
 
-- **Main door** — an elevating door at the **back** of the ship, opened/closed with a button **inside and one outside**.
-- **Dashboards** — collections of controllables ([interactables.md](interactables.md)) for either moving/controlling the ship or performing actions like repairs. Arranged as a **partial octagon ring** around the interior perimeter. Partial because the main-door side has no dashboards, and there's a gap between the main door and the dashboards.
+- **Main door** — the lower part of the dome's three **back** segments: its panels **slide up along the dome** to open, from a button **inside and one outside**.
+- **Dashboards** — collections of controllables ([interactables.md](interactables.md)) for either moving/controlling the ship or performing actions like repairs. Arranged as a **partial ring** against the glass, all round except by the main door. Partial because the main-door side has no dashboards, and there's a gap between the main door and the dashboards.
 - **Cosmetic slots** — empty spaces on the dashboards or floor where players place cosmetic items (bought with money — see [run-setup.md](run-setup.md)).
 - **Cargo zone** — where packages are loaded (below).
 - **Ship manual** — a fixed, **non-movable** interactable at a set spot on the dashboards; players read it to know what to repair (see [Damage & repair](#damage--repair)).
 
 ### The four ships
 
-A player's four ships (one per crew size — see [Ownership & persistence](#ownership--persistence)) are the **same size**. Three things differ between them:
+A player's four ships (one per crew size — see [Ownership & persistence](#ownership--persistence)) are the **same size**. Two things differ between them:
 
 - **Seats** — how many, and where.
 - **Dashboards** — how many, and how they are laid out. Every control beyond the ones that fly the ship is a **repair** control.
-- **Window openings** — the front wall (opposite the main door) always has one; whether the two side walls do depends on the crew size. *(For now every ship has only the front window.)*
 
 ### Measured in dashboard cells
 
 The ship's unit is the **dashboard cell**, not the metre: a `0.04 m` square, with no gap. It is small on purpose — a control spans many cells (a button 2 × 2, a lever 6 × 12, the wheel 12 × 12), so controls can be as small as real ones and everything can be placed precisely. Finer would add nothing: 4 cm is about the smallest target the centre crosshair hits reliably at arm's length. Measuring the hull in the same unit keeps every side of the console ring holding a whole number of cells.
 
-The dashboards form a **partial octagon ring**, inset from the walls and facing the centre. **Five** of the eight sides carry a console: the front, the two front diagonals and the two sides. The door side is open, and so are the two back diagonals — at this distance from the centre they would cut into the cargo corridor right by the door, which is the gap the ring leaves there. Each console is a grid of **empty slots** that gets filled with controls, built from plates: the dashboard, as deep as the wheel and tilted 45° from vertical; a **lower plate** inclined back to the floor, leaving room for the knees so the seat sits close; and a flat **cosmetic shelf** from the dashboard's top edge to the wall.
+The hull is the **upper half of a UV sphere** on a flat floor of the same plan: 32 segments around — the floor has the same 32 sides, so their edges meet — and 8 rings from the floor to the pole, each face a flat plate. The **floor ring**, the **top cap** and the door are opaque, one dark colour; everything between is clear **glass**, from 0.90 m up to the cap at 4.51 m — a window all round, so there are no window openings. The opaque faces are drawn as whole plates — both skins and their edges — showing their 0.16 m thickness, with the outer skin flush with the floor's edge, so the dome is exactly as wide as the base. The glass is a flat pane at that outer skin, seen from both sides; its collider starts at the pane and goes outward, so from inside you touch the glass where you see it. Each face is its own object: Godot sorts transparency per object, so a single-mesh dome would draw back faces over front ones from inside. The faces and the door follow from the segments, so they don't land on whole cells.
+
+The dashboards form a **partial ring against the glass**, facing the centre. It doesn't follow the dome's segments: it is as many 32-column consoles edge to edge as fit with their shelves clear of the glass — **19 sides**, 3.84 m from the centre — and every side carries a console except those that would cut into the cargo corridor from the door, which is the gap the ring leaves there: **15 consoles**, about 285° of the way round. Each console is a grid of **empty slots** that gets filled with controls, built from plates: the dashboard, as deep as the wheel and tilted 45° from vertical; a **lower plate** inclined back to the floor, leaving room for the knees so the seat sits close; and a flat **cosmetic shelf** from the dashboard's top edge to just short of the glass (at least 0.3 m, which is what limits how far out the ring goes).
 
 Starting measurements, to be tuned by playing:
 
 | | cells | metres |
 |---|---|---|
-| Interior (W × H × L) | 128 × 88 × 128 | 5.12 × 3.52 × 5.12 |
-| Main door (W × H) | 48 × 56 | 1.92 × 2.24 |
-| Front window (W × H), sill 24 cells up | 80 × 48 | 3.20 × 1.92 |
-| Console panel (columns × rows) | 40 × 12 | 1.60 × 0.48 |
+| Dome radius (inside) | 115 | 4.60 — a tenth under twice the old cube's length across; its 0.16 m plates end flush with the floor |
+| Main door (three segments × 3 rings, at the floor) | — | 2.67 × 2.56 |
+| Console panel (columns × rows) | 32 × 12 | 1.28 × 0.48 |
 
-The ring's apothem follows from each side holding exactly forty columns: `a = 40 · 0.04 / (2 · tan 22.5°) ≈ 1.93 m`.
+The ring's apothem follows from each side holding exactly thirty-two columns: `a = 32 · 0.04 / (2 · tan(180° / 19)) ≈ 3.84 m`. Nineteen is the most sides that fit: one more and the ring grows past the glass.
 
 ## Cargo zone
 
@@ -48,7 +48,7 @@ The cargo zone is the union of two zones of equal height:
 - A **cylinder** at the center of the ship interior.
 - A **cube** with the width of the main door, running from the main door to the cylinder's center.
 
-The cylinder's diameter equals the main door's width.
+The cylinder's diameter equals the main door's width (2.67 m, the door's three segments at the floor).
 
 Package physics and stats are defined in [objects.md](objects.md).
 
@@ -143,9 +143,9 @@ Breakages are fixed **in flight, at the dashboards**: a repair is a sequence of 
 
 ## Prototype (coded today)
 
-A one-player ship built from **primitive cubes**, each a different colour so the pieces read at a glance until the real model exists. `Ship` (`Scripts/ship/ship.gd`) is the body and the flight model; `ShipHull` builds the hull, the console ring and the door buttons, all measured in cells; `ShipDoor` is the main door — a cube that shrinks upward to open, from a button inside and one outside. There is one pilot seat and one working console, the front one, with altitude, yaw, acceleration and a **power button**; the other four consoles are empty slots. The ship starts **off**: off, it applies no force of its own and rests wherever it is (switched off in the air, it falls); switched on, it holds the height it is at. The **walls, door and ceiling** are drawn half-transparent by default, so the character can be watched working the controls from outside; **Acciones → Nave: paredes traslúcidas** toggles it (floor and consoles stay opaque). Buttons click and the ship hums while on — **test sounds**, generated in code (`TestSounds`), to be deleted when real audio arrives.
+A one-player ship built from **primitive pieces** until the real model exists: a glass dome of flat faces over a round floor, and consoles made of plates, each piece a different colour except the dome, whose glass is clear and whose opaque shell is one dark colour. `Ship` (`Scripts/ship/ship.gd`) is the body and the flight model; `ShipHull` builds the dome, the console ring and the door buttons; `ShipDoor` is the main door — the lower faces of the three back segments, which slide up along the dome to open, from a button inside and one outside. There is one working console, the front one, with altitude, yaw, acceleration and a **power button**; the other fourteen consoles are empty slots. The ship starts **off**: off, it applies no force of its own and rests wherever it is (switched off in the air, it falls); switched on, it holds the height it is at. Buttons click and the ship hums while on — **test sounds**, generated in code (`TestSounds`), to be deleted when real audio arrives.
 
-Spawned from the debug panel (**Spawn → Nave (1 jugador)**), locally: `NetSpawner` attaches network sync and a grab handle to every rigid body it spawns, which would make the ship grabbable. **Not networked yet.**
+It comes in two versions, spawned from the debug panel: **Spawn → Nave (1 jugador)**, with the pilot's seat at the front console, and **Nave (4 jugadores)**, the same ship with three more seats, at consoles −4, +4 and +7 (their consoles still empty; not symmetric on purpose). Each seat faces its console at the pilot's distance. Spawned locally: `NetSpawner` attaches network sync and a grab handle to every rigid body it spawns, which would make the ship grabbable. **Not networked yet.**
 
 ---
 

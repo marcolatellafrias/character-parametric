@@ -91,7 +91,7 @@ A seat is a **swivel chair whose height fits whoever sits**: it rises or lowers,
 
 ### Ship
 
-Dashboards arranged as a partial octagon ring around the ship interior — controllables that move the ship or perform repairs, plus information interactables (manual, phone) and seats. See [ship-gameplay.md](ship-gameplay.md).
+Dashboards arranged as a partial ring against the ship's glass dome — controllables that move the ship or perform repairs, plus information interactables (manual, phone) and seats. See [ship-gameplay.md](ship-gameplay.md).
 
 ### On foot
 

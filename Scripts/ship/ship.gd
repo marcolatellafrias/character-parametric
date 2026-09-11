@@ -3,7 +3,7 @@ extends RigidBody3D
 
 ## LA NAVE DE LA COMPAÑÍA — prototipo de un jugador.
 ##
-## Casco de cubos de colores (ver ShipHull), el asiento del piloto, la consola de vuelo con tres
+## Domo de vidrio (ver ShipHull), los asientos (ver SEAT_CONSOLES), la consola de vuelo con tres
 ## controles y el botón de encendido, y la compuerta trasera con un botón adentro y otro afuera (ver
 ## ShipDoor). Ver conceptual/ship-gameplay.md.
 ##
@@ -44,9 +44,13 @@ extends RigidBody3D
 ## la inclinaría y el autoenderezado se la pasaría peleando contra él.
 const MASS := 2000.0
 const SEAT_SCENE := "res://Scenes/ship/working_seat.tscn"
+## Frente a qué consolas va un asiento, por tamaño de tripulación. El 0 es el piloto, frente a la consola
+## de vuelo; los demás van repartidos por el anillo, sin necesidad de simetría. Cada índice tiene que ser
+## un lado con consola (ver ShipHull.console_indices).
+const SEAT_CONSOLES := {1: [0], 4: [0, -4, 4, 7]}
 ## Aire entre las rodillas del piloto y el plano de abajo de la consola de vuelo. Las rodillas caen en el
 ## borde de adelante del asiento (ver BoneInstantiator._pose_root), a la altura de la pelvis, y el
-## asiento va lo más cerca que eso deja (ver `_add_pilot_seat`).
+## asiento va lo más cerca que eso deja (ver `_add_seats`).
 const KNEE_CLEARANCE := 0.08
 ## Cuánto por encima del borde de arriba del tablero va la mira del piloto (ver SeatInteractable, ALTURA).
 ## Así ve la ventana por encima de la consola, y todos los controles le quedan abajo: el rayo les entra
@@ -56,26 +60,10 @@ const EYE_OVER_PANEL := 0.2
 const LEVER_TRAVEL_DEG := 70.0
 ## Hasta dónde gira el volante para cada lado, en radianes (~86°): ahí dobla a fondo y hace tope.
 const WHEEL_FULL_LOCK := 1.5
-const GROUP := "ship"
 
-## ── PAREDES TRASLÚCIDAS — ayuda de depuración ───────────────────────────────────────────────────
-## En true, el casco exterior (paredes, compuerta y techo) se dibuja medio transparente: desde afuera se
-## ve cómo el personaje agarra las palancas y el volante, que es lo que hay que mirar mientras se arma
-## el esqueleto de la nave. El piso y las consolas quedan opacos: sin piso no se lee dónde está parado
-## nadie.
-##
-## Estado global, como los toggles de CharacterDebugView: una nave que aparece después nace con lo que
-## esté prendido. Prendido por default mientras la nave sea un prototipo de cubos.
-static var translucent_walls := true
-
-
-static func toggle_translucent_walls(tree: SceneTree) -> void:
-	translucent_walls = not translucent_walls
-	for node in tree.get_nodes_in_group(GROUP):
-		var ship := node as Ship
-		if ship != null:
-			ship.apply_wall_visibility()
-
+## Para cuántos jugadores está armada: cuántos asientos lleva y frente a qué consolas (ver SEAT_CONSOLES).
+## Se elige antes de meterla al árbol.
+@export var crew_size := 1
 
 @export_group("Altura")
 ## Metros por segundo que sube o baja la meta con la palanca a fondo.
@@ -127,7 +115,6 @@ var powered := false
 
 var _altitude_ready := false
 var _door: ShipDoor = null
-var _shell: Array[MeshInstance3D] = []
 var _hum: AudioStreamPlayer3D = null
 
 
@@ -140,40 +127,31 @@ func _ready() -> void:
 	linear_damp = 0.0
 	angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
 	angular_damp = 0.0
-	# Centro de masa fijo en el medio del volumen. Calculado de las formas se correría al abrir la
-	# compuerta —que cambia de tamaño— y la nave se inclinaría sola cada vez.
+	# Centro de masa fijo, el del volumen del domo: 3/8 del radio sobre el piso. Calculado de las formas se
+	# correría al abrir la compuerta —que se mueve— y la nave se inclinaría sola cada vez.
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
-	center_of_mass = Vector3(0.0, ShipHull.WALL + ShipHull.interior_size().y * 0.5, 0.0)
+	center_of_mass = Vector3(0.0, ShipHull.WALL + ShipHull.DOME_RADIUS * 0.375, 0.0)
 
-	add_to_group(GROUP)
 	_hum = TestSounds.hum_player()
 	_hum.position = center_of_mass
 	add_child(_hum)
 	var parts := ShipHull.build(self, {0: _flight_preset()})
-	_shell = parts.shell
-	apply_wall_visibility()
 
 	_door = ShipDoor.new()
 	_door.name = "Door"
 	add_child(_door)
-	_door.setup(parts.door_shape, parts.door_mesh)
+	_door.setup(parts.door_faces, parts.door_pivot, parts.door_axis, parts.door_travel)
 	for button in parts.door_buttons:
 		var touch := _control(button, 0) as TouchComponent
 		if touch != null:
 			_door.connect_button(touch)
 
-	_add_pilot_seat()
+	_add_seats()
 	_wire_flight(parts.consoles[0])
 	_ignore_own_bodies(self)
 
 
-func apply_wall_visibility() -> void:
-	for mesh in _shell:
-		if is_instance_valid(mesh):
-			ShipHull.set_translucent(mesh, translucent_walls)
-
-
-## Consola de vuelo, 40 × 12 celdas. Todo va contra el borde de ABAJO, el más cercano al piloto (la
+## Consola de vuelo, 32 × 12 celdas. Todo va contra el borde de ABAJO, el más cercano al piloto (la
 ## grilla crece de la pared hacia él), con el volante centrado, una palanca a cada lado y el encendido
 ## junto al acelerador, todos pegados: el margen de cada control ya deja aire entre vecinos.
 ##
@@ -186,10 +164,10 @@ func apply_wall_visibility() -> void:
 ## `_wire_flight` depende de él.
 func _flight_preset() -> DashboardPreset:
 	var slots: Array[DashboardSlot] = [
-		_slot(Vector2i(8, 0), _lever(true, 0.5)),     # altura: vuelve al medio
-		_slot(Vector2i(14, 0), _wheel()),             # giro: vuelve al centro
-		_slot(Vector2i(26, 0), _lever(false, 0.0)),   # acelerador: se queda donde lo dejás
-		_slot(Vector2i(32, 10), _power_button()),     # encendido: queda prendido o apagado
+		_slot(Vector2i(4, 0), _lever(true, 0.5)),     # altura: vuelve al medio
+		_slot(Vector2i(10, 0), _wheel()),             # giro: vuelve al centro
+		_slot(Vector2i(22, 0), _lever(false, 0.0)),   # acelerador: se queda donde lo dejás
+		_slot(Vector2i(28, 10), _power_button()),     # encendido: queda prendido o apagado
 	]
 	var preset := DashboardPreset.new()
 	preset.fill_remaining_random = false
@@ -277,20 +255,27 @@ func set_powered(on: bool) -> void:
 		_hum.stop()
 
 
-func _add_pilot_seat() -> void:
+func _add_seats() -> void:
 	var scene := load(SEAT_SCENE) as PackedScene
 	if scene == null:
 		return
-	var seat := scene.instantiate() as SeatInteractable
-	seat.name = "pilot_seat"
-	seat.eye_height = ShipHull.panel_top_height() + EYE_OVER_PANEL
-	# Mirando al frente (−Z, que es para donde mira un asiento sin rotar), detrás de la consola de vuelo.
-	# Las rodillas se meten bajo el tablero lo que el plano de abajo deja a su altura. Se planea con la de
-	# un arquetipo medio: a los que se sientan más alto les queda menos lugar.
-	var knee_room := ShipHull.knee_room_at(seat.typical_height())
-	var from_hinge := seat.seat_area.z * 0.5 + KNEE_CLEARANCE - knee_room
-	seat.position = Vector3(0.0, ShipHull.WALL, -(ShipHull.console_apothem() - from_hinge))
-	add_child(seat)
+	var sides := ShipHull.console_sides()
+	for side_index: int in SEAT_CONSOLES.get(crew_size, [0]):
+		assert(side_index in ShipHull.console_indices(), "Ship: no hay consola en el lado %d" % side_index)
+		var seat := scene.instantiate() as SeatInteractable
+		seat.name = "pilot_seat" if side_index == 0 else "seat_%d" % side_index
+		seat.eye_height = ShipHull.panel_top_height() + EYE_OVER_PANEL
+		# Las rodillas se meten bajo el tablero lo que el plano de abajo deja a su altura. Se planea con la de
+		# un arquetipo medio: a los que se sientan más alto les queda menos lugar.
+		var knee_room := ShipHull.knee_room_at(seat.typical_height())
+		var from_hinge := seat.seat_area.z * 0.5 + KNEE_CLEARANCE - knee_room
+		# Mirando a su consola: un asiento sin rotar mira a −Z (el frente), y girarlo −θ lo pone a mirar
+		# hacia afuera en el rumbo θ de la consola, igual que la consola misma (ver ShipHull._build_console).
+		var theta := float(side_index) * TAU / sides
+		var outward := Vector3(sin(theta), 0.0, -cos(theta))
+		seat.transform = Transform3D(Basis(Vector3.UP, -theta),
+			outward * (ShipHull.console_apothem() - from_hinge) + Vector3.UP * ShipHull.WALL)
+		add_child(seat)
 
 
 ## La nave no choca con sus propias piezas móviles. Los controles de los dashboards son StaticBody3D y

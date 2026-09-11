@@ -9,8 +9,6 @@ var is_ready: bool = false
 
 var camera_pitch: float = 0.0
 var camera_yaw: float = 0.0
-var camera_y_smooth: float = 0.0
-const CAMERA_Y_SMOOTH: float = 8.0
 
 ## ── STAMINA ───────────────────────────────────────────────────────────────────────────────────────
 ## Se gasta corriendo y se recupera al soltar, después de `stamina_refractory_time`.
@@ -99,8 +97,6 @@ func rebind(target: BoneInstantiator) -> void:
 		player_camera.position = Vector3.ZERO
 		player_camera.rotation = Vector3(camera_pitch, 0.0, 0.0)
 		player_camera.current  = not _third_person
-
-	camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 
 	if is_instance_valid(_hud):
 		_hud.queue_free()
@@ -259,9 +255,9 @@ func _physics_process(delta: float) -> void:
 
 	# La cámara del jugador se mueve también en tercera persona, aunque no esté en pantalla: de ella sale
 	# el rayo de interacción, que tiene que ser el mismo en las dos vistas.
-	var target_y := head_bone.global_position.y + head_size.y * 0.5
-	camera_y_smooth = lerp(camera_y_smooth, target_y, clamp(delta * CAMERA_Y_SMOOTH, 0.0, 1.0))
-	player_camera.global_position.y = camera_y_smooth
+	# Va exacta a la cabeza, sin suavizar: suavizada en el mundo, todo lo que te lleva (la nave subiendo)
+	# le parecía una sacudida y la vista quedaba atrasada.
+	player_camera.global_position.y = head_bone.global_position.y + head_size.y * 0.5
 	apply_camera_pitch(camera_pitch)
 
 	_process_stamina(delta)
@@ -410,7 +406,6 @@ func _toggle_ragdoll() -> void:
 	if bi.ragdoll_util.is_active:
 		bi.ragdoll_util.deactivate(char_rigidbody, bi.custom_bones_util.lower_spine)
 		char_rigidbody.rotation.y = camera_yaw
-		camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 	elif bi.ragdoll_util.is_recovering:
 		return  # ya te estás levantando: no se puede re-ragdollear (nada de G-spam). En el futuro el
 				 # levantarse será por timer según arch.time_to_standup, no con G. Ver onfoot-gameplay.md.
@@ -562,7 +557,6 @@ func _set_creative(on: bool) -> void:
 	else:
 		char_rigidbody.set_creative_mode(false)
 		char_rigidbody.rotation.y = camera_yaw
-		camera_y_smooth = head_bone.global_position.y + head_size.y * 0.5
 
 
 func _setup_debug_panel() -> void:
@@ -597,7 +591,6 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Ver gizmos de marcha",      func(): CharacterDebugView.toggle_gait_gizmos(get_tree()))
 	_debug_panel.add_action("Acciones", "Ver wireframe",             func(): CharacterDebugView.toggle_wireframe(get_tree()))
 	_debug_panel.add_action("Acciones", "Indicadores de tráfico",    func(): TrafficDebugDrawer.ENABLED = not TrafficDebugDrawer.ENABLED)
-	_debug_panel.add_action("Acciones", "Nave: paredes traslúcidas", func(): Ship.toggle_translucent_walls(get_tree()))
 
 	# ── Arquetipos ──
 	# Dos acciones por arquetipo, y son distintas: "Ser" cambia TU personaje y además deja la P pegada
@@ -626,7 +619,8 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Spawn", "Caja pesada ▭",      func(): _debug_spawn("box_heavy_xlong"))
 	_debug_panel.add_action("Spawn", "Dashboard",          func(): _debug_spawn("dashboard"))
 	_debug_panel.add_action("Spawn", "Seat",               func(): _debug_spawn("seat"))
-	_debug_panel.add_action("Spawn", "Nave (1 jugador)",   _debug_spawn_ship)
+	_debug_panel.add_action("Spawn", "Nave (1 jugador)",   func(): _debug_spawn_ship(1))
+	_debug_panel.add_action("Spawn", "Nave (4 jugadores)", func(): _debug_spawn_ship(4))
 	_debug_panel.add_action("Spawn", "Limpiar spawns",     func(): NetSpawner.request_clear_all())
 
 
@@ -715,16 +709,16 @@ func _debug_spawn(type_name: String) -> void:
 		pos = _snap_to_ground(pos) + Vector3.UP * 1.5
 	NetSpawner.request_spawn(type_name, Transform3D(Basis(), pos))
 
-## Cuánto adelante del jugador aparece la nave. Mide ~5.5 m de largo: a esta distancia la compuerta
-## queda a un par de metros, sin que el casco nazca encima de nadie.
-const SHIP_SPAWN_DISTANCE := 5.5
+## Cuánto adelante del jugador aparece el centro de la nave: el radio del domo más un metro y medio,
+## así el casco no nace encima de nadie y la compuerta queda a mano.
+const SHIP_SPAWN_DISTANCE := ShipHull.DOME_RADIUS + ShipHull.WALL + 1.5
 
 ## Deja la nave prototipo adelante del jugador, apoyada en el piso, con la compuerta mirándolo.
 ##
 ## Como el NPC de `_debug_spawn_character`, NO pasa por NetSpawner: NetSpawner le cuelga sync de red
 ## y un Grabbable a todo RigidBody3D que spawnea, y la nave terminaría siendo algo que se puede agarrar.
 ## Hay una sola: spawnear otra reemplaza la anterior.
-func _debug_spawn_ship() -> void:
+func _debug_spawn_ship(crew: int) -> void:
 	var scene_root := get_tree().current_scene
 	var old := scene_root.get_node_or_null(^"ship_debug")
 	if is_instance_valid(old):
@@ -738,6 +732,7 @@ func _debug_spawn_ship() -> void:
 	var ground := _snap_to_ground(char_rigidbody.global_position + fwd * SHIP_SPAWN_DISTANCE)
 	var ship := Ship.new()
 	ship.name = "ship_debug"
+	ship.crew_size = crew
 	# El frente de la nave (−Z) apunta para donde mira el jugador: la compuerta queda de su lado. El
 	# transform va ANTES de entrar al árbol, así la nave arranca con su altura real.
 	ship.transform = Transform3D(Basis(Vector3.UP, atan2(-fwd.x, -fwd.z)), ground)
