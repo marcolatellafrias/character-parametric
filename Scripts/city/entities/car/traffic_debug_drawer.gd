@@ -51,7 +51,18 @@ func _ready() -> void:
 	_mesh_instance.custom_aabb = AABB(Vector3(-1e6, -1e6, -1e6), Vector3(2e6, 2e6, 2e6))
 	add_child(_mesh_instance)
 
+## Interruptor global, por encima de los toggles del AreaInstantiator. Lo maneja el panel de debug.
+##
+## APAGADO POR DEFAULT: los indicadores tapan al personaje y estorban para cualquier cosa que no sea
+## depurar tráfico, que es la mayoria del tiempo. Antes solo se podían apagar editando la escena.
+##
+## Devolver null es la misma vía que ya usaba "no hay instanciador configurado", así que reusa
+## `_deactivate()` y limpia mallas, etiquetas y tintes sin código nuevo.
+static var ENABLED := false
+
 func _find_config():
+	if not ENABLED:
+		return null
 	for node in get_tree().get_nodes_in_group("area_instantiator"):
 		if node.show_traffic_debug:
 			return node

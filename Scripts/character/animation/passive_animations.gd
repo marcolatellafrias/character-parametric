@@ -70,11 +70,11 @@ func _register_breathing(st: PassiveState) -> void:
 	var d: float = lerpf(1.0, PassiveState.BREATH_DEPTH_MAX,
 		clampf(bi.entity_instantiation.arch_final.breath_depth, 0.0, 1.0))
 
-	pa.register_formula(cb.chest,        PA.Axis.ROT_X, breath,  0.075 * d)
-	pa.register_formula(cb.higher_spine, PA.Axis.ROT_X, breath,  0.034 * d)
+	pa.register_formula(cb.chest,        PA.Axis.ROT_X, breath,  0.105 * d)
+	pa.register_formula(cb.higher_spine, PA.Axis.ROT_X, breath,  0.048 * d)
 	if is_instance_valid(cb.neck):
-		pa.register_formula(cb.neck,     PA.Axis.ROT_X, breath, -0.084 * d)
-	pa.register_formula(cb.lower_spine,  PA.Axis.POS_Y, breath,  0.012 * d)
+		pa.register_formula(cb.neck,     PA.Axis.ROT_X, breath, -0.118 * d)
+	pa.register_formula(cb.lower_spine,  PA.Axis.POS_Y, breath,  0.017 * d)
 
 
 ## ── TEMBLOR ───────────────────────────────────────────────────────────────────────────────────────

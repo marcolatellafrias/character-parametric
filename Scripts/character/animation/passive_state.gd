@@ -90,24 +90,35 @@ func update(delta: float, effort: float) -> void:
 	time += delta
 
 
-## Curva respiratoria, 0 = exhalado, 1 = inhalado.
+## Curva respiratoria, 0 = exhalado, 1 = inhalado. Un coseno elevado: sube y baja sin parar nunca.
 ##
-## NO es un seno, y esa es la mitad del efecto: una respiración real **inhala rápido, exhala más
-## lento, y hace una pausa** antes de volver a empezar. Un seno puro se lee como un fuelle mecánico.
+## ── POR QUÉ TAN SIMPLE, DESPUÉS DE DOS INTENTOS ──────────────────────────────────────────────────
+## Primero hubo una curva REALISTA: inhalar rápido, exhalar lento y quedarse quieto un 20% del ciclo.
+## Se veía como si la animación se colgara — en pantalla una pausa no se lee como descanso.
 ##
-## La pausa se acorta con el esfuerzo — jadeando no hay descanso entre ciclos.
+## Después hubo una GAMEY: inhalación con sobrepaso (easeOutBack) y exhalación de salida rápida. Se
+## leía como que el personaje se está quedando sin aire. El ataque brusco es exactamente lo que el ojo
+## interpreta como jadeo, y en un idle eso cuenta una historia que no queríamos.
+##
+## Un idle no tiene que tener carácter propio: tiene que estar vivo y desaparecer. El coseno no marca
+## ni el principio ni el final del ciclo, así que no sugiere ningún esfuerzo.
+##
+## ⚠ LA CURVA DE JADEO NO ES BASURA, ES OTRA COSA. Guardada acá porque sirve para un personaje
+## exhausto, herido o moribundo, que es un efecto que se quiere más adelante:
+##
+##     const INHALE := 0.34        # fracción del ciclo que sube
+##     const OVERSHOOT := 1.5      # sobrepaso al llegar arriba (da ~8%)
+##     if t < INHALE:
+##         var x := t / INHALE - 1.0
+##         return 1.0 + (OVERSHOOT + 1.0) * x * x * x + OVERSHOOT * x * x
+##     var y := (t - INHALE) / (1.0 - INHALE)
+##     return pow(1.0 - y, 1.15)
+##
+## Va con `exertion` alto —que ya sube ritmo y amplitud— y ahí sí el jadeo es lo que se quiere contar.
 func breath() -> float:
 	if not active:
 		return 0.0
-	var pause: float = lerpf(0.20, 0.02, exertion)
-	var inhale: float = (1.0 - pause) * 0.40
-	var exhale: float = (1.0 - pause) - inhale
-	var t: float = breath_phase / TAU
-	if t < inhale:
-		return smoothstep(0.0, 1.0, t / inhale)
-	if t < inhale + exhale:
-		return 1.0 - smoothstep(0.0, 1.0, (t - inhale) / exhale)
-	return 0.0
+	return 0.5 - 0.5 * cos(breath_phase)
 
 
 ## Amplitud de la respiración: crece con el esfuerzo. Cansado no es solo más rápido, es más profundo.
