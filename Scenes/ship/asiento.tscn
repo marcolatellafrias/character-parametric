@@ -1,13 +1,11 @@
-[gd_scene load_steps=3 format=3 uid="uid://bpxdinpui6tv0"]
+[gd_scene load_steps=4 format=3 uid="uid://bpxdinpui6tv0"]
 
 [ext_resource type="PackedScene" uid="uid://chw0r0kp750pi" path="res://Scenes/ship/asiento.blend" id="1_20lyq"]
 [ext_resource type="Material" uid="uid://du5qso8qhjk0v" path="res://Models/auto/metal oscuro.tres" id="2_3w216"]
+[ext_resource type="Script" path="res://Scripts/character/interactable/activatable/swivel_seat.gd" id="3_swivel"]
 
 [node name="asiento" instance=ExtResource("1_20lyq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+script = ExtResource("3_swivel")
 
 [node name="Cube" parent="." index="0"]
-surface_material_override/0 = ExtResource("2_3w216")
-
-[node name="Cylinder_001" parent="." index="1"]
 surface_material_override/0 = ExtResource("2_3w216")

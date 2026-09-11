@@ -2,12 +2,39 @@
 class_name SeatInteractable
 extends ActivatableInteractable
 
-@export var height:            float       = 0.5
+## ── ALTURA ──────────────────────────────────────────────────────────────────────────────────────
+## La silla se acomoda al que se sienta: sube o baja hasta que el origen de SU rayo de interacción quede
+## a `eye_height` sobre la base, la altura óptima para usar lo que tiene adelante. Así un tablero se ve
+## y se alcanza igual con cualquier arquetipo. Las piernas todavía no se acomodan: a los bajos les
+## cuelgan y a los altos se les pueden meter en el piso.
+##
+## Sin nadie vuelve a la altura de un arquetipo medio (ver TYPICAL_EYE_ABOVE_PELVIS): no se acuerda del
+## último que se sentó. Cada cambio es una transición corta, y el ocupante sube y baja con la silla
+## porque la pose sentada lee `height` en cada frame.
+##
+## No viaja por red: cada máquina conoce el esqueleto de cada personaje y deriva la misma altura.
+## Altura de la pelvis sobre la base con la silla a su altura de modelo. Es la referencia de SwivelSeat
+## para estirar el pie, no la altura de la silla vacía.
+@export var rest_height:       float       = 0.42
+## A qué altura sobre la base tiene que quedar la mira del que se sienta. La nave pone la de su piloto
+## según el tablero (ver Ship.EYE_OVER_PANEL); este default es para asientos sueltos.
+@export var eye_height:        float       = 1.15
 @export var seat_area:         Vector3     = Vector3(0.6, 0.5, 0.6)
 @export var stand_up_location: Vector2     = Vector2(0.0, 1.2)
 @export var seat_scene:        PackedScene = null
 @export var show_debug:        bool        = false
 
+## Cuánto puede bajar y subir la silla respecto de su altura de modelo, en metros.
+const MIN_LIFT := -0.2
+const MAX_LIFT := 0.5
+## Qué tan rápido llega a la altura nueva (1/s): con 8 está al 95 % en unos 0,4 s.
+const LIFT_RATE := 8.0
+## La mira sobre la pelvis de un arquetipo medio: medida, los arquetipos van de 0,61 (nene) a 0,79
+## (gordo). Pone la altura de la silla vacía, a mitad de camino entre sus ocupantes posibles.
+const TYPICAL_EYE_ABOVE_PELVIS := 0.70
+
+## Altura ACTUAL de la pelvis sobre la base. Ver ALTURA.
+var height := 0.0
 var _visual_root:   Node3D      = null
 var _body:          RigidBody3D = null
 var _spawn_point:   Node3D      = null
@@ -35,8 +62,12 @@ var _claim:         ExclusiveClaim = null
 ## llega por red, ya movida.
 var _occupant_y_offset := 0.0
 var _last_yaw          := 0.0
+## Para quién está calculada `_occupant_eye` (la mira sobre la pelvis), así no se recalcula cada frame.
+var _lift_occupant: Node = null
+var _occupant_eye       := 0.0
 
 func _ready() -> void:
+	height = typical_height()  # nace ya a su altura, sin acomodarse al aparecer
 	if Engine.is_editor_hint():
 		_build_visual()
 		return
@@ -84,7 +115,7 @@ func _build_collider() -> void:
 		_body.add_child(dbg_mesh)
 
 	add_child(_body)
-	add_handle_point_local(Vector3(0.0, height + seat_area.y * 0.5, 0.0))
+	add_handle_point_local(Vector3(0.0, rest_height + seat_area.y * 0.5, 0.0))
 
 func _build_spawn_point() -> void:
 	_spawn_point = Node3D.new()
@@ -156,13 +187,43 @@ func release_occupant_in_place() -> void:
 # derivación no hay ninguna salida —pararse, ragdollear, despawn del personaje, desconexión— que haya
 # que acordarse de limpiar: dejan de cumplir la condición y el asiento se acomoda solo.
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	_carry_occupant()
 	if not _is_occupied_by(_visual_occupant):
 		_visual_occupant = null
 		_restore_rest_visual()
+	_update_height(delta)
+
+## Lleva la silla a la altura de su ocupante, o a la de reposo si no hay nadie. Ver ALTURA.
+func _update_height(delta: float) -> void:
+	var target := typical_height()
+	if is_instance_valid(_visual_occupant):
+		if _visual_occupant != _lift_occupant:
+			_lift_occupant = _visual_occupant
+			var bones: CustomBonesUtil = _visual_occupant.get("custom_bones_util")
+			_occupant_eye = bones.rest_eye_above_pelvis() if bones != null else eye_height - rest_height
+		target = _height_for(_occupant_eye)
+	else:
+		_lift_occupant = null
+	height = lerpf(height, target, 1.0 - exp(-LIFT_RATE * delta))
+	_apply_lift(_visual_root)
+	_apply_lift(_borrowed_mesh)
+
+## Altura de la silla vacía: la de un arquetipo medio. Con ella planea quien arma el asiento, por ejemplo
+## el lugar para las rodillas.
+func typical_height() -> float:
+	return _height_for(TYPICAL_EYE_ABOVE_PELVIS)
+
+## La altura de pelvis que deja la mira a `eye_height`, dentro de lo que la silla puede estirarse.
+func _height_for(eye_above_pelvis: float) -> float:
+	return clampf(eye_height - eye_above_pelvis, rest_height + MIN_LIFT, rest_height + MAX_LIFT)
+
+func _apply_lift(visual: Node3D) -> void:
+	var swivel := visual as SwivelSeat
+	if is_instance_valid(swivel):
+		swivel.set_lift(height - rest_height)
 
 ## Lleva al ocupante con el asiento: altura y rumbo. Ver ASIENTO SOBRE ALGO QUE SE MUEVE.
 func _carry_occupant() -> void:

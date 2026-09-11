@@ -26,7 +26,7 @@ A player's four ships (one per crew size — see [Ownership & persistence](#owne
 
 The ship's unit is the **dashboard cell**, not the metre: a `0.04 m` square, with no gap. It is small on purpose — a control spans many cells (a button 2 × 2, a lever 6 × 12, the wheel 12 × 12), so controls can be as small as real ones and everything can be placed precisely. Finer would add nothing: 4 cm is about the smallest target the centre crosshair hits reliably at arm's length. Measuring the hull in the same unit keeps every side of the console ring holding a whole number of cells.
 
-The dashboards form a **partial octagon ring**, inset from the walls and facing the centre. **Five** of the eight sides carry a console: the front, the two front diagonals and the two sides. The door side is open, and so are the two back diagonals — at this distance from the centre they would cut into the cargo corridor right by the door, which is the gap the ring leaves there. Each console is a grid of **empty slots** that gets filled with controls.
+The dashboards form a **partial octagon ring**, inset from the walls and facing the centre. **Five** of the eight sides carry a console: the front, the two front diagonals and the two sides. The door side is open, and so are the two back diagonals — at this distance from the centre they would cut into the cargo corridor right by the door, which is the gap the ring leaves there. Each console is a grid of **empty slots** that gets filled with controls, built from plates: the dashboard, as deep as the wheel and tilted 45° from vertical; a **lower plate** inclined back to the floor, leaving room for the knees so the seat sits close; and a flat **cosmetic shelf** from the dashboard's top edge to the wall.
 
 Starting measurements, to be tuned by playing:
 
@@ -35,7 +35,7 @@ Starting measurements, to be tuned by playing:
 | Interior (W × H × L) | 128 × 88 × 128 | 5.12 × 3.52 × 5.12 |
 | Main door (W × H) | 48 × 56 | 1.92 × 2.24 |
 | Front window (W × H), sill 24 cells up | 80 × 48 | 3.20 × 1.92 |
-| Console panel (columns × rows) | 40 × 16 | 1.60 × 0.64 |
+| Console panel (columns × rows) | 40 × 12 | 1.60 × 0.48 |
 
 The ring's apothem follows from each side holding exactly forty columns: `a = 40 · 0.04 / (2 · tan 22.5°) ≈ 1.93 m`.
 

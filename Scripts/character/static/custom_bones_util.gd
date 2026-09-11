@@ -95,6 +95,17 @@ static func create(sizes: SkeletonSizesUtil, inst: EntityInstantiation) -> Custo
 
 	return u
 
+## Altura, EN REPOSO, del origen del rayo de interacción sobre la base del `lower_spine`: la columna
+## hasta la base de la cabeza, más media cabeza, que es donde PlayerController pone la cámara. Sale de
+## las rotaciones de reposo (globales, ver CustomBone.rest_rotation) y no de las animadas: no tiembla
+## con la respiración ni con un agarre. La usa SeatInteractable para acomodar la silla a cada uno.
+func rest_eye_above_pelvis() -> float:
+	var y := 0.0
+	for bone: CustomBone in [lower_spine, higher_spine, chest, neck]:
+		if bone != null:
+			y += (Basis.from_euler(bone.rest_rotation).y * bone.length).y
+	return y + head.length * 0.5
+
 ## `pitch` es la postura del arquetipo, aplicada como rotación LOCAL sobre la base del modelo (no
 ## sumada al euler): así se dobla sobre el eje propio de la articulación, que es lo anatómicamente
 ## correcto y lo que hace que sea un offset relativo y no un valor absoluto.

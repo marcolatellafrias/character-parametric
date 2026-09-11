@@ -81,7 +81,9 @@ Information interactables are fixed to their spot (e.g. the ship manual's set pl
 
 ## Seats
 
-An interactable a player sits in with **E**. A seat mounted on something that moves — the ship's pilot seat — **carries its occupant**: height and heading follow the seat every frame. *(The rest TBD.)*
+An interactable a player sits in with **E**. A seat mounted on something that moves — the ship's pilot seat — **carries its occupant**: height and heading follow the seat every frame.
+
+A seat is a **swivel chair whose height fits whoever sits**: it rises or lowers, with the occupant riding along in a short transition, until the sitter's **interaction-ray origin** is at the seat's `eye_height` — the best height to use what is in front of it, so every archetype sees and reaches a dashboard alike. The pilot seat takes it from its console (just above the panel's top edge). Empty, it returns to a mid-size character's height, with no memory of the last sitter. Each machine derives the height from the sitter's skeleton; nothing is synced. The pedestal is built in code — a fixed disc and a column that stretches (`SwivelSeat`). *Legs don't adapt yet: short characters' feet dangle, tall ones' may sink into the floor.*
 
 ---
 

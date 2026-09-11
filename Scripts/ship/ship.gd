@@ -44,9 +44,14 @@ extends RigidBody3D
 ## la inclinaría y el autoenderezado se la pasaría peleando contra él.
 const MASS := 2000.0
 const SEAT_SCENE := "res://Scenes/ship/working_seat.tscn"
-## Qué tan atrás de la cara de la consola de vuelo va el centro del asiento del piloto: lo justo para
-## que la consola quede a mano estando sentado.
-const SEAT_SETBACK := 0.6
+## Aire entre las rodillas del piloto y el plano de abajo de la consola de vuelo. Las rodillas caen en el
+## borde de adelante del asiento (ver BoneInstantiator._pose_root), a la altura de la pelvis, y el
+## asiento va lo más cerca que eso deja (ver `_add_pilot_seat`).
+const KNEE_CLEARANCE := 0.08
+## Cuánto por encima del borde de arriba del tablero va la mira del piloto (ver SeatInteractable, ALTURA).
+## Así ve la ventana por encima de la consola, y todos los controles le quedan abajo: el rayo les entra
+## desde arriba, nunca rasante.
+const EYE_OVER_PANEL := 0.2
 ## Cuántos grados recorre una palanca de punta a punta.
 const LEVER_TRAVEL_DEG := 70.0
 ## Cuánto hay que girar el volante para doblar a fondo, en radianes.
@@ -168,19 +173,23 @@ func apply_wall_visibility() -> void:
 			ShipHull.set_translucent(mesh, translucent_walls)
 
 
-## Consola de vuelo, 40 × 16 celdas, en cuatro franjas de 8 columnas con cada control centrado en la
-## suya:
+## Consola de vuelo, 40 × 12 celdas. Todo va contra el borde de ABAJO, el más cercano al piloto (la
+## grilla crece de la pared hacia él), con el volante centrado, una palanca a cada lado y el encendido
+## junto al acelerador, todos pegados: el margen de cada control ya deja aire entre vecinos.
 ##
-##   [altura][   volante   ][acelerador][encendido]
+##   ┌────────────────────────────────────────┐  fila 0: lado de la pared
+##   │        [alt][   volante   ][acel]       │
+##   │        [alt][   volante   ][acel][o]    │  fila 11: lado del piloto
+##   └────────────────────────────────────────┘
 ##
 ## El orden de los slots es el orden en que se crean los controles (`ctrl_0` … `ctrl_3`), y
 ## `_wire_flight` depende de él.
 func _flight_preset() -> DashboardPreset:
 	var slots: Array[DashboardSlot] = [
-		_slot(Vector2i(1, 2), _lever(true, 0.5)),    # altura: vuelve al medio
-		_slot(Vector2i(10, 2), _wheel()),            # giro: vuelve al centro
-		_slot(Vector2i(25, 2), _lever(false, 0.0)),  # acelerador: se queda donde lo dejás
-		_slot(Vector2i(35, 7), _power_button()),     # encendido: queda prendido o apagado
+		_slot(Vector2i(8, 0), _lever(true, 0.5)),     # altura: vuelve al medio
+		_slot(Vector2i(14, 0), _wheel()),             # giro: vuelve al centro
+		_slot(Vector2i(26, 0), _lever(false, 0.0)),   # acelerador: se queda donde lo dejás
+		_slot(Vector2i(32, 10), _power_button()),     # encendido: queda prendido o apagado
 	]
 	var preset := DashboardPreset.new()
 	preset.fill_remaining_random = false
@@ -266,10 +275,15 @@ func _add_pilot_seat() -> void:
 	var scene := load(SEAT_SCENE) as PackedScene
 	if scene == null:
 		return
-	var seat := scene.instantiate() as Node3D
+	var seat := scene.instantiate() as SeatInteractable
 	seat.name = "pilot_seat"
+	seat.eye_height = ShipHull.panel_top_height() + EYE_OVER_PANEL
 	# Mirando al frente (−Z, que es para donde mira un asiento sin rotar), detrás de la consola de vuelo.
-	seat.position = Vector3(0.0, ShipHull.WALL, -(ShipHull.console_apothem() - SEAT_SETBACK))
+	# Las rodillas se meten bajo el tablero lo que el plano de abajo deja a su altura. Se planea con la de
+	# un arquetipo medio: a los que se sientan más alto les queda menos lugar.
+	var knee_room := ShipHull.knee_room_at(seat.typical_height())
+	var from_hinge := seat.seat_area.z * 0.5 + KNEE_CLEARANCE - knee_room
+	seat.position = Vector3(0.0, ShipHull.WALL, -(ShipHull.console_apothem() - from_hinge))
 	add_child(seat)
 
 

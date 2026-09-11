@@ -42,15 +42,17 @@ const WINDOW_SILL := 24.0
 ## El orden importa: la primera es la del frente, que es la de vuelo.
 const CONSOLE_SIDES: Array[int] = [0, -1, 1, -2, 2]
 const CONSOLE_COLUMNS := 40
-const CONSOLE_ROWS := 16
+## Filas del tablero: tan profundo como el volante, el control más grande. Lo que queda hasta la pared
+## es un estante plano, cosmético.
+const CONSOLE_ROWS := 12
+## Altura de la BISAGRA de cada consola, desde el piso: el borde de abajo del tablero, del lado de quien
+## lo usa. Desde ahí el tablero sube hacia la pared y el plano de abajo baja hacia ella.
 const CONSOLE_HEIGHT := 0.75
-const CONSOLE_DEPTH := 0.45
-## Inclinación del panel desde la vertical. 60° es un atril: queda bajo, así el piloto sentado ve por
-## encima hacia la ventana, y a mano sin estirarse.
-const PANEL_TILT_DEG := 60.0
-## Cuánto se levanta el panel sobre la consola, para que los controles no queden enterrados en ella.
-const PANEL_LIFT := 0.04
-const PANEL_INSET := 0.02
+## Inclinación del tablero desde la vertical: a 45° queda de frente a la mira del que está sentado.
+const PANEL_TILT_DEG := 45.0
+## Cuánto se mete hacia la pared, en el piso, el borde del plano de abajo. Inclinado así deja lugar para
+## las rodillas debajo del tablero, y el asiento puede ir más cerca (ver Ship._add_pilot_seat).
+const LOWER_SETBACK := 0.5
 const PLATE_THICKNESS := 0.03
 ## Cuánto va la placa por detrás del plano de los controles.
 const PLATE_BACK := 0.035
@@ -93,6 +95,17 @@ static func interior_size() -> Vector3:
 ## exactamente `CONSOLE_COLUMNS` celdas: lado = 2 · a · tan(22.5°).
 static func console_apothem() -> float:
 	return float(CONSOLE_COLUMNS) * CELL / (2.0 * tan(deg_to_rad(22.5)))
+
+
+## Altura del borde de arriba del panel de una consola, desde el piso: lo más alto de un tablero.
+static func panel_top_height() -> float:
+	return CONSOLE_HEIGHT + float(CONSOLE_ROWS) * CELL * cos(deg_to_rad(PANEL_TILT_DEG))
+
+
+## Cuánto se mete el plano de abajo detrás de la bisagra a `height` sobre el piso: el lugar que hay para
+## las rodillas a esa altura.
+static func knee_room_at(height: float) -> float:
+	return LOWER_SETBACK * clampf(1.0 - height / CONSOLE_HEIGHT, 0.0, 1.0)
 
 
 ## Colores bien distintos entre piezas vecinas. El tono avanza por la razón áurea, que es la forma más
@@ -169,7 +182,9 @@ static func _build_back_wall(ship: RigidBody3D, parts: Parts, size: Vector3, z: 
 		Vector3(0.0, WALL + door.y * 0.5, z)))
 
 
-## Un lado del anillo: el cuerpo de la consola, la placa inclinada del panel, y el dashboard encima.
+## Un lado del anillo, hecho de placas: el tablero inclinado con el dashboard encima, el plano de abajo
+## —de la bisagra al piso, inclinado hacia la pared para dejar lugar a las rodillas— y un estante plano
+## del borde de arriba del tablero hasta la pared, para cosas cosméticas.
 ##
 ## El dashboard de `ProceduralDashboard` es una grilla en su plano XY con la cara hacia +Z local, que
 ## arranca en su esquina superior izquierda y crece hacia −Y. Inclinado como atril, la fila de arriba
@@ -177,30 +192,39 @@ static func _build_back_wall(ship: RigidBody3D, parts: Parts, size: Vector3, z: 
 static func _build_console(ship: RigidBody3D, side_index: int, preset: DashboardPreset) -> ProceduralDashboard:
 	var theta := float(side_index) * PI * 0.25
 	var outward := Vector3(sin(theta), 0.0, -cos(theta))
-	# −Z local apunta hacia afuera (a la pared) y +Z hacia el centro, que es para donde mira el panel.
-	var console := Transform3D(Basis(Vector3.UP, -theta),
-		outward * (console_apothem() + CONSOLE_DEPTH * 0.5) + Vector3.UP * (WALL + CONSOLE_HEIGHT * 0.5))
+	# Origen en la bisagra; −Z local apunta hacia la pared y +Z hacia el centro, para donde mira el tablero.
+	var hinge := Transform3D(Basis(Vector3.UP, -theta),
+		outward * console_apothem() + Vector3.UP * (WALL + CONSOLE_HEIGHT))
 	var tag := _side_tag(side_index)
 	var width := float(CONSOLE_COLUMNS) * CELL
-	_box_xf(ship, "console_%s" % tag, Vector3(width, CONSOLE_HEIGHT, CONSOLE_DEPTH), console)
-
-	# La bisagra del panel es el borde interior de arriba de la consola: ahí va el borde de abajo de la
-	# grilla, y desde ahí sube inclinada hacia la pared.
-	var grid := Vector2(width, float(CONSOLE_ROWS) * CELL)
+	var depth := float(CONSOLE_ROWS) * CELL
 	var tilt := deg_to_rad(PANEL_TILT_DEG)
-	var origin := Vector3(-grid.x * 0.5,
-		CONSOLE_HEIGHT * 0.5 + PANEL_LIFT + grid.y * cos(tilt),
-		CONSOLE_DEPTH * 0.5 - PANEL_INSET - grid.y * sin(tilt))
-	var panel := console * Transform3D(Basis(Vector3.RIGHT, -tilt), origin)
-	_box_xf(ship, "panel_%s" % tag, Vector3(width, grid.y, PLATE_THICKNESS),
-		panel * Transform3D(Basis(), Vector3(grid.x * 0.5, -grid.y * 0.5, -PLATE_BACK)))
+
+	# Tablero: sube desde la bisagra hacia la pared. En su marco, +Y sube por la pendiente y +Z es la cara.
+	var panel := hinge * Transform3D(Basis(Vector3.RIGHT, -tilt), Vector3.ZERO)
+	_box_xf(ship, "panel_%s" % tag, Vector3(width, depth, PLATE_THICKNESS),
+		panel * Transform3D(Basis(), Vector3(0.0, depth * 0.5, -PLATE_BACK)))
+
+	# Plano de abajo: de la bisagra al piso, con el borde del piso metido `LOWER_SETBACK` hacia la pared.
+	var lean := atan2(LOWER_SETBACK, CONSOLE_HEIGHT)
+	var lower_length := Vector2(LOWER_SETBACK, CONSOLE_HEIGHT).length()
+	_box_xf(ship, "lower_%s" % tag, Vector3(width, lower_length, PLATE_THICKNESS),
+		hinge * Transform3D(Basis(Vector3.RIGHT, lean), Vector3(0.0, -CONSOLE_HEIGHT * 0.5, -LOWER_SETBACK * 0.5)))
+
+	# Estante cosmético: plano, del borde de arriba del tablero hasta la pared.
+	var top := Vector3(0.0, depth * cos(tilt), -depth * sin(tilt))
+	var shelf := interior_size().z * 0.5 - console_apothem() + top.z
+	if shelf > 0.0:
+		_box_xf(ship, "shelf_%s" % tag, Vector3(width, PLATE_THICKNESS, shelf),
+			hinge * Transform3D(Basis(), top + Vector3(0.0, -PLATE_THICKNESS * 0.5, -shelf * 0.5)))
 
 	var dash := ProceduralDashboard.new()
 	dash.name = "dashboard_%s" % tag
 	dash.grid_columns = CONSOLE_COLUMNS
 	dash.grid_rows = CONSOLE_ROWS
 	dash.custom_preset = preset if preset != null else _empty_preset()
-	dash.transform = panel
+	# La grilla arranca en su esquina superior izquierda: el borde de arriba del tablero, a la izquierda.
+	dash.transform = panel * Transform3D(Basis(), Vector3(-width * 0.5, depth, 0.0))
 	ship.add_child(dash)
 	return dash
 

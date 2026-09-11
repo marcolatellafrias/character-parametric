@@ -79,6 +79,8 @@ func _ready() -> void:
 	# setea `default_value` antes de meterlo al árbol, así que acá ya tiene el valor bueno.
 	visual_value   = default_value
 	_network_state = default_value
+	# Y en su POSE de reposo: un control que no vuelve solo se quedaba en rotación 0 hasta que lo tocaban.
+	_apply_visual()
 	_claim = ExclusiveClaim.new()
 	_claim.name = "Claim"  # nombre estable → mismo path en todas las máquinas
 	add_child(_claim)
