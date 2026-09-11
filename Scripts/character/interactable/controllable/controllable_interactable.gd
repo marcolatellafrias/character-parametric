@@ -1,10 +1,15 @@
 class_name ControllableInteractable
 extends Interactable
 
+## Por defecto, mientras se maneja un control la cámara se mueve al 30 %: se ve hacia dónde va la mano
+## sin que la vista se escape. Cada control lo puede cambiar (ControlDefinition.camera_sensitivity_factor).
+const DEFAULT_CAMERA_SENSITIVITY := 0.3
+
 @export var auto_return:               bool         = false
 @export var default_value:             float        = 0.0
 @export var positions:                 Array[float] = []
-@export var camera_sensitivity_factor: float        = 0.3
+## Cuánto sigue moviendo la cámara el mouse mientras se maneja el control: una fracción de lo normal.
+@export var camera_sensitivity_factor: float        = DEFAULT_CAMERA_SENSITIVITY
 @export var snap_lerp_speed:           float        = 8.0
 @export var return_speed:              float        = 3.0
 

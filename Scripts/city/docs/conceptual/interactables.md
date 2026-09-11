@@ -33,7 +33,7 @@ Controllables are built from primitives, which are never placed directly — you
   - **Continuous** — every position is valid.
   - **Snap-back** — a continuous lever that eases back to a rest value (e.g. neutral halfway), while its **whole trajectory is still recorded and synced**. Abstractly this is just a continuous lever that snaps back at one value but registers its full path — be careful architecting the class hierarchy around this.
 - **Two-axis component** — an analog-joystick equivalent. Same variations as one-axis (discrete/continuous, snap-back or not).
-- **Rotating component** — a valve, steering wheel, knob, etc. Differs in interaction: **press and hold, then rotate with the scroll wheel.** Can be discrete or continuous, and can register trajectory or not.
+- **Rotating component** — a valve, steering wheel, knob, etc. Differs in interaction: **press and hold, then rotate** — with the **scroll wheel** (endless turns, like a valve) or by **dragging the mouse sideways** (like a steering wheel), optionally with a **stop** short of a full turn. The ship's wheel is the dragged kind with a stop, like a Cybertruck's. Can be discrete or continuous, and can register trajectory or not.
 - **Touch component** — something you tap, or tap and hold. Depending on the button it registers hold time or just the press.
 
 ### Concrete controllables
@@ -60,7 +60,7 @@ Two placement passes run:
 1. **Preset (fixed) slots** — an optional `DashboardPreset` lists `DashboardSlot`s, each pinning a `ControlDefinition` to a grid cell. These are placed first; a slot that doesn't fit (out of bounds or overlapping) is skipped and its origin cell just marked occupied. A `null` definition marks a deliberately empty cell.
 2. **Seeded random fill** — if the preset allows it (`fill_remaining_random`), leftover cells are filled from a weighted table of control archetypes (`_DEFS`: buttons, short and long levers, joysticks, knobs and wheels, sized in cells) using a `RandomNumberGenerator` seeded with `seed_value`, so the same seed always yields the same dashboard.
 
-A `ControlDefinition` chooses the control **type** (touch / one-axis / two-axis / rotating) and its per-type parameters — sensitivity, max angle, rotation axis, auto-return, toggle, custom mesh, etc. The built-in `PresetType.STEERING_WHEEL` layout, for example, lays out a wheel, a lever and six buttons on the default 32 × 24 grid.
+A `ControlDefinition` chooses the control **type** (touch / one-axis / two-axis / rotating) and its per-type parameters — sensitivity, max angle, rotation axis, auto-return, toggle, custom mesh, how much the mouse still turns the camera while it is held (30 % by default), etc. The built-in `PresetType.STEERING_WHEEL` layout, for example, lays out a wheel, a lever and six buttons on the default 32 × 24 grid.
 
 When `show_debug` is on, each control renders placeholder geometry (arm, joystick, wheel, or button face) plus its handle points; otherwise `build()` applies the control's `custom_mesh`.
 

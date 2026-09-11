@@ -1,7 +1,15 @@
 class_name RotatingComponent
 extends ControllableInteractable
 
+## Cómo se gira. Con la ruedita suma vueltas sin fin, como una válvula. Arrastrando el mouse de costado
+## se gira como un volante.
+enum InputMode { SCROLL, MOUSE_HORIZONTAL }
+
+@export var input_mode:          InputMode = InputMode.SCROLL
 @export var sensitivity:         float   = 0.05
+## Tope de giro para cada lado, en radianes; 0 = sin tope. Con tope y el mouse es el volante del
+## Cybertruck: a fondo sin llegar a dar una vuelta.
+@export var max_rotation:        float   = 0.0
 @export var rotation_axis_local: Vector3 = Vector3.UP
 @export var height_offset:       float   = 0.0
 
@@ -11,15 +19,27 @@ extends ControllableInteractable
 var total_rotation: float = 0.0
 
 func get_prompt() -> String:
-	return "[LMB] + scroll to rotate"
+	return "[LMB] + drag left/right to turn" if input_mode == InputMode.MOUSE_HORIZONTAL else "[LMB] + scroll to rotate"
 
 func apply_sync_state(state: Variant) -> void:
 	total_rotation = state  # el visual y el control local leen de acá
 	super(state)
 
 func handle_scroll(delta: float) -> void:
-	total_rotation += delta * sensitivity
-	visual_value    = total_rotation
+	if input_mode == InputMode.SCROLL:
+		_turn(delta * sensitivity)
+
+## Arrastrar a la derecha gira en sentido horario visto de frente (con el eje hacia quien mira, BACK),
+## como un volante: el valor baja.
+func handle_mouse_motion(delta: Vector2) -> void:
+	if input_mode == InputMode.MOUSE_HORIZONTAL:
+		_turn(-delta.x * sensitivity)
+
+func _turn(amount: float) -> void:
+	total_rotation += amount
+	if max_rotation > 0.0:
+		total_rotation = clampf(total_rotation, -max_rotation, max_rotation)
+	visual_value = total_rotation
 	_emit_if_changed(total_rotation)
 	_apply_visual()
 

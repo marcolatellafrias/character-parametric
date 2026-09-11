@@ -54,7 +54,7 @@ const KNEE_CLEARANCE := 0.08
 const EYE_OVER_PANEL := 0.2
 ## Cuántos grados recorre una palanca de punta a punta.
 const LEVER_TRAVEL_DEG := 70.0
-## Cuánto hay que girar el volante para doblar a fondo, en radianes.
+## Hasta dónde gira el volante para cada lado, en radianes (~86°): ahí dobla a fondo y hace tope.
 const WHEEL_FULL_LOCK := 1.5
 const GROUP := "ship"
 
@@ -217,7 +217,12 @@ func _wheel() -> ControlDefinition:
 	d.type = ControlDefinition.ControlType.ROTATING
 	d.grid_size = ProceduralDashboard.WHEEL
 	d.rotation_axis_local = Vector3.BACK
-	d.rotate_sensitivity = 0.2
+	# Como el del Cybertruck: se gira arrastrando el mouse de costado y a fondo hace tope, sin dar una vuelta.
+	d.rotate_input = RotatingComponent.InputMode.MOUSE_HORIZONTAL
+	d.rotate_sensitivity = 0.0015
+	# Mientras se gira, la vista acompaña la mitad que con el resto de los controles.
+	d.camera_sensitivity_factor = 0.15
+	d.rotate_max = WHEEL_FULL_LOCK
 	d.height_offset = 0.16
 	d.auto_return = true
 	return d
@@ -251,8 +256,9 @@ func _wire_flight(dash: ProceduralDashboard) -> void:
 	if altitude != null:
 		altitude.state_changed.connect(func(v: float) -> void: input_vertical = (v - 0.5) * 2.0)
 	if wheel != null:
+		# Horario, visto por el piloto, es valor negativo (ver RotatingComponent) y es doblar a la derecha.
 		wheel.state_changed.connect(
-			func(v: float) -> void: input_steering = clampf(v / WHEEL_FULL_LOCK, -1.0, 1.0))
+			func(v: float) -> void: input_steering = clampf(-v / WHEEL_FULL_LOCK, -1.0, 1.0))
 	if throttle != null:
 		throttle.state_changed.connect(func(v: float) -> void: input_throttle = v)
 	if power != null:

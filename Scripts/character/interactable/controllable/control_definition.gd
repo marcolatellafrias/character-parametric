@@ -12,6 +12,8 @@ enum ControlType { TOUCH, ONE_AXIS, TWO_AXIS, ROTATING }
 @export var auto_return:   bool         = false
 @export var default_value: float        = 0.0
 @export var positions:     Array[float] = []
+## Cuánto sigue moviendo la cámara el mouse mientras se maneja este control.
+@export var camera_sensitivity_factor: float = ControllableInteractable.DEFAULT_CAMERA_SENSITIVITY
 
 @export_group("OneAxis / TwoAxis")
 @export var sensitivity:         float   = 0.005
@@ -25,3 +27,6 @@ enum ControlType { TOUCH, ONE_AXIS, TWO_AXIS, ROTATING }
 @export_group("Rotating")
 @export var rotate_sensitivity: float = 0.05
 @export var height_offset:      float = 0.0
+@export var rotate_input:       RotatingComponent.InputMode = RotatingComponent.InputMode.SCROLL
+## Tope de giro para cada lado, en radianes; 0 = sin tope.
+@export var rotate_max:         float = 0.0

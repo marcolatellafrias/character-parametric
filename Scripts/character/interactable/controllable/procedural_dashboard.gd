@@ -315,6 +315,8 @@ func _make_control_from_def(def: ControlDefinition) -> ControllableInteractable:
 			c.sensitivity         = def.rotate_sensitivity
 			c.rotation_axis_local = def.rotation_axis_local
 			c.height_offset       = def.height_offset
+			c.input_mode          = def.rotate_input
+			c.max_rotation        = def.rotate_max
 			ctrl                  = c
 		_:
 			ctrl = TouchComponent.new()
@@ -324,6 +326,7 @@ func _make_control_from_def(def: ControlDefinition) -> ControllableInteractable:
 	ctrl.positions         = def.positions.duplicate()
 	ctrl.custom_mesh       = def.custom_mesh
 	ctrl.rest_rotation_deg = def.rest_rotation_deg
+	ctrl.camera_sensitivity_factor = def.camera_sensitivity_factor
 	return ctrl
 
 # ── Debug helpers ─────────────────────────────────────────────────────────────
