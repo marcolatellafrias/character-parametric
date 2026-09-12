@@ -231,6 +231,53 @@ Staying at the average is the cheapest and closes no doors. The one rule it does
 
 ---
 
+## The terrain plan, and where it stopped
+
+Terrain was introduced as a seven-step plan. Three steps landed, one landed inconsistently, three were never started. It is written down here so the half-finished parts are visible instead of surprising.
+
+### Why it is only two funnels
+
+The whole plan rests on a finding worth keeping: **everything that sits in the city passes through two places**, so terrain never had to be threaded through the whole system.
+
+- `BuildingModule.get_region_vertices()` / `get_core_vertices()` — doors, stairs, floating and street sidewalks, bridge ends, and later windows, pipes and props.
+- `BlockGenerator.get_edge_lane_volume()` — all traffic.
+
+Bilinear interpolation (`GridHelper`) is pure 2D; Y is added afterwards. The 3D sidewalk matrix, door `{cell, edge, floor}` triples and the bridge grid are **logical indices in module space**, not metres, so they keep working untouched.
+
+### Status
+
+| | Step | State |
+|---|---|---|
+| 1 | Height field at the graph nodes, plus the ground mesh and its collider | **done** — `CityTerrain`, `City._visualize_ground` |
+| 2 | Heights at the distorted-grid vertices, falling off to zero at the block perimeter so neighbouring blocks still meet | **done** — `DistortedGrid.vertex_heights`, `edge_falloff_sharpness` |
+| 3 | Lane volumes riding the field | **not started** — `get_edge_lane_volume` still writes `0.0` at the bottom and `max_height_global` at the top: one global height for the entire city |
+| 4 | Buildings: solid plinth first, then the taper | **inconsistent** — see below |
+| 5 | A *buried* predicate in the 3D sidewalk matrix | **not started**, and largely unnecessary: ground-floor doors anchor at `height_index 0`, which follows the terrain |
+| 6 | Stepped field inside the block, stairs in the alleys (parkour) | **partial** — `TraversalGenerator.stair_zones` exists; the stepped field does not |
+| 7 | `GroundPlanner`: cars that hug the ground | **not started** — nothing in the traffic code reads the terrain |
+
+### Step 4 is not merely unfinished — it contradicts itself
+
+`BlockGenerator.TAPER_FLOORS = 2` says a building follows the terrain at its base and is flat by the second floor, so roofs come out horizontal. `BuildingModule._ground_at` implements exactly that, and every **placement** call honours it.
+
+**The wall mesh does not.** `City._visualize_buildings` takes `get_core_vertices(0)` — always the terrain-following quad — and adds `floor_base_y` by hand, so every floor carries the ground's tilt all the way to the roof.
+
+Measured on a four-storey cluster with 8 m of drop beneath it, wall against placement: **0.00 m at floor 0, 0.68 m at floor 1, 1.35 m from floor 2 up** (it saturates where the taper ends). A door or walkway on floor 2 is placed a metre and a half below the wall it belongs to. **Anything that places geometry against a facade will land wrong until this is settled.**
+
+Two one-line ways out, and they are opposites:
+
+- **Make the mesh honour the taper** — ask `get_core_vertices` for the floor's own height index instead of `0`. Roofs become horizontal from floor 2, which is what `TAPER_FLOORS` intends.
+- **Make placement stop tapering** — then the whole building keeps the ground's tilt, which is what the game currently looks like and what was preferred on sight, and openings land exactly on their walls.
+
+The second matches the current look and deletes a half-built system rather than completing it. It costs tilted roofs, which is acceptable while the character gains slope handling.
+
+### Two constraints for whoever picks this up
+
+- The field must derive from the **world seed**. Traffic assumes every peer generates identical geometry.
+- Steps 3 and 7 are one subject: give the lane volumes the field, then copy the bridge planner's shape — an immutable route plus a Y profile frozen at spawn — into a `GroundPlanner`. Its one new rule is that a ground-hugging car may not duck *downwards* to avoid a bridge, because the ground is there.
+
+---
+
 ## Corner chamfers
 
 Building modules can have **chamfered corners** — rectangular regions cut from the core at vertices where streets or alleyways meet. Chamfers are computed per-module in `BuildingModule._calculate_chamfers()`.

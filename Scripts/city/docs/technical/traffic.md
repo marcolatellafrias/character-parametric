@@ -67,6 +67,8 @@ One consequence matters for traffic: the old shader measured **XZ** distance, a 
 
 Cars **fade** like everything else now. Their pooled visual carries the same `visibility_range_end` and scaled ring as city geometry, and `CarManager` only returns it to the pool past `render_distance + ring + VISUAL_RELEASE_MARGIN`. Before this it flipped `visible` at exactly `render_distance`, so a car popped into existence whole in a single frame — the same flaw San Andreas has with its own vehicles, which do not go through the fading path either.
 
+> **Traffic does not know about the terrain yet.** `BlockGenerator.get_edge_lane_volume` builds every lane volume from `0.0` up to one height shared by the whole city (`max_height_global`), so lane volumes are flat boxes over sloped ground. Making them ride the field, and adding a `GroundPlanner` for cars that hug it, are steps 3 and 7 of the terrain plan in [city-generation.md](city-generation.md).
+
 ## Spawning — demand-pull system
 
 Instead of spawning cars at edges and hoping they drive into view, the system is **demand-pull**: each volume has a target occupancy and the system fills it to target.
