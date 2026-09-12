@@ -20,7 +20,7 @@ extends RefCounted
 ## ── EL ANILLO DE MÓDULOS ─────────────────────────────────────────────────────────────────────────
 ## Un polígono regular que mira al centro, lo más afuera que se puede. Cada LADO es una fila recta de
 ## MÓDULOS pegados (ver `_side_modules`): el domo, redondo, lleva muchos lados de un módulo; la caja,
-## cuadrada, un octógono de lados de tres. El módulo del medio de cada lado es el PRINCIPAL: el que mira el
+## cuadrada, un octógono de lados de hasta tres. El módulo del medio de cada lado es el PRINCIPAL: el que mira el
 ## asiento, y en el frente el que lleva el tablero de vuelo; siempre es un atril de `MAIN_COLUMNS`. Llevan
 ## módulos todos los lados menos los que se meterían en el pasillo de carga, que es el hueco entre la
 ## compuerta y los tableros (ver `console_indices`).
@@ -43,8 +43,9 @@ extends RefCounted
 ## desde el piso de adentro.
 
 const CELL := ProceduralDashboard.CELL
-## Medio ancho interior —el radio del domo, la mitad del lado de la caja—: 126 celdas, 5,04 m. Las dos
-## formas tienen la misma planta, para compararlas de igual a igual.
+## Medio ancho interior de las naves grandes —el radio del domo, la mitad del lado de la caja grande—: 126
+## celdas, 5,04 m. Las dos tienen la misma planta, para compararlas de igual a igual; la caja chica, la
+## mitad (ver BoxHull.small).
 const HALF_WIDTH := 126.0 * CELL
 ## Espesor del piso, las paredes y la compuerta.
 const WALL := 4.0 * CELL
@@ -119,16 +120,20 @@ const DOOR_BUTTON := Vector2i(4, 4)
 const BUTTON_STANDOFF := 0.06
 
 
-## Un módulo de un lado del anillo: qué es, cuántas columnas de ancho, y si lleva tablero volador arriba.
+## Un módulo de un lado del anillo: qué es, cuántas columnas de ancho, si lleva tablero volador arriba y si
+## es LISO —su forma sin tablero, para completar un lado donde no entra otra cosa—.
 class Module:
 	var type: ShipHull.ModuleType
 	var columns: int
 	var overhead: bool
+	var blank: bool
 
-	func _init(module_type: ShipHull.ModuleType, module_columns: int, with_overhead: bool = false) -> void:
+	func _init(module_type: ShipHull.ModuleType, module_columns: int, with_overhead: bool = false,
+			is_blank: bool = false) -> void:
 		type = module_type
 		columns = module_columns
 		overhead = with_overhead
+		blank = is_blank
 
 
 ## Lo que la nave necesita tocar después de construido el casco.
@@ -193,6 +198,18 @@ func center_of_mass() -> Vector3:
 	return Vector3.UP * WALL
 
 
+## Cuánto llega el casco desde el centro sobre los ejes: hasta la cara de afuera de la pared del fondo,
+## donde está la compuerta.
+func half_extent() -> float:
+	return 0.0
+
+
+## Radio del círculo que encierra el casco, desde el centro: el de la esquina de un cuadrado de medio lado
+## `half_extent`, que alcanza para cualquier forma.
+func bounding_radius() -> float:
+	return half_extent() * sqrt(2.0)
+
+
 # ── El anillo ─────────────────────────────────────────────────────────────────────────────────────
 
 ## Arma el casco completo como hijos de `ship`. `main_presets` es lado → preset del módulo principal; los
@@ -252,11 +269,11 @@ static func _apothem_for(sides: int, columns: int) -> float:
 	return float(columns) * CELL / (2.0 * tan(PI / sides))
 
 
-## ¿Entra un anillo de `sides` lados? Sí, si al estante de un atril del ancho del lado —en sus esquinas, lo
-## más cerca de la pared— le queda al menos `SHELF_MIN_DEPTH`.
-func _ring_fits(sides: int) -> bool:
-	var frame := Transform3D(Basis(), Vector3(0.0, WALL, -_apothem_for(sides, side_columns())))
-	var half_width := float(side_columns()) * CELL * 0.5
+## ¿Entra un anillo de `sides` lados de `columns` columnas? Sí, si al estante de un atril del ancho del
+## lado —en sus esquinas, lo más cerca de la pared— le queda al menos `SHELF_MIN_DEPTH`.
+func _ring_fits(sides: int, columns: int) -> bool:
+	var frame := Transform3D(Basis(), Vector3(0.0, WALL, -_apothem_for(sides, columns)))
+	var half_width := float(columns) * CELL * 0.5
 	return _depth_to_wall(frame, half_width, panel_top_height()) - _panel_reach() >= SHELF_MIN_DEPTH
 
 
@@ -314,27 +331,32 @@ static func _panel_reach() -> float:
 # ── Los módulos ───────────────────────────────────────────────────────────────────────────────────
 
 ## Arma un módulo en `frame` —su marco en el piso, sobre la línea de las bisagras— y devuelve su tablero
-## de abajo. Sin `preset`, lleva controles de relleno.
+## de abajo, o null si es liso. Sin `preset`, lleva controles de relleno. Cada tipo arma su forma y dice
+## dónde va su tablero; el dashboard se pone acá.
 func _build_module(ship: RigidBody3D, frame: Transform3D, module: Module, module_name: String,
 		preset: DashboardPreset, seed_value: int) -> ProceduralDashboard:
-	var dash: ProceduralDashboard
+	var panel := Transform3D()
+	var rows := CONSOLE_ROWS
 	match module.type:
 		ModuleType.TALL:
-			dash = _build_tall(ship, frame, module.columns, module_name, preset, seed_value)
+			panel = _build_tall(ship, frame, module.columns, module_name)
+			rows = TALL_PANEL_ROWS
 		ModuleType.SHORT:
-			dash = _build_short(ship, frame, module.columns, module_name, preset, seed_value)
+			panel = _build_short(ship, frame, module.columns, module_name)
+			rows = SHORT_PANEL_ROWS
 		_:
-			dash = _build_lectern(ship, frame, module.columns, module_name, preset, seed_value)
+			panel = _build_lectern(ship, frame, module.columns, module_name)
 	if module.overhead:
 		_build_overhead(ship, frame, module.columns, module_name, seed_value + 1)
-	return dash
+	if module.blank:
+		return null
+	return _dashboard_on(ship, "dashboard_%s" % module_name, panel, module.columns, rows, preset, seed_value)
 
 
 ## El atril: el tablero inclinado con el dashboard encima, el plano de abajo —de la bisagra al piso,
 ## inclinado hacia afuera para dejar lugar a las rodillas— y un estante plano sobre el borde de arriba del
 ## tablero, hasta la pared, para cosas cosméticas.
-func _build_lectern(ship: RigidBody3D, frame: Transform3D, columns: int, module_name: String,
-		preset: DashboardPreset, seed_value: int) -> ProceduralDashboard:
+func _build_lectern(ship: RigidBody3D, frame: Transform3D, columns: int, module_name: String) -> Transform3D:
 	var width := float(columns) * CELL
 	var depth := float(CONSOLE_ROWS) * CELL
 	var tilt := deg_to_rad(PANEL_TILT_DEG)
@@ -357,26 +379,24 @@ func _build_lectern(ship: RigidBody3D, frame: Transform3D, columns: int, module_
 	_box_xf(ship, "shelf_%s" % module_name, Vector3(width, PLATE_THICKNESS, shelf),
 		hinge * Transform3D(Basis(), top + Vector3(0.0, -PLATE_THICKNESS * 0.5, -shelf * 0.5)))
 
-	return _dashboard_on(ship, "dashboard_%s" % module_name, panel, columns, CONSOLE_ROWS, preset, seed_value)
+	return panel
 
 
 ## El gabinete alto: un bloque del piso a `TALL_HEIGHT`, con la cara de adelante sobre la línea del módulo
 ## y la de atrás contra la pared. El tablero va en la cara de adelante.
-func _build_tall(ship: RigidBody3D, frame: Transform3D, columns: int, module_name: String,
-		preset: DashboardPreset, seed_value: int) -> ProceduralDashboard:
+func _build_tall(ship: RigidBody3D, frame: Transform3D, columns: int, module_name: String) -> Transform3D:
 	var half := float(columns) * CELL * 0.5
 	_prism(ship, "tall_%s" % module_name, frame, half, PackedVector2Array([
 		Vector2(0.0, 0.0), Vector2(0.0, TALL_HEIGHT),
 		Vector2(_depth_to_wall(frame, half, TALL_HEIGHT), TALL_HEIGHT),
 		Vector2(_depth_to_wall(frame, half, 0.0), 0.0)]))
 	var panel := frame * Transform3D(Basis(), Vector3.UP * TALL_PANEL_BOTTOM)
-	return _dashboard_on(ship, "dashboard_%s" % module_name, panel, columns, TALL_PANEL_ROWS, preset, seed_value)
+	return panel
 
 
 ## El gabinete bajo: un bloque a la altura de la cintura, contra la pared, con la tapa subiendo
 ## `SHORT_TILT_DEG` hacia atrás. El tablero va en la tapa; la cara de adelante queda libre.
-func _build_short(ship: RigidBody3D, frame: Transform3D, columns: int, module_name: String,
-		preset: DashboardPreset, seed_value: int) -> ProceduralDashboard:
+func _build_short(ship: RigidBody3D, frame: Transform3D, columns: int, module_name: String) -> Transform3D:
 	var half := float(columns) * CELL * 0.5
 	var slope := tan(deg_to_rad(SHORT_TILT_DEG))
 	# Hasta dónde llega la tapa: se mide a la altura de su borde de atrás, que depende de cuánto llega.
@@ -389,7 +409,7 @@ func _build_short(ship: RigidBody3D, frame: Transform3D, columns: int, module_na
 	# El tablero sobre la tapa: desde el borde de adelante, subiendo hacia atrás.
 	var panel := frame * Transform3D(Basis(Vector3.RIGHT, -(PI * 0.5 - deg_to_rad(SHORT_TILT_DEG))),
 		Vector3.UP * SHORT_HEIGHT)
-	return _dashboard_on(ship, "dashboard_%s" % module_name, panel, columns, SHORT_PANEL_ROWS, preset, seed_value)
+	return panel
 
 
 ## El tablero volador: un bloque colgado de la pared arriba del módulo, con la esquina de abajo de adentro
@@ -551,11 +571,6 @@ static func _triangle(st: SurfaceTool, normal: Vector3, a: Vector3, b: Vector3, 
 
 
 # ── Piezas ────────────────────────────────────────────────────────────────────────────────────────
-
-## Radio del círculo que encierra cualquier casco, medido desde el centro: el de la esquina de la caja.
-static func bounding_radius() -> float:
-	return (HALF_WIDTH + WALL) * sqrt(2.0)
-
 
 ## Hacia afuera, en el rumbo `angle`: 0 es el frente (−Z), y crece hacia la derecha.
 static func _outward(angle: float) -> Vector3:

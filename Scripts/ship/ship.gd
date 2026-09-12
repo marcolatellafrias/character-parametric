@@ -78,8 +78,19 @@ static func toggle_translucent_walls(tree: SceneTree) -> void:
 			ship.apply_wall_visibility()
 
 
-## Qué casco lleva: todavía se prueban las dos formas (ver ShipHull). Se elige antes de meterla al árbol.
-enum Shape { DOME, BOX }
+## Un casco nuevo de la forma `ship_shape`, sin armar.
+static func hull_for(ship_shape: Shape) -> ShipHull:
+	match ship_shape:
+		Shape.BOX:
+			return BoxHull.large()
+		Shape.SMALL_BOX:
+			return BoxHull.small()
+	return DomeHull.new()
+
+
+## Qué casco lleva: todavía se prueban las formas (ver ShipHull) —el domo, y la caja grande y la chica (ver
+## BoxHull)—. Se elige antes de meterla al árbol.
+enum Shape { DOME, BOX, SMALL_BOX }
 @export var shape := Shape.DOME
 ## Para cuántos jugadores está armada: cuántos asientos lleva y frente a qué consolas (ver
 ## ShipHull.seat_sides). Se elige antes de meterla al árbol.
@@ -150,10 +161,7 @@ func _ready() -> void:
 	linear_damp = 0.0
 	angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
 	angular_damp = 0.0
-	if shape == Shape.BOX:
-		hull = BoxHull.new()
-	else:
-		hull = DomeHull.new()
+	hull = hull_for(shape)
 	# Centro de masa fijo, el del volumen del casco. Calculado de las formas se correría al abrir la
 	# compuerta —que se mueve— y la nave se inclinaría sola cada vez.
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM

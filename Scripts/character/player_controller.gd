@@ -47,6 +47,7 @@ var arms_controller: ArmsController = null
 
 var _creative: bool = false
 var _debug_panel: DebugPanel = null
+var _map_overlay: CityMapOverlay = null
 
 ## Punto de entrada único cuando el BoneInstantiator (re)construye el esqueleto del jugador
 ## activo — tanto el build inicial como cada respawn. Construye lo persistente una sola vez
@@ -141,6 +142,12 @@ func _input(event: InputEvent) -> void:
 	if is_instance_valid(_debug_panel) and event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode == KEY_F1:
 		_debug_panel.toggle()
+		return
+
+	# F2, el mapa de al lado: a diferencia del panel, no bloquea el gameplay —se mira en movimiento—.
+	if is_instance_valid(_map_overlay) and event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_F2:
+		_map_overlay.toggle()
 		return
 
 	# Con cualquier overlay abierto (pausa/menú/consola/debug) se bloquea el input de gameplay.
@@ -624,7 +631,22 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Spawn", "Nave domo (4 jugadores)",   func(): _debug_spawn_ship(Ship.Shape.DOME, 4))
 	_debug_panel.add_action("Spawn", "Nave cúbica (1 jugador)",   func(): _debug_spawn_ship(Ship.Shape.BOX, 1))
 	_debug_panel.add_action("Spawn", "Nave cúbica (4 jugadores)", func(): _debug_spawn_ship(Ship.Shape.BOX, 4))
+	_debug_panel.add_action("Spawn", "Nave cúbica chica (3 jugadores)", func(): _debug_spawn_ship(Ship.Shape.SMALL_BOX, 3))
 	_debug_panel.add_action("Spawn", "Limpiar spawns",     _clear_spawns)
+
+	# ── Mapa ──
+	# El mapa se centra y se teletransporta sobre la cápsula propia (ver CityMap).
+	var map := CityMap.new()
+	map.player = char_rigidbody
+	_debug_panel.add_action("Mapa", "Centrar en mí", map.center_on_player)
+	_debug_panel.add_control("Mapa", map)
+
+	# Y el mismo mapa, chico y en la esquina, para mirar en movimiento (F2).
+	if is_instance_valid(_map_overlay):
+		_map_overlay.queue_free()
+	_map_overlay = CityMapOverlay.new()
+	_map_overlay.setup(char_rigidbody)
+	add_child(_map_overlay)
 
 	# ── Performance ──
 	PerformanceToggles.build_tab(_debug_panel, get_tree())
@@ -715,15 +737,15 @@ func _debug_spawn(type_name: String) -> void:
 		pos = _snap_to_ground(pos) + Vector3.UP * 1.5
 	NetSpawner.request_spawn(type_name, Transform3D(Basis(), pos))
 
-## Cuánto adelante del jugador aparece el centro de la nave: su medio ancho más un metro y medio,
-## así el casco no nace encima de nadie y la compuerta queda a mano.
-const SHIP_SPAWN_DISTANCE := ShipHull.HALF_WIDTH + ShipHull.WALL + 1.5
+## Cuánto aire queda entre el jugador y la nave que spawnea: su centro va a su medio ancho más esto, así el
+## casco no nace encima de nadie y la compuerta queda a mano.
+const SHIP_SPAWN_GAP := 1.5
 
 ## Deja la nave prototipo adelante del jugador, apoyada en el piso, con la compuerta mirándolo.
 ##
 ## Como el NPC de `_debug_spawn_character`, NO pasa por NetSpawner: NetSpawner le cuelga sync de red
 ## y un Grabbable a todo RigidBody3D que spawnea, y la nave terminaría siendo algo que se puede agarrar.
-## Hay una sola: spawnear otra reemplaza la anterior.
+## Pueden convivir varias: la nueva nace sin tocar a las demás.
 func _debug_spawn_ship(shape: Ship.Shape, crew: int) -> void:
 	var scene_root := get_tree().current_scene
 	var fwd := -player_camera.global_transform.basis.z
@@ -733,12 +755,13 @@ func _debug_spawn_ship(shape: Ship.Shape, crew: int) -> void:
 	fwd = fwd.normalized()
 	# Las naves conviven: la nueva se corre hacia adelante hasta no tocar ninguna. Si naciera encima de otra,
 	# el rayo que busca el piso le pegaría a su techo; si naciera adentro, el motor las separaría de golpe.
-	var at := char_rigidbody.global_position + fwd * SHIP_SPAWN_DISTANCE
-	var separation := 2.0 * ShipHull.bounding_radius() + 0.5
+	var hull := Ship.hull_for(shape)
+	var at := char_rigidbody.global_position + fwd * (hull.half_extent() + SHIP_SPAWN_GAP)
 	for _step in 50:
 		var clear := true
 		for other in get_tree().get_nodes_in_group(Ship.GROUP):
 			var o := (other as Node3D).global_position
+			var separation := hull.bounding_radius() + (other as Ship).hull.bounding_radius() + 0.5
 			if Vector2(o.x - at.x, o.z - at.z).length() < separation:
 				clear = false
 				break

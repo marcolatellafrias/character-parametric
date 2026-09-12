@@ -1,7 +1,7 @@
 class_name DebugPanel
 extends CanvasLayer
 
-# Panel de debug con tabs (Info / Acciones / Arquetipos / Spawn / Performance). Se registra desde afuera
+# Panel de debug con tabs (Info / Acciones / Arquetipos / Spawn / Mapa / Performance). Se registra desde afuera
 # vía add_info / add_text / add_action / add_toggle / add_control; el panel solo renderiza. Ocupa todo el
 # alto de la pantalla, así casi no hace falta scrollear. Su visibilidad y el mouse
 # los maneja UIState (tecla F1). Solo se crea para un personaje con debug_enabled = true.
@@ -31,7 +31,7 @@ func _ready() -> void:
 	panel.add_child(_tabs)
 
 	# Orden fijo de las tabs.
-	for tab_name in ["Info", "Acciones", "Arquetipos", "Spawn", "Performance"]:
+	for tab_name in ["Info", "Acciones", "Arquetipos", "Spawn", "Mapa", "Performance"]:
 		_get_tab(tab_name)
 
 func _get_tab(tab_name: String) -> VBoxContainer:

@@ -79,7 +79,7 @@ const FRAME_OUT := 0.01
 func console_sides() -> int:
 	# Más lados es un anillo más grande: son los del primero que ya no entra, menos uno.
 	var n := 3
-	while _ring_fits(n + 1):
+	while _ring_fits(n + 1, side_columns()):
 		n += 1
 	return n
 
@@ -122,6 +122,15 @@ func _seat_layouts() -> Dictionary:
 ## El del volumen de un hemisferio: 3/8 del radio sobre el piso.
 func center_of_mass() -> Vector3:
 	return Vector3.UP * (WALL + DOME_RADIUS * 0.375)
+
+
+## Hasta la cara de afuera del domo. Como es redondo, es también el radio del círculo que lo encierra.
+func half_extent() -> float:
+	return GLASS_RADIUS
+
+
+func bounding_radius() -> float:
+	return GLASS_RADIUS
 
 
 ## El centro de la esfera del domo: sobre el piso, en el medio.
