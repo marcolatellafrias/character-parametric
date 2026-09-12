@@ -38,11 +38,17 @@ A sidewalk instance is a physical walkable surface: a **1-cell-tall skewed cube*
 
 Each block has a set of **delivery door zones** — locations where package delivery doors can spawn. A door zone is a cell-edge-floor on a specific cluster.
 
-**Data**: `BlockGenerator.delivery_doors` — array of `{cell: Vector2i, edge: int, floor: int, cluster_id: int}`.
+**Data**: `TraversalGenerator.delivery_doors` — array of `{cell: Vector2i, edge: int, floor: int, cluster_id: int, along_min: int, along_max: int, height_cells: int}`. `along_min/along_max` bound the door along its face and `height_cells` its height, both in building cells; without them the visualiser drew the full core width by a full floor, which is a wall, not a door.
 
-**Constraints**: edges must be FACADE or alleyway (not NORMAL or BOUNDARY). Cluster must have `floor_count > 0`. Currently 4 per block.
+**Constraints**: edges must be FACADE or alleyway (not NORMAL or BOUNDARY). Cluster must have `floor_count > 0`. Up to 4 per block, drawn from the block seed so every peer generates the same city.
+
+**Ground floor only, for now.** `TraversalGenerator._generate_ground_doors` places doors at floor 0 exclusively, and that is not only simplicity: floor 0 is the one floor where the building mesh and the placement layer agree exactly. From floor 2 up they diverge by 1.35 m (see "The terrain plan" in [city-generation.md](city-generation.md)), so a door there would hang off its own wall.
+
+The door is **geometry laid over the facade** — a skewed cube one building cell deep, sitting just outside the core. Nothing is cut out of the module mesh; real openings come later, with real building geometry. Measured on the generated city: 764 doors, 1.17–1.43 m wide and 2.13 m tall.
 
 ## Traversal infrastructure (stairs + floating sidewalks)
+
+> **Not implemented.** `TraversalGenerator.stair_zones` is declared and cleared but never written, and `floating_sidewalk_zones` only gets the floor-0 perimeter strips from `_generate_floor_sidewalks`. The visualisers (`City._visualize_stair_zones`) exist and iterate empty arrays. What follows is the design, not a description of the code.
 
 Connects floor 0 to each delivery door via a bottom-up convergent path of stairs and floating sidewalks.
 

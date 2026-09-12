@@ -54,10 +54,6 @@ var cluster_seed: int
 ## Altura de cada esquina de la manzana, en el orden de `block_vertices` (ver CityTerrain). Todo lo que se
 ## construye adentro interpola entre estas cuatro.
 var block_vertex_heights: Array[float] = []
-## En cuántos PISOS se endereza un edificio: abajo sigue al terreno, y para el piso `TAPER_FLOORS`
-## ya está plano, así los techos quedan horizontales (ver BuildingModule).
-const TAPER_FLOORS := 2
-
 var traversal: TraversalGenerator
 
 var temporal_lane_points: Dictionary = {}
@@ -261,8 +257,7 @@ func _create_building_clusters() -> void:
 			building_rows,
 			building_columns,
 			building_cell_height,
-			building_alleyway_offsets,
-			TAPER_FLOORS * cells_per_floor
+			building_alleyway_offsets
 		)
 	
 

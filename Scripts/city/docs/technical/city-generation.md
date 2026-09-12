@@ -41,7 +41,7 @@ The **ground mesh** (`City._visualize_ground`) triangulates each graph face in a
 
 Everything placed **in-grid** does, because it all flows through one funnel: `BuildingModule`'s `get_region_vertices` / `get_core_vertices` / `get_cell_vertices` / `get_cell_position` (buildings, external sidewalks, delivery doors, stairs, floating sidewalks, bridge extremes, and future windows/AC/pipes). `DistortedGrid.get_cell_vertices` puts the grid's own vertices on the field too; the wave distortion stays purely horizontal.
 
-**Low pieces follow the ground, high ones straighten out.** In the funnel each corner gets the terrain height at its own position, lerped toward the cluster's `ground_reference` — the average ground under all of the cluster's cells — as the height index rises, reaching it at `BlockGenerator.TAPER_FLOORS × cells_per_floor`. So a sidewalk hugs the hill corner by corner, while a building's roof comes out **flat and shared by the whole cluster**: the terrain eats the lower floors instead of the building tilting as a whole. Neighbouring pieces agree by construction, since they sample the same continuous field at the same corners.
+**Everything follows the ground, at every height.** In the funnel each corner gets the terrain height at its own position, and the height index adds a **pure vertical offset** on top. So floor N is floor 0 raised in Y: every floor parallel, every floor tilted alike. That is exactly how the visible mesh is built (`City._visualize_buildings`), and it is what makes a placed object land on the face you actually see. Neighbouring pieces agree by construction, since they sample the same continuous field at the same corners.
 
 **Not wired yet:** the **between-grids** placements — bridge middles and lane-volume planes — are still built at `y = 0` (`BlockGenerator`'s lane planes). Until they follow, a bridge's extremes ride the terrain while its middle stays at zero, and cars fly at the old height.
 
@@ -216,18 +216,15 @@ There is no "Downtown" district any more: density became its own axis when distr
 
 ---
 
-## Buildings on sloped terrain — a decision deliberately left open
+## Buildings on sloped terrain
 
-A building is a box with level floors. The only question the terrain raises is **what height that box is anchored at**, and today the answer is `BuildingCluster.ground_reference`: the **average** ground under the cluster's cells. Above the base row everything is flat, because `BuildingModule._ground_at` lerps from the module's own bilinear ground to that reference over `taper_cells` (currently **1**, so flattening is immediate).
+A building is a box whose floors are **parallel to the ground beneath it**. Each corner takes the terrain height at its own position (`BuildingModule._ground_at`), and each floor is that same quad raised by a pure vertical offset. No cluster is anchored to a single height, so none is buried on the uphill side or stilted on the downhill one: the box tilts with the hill.
 
-The practical consequence, and it is worth knowing before placing doors: the downhill side of a cluster shows a small **exposed base**, and the uphill side is **slightly buried** — each by roughly half the drop across the cluster, since the anchor is the mean. Roofs are already horizontal, so they are safe to stand on.
+Roofs tilt with it, which is the price. It is acceptable while the character gains slope handling, and it is the look that was approved on sight.
 
-Two alternatives were weighed and neither was adopted; this is on purpose, because moving between them is a single number per cluster rather than a redesign:
+**Superseded — the average anchor and its taper.** Clusters used to be anchored at `ground_reference`, the mean ground under their cells, with `_ground_at` straightening the module toward it over `TAPER_FLOORS × cells_per_floor` so roofs came out horizontal. It never reached the geometry, because the wall mesh never called that path — it only displaced the **placement** grid, by up to 1.35 m from floor 2 up (see "Step 4" below). Removed, along with `ground_reference`, `taper_cells` and `TAPER_FLOORS`.
 
-- **A — anchor at the highest point.** Nothing is ever buried, so every door meets ground or a step. Costs a step prop eventually, and the exposed base becomes part of the silhouette (with an 8% slope, roughly a third of a floor under a one-cell building and a full floor under an eight-cell one). This is the option that survives if the relief ever becomes steep — real hills, 25% grades — because the box stays plumb regardless.
-- **B — anchor at the lowest point.** Doors on the low side sit flush with no steps at all, but the terrain eats the bottom floors on the high side, which needs a *buried* predicate so the door and window systems never place anything under ground. Rejected: it constrains where doors can go.
-
-Staying at the average is the cheapest and closes no doors. The one rule it does ask of whatever places openings: **prefer the face where the ground meets the floor**, which is also where the step is smallest.
+⚠ If horizontal roofs are ever wanted again, the **mesh and the placement grid have to change together**. Doing it in one alone is precisely the bug that was removed.
 
 ---
 
@@ -251,30 +248,53 @@ Bilinear interpolation (`GridHelper`) is pure 2D; Y is added afterwards. The 3D 
 | 1 | Height field at the graph nodes, plus the ground mesh and its collider | **done** — `CityTerrain`, `City._visualize_ground` |
 | 2 | Heights at the distorted-grid vertices, falling off to zero at the block perimeter so neighbouring blocks still meet | **done** — `DistortedGrid.vertex_heights`, `edge_falloff_sharpness` |
 | 3 | Lane volumes riding the field | **not started** — `get_edge_lane_volume` still writes `0.0` at the bottom and `max_height_global` at the top: one global height for the entire city |
-| 4 | Buildings: solid plinth first, then the taper | **inconsistent** — see below |
+| 4 | Buildings riding the field | **done** — every floor is the base quad raised in Y, so mesh and placement agree; the taper was removed rather than completed (see below) |
 | 5 | A *buried* predicate in the 3D sidewalk matrix | **not started**, and largely unnecessary: ground-floor doors anchor at `height_index 0`, which follows the terrain |
 | 6 | Stepped field inside the block, stairs in the alleys (parkour) | **partial** — `TraversalGenerator.stair_zones` exists; the stepped field does not |
 | 7 | `GroundPlanner`: cars that hug the ground | **not started** — nothing in the traffic code reads the terrain |
 
-### Step 4 is not merely unfinished — it contradicts itself
+### Step 4: how the contradiction was settled
 
-`BlockGenerator.TAPER_FLOORS = 2` says a building follows the terrain at its base and is flat by the second floor, so roofs come out horizontal. `BuildingModule._ground_at` implements exactly that, and every **placement** call honours it.
+There were **two definitions of "where floor N is"**, and the mesh used the one nobody was maintaining.
 
-**The wall mesh does not.** `City._visualize_buildings` takes `get_core_vertices(0)` — always the terrain-following quad — and adds `floor_base_y` by hand, so every floor carries the ground's tilt all the way to the roof.
+`City._visualize_buildings` builds every floor from `get_core_vertices(0)` plus a hand-added `floor_base_y`, and extrudes vertically — so to the mesh, floor N has always been floor 0 raised in Y, tilted like the ground. Placement went through `_ground_at`, which lerped toward `ground_reference` over `TAPER_FLOORS × cells_per_floor` and so returned a **horizontal** surface from floor 2 up.
 
-Measured on a four-storey cluster with 8 m of drop beneath it, wall against placement: **0.00 m at floor 0, 0.68 m at floor 1, 1.35 m from floor 2 up** (it saturates where the taper ends). A door or walkway on floor 2 is placed a metre and a half below the wall it belongs to. **Anything that places geometry against a facade will land wrong until this is settled.**
+Measured on a four-storey cluster with 8 m of drop: **0.00 m at floor 0, 0.68 m at floor 1, 1.35 m from floor 2 up**, plus a mismatch in *tilt* — flat against sloped. Anything placed against a facade above floor 1 was landing on a surface that did not exist on screen. It masqueraded as a centimetre-scale alignment bug in bridges, and was chased as one for a while.
 
-Two one-line ways out, and they are opposites:
-
-- **Make the mesh honour the taper** — ask `get_core_vertices` for the floor's own height index instead of `0`. Roofs become horizontal from floor 2, which is what `TAPER_FLOORS` intends.
-- **Make placement stop tapering** — then the whole building keeps the ground's tilt, which is what the game currently looks like and what was preferred on sight, and openings land exactly on their walls.
-
-The second matches the current look and deletes a half-built system rather than completing it. It costs tilted roofs, which is acceptable while the character gains slope handling.
+**Resolved by making the relief independent of the height index**: `_ground_at(u, v)` returns the module's bilinear ground, full stop, and `_at_height` adds the vertical offset. Mesh and placement now agree on every floor, tilted or not, and the taper was deleted rather than completed.
 
 ### Two constraints for whoever picks this up
 
 - The field must derive from the **world seed**. Traffic assumes every peer generates identical geometry.
 - Steps 3 and 7 are one subject: give the lane volumes the field, then copy the bridge planner's shape — an immutable route plus a Y profile frozen at spawn — into a `GroundPlanner`. Its one new rule is that a ground-hugging car may not duck *downwards* to avoid a bridge, because the ground is there.
+
+---
+
+## Props — objects built inside a quad
+
+`Scripts/city/props/` holds procedural objects placed on the city: `PropGeometry` (the primitives) and `RoofProps` (what is composed from them). Today that is a water tank, a shed roof and a gable roof, all placeholders.
+
+### Everything is built in the quad's own (u,v) space
+
+This is the decision that matters, and it is what makes skew stop being a problem. A building's roof is not a rectangle: the distorted grid deforms it and the terrain tilts it. Building an axis-aligned object and then rotating it would mean carrying those angles everywhere.
+
+Instead every point is given in **normalised `(u, v)` coordinates of the base quad** and interpolated — bilinear in XZ via `GridHelper.bilinear_interpolation`, bilinear in Y via `GridHelper.bilinear_height`. The object is therefore born deformed exactly like the surface it stands on. **There is no skew step anywhere**, because none is needed. A cylinder is the circle *inscribed in a sub-quad*, so on a deformed roof it comes out elliptical — which is what you want.
+
+Quads run `[BL, BR, TR, TL]`, the order `get_region_vertices` and `get_core_vertices` return.
+
+### Why a separate class instead of DebugUtil
+
+`DebugUtil` is a large bag of debugging helpers; props are world **content**. Mixing them would leave neither legible. The one thing borrowed is **boxes**: `DebugUtil.get_skewed_cube_advanced_geometry` already produces a correctly wound skewed box from four base vertices, so `PropGeometry.add_box` delegates to it rather than reimplementing it. Output is the same `{vertices, normals, colors, indices}` dictionary `_visualize_buildings` merges.
+
+### Two traps, both paid for once
+
+**The roof quad must come from the mesh convention, not the placement one.** `City._visualize_roof_props` takes `get_core_vertices(0)` and adds the floor offset by hand, exactly as `_visualize_buildings` builds its walls. Using `get_region_vertices(..., roof_index)` would give the *placement* surface, which on upper floors sits up to 1.35 m below the roof you can see, and the props would float. See the terrain plan above.
+
+**Winding.** The material uses `CULL_BACK`, so vertex order alone decides whether a face is visible. The convention, confirmed by rendering a single triangle against a control: for emitted order `(A, B, C)` the visible face has normal **`(C - A) × (B - A)`**. `City._ground_triangle` picks its order with that same product, and `get_skewed_cube_advanced_geometry` agrees once you account for it emitting `(v1, v3, v2)`. Writing the cross product the other way compiles, runs, and silently inverts every face — from outside you then see the inside of the far side. `PropGeometry.add_tri` orients each triangle away from a supplied interior point; `add_tri_facing` orients toward a given direction instead, for flat faces where the interior-point test degenerates (a shed roof's plane has its centroid exactly at that point).
+
+### Placement
+
+`show_roof_props` gates it. Per cluster, seeded from the block seed so every peer builds the same city: each cell takes a sloped roof with probability `roof_shape_chance` (0.35), and a cluster that still has a flat cell takes a water tank with probability `water_tank_chance` (0.12) — deliberately low, since a repeated tank stops reading as detail and becomes texture. A tank is skipped when it would not fit the roof. Measured on the current city: 2271 sloped roofs, 271 tanks, 67 826 triangles merged into one mesh per block.
 
 ---
 
@@ -362,12 +382,14 @@ This formula lives in `FacadeHelper.needs_cell_reversal()`. It is the single sou
 
 ### Between-grids placement (bridge middles, future pipes)
 
-Objects that span the street between two blocks. Two facade planes (one per block) connected via `create_skewed_cube_from_planes`.
+Objects that span the street between two blocks. Two facade faces (one per block) connected via `create_skewed_cube_from_planes`.
 
-- **Position**: `c_a1.lerp(c_a2, t)` — linear interpolation between block core corners anchored at shared graph nodes. `t` is derived from integer cell indices: `t = cell_index / facade_building_cells`.
-- **Vertex correspondence**: guaranteed because `c_a1/c_b1` both correspond to the same graph node (node1), and `c_a2/c_b2` to node2. Lerping at the same `t` gives points directly across the street.
-- **Multi-cell spanning**: works naturally — the lerp is a single straight line regardless of how many distorted grid cells it crosses.
-- **Implementation**: `_bridge_plane()` and `_add_bridge_section()` in city.gd.
+- **Position**: both faces come from `FacadeHelper.facade_span_quad()`, which samples the building grid at the span's two end cells and at **both** height indices. The connector contributes no shape of its own — it only stretches one real facade face to the other.
+- **Vertex correspondence**: each face is returned as `[start_bottom, end_bottom, end_top, start_top]`, the order `get_skewed_cube_from_planes_geometry` pairs vertex-to-vertex.
+- **Multi-cell spanning**: only the two end cells are sampled, so any distorted-grid break in between falls inside the connector rather than on the face.
+- **Implementation**: `_add_bridge_span()` and `_add_bridge_arc_spans()` in city.gd.
+
+**Superseded:** the middle used to be built by `_bridge_plane()`, lerping between block core corners (`c_a1.lerp(c_a2, t)`) at a single scalar height per side. That gives a **horizontal** edge while the real facade face is torsioned — measured up to 0.205 m along one span — so the two met at a point and nowhere else. Connectors are the sole exception to the golden rule documented in `FacadeHelper`: they obey no grid, but they may not invent a plane either.
 
 ### In-grid placement (bridge extremes, future windows, AC units, balconies, rooftop objects)
 
@@ -380,4 +402,6 @@ Objects that occupy cells within the sidewalk 3D matrix of a single block.
 
 ### Alignment guarantee
 
-At the facade edge (v=0 for north, u=0 for west, etc.), the distorted grid has zero wave distortion (edge falloff). So the in-grid outer face and the between-grids facade plane produce the same world position when the `t` values are cell-aligned. This is why bridge extremes connect perfectly with bridge middles.
+The middle and the extremes cannot diverge, because both read the same source at the same indices: the extremes are prisms between two sampled heights (`BuildingModule.get_region_prism`) and the middle's end faces are sampled from that same grid. The pathway's bottom sits at `floor_idx * cells_per_floor` — the **start of a floor** — so a building's floating sidewalk and the bridge pathway meet as one continuous walkable surface.
+
+**Superseded:** this used to be justified by the distorted grid having zero wave distortion at the facade edge (edge falloff), which would make a lerped plane and a grid-sampled face agree there. The argument only covered XZ: it ignored the building grid's **Y** distortion, which comes from `_ground_at(u, v, height_index)` and does not vanish at the edge.

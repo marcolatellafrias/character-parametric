@@ -22,12 +22,6 @@ var building_columns: int
 var building_cell_height: float
 var building_alleyway_offsets: Dictionary
 
-## En cuántas celdas de alto se endereza el edificio (ver BuildingModule).
-var taper_cells: int = 1
-## La altura del suelo que le toca a TODO el cluster: el promedio bajo sus celdas. Es lo que hace que un
-## cluster de varias celdas tenga un solo techo plano aunque el terreno debajo suba.
-var ground_reference: float = 0.0
-
 ## Módulos ya calculados, cacheados POR LO QUE LOS DETERMINA y no por piso: la clave lleva la celda y sus
 ## cuatro tipos de borde. Los bordes se siguen consultando CON el piso, así que si mañana un callejón
 ## cambia a cierta altura, esa celda produce una clave distinta y se recalcula sola — la capacidad de
@@ -67,8 +61,7 @@ func set_grid_config(
 	p_building_rows: int,
 	p_building_columns: int,
 	p_building_cell_height: float,
-	p_building_alleyway_offsets: Dictionary,
-	p_taper_cells: int = 1
+	p_building_alleyway_offsets: Dictionary
 ) -> void:
 	if not p_path_generator.is_generated:
 		push_error("PathGenerator debe ser generado antes de configurar BuildingCluster. Llama a path_generator.generate() primero.")
@@ -80,21 +73,6 @@ func set_grid_config(
 	building_columns = p_building_columns
 	building_cell_height = p_building_cell_height
 	building_alleyway_offsets = p_building_alleyway_offsets
-	taper_cells = maxi(p_taper_cells, 1)
-	_measure_ground()
-
-
-## El suelo promedio bajo el cluster, medido en el centro de cada una de sus celdas.
-func _measure_ground() -> void:
-	ground_reference = 0.0
-	if cells.is_empty():
-		return
-	for cell in cells:
-		var corners = distorted_grid.get_cell_vertices(cell.x, cell.y)
-		if corners.size() != 4:
-			continue
-		ground_reference += (corners[0].y + corners[1].y + corners[2].y + corners[3].y) * 0.25
-	ground_reference /= float(cells.size())
 
 
 func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
@@ -154,9 +132,7 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 		x,
 		z,
 		path_generator,
-		archetype,
-		ground_reference,
-		taper_cells
+		archetype
 	)
 	
 	building_modules[key] = building_module

@@ -25,7 +25,7 @@ The edge's tier is the **taller of its two blocks** (`get_height_for_edge`), and
 
 A bridge has two distinct placement systems (see "Object placement — two systems" in [city-generation.md](city-generation.md#object-placement--two-systems)):
 
-- **Middle part** (between-grids): spans between opposing buildable zone boundaries across the street. Uses `create_skewed_cube_from_planes` with facade planes from `_bridge_plane()`.
+- **Middle part** (between-grids): spans between the two facade faces across the street. Uses `create_skewed_cube_from_planes` with both faces from `FacadeHelper.facade_span_quad()` — sampled from the building grid at the span's end cells and at **both** height indices, so the connector inherits the facade's torsion instead of imposing a horizontal plane of its own.
 - **Extremes** (in-grid): extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Live inside the sidewalk 3D matrix. Uses `create_skewed_cube` with base vertices from `get_region_vertices`.
 
 ## Bridge parts — middle (from-planes)

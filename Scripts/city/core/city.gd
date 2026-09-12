@@ -158,6 +158,14 @@ extends Node3D
 @export var show_delivery_doors: bool = false
 @export var delivery_door_color: Color = Color(0.9, 0.9, 0.85)
 
+@export_group("Objetos de techo")
+@export var show_roof_props: bool = true
+## Cada cuánto una celda de edificio se lleva un techo inclinado en vez de quedar plana.
+@export_range(0.0, 1.0) var roof_shape_chance: float = 0.35
+## Cada cuánto un CLUSTER de techo plano se lleva un tanque de agua. Bajo a propósito: repetido
+## demasiado, el tanque deja de leerse como detalle y se vuelve textura.
+@export_range(0.0, 1.0) var water_tank_chance: float = 0.12
+
 @export_group("Traversal Zones")
 @export var show_stair_zones: bool = false
 @export var stair_zone_color: Color = Color(1.0, 0.6, 0.1)
@@ -362,6 +370,9 @@ func visualize_graph() -> void:
 
 	if show_delivery_doors:
 		_visualize_delivery_doors()
+
+	if show_roof_props:
+		_visualize_roof_props()
 
 	if show_stair_zones:
 		_visualize_stair_zones()
@@ -1279,6 +1290,85 @@ func _visualize_sidewalk_matrices() -> void:
 
 
 # ============================================
+# OBJETOS DE TECHO
+# ============================================
+
+## Tanques de agua y techos inclinados sobre los edificios (ver RoofProps).
+##
+## El quad del techo sale de `get_core_vertices(0)` MÁS el desplazamiento del piso, que es exactamente
+## como arma su malla `_visualize_buildings`. Pedirlo con el índice de altura da lo mismo: el relieve ya
+## no depende del índice, así que las dos rutas devuelven la misma superficie (ver EL RELIEVE en
+## BuildingModule).
+##
+## Todo el bloque se fusiona en UNA malla: son miles de objetos chicos y una malla por objeto sería
+## desastroso para las draw calls.
+func _visualize_roof_props() -> void:
+	var container := _buildings_container("RoofProps")
+	var mat := _get_building_material()
+	var tanks := 0
+	var roofs := 0
+
+	for face_idx in generator.get_all_block_faces():
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		if block == null or block.get_distorted_grid() == null:
+			continue
+		var cells_per_floor := block.get_cells_per_floor()
+		var cell_height := block.get_building_cell_height()
+		var buffer := PropGeometry.new_buffer()
+
+		for cluster in block.get_all_clusters():
+			if cluster.get_floor_count() <= 0 or cluster.cells.is_empty():
+				continue
+			var rng := RandomNumberGenerator.new()
+			rng.seed = block.cluster_seed + cluster.id * 7919
+			var roof_y := float(cluster.get_floor_count()) * float(cells_per_floor) * cell_height
+			var flat_cells: Array = []
+
+			for cell in cluster.cells:
+				var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
+				if module == null:
+					continue
+				var quad := module.get_core_vertices(0)
+				if quad.size() != 4:
+					continue
+				for i in range(quad.size()):
+					quad[i].y += roof_y
+
+				if rng.randf() < roof_shape_chance:
+					if rng.randf() < 0.5:
+						RoofProps.gable_roof(buffer, quad, 2.2, rng.randf() < 0.5)
+					else:
+						RoofProps.shed_roof(buffer, quad, 1.8, rng.randi_range(0, 3))
+					roofs += 1
+				else:
+					flat_cells.append(quad)
+
+			# El tanque va sobre una celda que haya quedado PLANA: sobre un techo a dos aguas no se apoya.
+			if not flat_cells.is_empty() and rng.randf() < water_tank_chance:
+				var pick: Array = flat_cells[rng.randi_range(0, flat_cells.size() - 1)]
+				if RoofProps.water_tank(buffer, pick):
+					tanks += 1
+
+		if buffer["vertices"].is_empty():
+			continue
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = buffer["vertices"]
+		arrays[Mesh.ARRAY_NORMAL] = buffer["normals"]
+		arrays[Mesh.ARRAY_COLOR]  = buffer["colors"]
+		arrays[Mesh.ARRAY_INDEX]  = buffer["indices"]
+		var array_mesh := ArrayMesh.new()
+		array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		var mesh_instance := MeshInstance3D.new()
+		mesh_instance.mesh = array_mesh
+		mesh_instance.material_override = mat
+		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		_fade_into_fog(mesh_instance)
+		container.add_child(mesh_instance)
+
+	print("[Visualizer] Objetos de techo: %d techos inclinados · %d tanques" % [roofs, tanks])
+
+# ============================================
 # VISUALIZACIÓN DE DELIVERY DOORS
 # ============================================
 
@@ -1305,26 +1395,32 @@ func _visualize_delivery_doors() -> void:
 
 			var core = module.get_core_info()
 			var height_index = floor_idx * cells_per_floor
-			var floor_height = cells_per_floor * building_cell_height
+
+			# La puerta ocupa un tramo ACOTADO de la cara, no toda: `along_min/along_max` vienen del
+			# generador ya medidos en celdas (ver TraversalGenerator._door_span). Antes esto dibujaba el
+			# ancho entero del núcleo por un piso de alto, que es un paredón y no una puerta.
+			var along_min: int = door.get("along_min", core["min_x"])
+			var along_max: int = door.get("along_max", core["max_x"])
+			var door_height: float = float(door.get("height_cells", cells_per_floor)) * building_cell_height
 
 			var bx_min: int; var bx_max: int; var bz_min: int; var bz_max: int
 			match edge_idx:
 				0:
-					bx_min = core["min_x"]; bx_max = core["max_x"]
+					bx_min = along_min; bx_max = along_max
 					bz_min = core["min_z"] - 1; bz_max = core["min_z"] - 1
 				1:
 					bx_min = core["max_x"] + 1; bx_max = core["max_x"] + 1
-					bz_min = core["min_z"]; bz_max = core["max_z"]
+					bz_min = along_min; bz_max = along_max
 				2:
-					bx_min = core["min_x"]; bx_max = core["max_x"]
+					bx_min = along_min; bx_max = along_max
 					bz_min = core["max_z"] + 1; bz_max = core["max_z"] + 1
 				3:
 					bx_min = core["min_x"] - 1; bx_max = core["min_x"] - 1
-					bz_min = core["min_z"]; bz_max = core["max_z"]
+					bz_min = along_min; bz_max = along_max
 
 			var verts = module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, height_index)
 			if verts.size() == 4:
-				add_child(DebugUtil.create_skewed_cube(verts, floor_height, delivery_door_color))
+				add_child(DebugUtil.create_skewed_cube(verts, door_height, delivery_door_color))
 			total += 1
 
 	print("[Visualizer] Delivery doors: %d" % total)
@@ -1644,44 +1740,10 @@ func _draw_bridge(placed: Dictionary, buf: Dictionary) -> void:
 	var floor_idx: int     = placed["floor_idx"]
 	var cell_height: float = placed["cell_height"]
 	var cells_per_floor: int = placed["cells_per_floor"]
-	var facade_building_cells: int = placed["facade_building_cells"]
-	var c_a1: Vector2      = placed["c_a1"]
-	var c_a2: Vector2      = placed["c_a2"]
-	var c_b1: Vector2      = placed["c_b1"]
-	var c_b2: Vector2      = placed["c_b2"]
+	var by_base: int = floor_idx * cells_per_floor - bridge.base_height
+	var by_base_top: int = floor_idx * cells_per_floor
+	var by_arc_bot: int = by_base - bridge.arc_height
 
-	var t_start = float(cell_start) / facade_building_cells
-	var t_end = float(cell_end + 1) / facade_building_cells
-	var t_one_cell = 1.0 / facade_building_cells
-
-	var by_base = floor_idx * cells_per_floor - bridge.base_height
-	var h_base_bot = by_base * cell_height
-	var h_base_top = h_base_bot + bridge.base_height * cell_height
-	var h_path_top = h_base_top + bridge.pathway_height * cell_height
-	var h_rail_top = h_path_top + bridge.railing_height * cell_height
-
-	var static_body: StaticBody3D = null
-	if enable_bridge_colliders:
-		static_body = StaticBody3D.new()
-
-	_add_bridge_section(c_a1, c_a2, c_b1, c_b2, t_start, t_end, h_base_bot, h_base_top,
-			bridge_base_color, static_body, buf)
-	_add_bridge_section(c_a1, c_a2, c_b1, c_b2, t_start, t_end, h_base_top, h_path_top,
-			bridge_pathway_color, static_body, buf)
-
-	if bridge.railing_height > 0:
-		_add_bridge_section(c_a1, c_a2, c_b1, c_b2, t_start, t_start + t_one_cell,
-				h_path_top, h_rail_top, bridge_railing_color, static_body, buf)
-		_add_bridge_section(c_a1, c_a2, c_b1, c_b2, t_end - t_one_cell, t_end,
-				h_path_top, h_rail_top, bridge_railing_color, static_body, buf)
-
-	if bridge.arc_height > 0 and bridge.arc_length > 0:
-		var h_arc_bot = h_base_bot - bridge.arc_height * cell_height
-		_add_bridge_arcs(c_a1, c_a2, c_b1, c_b2, t_start, t_end,
-				h_arc_bot, h_base_bot, bridge.arc_length * cell_height, static_body, buf)
-
-	var by_base_top = floor_idx * cells_per_floor
-	var by_arc_bot = by_base - bridge.arc_height
 	var side_a = {
 		"face": placed["face_a"], "edge_idx": placed["edge_idx_a"],
 		"cells": placed["cells_a"], "reversed": placed["reversed_a"],
@@ -1690,29 +1752,82 @@ func _draw_bridge(placed: Dictionary, buf: Dictionary) -> void:
 		"face": placed["face_b"], "edge_idx": placed["edge_idx_b"],
 		"cells": placed["cells_b"], "reversed": placed["reversed_b"],
 	}
+
+	# LOS EXTREMOS DECIDEN, EL MEDIO LOS UNE — y ahora literalmente.
+	#
+	# El medio ya no inventa ningún plano: toma la CARA REAL de cada fachada
+	# (`FacadeHelper.facade_span_quad`, sampleada de la grilla arriba y abajo) y se estira entre las dos.
+	# Antes se armaba con las esquinas de manzana y una altura escalar por lado, así que su borde salía
+	# HORIZONTAL mientras la cara de la fachada está TORCIDA —medido, hasta 0,205 m de torsión a lo largo
+	# del tramo—. Un borde recto contra uno torcido no coincide salvo en un punto: de ahí los centímetros.
+	#
+	# Importa para algo concreto: la pasarela del puente y la pasarela flotante del edificio tienen que
+	# ser UNA superficie caminable continua, y eso solo pasa si el puente hereda la torsión del piso.
+	var block_a: BlockGenerator = generator.get_block_grid(side_a["face"])
+	var block_b: BlockGenerator = generator.get_block_grid(side_b["face"])
+	if block_a == null or block_b == null:
+		return
+
+	var by_path_top := by_base_top + bridge.pathway_height
+	var by_rail_top := by_path_top + bridge.railing_height
+
+	var static_body: StaticBody3D = null
+	if enable_bridge_colliders:
+		static_body = StaticBody3D.new()
+
+	_add_bridge_span(block_a, block_b, side_a, side_b, cell_start, cell_end,
+			by_base, by_base_top, bridge_base_color, static_body, buf)
+	_add_bridge_span(block_a, block_b, side_a, side_b, cell_start, cell_end,
+			by_base_top, by_path_top, bridge_pathway_color, static_body, buf)
+
+	if bridge.railing_height > 0:
+		_add_bridge_span(block_a, block_b, side_a, side_b, cell_start, cell_start,
+				by_path_top, by_rail_top, bridge_railing_color, static_body, buf)
+		_add_bridge_span(block_a, block_b, side_a, side_b, cell_end, cell_end,
+				by_path_top, by_rail_top, bridge_railing_color, static_body, buf)
+
+	if bridge.arc_height > 0 and bridge.arc_length > 0:
+		_add_bridge_arc_spans(block_a, block_b, side_a, side_b, cell_start, cell_end,
+				by_arc_bot, by_base, bridge.arc_length * cell_height, static_body, buf)
+
 	for side in [side_a, side_b]:
 		_draw_bridge_extremes(bridge, side, cell_start, cell_end,
-				by_base, by_base_top, by_arc_bot, cell_height, static_body, buf)
+				by_base, by_base_top, by_arc_bot, static_body, buf)
 
 	if static_body:
 		add_child(static_body)
 
 
-func _add_bridge_section(c_a1: Vector2, c_a2: Vector2, c_b1: Vector2, c_b2: Vector2,
-		t_start: float, t_end: float, h_bottom: float, h_top: float,
+## UN TRAMO DEL CONECTOR: une la cara real de una fachada con la de la otra.
+##
+## Las dos caras salen de `FacadeHelper.facade_span_quad`, o sea de la grilla, con su torsión. El tramo
+## no aporta forma propia: solo estira una hacia la otra.
+func _add_bridge_span(block_a: BlockGenerator, block_b: BlockGenerator,
+		side_a: Dictionary, side_b: Dictionary, cell_start: int, cell_end: int,
+		index_bottom: int, index_top: int,
 		color: Color, static_body: StaticBody3D, buf: Dictionary) -> void:
-	var plane_a = _bridge_plane(c_a1, c_a2, t_start, t_end, h_bottom, h_top)
-	var plane_b = _bridge_plane(c_b1, c_b2, t_start, t_end, h_bottom, h_top)
+	var plane_a := FacadeHelper.facade_span_quad(block_a, side_a["edge_idx"], side_a["reversed"],
+			side_a["cells"], cell_start, cell_end, index_bottom, index_top)
+	var plane_b := FacadeHelper.facade_span_quad(block_b, side_b["edge_idx"], side_b["reversed"],
+			side_b["cells"], cell_start, cell_end, index_bottom, index_top)
+	if plane_a.size() != 4 or plane_b.size() != 4:
+		return
 	_bridge_geo_append(buf, DebugUtil.get_skewed_cube_from_planes_geometry(plane_a, plane_b), color)
 	if static_body:
 		static_body.add_child(DebugUtil.create_collision_shape_from_planes(plane_a, plane_b))
 
 
-func _add_bridge_arcs(c_a1: Vector2, c_a2: Vector2, c_b1: Vector2, c_b2: Vector2,
-		t_start: float, t_end: float, h_bottom: float, h_top: float,
+## Los arcos: dos trozos cortos pegados a cada punta, entre las mismas dos caras reales.
+func _add_bridge_arc_spans(block_a: BlockGenerator, block_b: BlockGenerator,
+		side_a: Dictionary, side_b: Dictionary, cell_start: int, cell_end: int,
+		index_bottom: int, index_top: int,
 		arc_world_depth: float, static_body: StaticBody3D, buf: Dictionary) -> void:
-	var plane_a = _bridge_plane(c_a1, c_a2, t_start, t_end, h_bottom, h_top)
-	var plane_b = _bridge_plane(c_b1, c_b2, t_start, t_end, h_bottom, h_top)
+	var plane_a := FacadeHelper.facade_span_quad(block_a, side_a["edge_idx"], side_a["reversed"],
+			side_a["cells"], cell_start, cell_end, index_bottom, index_top)
+	var plane_b := FacadeHelper.facade_span_quad(block_b, side_b["edge_idx"], side_b["reversed"],
+			side_b["cells"], cell_start, cell_end, index_bottom, index_top)
+	if plane_a.size() != 4 or plane_b.size() != 4:
+		return
 
 	var bridge_depth = plane_a[0].distance_to(plane_b[0])
 	var arc_frac = clampf(arc_world_depth / bridge_depth, 0.0, 0.45) if bridge_depth > 0.0 else 0.0
@@ -1732,9 +1847,14 @@ func _add_bridge_arcs(c_a1: Vector2, c_a2: Vector2, c_b1: Vector2, c_b2: Vector2
 		static_body.add_child(DebugUtil.create_collision_shape_from_planes(far_plane, plane_b))
 
 
+## EL EXTREMO SIGUE LA GRILLA, en las dos alturas.
+##
+## Se arma como un prisma entre el índice de abajo y el de arriba (ver `BuildingModule.get_region_prism`).
+## Los pisos son paralelos, así que extruir en vertical daría lo mismo; se samplean igual las dos alturas
+## para que la pieza no dependa de eso y su borde superior caiga siempre en el fin del piso.
 func _draw_bridge_extremes(bridge: Bridge, side: Dictionary, cell_start: int, cell_end: int,
 		by_base: int, by_base_top: int, by_arc_bot: int,
-		cell_height: float, static_body: StaticBody3D, buf: Dictionary) -> void:
+		static_body: StaticBody3D, buf: Dictionary) -> void:
 	var face_idx: int = side["face"]
 	var edge_idx: int = side["edge_idx"]
 	var facade_cells: Array = side["cells"]
@@ -1773,35 +1893,21 @@ func _draw_bridge_extremes(bridge: Bridge, side: Dictionary, cell_start: int, ce
 		var bz_min: int = grid_rect["bz_min"]
 		var bz_max: int = grid_rect["bz_max"]
 
-		var base_verts = module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, by_base)
-		if base_verts.size() == 4:
-			var base_h = (by_base_top - by_base) * cell_height
-			_bridge_geo_append(buf, DebugUtil.get_skewed_cube_geometry(base_verts, base_h), bridge_base_color)
+		var base_prism := module.get_region_prism(bx_min, bx_max, bz_min, bz_max, by_base, by_base_top)
+		if base_prism.size() == 2:
+			var base_bottom: Array[Vector3] = base_prism[0]
+			var base_top: Array[Vector3] = base_prism[1]
+			_bridge_geo_append(buf,
+					DebugUtil.get_skewed_cube_from_planes_geometry(base_bottom, base_top), bridge_base_color)
 			if static_body:
-				var top_verts: Array = []
-				for v in base_verts:
-					top_verts.append(v + Vector3(0, base_h, 0))
-				static_body.add_child(DebugUtil.create_collision_shape_from_planes(base_verts, top_verts))
+				static_body.add_child(DebugUtil.create_collision_shape_from_planes(base_bottom, base_top))
 
 		if bridge.arc_height > 0:
-			var arc_verts = module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, by_arc_bot)
-			if arc_verts.size() == 4:
-				var arc_h = (by_base - by_arc_bot) * cell_height
-				_bridge_geo_append(buf, DebugUtil.get_skewed_cube_geometry(arc_verts, arc_h), bridge_arc_color)
+			var arc_prism := module.get_region_prism(bx_min, bx_max, bz_min, bz_max, by_arc_bot, by_base)
+			if arc_prism.size() == 2:
+				var arc_bottom: Array[Vector3] = arc_prism[0]
+				var arc_top: Array[Vector3] = arc_prism[1]
+				_bridge_geo_append(buf,
+						DebugUtil.get_skewed_cube_from_planes_geometry(arc_bottom, arc_top), bridge_arc_color)
 				if static_body:
-					var top_verts: Array = []
-					for v in arc_verts:
-						top_verts.append(v + Vector3(0, arc_h, 0))
-					static_body.add_child(DebugUtil.create_collision_shape_from_planes(arc_verts, top_verts))
-
-
-static func _bridge_plane(c1: Vector2, c2: Vector2, t_start: float, t_end: float,
-		h_bottom: float, h_top: float) -> Array[Vector3]:
-	var p_s = c1.lerp(c2, t_start)
-	var p_e = c1.lerp(c2, t_end)
-	return [
-		Vector3(p_s.x, h_bottom, p_s.y),
-		Vector3(p_e.x, h_bottom, p_e.y),
-		Vector3(p_e.x, h_top,    p_e.y),
-		Vector3(p_s.x, h_top,    p_s.y),
-	]
+					static_body.add_child(DebugUtil.create_collision_shape_from_planes(arc_bottom, arc_top))

@@ -11,11 +11,124 @@ func _init(p_block: BlockGenerator) -> void:
 	block = p_block
 
 
-func generate(_doors_per_block: int = 4) -> void:
+## Ancho y alto de una puerta, en metros. Se convierten a celdas de edificio con el tamaño real del
+## módulo, porque ese tamaño depende de cuánto mide la celda de la grilla distorsionada y no es fijo.
+const DOOR_WIDTH_M := 1.4
+const DOOR_HEIGHT_M := 2.2
+
+
+func generate(doors_per_block: int = 4) -> void:
 	delivery_doors.clear()
 	stair_zones.clear()
 	floating_sidewalk_zones.clear()
 	_generate_floor_sidewalks()
+	_generate_ground_doors(doors_per_block)
+
+
+## LAS PUERTAS DE PLANTA BAJA. Por ahora solo el piso 0 y solo el dato: geometría ENCIMA de la fachada,
+## sin agujerear la malla del módulo (eso viene después, cuando los edificios tengan geometría real).
+##
+## El piso 0 es a propósito, y no es solo simplicidad: es el único piso donde la malla del edificio y la
+## capa de colocación coinciden exactamente (ver "The terrain plan" en technical/city-generation.md). De
+## piso 2 para arriba difieren 1,35 m, así que una puerta ahí quedaría despegada de su pared.
+##
+## Un borde sirve si da a la calle (FACADE) o a un callejón. NORMAL es interior —no da a ningún lado— y
+## BOUNDARY es el límite de la ciudad.
+func _generate_ground_doors(doors_per_block: int) -> void:
+	if doors_per_block <= 0:
+		return
+	var grid = block.get_distorted_grid()
+	if grid == null:
+		return
+
+	var candidates: Array[Dictionary] = []
+	for z in range(grid.rows):
+		for x in range(grid.columns):
+			var cluster = block.get_cluster_for_cell(x, z)
+			if cluster == null or cluster.floor_count <= 0:
+				continue
+			var module = block.get_building_module(x, z, 0)
+			if module == null:
+				continue
+			for edge_idx in range(4):
+				if not _edge_faces_outside(module, edge_idx):
+					continue
+				candidates.append({
+					"cell": Vector2i(x, z), "edge": edge_idx, "cluster_id": cluster.id, "module": module
+				})
+
+	if candidates.is_empty():
+		return
+
+	# Del seed de la manzana, no de `randi()`: la ciudad tiene que salir idéntica en todos los peers.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = block.cluster_seed + 4801
+	var picked: Array[int] = []
+	for i in candidates.size():
+		picked.append(i)
+	for i in range(picked.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp := picked[i]
+		picked[i] = picked[j]
+		picked[j] = tmp
+
+	var wanted: int = mini(doors_per_block, picked.size())
+	for k in range(wanted):
+		var candidate: Dictionary = candidates[picked[k]]
+		var module: BuildingModule = candidate["module"]
+		var span := _door_span(module, candidate["edge"], rng)
+		if span.is_empty():
+			continue
+		delivery_doors.append({
+			"cell": candidate["cell"],
+			"edge": candidate["edge"],
+			"floor": 0,
+			"cluster_id": candidate["cluster_id"],
+			"along_min": span["along_min"],
+			"along_max": span["along_max"],
+			"height_cells": span["height_cells"],
+		})
+
+
+## Si ese borde del módulo mira a la calle o a un callejón. NORMAL queda adentro de la manzana y
+## BOUNDARY es el borde del mundo: en ninguno de los dos tiene sentido una puerta.
+func _edge_faces_outside(module: BuildingModule, edge_idx: int) -> bool:
+	var sides := ["north", "east", "south", "west"]
+	var edge_type: int = module.get_edge_type(sides[edge_idx])
+	if edge_type == DistortedGrid.CellType.NORMAL or edge_type == DistortedGrid.CellType.BOUNDARY:
+		return false
+	return true
+
+
+## Dónde cae la puerta a lo largo de esa cara, y qué alto tiene, todo en celdas de edificio. El tamaño
+## de celda se mide del módulo mismo —dos posiciones vecinas— en vez de darlo por fijo.
+func _door_span(module: BuildingModule, edge_idx: int, rng: RandomNumberGenerator) -> Dictionary:
+	var core = module.get_core_info()
+	var along_from: int = core["min_x"] if edge_idx == 0 or edge_idx == 2 else core["min_z"]
+	var along_to: int = core["max_x"] if edge_idx == 0 or edge_idx == 2 else core["max_z"]
+	if along_to < along_from:
+		return {}
+
+	var origin := module.get_cell_position(core["min_x"], core["min_z"], 0)
+	var next_along: Vector3
+	if edge_idx == 0 or edge_idx == 2:
+		next_along = module.get_cell_position(core["min_x"] + 1, core["min_z"], 0)
+	else:
+		next_along = module.get_cell_position(core["min_x"], core["min_z"] + 1, 0)
+	var cell_size: float = origin.distance_to(next_along)
+	if cell_size <= 0.0:
+		return {}
+
+	var width_cells: int = maxi(1, int(round(DOOR_WIDTH_M / cell_size)))
+	var available: int = along_to - along_from + 1
+	if width_cells > available:
+		width_cells = available
+	var start: int = along_from + rng.randi_range(0, available - width_cells)
+	return {
+		"along_min": start,
+		"along_max": start + width_cells - 1,
+		"height_cells": maxi(1, int(round(DOOR_HEIGHT_M / module.cell_height))),
+	}
 
 
 func _generate_floor_sidewalks() -> void:

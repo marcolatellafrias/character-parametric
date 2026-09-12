@@ -26,18 +26,26 @@ var chamfers: Dictionary = {}
 
 # ── EL RELIEVE ──────────────────────────────────────────────────────────────────────────────────
 # Todas las alturas del módulo salen de acá (ver `_ground_at`), y por acá pasa TODO lo que se sitúa en la
-# ciudad: los edificios, las veredas, las puertas, las escaleras y los extremos de puente.
+# ciudad: las veredas, las puertas, las escaleras, los extremos de puente y los conectores.
 #
 # La altura sale de las CUATRO ESQUINAS DEL PROPIO MÓDULO (`vertices`, que ya vienen con su Y de la celda
 # de grilla), interpolada con la misma bilineal que da el XZ. No hay consulta a ningún campo global: el
 # relieve viaja con la geometría, así que dos piezas vecinas que comparten esquinas coinciden exactas y
 # nada puede clipear contra el suelo (ver CityTerrain).
 #
-# Abajo la pieza SIGUE AL TERRENO y a medida que sube se ENDEREZA hacia `ground_reference`, la altura única
-# del cluster: para la celda `taper_cells` ya está plana, de modo que los techos quedan horizontales aunque
-# el suelo no lo esté. Es el terreno el que se come los pisos de abajo, no el edificio el que se inclina.
-var ground_reference: float = 0.0
-var taper_cells: int = 1
+# ⚠ EL PISO N ES EL PISO 0 SUBIDO EN Y, y nada más: el mismo quad inclinado del terreno, trasladado. Los
+# pisos son PARALELOS entre sí y están TODOS inclinados por igual. No es un detalle interno: es la
+# definición que usa la malla que se ve —`City._visualize_buildings` arma cada piso con
+# `get_core_vertices(0)` más el desplazamiento del piso, y extruye en vertical—, así que la colocación
+# tiene que decir exactamente lo mismo o los objetos quedan flotando sobre una superficie que no existe.
+#
+# SUPERSEDED — el taper: había un `ground_reference` (la altura promedio del cluster) hacia el cual el
+# módulo se enderezaba a lo largo de los primeros 2 pisos, para dejar los techos horizontales. Nunca
+# llegó a la geometría, porque la malla no pasa por acá: solo movía la grilla de COLOCACIÓN, que del
+# piso 2 para arriba devolvía un plano HORIZONTAL mientras el edificio visible seguía inclinado. Todo lo
+# apoyado en una fachada quedaba corrido por `bilinear(u,v) - ground_reference` —hasta ~1,35 m— y con la
+# inclinación equivocada. Si algún día se quieren techos horizontales, hay que hacerlo en la MALLA y en
+# la colocación a la vez, nunca en una sola.
 
 func _init(
 	p_vertices: Array[Vector3],
@@ -50,9 +58,7 @@ func _init(
 	p_grid_x: int = -1,
 	p_grid_z: int = -1,
 	p_path_generator: PathGenerator = null,
-	p_archetype: BuildingArchetype = null,
-	p_ground_reference: float = 0.0,
-	p_taper_cells: int = 1
+	p_archetype: BuildingArchetype = null
 ) -> void:
 	vertices = p_vertices
 	edge_types = p_edge_types
@@ -60,9 +66,7 @@ func _init(
 	columns = p_columns
 	cell_height = p_cell_height
 	alleyway_offsets = p_alleyway_offsets
-	ground_reference = p_ground_reference
-	taper_cells = maxi(p_taper_cells, 1)
-	
+
 	_calculate_core_area()
 	
 	if p_distorted_grid and p_grid_x >= 0 and p_grid_z >= 0 and p_path_generator:
@@ -329,6 +333,24 @@ func get_region_vertices(bx_min: int, bx_max: int, bz_min: int, bz_max: int, hei
 	return result
 
 
+## LA GRILLA ENTRE DOS ALTURAS, sampleada en las dos.
+##
+## Devuelve `[quad_abajo, quad_arriba]`, ambos en el orden [BL, BR, TR, TL], listos para
+## `DebugUtil.get_skewed_cube_from_planes_geometry`, que empareja vértice con vértice.
+##
+## Hoy los pisos son paralelos (ver EL RELIEVE), así que esto da lo mismo que extruir en vertical desde
+## el índice de abajo. Se samplean igual las dos alturas para no depender de esa propiedad: una pieza
+## armada así queda bien con edificios inclinados o rectos, y seguiría quedando bien si algún día el
+## relieve deja de ser una traslación pura.
+func get_region_prism(bx_min: int, bx_max: int, bz_min: int, bz_max: int,
+		index_bottom: int, index_top: int) -> Array:
+	var bottom := get_region_vertices(bx_min, bx_max, bz_min, bz_max, index_bottom)
+	var top := get_region_vertices(bx_min, bx_max, bz_min, bz_max, index_top)
+	if bottom.size() != 4 or top.size() != 4:
+		return []
+	return [bottom, top]
+
+
 func get_core_info() -> Dictionary:
 	return {
 		"min_x": core_min_x,
@@ -346,17 +368,19 @@ func get_chamfers() -> Dictionary:
 
 ## Un punto del módulo en (u, v) y a `height_index` celdas de alto, ya apoyado en el relieve (ver EL
 ## RELIEVE). El XZ y la altura salen de la MISMA interpolación sobre las mismas cuatro esquinas.
+##
+## La altura es el relieve MÁS un desplazamiento vertical puro, que es exactamente como la malla arma
+## cada piso. Por eso lo que se coloque acá cae sobre la cara que se ve, en cualquier piso.
 func _at_height(u: float, v: float, height_index: int) -> Vector3:
 	var flat := GridHelper.bilinear_interpolation(_vertices_3d_to_2d(), u, v)
-	return Vector3(flat.x, float(height_index) * cell_height + _ground_at(u, v, height_index), flat.y)
+	return Vector3(flat.x, float(height_index) * cell_height + _ground_at(u, v), flat.y)
 
 
-## Cuánto levanta el relieve en ese punto a esa altura: abajo, el suelo del módulo tal cual; arriba, la
-## altura única del cluster, que es lo que deja los techos planos.
-func _ground_at(u: float, v: float, height_index: int) -> float:
+## Cuánto levanta el terreno en ese punto: el suelo del propio módulo, interpolado entre sus cuatro
+## esquinas. NO depende de la altura, y esa es la definición (ver EL RELIEVE).
+func _ground_at(u: float, v: float) -> float:
 	var corners := [vertices[0].y, vertices[1].y, vertices[2].y, vertices[3].y]
-	var straightened := clampf(float(height_index) / float(taper_cells), 0.0, 1.0)
-	return lerpf(GridHelper.bilinear_height(corners, u, v), ground_reference, straightened)
+	return GridHelper.bilinear_height(corners, u, v)
 
 
 func _vertices_3d_to_2d() -> Array[Vector2]:
