@@ -269,6 +269,11 @@ static func create_debug_line_to_from(from: Vector3, to: Vector3, color: Color, 
 	material.albedo_color = color
 
 	mesh_instance.material_override = material
+	# ⚠ ESTE CORTE MIDE MAL. `visibility_range_end` compara la distancia al ORIGEN del nodo, y esta malla
+	# se arma con vertices en coordenadas de MUNDO, o sea con su origen en (0,0,0) —la esquina de la
+	# ciudad—. Resultado: todas estas piezas aparecen y desaparecen A LA VEZ, sin relacion con lo que
+	# uno tiene enfrente. Hoy no molesta porque los `show_*` que llegan aca estan apagados. Si se
+	# prende alguno, hay que centrar el origen primero: ver `City._center_on_own_geometry`.
 	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 
@@ -402,6 +407,11 @@ static func create_debug_plane(corner1: Vector3, corner2: Vector3, corner3: Vect
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED  # Visible desde ambos lados
 
 	mesh_instance.material_override = material
+	# ⚠ ESTE CORTE MIDE MAL. `visibility_range_end` compara la distancia al ORIGEN del nodo, y esta malla
+	# se arma con vertices en coordenadas de MUNDO, o sea con su origen en (0,0,0) —la esquina de la
+	# ciudad—. Resultado: todas estas piezas aparecen y desaparecen A LA VEZ, sin relacion con lo que
+	# uno tiene enfrente. Hoy no molesta porque los `show_*` que llegan aca estan apagados. Si se
+	# prende alguno, hay que centrar el origen primero: ver `City._center_on_own_geometry`.
 	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 
@@ -488,6 +498,11 @@ static func create_skewed_cube(base_vertices: Array, height: float, color: Color
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mesh_instance.material_override = material
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	# ⚠ ESTE CORTE MIDE MAL. `visibility_range_end` compara la distancia al ORIGEN del nodo, y esta malla
+	# se arma con vertices en coordenadas de MUNDO, o sea con su origen en (0,0,0) —la esquina de la
+	# ciudad—. Resultado: todas estas piezas aparecen y desaparecen A LA VEZ, sin relacion con lo que
+	# uno tiene enfrente. Hoy no molesta porque los `show_*` que llegan aca estan apagados. Si se
+	# prende alguno, hay que centrar el origen primero: ver `City._center_on_own_geometry`.
 	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 
@@ -625,6 +640,11 @@ static func create_skewed_cube_advanced(base_vertices: Array, height: float, col
 	
 	mesh_instance.mesh = st.commit()
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	# ⚠ ESTE CORTE MIDE MAL. `visibility_range_end` compara la distancia al ORIGEN del nodo, y esta malla
+	# se arma con vertices en coordenadas de MUNDO, o sea con su origen en (0,0,0) —la esquina de la
+	# ciudad—. Resultado: todas estas piezas aparecen y desaparecen A LA VEZ, sin relacion con lo que
+	# uno tiene enfrente. Hoy no molesta porque los `show_*` que llegan aca estan apagados. Si se
+	# prende alguno, hay que centrar el origen primero: ver `City._center_on_own_geometry`.
 	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 
@@ -1325,6 +1345,11 @@ static func create_skewed_cube_from_planes(
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_instance.material_override = material
+	# ⚠ ESTE CORTE MIDE MAL. `visibility_range_end` compara la distancia al ORIGEN del nodo, y esta malla
+	# se arma con vertices en coordenadas de MUNDO, o sea con su origen en (0,0,0) —la esquina de la
+	# ciudad—. Resultado: todas estas piezas aparecen y desaparecen A LA VEZ, sin relacion con lo que
+	# uno tiene enfrente. Hoy no molesta porque los `show_*` que llegan aca estan apagados. Si se
+	# prende alguno, hay que centrar el origen primero: ver `City._center_on_own_geometry`.
 	mesh_instance.visibility_range_end = WorldSettings.spawn_radius
 	return mesh_instance
 

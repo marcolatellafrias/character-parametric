@@ -2,12 +2,16 @@ class_name GraphCityGenerator
 extends RefCounted
 
 var plain_graph: GraphGenerator  
-var face_to_type: Dictionary = {}  # face_idx -> NeighborhoodTypes.Type
-var face_distances: Dictionary = {}  # face_idx -> float (0.0 - 1.0)
+var face_to_type: Dictionary = {}  # face_idx -> NeighborhoodTypes.District
+## Qué nivel de altura le tocó a cada cara: face_idx -> NeighborhoodTypes.Height. Se reparte en parches
+## propios, independientes de los del distrito (ver `_assign_patches`).
+var face_to_height: Dictionary = {}
 var street_types: Dictionary = {}
 var block_grids: Dictionary = {}
 var region_size: Vector2 = Vector2.ZERO
 var lane_volume_areas: Dictionary = {}
+## El relieve del que cuelgan todas las alturas de la ciudad (ver CityTerrain).
+var terrain: CityTerrain = null
 var traffic_indices: Dictionary = {}
 # When false, lane volumes are built WITHOUT a traffic plane at all — no node, no
 # blocking claim, no visual. Set by the city script before generation.
@@ -15,7 +19,6 @@ var enable_traffic_lights: bool = true
 var sidewalk_matrices: Dictionary = {}       # face_idx -> SidewalkMatrix
 var bridges: Dictionary = {}               # edge_key -> Array[Dictionary]
 
-var neighborhood_height_falloff: float = 1.0
 
 var block_rows: int
 var block_columns: int
@@ -70,16 +73,19 @@ func generate_city_graph(
 	p_building_grid_columns: int = 80,
 	p_block_cell_height: float = 0.01,
 	p_building_cell_height: float = 0.005,
-	p_neighborhood_height_falloff: float = 1.0,
+	p_height_patches: int = 14,
 	p_num_neighborhoods: int = 3,
-	p_neighborhood_seed: int = -1
+	p_neighborhood_seed: int = -1,
+	p_terrain_floors: float = 0.0,
+	p_terrain_feature_size: float = 300.0,
+	p_terrain_max_slope: float = 0.12,
+	p_terrain_seed: int = 0
 ) -> void:
 	
 	seed(generation_seed)
 	self.region_size = region_size
 	self.block_rows = block_grid_rows
 	self.block_columns = block_grid_columns
-	self.neighborhood_height_falloff = p_neighborhood_height_falloff
 	
 	self.distorted_grid_rows = p_distorted_grid_rows
 	self.distorted_grid_columns = p_distorted_grid_columns
@@ -123,10 +129,21 @@ func generate_city_graph(
 		
 	print("[GraphCityGenerator] Average edge length: %.3f" % actual_min_distance)
 	print("[GraphCityGenerator] Building cell height global: %.3f" % global_building_cell_height)
+
+	# El relieve, en cuanto se sabe cuánto mide un piso: su alto se pide en pisos, que es como se lee en el
+	# juego —cuántos pisos de edificio se come una loma—.
+	var floor_height = global_building_cell_height * block_cells_per_floor
+	terrain = CityTerrain.new(p_terrain_seed, p_terrain_floors * floor_height,
+		p_terrain_feature_size, p_terrain_max_slope)
+	terrain.fit_to_graph(plain_graph.points, plain_graph.edges)
+	print("[GraphCityGenerator] Relieve: %.1f m de loma (%.1f pisos), relieve cada %.0f m, pendiente máx %.0f%%" % [
+		terrain.amplitude, terrain.amplitude / floor_height if floor_height > 0.0 else 0.0,
+		terrain.feature_size, terrain.max_slope * 100.0])
 	
 	# Asignar tipos de barrios
 	var neighborhood_seed = p_neighborhood_seed if p_neighborhood_seed != -1 else generation_seed
 	_assign_neighborhood_types(p_num_neighborhoods, neighborhood_seed)
+	_assign_height_patches(p_height_patches, neighborhood_seed + 7717)
 	
 	# Grillas de manzanas con building_cell_height global
 	_generate_block_grids(
@@ -346,120 +363,96 @@ func get_streets_of_type(street_type: int) -> Array:
 # GESTIÓN DE TIPOS DE BARRIOS
 # ============================================
 
+## Los DISTRITOS: `num_neighborhoods` semillas repartiendo los tres tipos por turno, y cada una crece por
+## expansión hasta chocar con las vecinas.
 func _assign_neighborhood_types(num_neighborhoods: int, seed_value: int) -> void:
 	face_to_type.clear()
-	face_distances.clear()
-	
+	var districts: Array = []
+	for i in range(num_neighborhoods):
+		districts.append((i % 3) as NeighborhoodTypes.District)
+	_assign_patches(face_to_type, num_neighborhoods, seed_value, districts)
+	_print_neighborhood_stats(num_neighborhoods)
+
+
+## Las ALTURAS, en parches PROPIOS: nada de regla radial y nada que ver con dónde caen los distritos, así
+## una villa puede ser un cañón en el centro y un barrio rico puede ser bajo contra la muralla. El nivel de
+## cada parche se sortea con los pesos de NeighborhoodTypes (la norma es el cañón, el respiro es la
+## excepción).
+func _assign_height_patches(num_patches: int, seed_value: int) -> void:
+	face_to_height.clear()
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	# Por CUPO y no por sorteo suelto: con 14 parches independientes la proporción real se iba lejos de los
+	# pesos (salió 8/32/60 contra el 20/25/55 buscado). Repartidos por cupo y mezclados, sale exacta.
+	var heights: Array = []
+	for height: NeighborhoodTypes.Height in NeighborhoodTypes.HEIGHT_WEIGHTS:
+		for i in int(round(NeighborhoodTypes.HEIGHT_WEIGHTS[height] * float(num_patches))):
+			heights.append(height)
+	while heights.size() < num_patches:
+		heights.append(NeighborhoodTypes.Height.TALL)
+	heights.resize(num_patches)
+	heights.shuffle()
+	_assign_patches(face_to_height, num_patches, seed_value, heights)
+	_print_height_stats()
+
+
+## Reparte `labels` en parches: una semilla por etiqueta sobre caras al azar, y todas crecen a la vez por
+## expansión (BFS) hasta cubrir la ciudad. El resultado va en `into`, face_idx -> etiqueta.
+func _assign_patches(into: Dictionary, num_patches: int, seed_value: int, labels: Array) -> void:
 	var total_faces = plain_graph.faces.size()
 	if total_faces == 0:
 		push_warning("[GraphCityGenerator] No hay faces en el grafo")
 		return
-	
-	if num_neighborhoods > total_faces:
-		push_warning("[GraphCityGenerator] Más barrios (%d) que manzanas (%d), ajustando" % [num_neighborhoods, total_faces])
-		num_neighborhoods = total_faces
-	
-	# Inicializar distancias
-	for face_idx in range(total_faces):
-		face_distances[face_idx] = 999999
-	
-	# Seleccionar semillas aleatorias
+	if num_patches > total_faces:
+		push_warning("[GraphCityGenerator] Más parches (%d) que manzanas (%d), ajustando" % [num_patches, total_faces])
+		num_patches = total_faces
+
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
-	
 	var available_faces = range(total_faces)
 	available_faces.shuffle()
-	
-	# Asignar semillas con tipos rotados
-	var num_types = 4
-	var expansion_fronts: Array = []
-	
-	for i in range(num_neighborhoods):
+
+	var fronts: Array = []
+	for i in range(num_patches):
 		var seed_face = available_faces[i]
-		var type = (i % num_types) as NeighborhoodTypes.Type
-		
-		face_to_type[seed_face] = type
-		face_distances[seed_face] = 0
-		
-		var queue: Array = [[seed_face, 0, type]]
-		expansion_fronts.append(queue)
-	
-	# Expansión BFS simultánea
-	var active_fronts = true
-	
-	while active_fronts:
-		active_fronts = false
-		
-		for i in range(num_neighborhoods):
-			var queue = expansion_fronts[i]
-			
+		into[seed_face] = labels[i % labels.size()]
+		fronts.append([seed_face])
+
+	# Todos los frentes avanzan un paso por vuelta: así los parches quedan parejos entre sí.
+	var active := true
+	while active:
+		active = false
+		for i in range(num_patches):
+			var queue: Array = fronts[i]
 			if queue.is_empty():
 				continue
-			
-			active_fronts = true
-			var current_front_size = queue.size()
-			
-			for j in range(current_front_size):
-				var current_data = queue.pop_front()
-				var current_face = current_data[0]
-				var current_distance = current_data[1]
-				var current_type = current_data[2]
-				
-				var adjacent_faces = plain_graph.get_adjacent_faces(current_face)
-				
-				for adj_face in adjacent_faces:
-					if adj_face not in face_to_type:
-						face_to_type[adj_face] = current_type
-						face_distances[adj_face] = current_distance + 1
-						queue.append([adj_face, current_distance + 1, current_type])
-	
-	# Normalizar distancias
-	var max_distance = 0
-	
-	for face_idx in face_distances:
-		if face_distances[face_idx] > max_distance and face_distances[face_idx] < 999999:
-			max_distance = face_distances[face_idx]
-	
-	if max_distance > 0:
-		for face_idx in face_distances:
-			if face_distances[face_idx] < 999999:
-				face_distances[face_idx] = float(face_distances[face_idx]) / float(max_distance)
-			else:
-				face_distances[face_idx] = 1.0
-	
-	_print_neighborhood_stats(num_neighborhoods)
+			active = true
+			for j in range(queue.size()):
+				var current_face = queue.pop_front()
+				for adj_face in plain_graph.get_adjacent_faces(current_face):
+					if adj_face not in into:
+						into[adj_face] = into[current_face]
+						queue.append(adj_face)
+
+
+func _print_height_stats() -> void:
+	var counts := {}
+	for height in face_to_height.values():
+		counts[height] = counts.get(height, 0) + 1
+	print("[GraphCityGenerator] Alturas por manzana:")
+	for height: NeighborhoodTypes.Height in [NeighborhoodTypes.Height.LOW, NeighborhoodTypes.Height.MID, NeighborhoodTypes.Height.TALL]:
+		var range_floors := NeighborhoodTypes.get_floor_range(height)
+		print("    %-7s %d manzanas (%d a %d pisos)" % [
+			NeighborhoodTypes.get_height_name(height), counts.get(height, 0), range_floors.x, range_floors.y])
+
 
 func _print_neighborhood_stats(num_neighborhoods: int) -> void:
-	print("[GraphCityGenerator] Generación de barrios completada:")
-	print("  Total de barrios: %d" % num_neighborhoods)
-	
-	var type_counts = {
-		NeighborhoodTypes.Type.SHANTY_TOWN: 0,
-		NeighborhoodTypes.Type.RICH_RESIDENTIAL: 0,
-		NeighborhoodTypes.Type.INDUSTRIAL: 0,
-		NeighborhoodTypes.Type.DOWNTOWN: 0
-	}
-	
-	var type_faces = {}
-	for face_idx in face_to_type:
-		var type = face_to_type[face_idx]
-		if type not in type_faces:
-			type_faces[type] = []
-		type_faces[type].append(face_idx)
-	
-	for type in type_faces:
-		type_counts[type] += 1
-	
-	print("  Distribución por tipo:")
-	for type in type_counts:
-		var count = type_counts[type]
-		var face_count = type_faces.get(type, []).size()
-		if count > 0:
-			print("    %s: %d barrios, %d manzanas" % [
-				NeighborhoodTypes.get_type_name(type),
-				count,
-				face_count
-			])
+	var counts := {}
+	for district in face_to_type.values():
+		counts[district] = counts.get(district, 0) + 1
+	print("[GraphCityGenerator] Distritos: %d semillas" % num_neighborhoods)
+	for district: NeighborhoodTypes.District in [NeighborhoodTypes.District.POOR, NeighborhoodTypes.District.RICH, NeighborhoodTypes.District.INDUSTRIAL]:
+		print("    %-11s %d manzanas" % [NeighborhoodTypes.get_type_name(district), counts.get(district, 0)])
 
 # ============================================
 # GESTIÓN DE GRILLAS DE MANZANAS
@@ -476,10 +469,14 @@ func _generate_block_grids(
 	for face_idx in range(plain_graph.faces.size()):
 		var face_nodes = plain_graph.faces[face_idx]
 		var face_vertices: Array[Vector2] = []
+		# La altura de cada esquina de la manzana es la de SU nodo del grafo. Dos manzanas vecinas comparten
+		# los nodos de la calle que las separa, así que sus bordes coinciden sin coordinarse (ver CityTerrain).
+		var face_heights: Array[float] = []
 		
 		for node_idx in face_nodes:
 			var pos_3d = plain_graph.points[node_idx]
 			face_vertices.append(Vector2(pos_3d.x, pos_3d.z))
+			face_heights.append(terrain.height_of(node_idx) if terrain != null else 0.0)
 		
 		var street_types_array: Array[int] = []
 		for i in range(face_nodes.size()):
@@ -487,40 +484,28 @@ func _generate_block_grids(
 			var node2 = face_nodes[(i + 1) % face_nodes.size()]
 			street_types_array.append(get_street_type(node1, node2))
 		
-		var block_seed = grid_seed
-		if grid_seed == -1:
-			block_seed = hash(face_idx)
+		# CADA MANZANA NECESITA SU PROPIA SEMILLA, y esto antes no lo hacía: `block_seed` valía `grid_seed` tal
+		# cual, o sea EL MISMO para las 307 manzanas. Como BlockGenerator siembra con él el trazado de
+		# callejones, la subdivisión en clusters, los patios internos y —vía `cluster_seed + id`— los pisos de
+		# cada edificio, las manzanas salían CLONADAS: medido, las 192 manzanas altas tenían las mismas 11
+		# alturas en el mismo orden. A la vista eso es una pared repetida, y ninguna cantidad de variedad en
+		# la franja de pisos lo arregla mientras la semilla sea única.
+		#
+		# Se deriva con WorldSeeds para que siga saliendo del seed del mundo (misma ciudad para todos los
+		# jugadores) pero cada cara tenga su propia corriente.
+		var block_seed: int = WorldSeeds.derive(grid_seed, face_idx) if grid_seed != -1 else hash(face_idx)
 		
-		var neighborhood_type = face_to_type.get(face_idx, NeighborhoodTypes.Type.DOWNTOWN)
+		# Dos ejes: del DISTRITO sale el sabor, del nivel de ALTURA salen los pisos (ver NeighborhoodTypes).
+		var neighborhood_type = face_to_type.get(face_idx, NeighborhoodTypes.District.POOR)
 		var config = NeighborhoodTypes.CONFIGS[neighborhood_type]
-		var distance_from_seed = face_distances.get(face_idx, 1.0)
-		var falloff_factor = pow(distance_from_seed, neighborhood_height_falloff)
-		
-		var global_min = 0
-		var global_max = 0
-		var unique_types = {}
-		
-		for type_val in face_to_type.values():
-			unique_types[type_val] = true
-		
-		for type_val in unique_types:
-			var type_config = NeighborhoodTypes.CONFIGS[type_val]
-			global_min += type_config["min_floors"]
-			global_max += type_config["max_floors"]
-		
-		if unique_types.size() > 0:
-			global_min = int(float(global_min) / float(unique_types.size()))
-			global_max = int(float(global_max) / float(unique_types.size()))
-		
-		var target_min = config["min_floors"]
-		var target_max = config["max_floors"]
-		
-		var min_floors = int(lerp(float(target_min), float(global_min), falloff_factor))
-		var max_floors = int(lerp(float(target_max), float(global_max), falloff_factor))
-		
-		if min_floors > max_floors:
-			min_floors = max_floors
-		
+		var face_height = face_to_height.get(face_idx, NeighborhoodTypes.Height.TALL)
+		var floor_range = NeighborhoodTypes.get_floor_range(face_height)
+		var min_floors = floor_range.x
+		var max_floors = floor_range.y
+		# Las grietas solo tienen sentido donde hay torres: en una manzana ya baja no hay nada que romper.
+		var crack_chance := 0.0 if face_height == NeighborhoodTypes.Height.LOW else NeighborhoodTypes.CRACK_CHANCE
+		var crack_range := NeighborhoodTypes.get_floor_range(NeighborhoodTypes.Height.LOW)
+		var floors_skew := NeighborhoodTypes.get_floors_skew(face_height)
 		var block_heart_prob = config["block_heart_probability"]
 		
 		var block = BlockGenerator.new(
@@ -551,7 +536,12 @@ func _generate_block_grids(
 			min_floors,
 			max_floors,
 			block_heart_prob,
-			neighborhood_type
+			neighborhood_type,
+			4,
+			face_heights,
+			crack_chance,
+			crack_range,
+			floors_skew
 		)
 		
 		block_grids[face_idx] = block
@@ -865,6 +855,7 @@ func _enrich_lane_volume_data(volume_data: Dictionary, face_idx: int, edge_idx: 
 	var node1 = face[edge_idx]
 	var node2 = face[(edge_idx + 1) % face.size()]
 	enriched["neighborhood_type"] = get_neighborhood_type_for_edge(node1, node2)
+	enriched["height_tier"] = get_height_for_edge(node1, node2)
 	
 	var key = "%d_%d" % [face_idx, edge_idx]
 	enriched["traffic_index"] = traffic_indices.get(key, -1)
@@ -1050,25 +1041,25 @@ func get_lane_volume_predecessors(face_idx: int, edge_idx: int) -> Array[LaneVol
 # GETTERS DE BARRIOS
 # ============================================
 
-func get_neighborhood_type_for_face(face_idx: int) -> NeighborhoodTypes.Type:
-	return face_to_type.get(face_idx, NeighborhoodTypes.Type.DOWNTOWN)
+func get_neighborhood_type_for_face(face_idx: int) -> NeighborhoodTypes.District:
+	return face_to_type.get(face_idx, NeighborhoodTypes.District.POOR)
 
-func get_neighborhood_type_for_edge(node1_idx: int, node2_idx: int) -> NeighborhoodTypes.Type:
+func get_neighborhood_type_for_edge(node1_idx: int, node2_idx: int) -> NeighborhoodTypes.District:
 	var adjacent_faces = _find_faces_sharing_edge(node1_idx, node2_idx)
 	
 	if adjacent_faces.is_empty():
-		return NeighborhoodTypes.Type.DOWNTOWN
+		return NeighborhoodTypes.District.POOR
 	
-	var type1 = face_to_type.get(adjacent_faces[0], NeighborhoodTypes.Type.DOWNTOWN)
+	var type1 = face_to_type.get(adjacent_faces[0], NeighborhoodTypes.District.POOR)
 	
 	if adjacent_faces.size() == 1:
 		return type1
 	
-	var type2 = face_to_type.get(adjacent_faces[1], NeighborhoodTypes.Type.DOWNTOWN)
+	var type2 = face_to_type.get(adjacent_faces[1], NeighborhoodTypes.District.POOR)
 	
 	return NeighborhoodTypes.get_higher_hierarchy_type(type1, type2)
 
-func get_faces_of_type(neighborhood_type: NeighborhoodTypes.Type) -> Array[int]:
+func get_faces_of_type(neighborhood_type: NeighborhoodTypes.District) -> Array[int]:
 	var faces: Array[int] = []
 
 	for face_idx in face_to_type:
@@ -1235,12 +1226,29 @@ func _create_bridges(seed: int) -> void:
 	print("[GraphCityGenerator] Puentes generados: %d en %d edges" % [total_placed, bridges.size()])
 
 
-func _get_bridge_count(_node1: int, _node2: int, street_type: int, rng: RandomNumberGenerator) -> int:
+## Cuántos puentes cruzan esa calle: la calle pone la base y la ALTURA de las manzanas que la rodean
+## empuja para arriba o para abajo — de un barrio bajo no se puede colgar un puente (ver
+## NeighborhoodTypes.FLOORS).
+func _get_bridge_count(node1: int, node2: int, street_type: int, rng: RandomNumberGenerator) -> int:
+	var base := 0
 	match street_type:
-		0:  return rng.randi_range(0, 1)
-		1:  return rng.randi_range(1, 2)
-		2:  return rng.randi_range(2, 3)
-	return 0
+		0:  base = rng.randi_range(0, 1)
+		1:  base = rng.randi_range(1, 2)
+		2:  base = rng.randi_range(2, 3)
+		_:  return 0
+	return maxi(base + NeighborhoodTypes.get_bridge_bias(get_height_for_edge(node1, node2)), 0)
+
+
+## El nivel de altura de una calle: el más alto de las dos manzanas que da, que es el que decide si hay
+## de dónde colgar un puente.
+func get_height_for_edge(node1_idx: int, node2_idx: int) -> NeighborhoodTypes.Height:
+	var adjacent_faces = _find_faces_sharing_edge(node1_idx, node2_idx)
+	var best: NeighborhoodTypes.Height = NeighborhoodTypes.Height.LOW
+	for face_idx in adjacent_faces:
+		var height = face_to_height.get(face_idx, NeighborhoodTypes.Height.TALL)
+		if height > best:
+			best = height
+	return best
 
 
 

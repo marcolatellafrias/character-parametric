@@ -5,7 +5,8 @@ extends Node3D
 # PARÁMETROS DE GENERACIÓN
 # ============================================
 @export_group("Generación del Grafo")
-@export var region_size: Vector2 = Vector2(800/2*1.4, 800/2*1.4)
+## Lado de la región donde se siembran los nodos. El doble de área es el doble de manzanas.
+@export var region_size: Vector2 = Vector2(1425.6, 1425.6)
 @export var min_distance: float = 180.5*1.3*1.4
 @export var rejection_samples: int = 90
 @export var generation_seed: int = 123456
@@ -13,9 +14,11 @@ extends Node3D
 @export var use_world_seed: bool = true
 
 @export_group("Barrios")
-@export var num_neighborhoods: int = 10
+@export var num_neighborhoods: int = 6
 @export var neighborhood_seed: int = -1
-@export_range(0.1, 5.0) var neighborhood_height_falloff: float = 0.3
+## En cuántos parches se reparten las ALTURAS, aparte de los distritos (ver NeighborhoodTypes): más
+## parches, zonas más chicas y cambios de pace más seguidos. Conviene que crezca con la ciudad.
+@export var num_height_patches: int = 18
 
 @export_group("Suavizado")
 @export var smoothing_steps: int = 40
@@ -89,6 +92,33 @@ extends Node3D
 @export var distorted_grid_edge_width: float = 0.015
 @export var distorted_grid_height_offset: float = 0.1
 
+@export_group("Muralla")
+## El límite del mundo: un muro que no se puede pasar ni con el propulsor vertical. Su base sigue el
+## terreno y su CIMA queda a altura constante, en tantos pisos de edificio (ver `_visualize_walls`).
+@export var show_wall: bool = true
+## Si se DIBUJA la muralla. Esta aparte de `show_wall` a proposito: aquel apaga la muralla entera,
+## COLISION INCLUIDA, y entonces la nave se escapa del mapa. Este la deja donde esta y solo la esconde.
+@export var show_wall_mesh: bool = false
+## 13 pisos (~85 m): la nave llega a 10 con el propulsor, así que queda fuera de alcance por 3 pisos
+## sin encerrar como una caja — y los edificios altos (15 a 22) la superan siempre.
+@export var wall_floors: float = 13.0
+@export var wall_thickness: float = 3.0
+@export var enable_wall_collider: bool = true
+@export var wall_color: Color = Color(0.55, 0.55, 0.58)
+
+@export_group("Terreno")
+## Alto de la loma más alta, en PISOS de edificio: es lo que se lee en el juego —cuántos pisos se come el
+## relieve—. En 0 la ciudad queda plana, como antes.
+@export var terrain_floors: float = 2.0
+## Cada cuántos metros cambia el relieve. Más chico, lomas más apretadas.
+@export var terrain_feature_size: float = 300.0
+## Pendiente máxima de una calle. Si el ruido se pasa, se baja la amplitud de todo el campo (ver
+## CityTerrain): 12% es una calle empinada pero caminable.
+@export_range(0.01, 0.5) var terrain_max_slope: float = 0.12
+@export var show_ground: bool = true
+@export var enable_ground_collider: bool = true
+@export var ground_color: Color = Color(0.33, 0.31, 0.27)
+
 @export_group("Buildings")
 @export var show_buildings: bool = false
 @export var enable_building_colliders: bool = true
@@ -149,6 +179,8 @@ var traffic_light_timer: float = 0.0
 var active_traffic_index: int = 0
 var yellow_phase_active: bool = false
 var _building_material: StandardMaterial3D = null
+## Semilla del relieve; sale de la del mundo salvo que se fuerce a mano (ver use_world_seed).
+var terrain_seed: int = 0
 
 # ============================================
 # INICIALIZACIÓN
@@ -233,6 +265,7 @@ func generate_graph() -> void:
 		generation_seed   = WorldSeeds.weekly_seed()
 		neighborhood_seed = WorldSeeds.derive(generation_seed, 1)
 		grid_seed         = WorldSeeds.derive(generation_seed, 2)
+		terrain_seed      = WorldSeeds.derive(generation_seed, 3)
 
 	generator = GraphCityGenerator.new()
 	generator.enable_traffic_lights = enable_traffic_lights
@@ -267,9 +300,13 @@ func generate_graph() -> void:
 		building_grid_columns,
 		legacy_block_cell_height,
 		0.0,
-		neighborhood_height_falloff,
+		num_height_patches,
 		num_neighborhoods,
-		neighborhood_seed
+		neighborhood_seed,
+		terrain_floors,
+		terrain_feature_size,
+		terrain_max_slope,
+		terrain_seed
 	)
 
 # Libera solo los hijos visuales; el generator se reemplaza en generate_graph().
@@ -283,6 +320,12 @@ func visualize_graph() -> void:
 		return
 
 	_add_lane_volumes_to_scene()
+
+	if show_ground:
+		_visualize_ground()
+
+	if show_wall:
+		_visualize_walls()
 
 	if show_streets:
 		_visualize_streets()
@@ -429,6 +472,324 @@ func _get_building_material() -> StandardMaterial3D:
 		_building_material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
 	return _building_material
 
+# Deja de dibujarse EXACTAMENTE donde la niebla ya es total (`render_distance`), y SIN fundido propio.
+#
+# ⚠ NO agregar aquí el fundido de Godot (`VISIBILITY_RANGE_FADE_SELF`). Se probó y pelea con la niebla de
+# dos maneras, las dos visibles en juego:
+#   · La niebla es un shader de PANTALLA COMPLETA que lee el buffer de profundidad. Una pieza a medio
+#     desvanecer se dibuja con transparencia/dithering y no queda bien escrita ahí, así que la niebla no
+#     la pinta: aparece nítida a lo lejos y, al terminar de aparecer, la niebla le cae de golpe.
+#   · El fundido es POR MALLA y con dithering: se ve a través del objeto. Con balcones, puertas y demás
+#     como mallas propias, se verían los interiores.
+#
+# Cortando donde la niebla ya tapa todo, la pieza desaparece cuando ya era 100% color niebla: el corte es
+# invisible y no hace falta ningún fundido. LA NIEBLA ES EL FUNDIDO. Si alguna vez hace falta LOD real,
+# la herramienta es `visibility_parent` (jerárquico), que agrupa: el fundido de acá es de entrada, no LOD.
+# LA PIEZA ENTRA FUNDIÉNDOSE, no apareciendo. Durante mucho tiempo esto fue al revés —corte seco, sin
+# fundido— porque la niebla era un shader de PANTALLA COMPLETA que leía el depth buffer: una malla a medio
+# fundir se dibuja con dithering, no queda bien escrita en ese buffer, y la niebla se la salteaba; se veía
+# nítida y sin niebla a lo lejos y recién al opacarse le caía la niebla encima de golpe. Con la niebla
+# NATIVA de Godot eso desapareció: se aplica por fragmento dentro del shader del material, así que una
+# malla fundiéndose viene enneblada durante todo el fundido. El fundido volvió a ser posible el día que
+# cambiamos de sistema de niebla, no antes.
+#
+# Y volvió a ser NECESARIO el día que la niebla dejó de ser del color del cielo. Mientras lo era, una pieza
+# saturada era indistinguible del fondo y el corte no se veía; ahora la niebla es cálida contra un cielo
+# azul, o sea que una pieza lejana ES una silueta naranja. Sin fundido, esa silueta se materializa de una.
+#
+# El umbral incluye EL RADIO DE LA PIEZA: Godot compara la distancia al ORIGEN del nodo —su centro—,
+# mientras que la niebla se calcula por píxel. Sin sumar el radio, un edificio cuyo centro está en el
+# umbral tiene su cara cercana decenas de metros más acá, con bastante menos niebla encima.
+func _fade_into_fog(piece: GeometryInstance3D) -> void:
+	var mesh_piece := piece as MeshInstance3D
+	_center_on_own_geometry(mesh_piece)
+	var radius := 0.0
+	if mesh_piece != null and mesh_piece.mesh != null:
+		radius = mesh_piece.mesh.get_aabb().size.length() * 0.5
+	var end_distance := WorldSettings.render_distance + radius
+	piece.visibility_range_end = end_distance
+	piece.visibility_range_end_margin = WorldSettings.fade_ring_for(end_distance)
+	piece.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+
+# ⚠ LA DISTANCIA DE VISIBILIDAD SE MIDE DESDE EL ORIGEN DEL NODO, no desde su geometría.
+#
+# Casi todas las mallas de la ciudad se arman con vértices en COORDENADAS DE MUNDO y se cuelgan sin
+# transform, así que su origen queda en (0,0,0) —la esquina de la ciudad— con la geometría a cientos de
+# metros. Con eso, Godot evalúa siempre la distancia `cámara → esquina de la ciudad`, IGUAL PARA TODAS:
+# alejándose de esa esquina se desvanecen todos los edificios a la vez, incluso los que se tienen
+# enfrente. El síntoma engaña, porque parece un problema de la niebla y no del culling.
+#
+# Por eso, antes de darle rango de visibilidad a una malla, se la CENTRA en su propia caja: los vértices
+# pasan a ser relativos a su centro y el nodo se mueve ahí. La geometría queda en el mismo lugar del
+# mundo, pero ahora la distancia que Godot mide es la que uno espera. (Los occluders ya hacían esto: ver
+# `_add_box_occluder`.)
+func _center_on_own_geometry(piece: MeshInstance3D) -> void:
+	if piece == null:
+		return
+	var mesh := piece.mesh as ArrayMesh
+	if mesh == null or mesh.get_surface_count() != 1:
+		return
+	var center := mesh.get_aabb().get_center()
+	if center.is_zero_approx():
+		return
+	var arrays := mesh.surface_get_arrays(0)
+	var verts := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+	for i in verts.size():
+		verts[i] -= center
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	var centered := ArrayMesh.new()
+	centered.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	piece.mesh = centered
+	piece.position += center
+
+# ============================================
+# MURALLA
+# ============================================
+# El límite del mundo. Se levanta sobre las aristas de BORDE del grafo —las que tienen una sola manzana de
+# un lado, que ya son tipo de calle -1 y no llevan vereda ni calzada—, así que no hace falta inventarle un
+# recorrido: el borde de la ciudad ya estaba ahí.
+#
+# Su base sigue el terreno y su CIMA queda a ALTURA CONSTANTE. Es a propósito: si la cima acompañara las
+# lomas, en los valles bajaría y dejaría de ser infranqueable justo donde el relieve ya hunde al jugador.
+#
+# En cada nodo del borde va además una columna que tapa la junta entre dos tramos: sin ella, las esquinas
+# abiertas dejarían una cuña de aire.
+func _visualize_walls() -> void:
+	var graph := generator.plain_graph
+	var top := wall_floors * _floor_height()
+	var container := Node3D.new()
+	container.name = "Wall"
+	container.add_to_group("city_wall")
+	add_child(container)
+
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var faces := PackedVector3Array()
+	var corners := {}
+	var segments := 0
+	for edge: Array in graph.edges:
+		var node1: int = edge[0]
+		var node2: int = edge[1]
+		var key := GraphGenerator._get_edge_key(node1, node2)
+		if generator.street_types.get(key, 1) != BlockGenerator.StreetType.BOUNDARY:
+			continue
+		var sides: Array = graph.edge_to_faces.get(key, [])
+		if sides.is_empty():
+			continue
+		var a: Vector3 = _wall_base(node1)
+		var b: Vector3 = _wall_base(node2)
+		var outward := _wall_outward(a, b, sides[0])
+		var shift := outward * wall_thickness
+		# Las dos caras y la tapa. La de adentro mira a la ciudad; la de afuera, al vacío.
+		_wall_quad(st, faces, a, b, Vector3(b.x, top, b.z), Vector3(a.x, top, a.z), -outward)
+		_wall_quad(st, faces, a + shift, b + shift, Vector3(b.x, top, b.z) + shift, Vector3(a.x, top, a.z) + shift, outward)
+		_wall_quad(st, faces, Vector3(a.x, top, a.z), Vector3(b.x, top, b.z),
+			Vector3(b.x, top, b.z) + shift, Vector3(a.x, top, a.z) + shift, Vector3.UP)
+		corners[node1] = a
+		corners[node2] = b
+		segments += 1
+
+	for node_idx: int in corners:
+		_wall_post(st, faces, corners[node_idx], top)
+	st.generate_normals()
+
+	var material := StandardMaterial3D.new()
+	material.albedo_color = wall_color
+	material.roughness = 1.0
+	var view := MeshInstance3D.new()
+	view.name = "mesh"
+	view.mesh = st.commit()
+	view.material_override = material
+	# SIN límite por distancia, a diferencia de los edificios: la muralla es UNA SOLA malla que abarca la
+	# ciudad entera, así que su origen cae en el centro y "distancia a la muralla" no significa nada —
+	# con un corte a 294 m solo se dibujaba estando cerca del centro, o sea casi nunca. Lo que evita que su
+	# silueta achique la ciudad es la niebla, que la desdibuja a la distancia (ver CityFog).
+	view.visible = show_wall_mesh
+	container.add_child(view)
+
+	if enable_wall_collider:
+		var shape := ConcavePolygonShape3D.new()
+		shape.set_faces(faces)
+		var collider := CollisionShape3D.new()
+		collider.shape = shape
+		var body := StaticBody3D.new()
+		body.name = "collider"
+		body.add_child(collider)
+		container.add_child(body)
+	print("[Visualizer] Muralla: %d tramos · cima a %.0f m (%.0f pisos)" % [segments, top, wall_floors])
+
+# El pie de la muralla en un nodo del borde: sobre el terreno.
+func _wall_base(node_idx: int) -> Vector3:
+	var point: Vector3 = generator.plain_graph.points[node_idx]
+	var height := generator.terrain.height_of(node_idx) if generator.terrain != null else 0.0
+	return Vector3(point.x, height, point.z)
+
+# Hacia dónde da la cara de afuera: perpendicular al tramo, del lado contrario a su manzana.
+func _wall_outward(a: Vector3, b: Vector3, face_idx: int) -> Vector3:
+	var along := (b - a)
+	var side := Vector3(-along.z, 0.0, along.x).normalized()
+	var face: Array = generator.plain_graph.faces[face_idx]
+	var middle := Vector3.ZERO
+	for node_idx: int in face:
+		middle += generator.plain_graph.points[node_idx]
+	middle /= float(face.size())
+	if side.dot(middle - a) > 0.0:
+		side = -side
+	return side
+
+# La columna que tapa la junta entre dos tramos, cuadrada y centrada en el nodo.
+func _wall_post(st: SurfaceTool, faces: PackedVector3Array, at: Vector3, top: float) -> void:
+	var half := wall_thickness
+	var square := [
+		Vector3(at.x - half, at.y, at.z - half), Vector3(at.x + half, at.y, at.z - half),
+		Vector3(at.x + half, at.y, at.z + half), Vector3(at.x - half, at.y, at.z + half)]
+	for k in 4:
+		var low_a: Vector3 = square[k]
+		var low_b: Vector3 = square[(k + 1) % 4]
+		var outward := (((low_a + low_b) * 0.5) - at)
+		outward.y = 0.0
+		_wall_quad(st, faces, low_a, low_b, Vector3(low_b.x, top, low_b.z), Vector3(low_a.x, top, low_a.z),
+			outward.normalized())
+	_wall_quad(st, faces, Vector3(square[0].x, top, square[0].z), Vector3(square[1].x, top, square[1].z),
+		Vector3(square[2].x, top, square[2].z), Vector3(square[3].x, top, square[3].z), Vector3.UP)
+
+# Un cuadrilátero de muro mirando hacia `outward`. Godot toma como frente el giro horario, cuya normal es
+# (c − a) × (b − a): si el orden viene al revés, se lo da vuelta.
+func _wall_quad(st: SurfaceTool, faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3,
+		outward: Vector3) -> void:
+	for tri: Array in [[a, b, c], [a, c, d]]:
+		var p0: Vector3 = tri[0]
+		var p1: Vector3 = tri[1]
+		var p2: Vector3 = tri[2]
+		var ordered := [p0, p1, p2] if (p2 - p0).cross(p1 - p0).dot(outward) >= 0.0 else [p0, p2, p1]
+		for corner: Vector3 in ordered:
+			st.add_vertex(corner)
+		faces.append_array(ordered)
+
+# Cuánto mide un piso de edificio: lo mismo que usa el generador para apilarlos.
+func _floor_height() -> float:
+	for face_idx: int in generator.get_all_block_faces():
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		if block != null:
+			return block.get_building_cell_height() * float(block.get_cells_per_floor())
+	return 1.0
+
+# ============================================
+# SUELO
+# ============================================
+# El suelo se arma con LOS MISMOS QUADS que usa la ciudad, no con una malla aparte: las celdas de la
+# DistortedGrid adentro de cada manzana, y el corredor entre dos manzanas para cada calle. Por eso el suelo
+# y lo que se apoya en él —veredas, edificios— son la misma superficie y nada puede clipear (ver
+# CityTerrain).
+#
+# El corredor de calle toma sus cuatro esquinas de `temporal_lane_points` —las esquinas enfrentadas de las
+# dos manzanas— y la altura de cada una es la de SU nodo del grafo: las dos de un extremo valen lo mismo,
+# así que la calle queda nivelada a lo ancho e inclinada a lo largo.
+#
+# Lo between-grids —los puentes en el aire y los volúmenes de carril— sigue sobre el cero
+# (ver city-generation.md).
+func _visualize_ground() -> void:
+	var terrain := generator.terrain
+	if terrain == null or terrain.amplitude <= 0.0:
+		return
+	var container := Node3D.new()
+	container.name = "Ground"
+	container.add_to_group("city_ground")
+	add_child(container)
+
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var faces := PackedVector3Array()
+	var blocks := 0
+	for face_idx in generator.get_all_block_faces():
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		var grid := block.get_distorted_grid() if block != null else null
+		if grid == null:
+			continue
+		blocks += 1
+		for x in grid.columns:
+			for z in grid.rows:
+				var cell := grid.get_cell_vertices(x, z)
+				if cell.size() == 4:
+					_ground_quad(st, faces, cell[0], cell[1], cell[2], cell[3])
+	var streets := _ground_streets(st, faces)
+	st.generate_normals()
+
+	var material := StandardMaterial3D.new()
+	material.albedo_color = ground_color
+	material.roughness = 1.0
+	var view := MeshInstance3D.new()
+	view.name = "mesh"
+	view.mesh = st.commit()
+	view.material_override = material
+	container.add_child(view)
+
+	if enable_ground_collider:
+		var shape := ConcavePolygonShape3D.new()
+		shape.set_faces(faces)
+		var collider := CollisionShape3D.new()
+		collider.shape = shape
+		var body := StaticBody3D.new()
+		body.name = "collider"
+		body.add_child(collider)
+		container.add_child(body)
+	print("[Visualizer] Suelo: %d triángulos · %d manzanas · %d calles" % [faces.size() / 3, blocks, streets])
+
+# El corredor de cada calle, una vez por arista. Devuelve cuántas se dibujaron.
+func _ground_streets(st: SurfaceTool, faces: PackedVector3Array) -> int:
+	var graph := generator.plain_graph
+	var terrain := generator.terrain
+	var drawn := 0
+	for edge: Array in graph.edges:
+		var node1: int = edge[0]
+		var node2: int = edge[1]
+		var sides: Array = graph.edge_to_faces.get(GraphGenerator._get_edge_key(node1, node2), [])
+		if sides.size() != 2:
+			continue  # el borde de la ciudad no tiene calle de este lado
+		var block: BlockGenerator = generator.get_block_grid(sides[0])
+		if block == null:
+			continue
+		var edge_idx := _edge_index_in_face(graph.faces[sides[0]], node1, node2)
+		if edge_idx < 0:
+			continue
+		var first: Dictionary = block.temporal_lane_points.get("%d_%d" % [edge_idx, 0], {})
+		var second: Dictionary = block.temporal_lane_points.get("%d_%d" % [edge_idx, 1], {})
+		if first.is_empty() or second.is_empty():
+			continue
+		# Las dos esquinas de un extremo llevan la altura de su nodo: a lo ancho, nivelado.
+		var at_first := terrain.height_of(graph.faces[sides[0]][edge_idx])
+		var at_second := terrain.height_of(graph.faces[sides[0]][(edge_idx + 1) % graph.faces[sides[0]].size()])
+		_ground_quad(st, faces,
+			_flat_to_3d(first["point_a"], at_first), _flat_to_3d(first["point_b"], at_first),
+			_flat_to_3d(second["point_b"], at_second), _flat_to_3d(second["point_a"], at_second))
+		drawn += 1
+	return drawn
+
+# En qué lado de la cara está esa arista, o -1 si no está.
+func _edge_index_in_face(face: Array, node1: int, node2: int) -> int:
+	for i in face.size():
+		var a: int = face[i]
+		var b: int = face[(i + 1) % face.size()]
+		if (a == node1 and b == node2) or (a == node2 and b == node1):
+			return i
+	return -1
+
+func _flat_to_3d(flat: Vector2, height: float) -> Vector3:
+	return Vector3(flat.x, height, flat.y)
+
+# Un quad del suelo, en dos triángulos que miran para arriba. Godot toma como FRENTE el lado desde el que
+# las esquinas giran en sentido horario, y la normal de ese lado es (c − a) × (b − a): con el orden al
+# revés el suelo se culea desde arriba y desde abajo se ve negro.
+func _ground_quad(st: SurfaceTool, faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+	_ground_triangle(st, faces, a, b, c)
+	_ground_triangle(st, faces, a, c, d)
+
+func _ground_triangle(st: SurfaceTool, faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3) -> void:
+	var ordered := [a, b, c] if (c - a).cross(b - a).y >= 0.0 else [a, c, b]
+	for corner: Vector3 in ordered:
+		st.add_vertex(corner)
+	faces.append_array(ordered)
+
 # Los edificios —los meshes con sus occluders, y aparte los colliders— cuelgan de un nodo propio anotado
 # en "city_buildings", así se prenden y apagan todos juntos (lo usa el panel de performance del F1).
 func _buildings_container(node_name: String) -> Node3D:
@@ -529,15 +890,24 @@ func _visualize_buildings() -> void:
 			mesh_instance.mesh = array_mesh
 			mesh_instance.material_override = mat
 			mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-			mesh_instance.visibility_range_end = WorldSettings.spawn_radius
-			buildings.add_child(mesh_instance)
+			# El occluder va PRIMERO: lee el AABB de la malla, y `_fade_into_fog` la recentra en su propio
+			# centro. Al reves, todos los occluders terminaban apilados en el origen de la ciudad.
 			_add_box_occluder(array_mesh, buildings)
+			_fade_into_fog(mesh_instance)
+			buildings.add_child(mesh_instance)
 
 	print("[Visualizer] Buildings: %d clusters (%d cells total) en %d bloques" % [total_clusters, total_cells, all_block_faces.size()])
 
 # ============================================
 # VISUALIZACIÓN DE COLLIDERS DE BUILDINGS
 # ============================================
+# UN SOLO COLLIDER POR EDIFICIO. Antes iba una forma por celda Y por piso —145.000 formas en la ciudad,
+# que Jolt carga en su broadphase estés donde estés—, y encima cada una nacía instanciando un cuerpo
+# entero para robarle sus hijos y tirarlo.
+#
+# La MODULARIDAD NO SE PIERDE: vive en los datos (`BuildingModule` por celda y piso, la matriz 3D de
+# veredas), que es donde la van a consultar los objetos colocables del futuro. Esto es solo el paso final
+# de salida, y se puede volver a partir en piezas cambiando únicamente esta función.
 func _visualize_building_colliders() -> void:
 	var all_block_faces = generator.get_all_block_faces()
 	var total_colliders = 0
@@ -555,14 +925,13 @@ func _visualize_building_colliders() -> void:
 		var clusters = block.get_all_clusters()
 
 		for cluster in clusters:
-			var static_body = StaticBody3D.new()
-			var has_colliders = false
+			var faces := PackedVector3Array()
 
-			for floor in range(cluster.get_floor_count()):
-				var floor_base_y = floor * cells_per_floor * building_cell_height
+			for floor_idx in range(cluster.get_floor_count()):
+				var floor_base_y = floor_idx * cells_per_floor * building_cell_height
 
 				for cell in cluster.cells:
-					var building_module: BuildingModule = block.get_building_module(cell.x, cell.y, floor)
+					var building_module: BuildingModule = block.get_building_module(cell.x, cell.y, floor_idx)
 					if building_module == null:
 						continue
 
@@ -577,30 +946,36 @@ func _visualize_building_colliders() -> void:
 					for i in range(core_vertices.size()):
 						core_vertices[i].y += floor_base_y
 
-					var collision_body = DebugUtil.create_skewed_cube_advanced_grid_collider(
+					# La MISMA geometría que dibuja el edificio, así no se recalcula nada.
+					var geo := DebugUtil.get_skewed_cube_advanced_grid_geometry(
 						core_vertices,
 						building_height,
+						Color.WHITE,
 						building_module.get_chamfers(),
 						core_info["depth"],
 						core_info["width"]
 					)
+					if geo.is_empty():
+						continue
+					var verts: PackedVector3Array = geo.vertices
+					for idx: int in geo.indices:
+						faces.append(verts[idx])
 
-					if collision_body != null:
-						for child in collision_body.get_children():
-							if child is CollisionShape3D:
-								collision_body.remove_child(child)
-								static_body.add_child(child)
-								has_colliders = true
-						collision_body.queue_free()
-
-			if has_colliders:
-				colliders.add_child(static_body)
-				total_colliders += 1
+			if faces.is_empty():
+				continue
+			var shape := ConcavePolygonShape3D.new()
+			shape.set_faces(faces)
+			var collision_shape := CollisionShape3D.new()
+			collision_shape.shape = shape
+			var static_body := StaticBody3D.new()
+			static_body.add_child(collision_shape)
+			colliders.add_child(static_body)
+			total_colliders += 1
 
 		if clusters.size() > 0:
 			total_blocks += 1
 
-	print("[Visualizer] Colliders: %d clusters en %d manzanas" % [total_colliders, total_blocks])
+	print("[Visualizer] Colliders: %d edificios en %d manzanas (uno por edificio)" % [total_colliders, total_blocks])
 
 # ============================================
 # VISUALIZACIÓN DE GRILLAS DISTORSIONADAS
@@ -1115,6 +1490,9 @@ func _get_bridge_material() -> StandardMaterial3D:
 		_bridge_material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
 	return _bridge_material
 
+## OJO: hay que llamarla ANTES de `_fade_into_fog`, porque usa el AABB de la malla en coordenadas de
+## mundo y aquella lo recentra en el origen. (Hoy es inerte de todos modos: occlusion culling esta
+## apagado en project.godot, `rendering/occlusion_culling/use_occlusion_culling`.)
 func _add_box_occluder(mesh: ArrayMesh, parent: Node3D) -> void:
 	var aabb := mesh.get_aabb()
 	var occ_inst := OccluderInstance3D.new()
@@ -1214,9 +1592,10 @@ func _visualize_floating_sidewalk_zones() -> void:
 			mesh_instance.mesh = array_mesh
 			mesh_instance.material_override = mat
 			mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			mesh_instance.visibility_range_end = WorldSettings.spawn_radius
-			add_child(mesh_instance)
+			# Antes de recentrar: ver el comentario en _visualize_buildings.
 			_add_box_occluder(array_mesh, self)
+			_fade_into_fog(mesh_instance)
+			add_child(mesh_instance)
 
 		if has_colliders:
 			add_child(block_static_body)
@@ -1253,7 +1632,7 @@ func _visualize_bridges() -> void:
 			var mi := MeshInstance3D.new()
 			mi.mesh = array_mesh
 			mi.material_override = _get_bridge_material()
-			mi.visibility_range_end = WorldSettings.spawn_radius
+			_fade_into_fog(mi)
 			add_child(mi)
 	print("[Visualizer] Puentes: %d" % total)
 

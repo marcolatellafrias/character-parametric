@@ -44,21 +44,28 @@ When choosing a continuation at an intersection, cars weight candidates by **tra
 
 The weighted draw happens **before** validation: only the drawn volume runs the (expensive) projection-validation, falling back to the next draw if it fails — instead of validating every candidate and discarding all but one.
 
-## Fog and zone radii (`AreaInstantiator`)
+## Fog and zone radii
 
-Three concentric cylindrical zones (XZ distance from camera):
+Every distance comes from `WorldSettings`, which is the point: the fog, the distance at which geometry is drawn and the radius in which cars exist are the same few numbers, so they cannot drift apart.
 
-| Zone | Radius | Purpose |
+| Distance | Value | Meaning |
 |---|---|---|
-| Inner (clear) | `0 → inner_radius` | No fog |
-| Fade ring | `inner_radius → outer_radius` | Fog 0% → 100% |
-| Outer | `outer_radius → spawn_radius` | Full fog; safe for spawning |
+| `fog_start_distance` | 50 m | Fog begins. Clear inside it. |
+| `render_distance` | 350 m | Fog is total. Geometry is gone by here. |
+| `fade_ring_for()` | 33 m at 350 | Width of the ring, just short of the cut, where pieces dissolve in. Scales with distance — see [city-generation.md](city-generation.md). |
+| `spawn_radius` | 434 m | `render_distance + spawn_buffer`. Cars exist out to here; past it they are freed. |
+
+These are the distances of the 25/6 build, restored after trying 800 m and finding it worse rather than better: with fog this strong, what decides whether the world feels enclosed is the fog's colour, not its reach. `render_distance` is still the knob to turn first if the frame rate suffers — drawn area grows with its square.
 
 A single cylindrical `Area3D` per camera at `spawn_radius` (mask = layer 4) tracks which `LaneVolume`s are in range (`all_lane_volumes`).
 
-## Radial fog
+## Fog
 
-A fullscreen spatial shader (`radial_fog.gdshader`) on a `MeshInstance3D` quad reads the depth buffer, reconstructs world position, and computes XZ distance from the player. Fog is `smoothstep(inner_radius, outer_radius)` — completely clear inside the inner zone, fully opaque at the outer boundary. The sky (depth = 1.0) is discarded so it's never fogged.
+Godot's built-in depth fog, configured by `CityFog` on the `WorldEnvironment` — see [city-generation.md](city-generation.md) for why it replaced the old fullscreen `radial_fog.gdshader`, which has since been deleted.
+
+One consequence matters for traffic: the old shader measured **XZ** distance, a cylinder around the player, while the built-in fog measures depth from the camera, a sphere. Flying high, the ground below is now fogged too — it was not before.
+
+Cars **fade** like everything else now. Their pooled visual carries the same `visibility_range_end` and scaled ring as city geometry, and `CarManager` only returns it to the pool past `render_distance + ring + VISUAL_RELEASE_MARGIN`. Before this it flipped `visible` at exactly `render_distance`, so a car popped into existence whole in a single frame — the same flaw San Andreas has with its own vehicles, which do not go through the fading path either.
 
 ## Spawning — demand-pull system
 

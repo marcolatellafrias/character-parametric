@@ -37,6 +37,12 @@ var cell_to_cluster: Dictionary = {}
 
 var min_floors_per_cluster: int
 var max_floors_per_cluster: int
+## Probabilidad de que un edificio rompa el nivel de su manzana y salga bajo, y con qué rango sale (ver
+## NeighborhoodTypes.CRACK_CHANCE).
+var crack_chance: float = 0.0
+var crack_floors: Vector2i = Vector2i(1, 4)
+## Sesgo del sorteo de pisos dentro de la franja del nivel (ver NeighborhoodTypes.draw_floor_count).
+var floors_skew: float = 1.0
 var block_heart_probability: float = 0.0
 
 var building_rows: int
@@ -45,12 +51,18 @@ var building_cell_height: float
 var building_alleyway_offsets: Dictionary
 
 var cluster_seed: int
+## Altura de cada esquina de la manzana, en el orden de `block_vertices` (ver CityTerrain). Todo lo que se
+## construye adentro interpola entre estas cuatro.
+var block_vertex_heights: Array[float] = []
+## En cuántos PISOS se endereza un edificio: abajo sigue al terreno, y para el piso `TAPER_FLOORS`
+## ya está plano, así los techos quedan horizontales (ver BuildingModule).
+const TAPER_FLOORS := 2
 
 var traversal: TraversalGenerator
 
 var temporal_lane_points: Dictionary = {}
 var lane_planes: Dictionary = {}
-var neighborhood_type: NeighborhoodTypes.Type
+var neighborhood_type: NeighborhoodTypes.District
 
 func _init(
 	p_rows: int,
@@ -80,9 +92,17 @@ func _init(
 	p_min_floors_per_cluster: int = 1,
 	p_max_floors_per_cluster: int = 8,
 	p_block_heart_probability: float = 0.0,
-	p_neighborhood_type: NeighborhoodTypes.Type = NeighborhoodTypes.Type.DOWNTOWN,
-	p_delivery_doors_per_block: int = 4
+	p_neighborhood_type: NeighborhoodTypes.District = NeighborhoodTypes.District.POOR,
+	p_delivery_doors_per_block: int = 4,
+	p_vertex_heights: Array[float] = [],
+	p_crack_chance: float = 0.0,
+	p_crack_floors: Vector2i = Vector2i(1, 4),
+	p_floors_skew: float = 1.0
 ) -> void:
+	crack_chance = p_crack_chance
+	crack_floors = p_crack_floors
+	floors_skew = p_floors_skew
+	block_vertex_heights = p_vertex_heights if p_vertex_heights.size() == 4 else [0.0, 0.0, 0.0, 0.0]
 	street_types = p_street_types
 	street_offsets = p_street_offsets
 	neighborhood_type = p_neighborhood_type
@@ -189,6 +209,7 @@ func _create_distorted_grid(
 		distorted_rows,
 		distorted_columns,
 		core_vertices,
+		_get_core_block_heights(),
 		cell_height,
 		wave_amplitude_x,
 		wave_amplitude_z,
@@ -240,7 +261,8 @@ func _create_building_clusters() -> void:
 			building_rows,
 			building_columns,
 			building_cell_height,
-			building_alleyway_offsets
+			building_alleyway_offsets,
+			TAPER_FLOORS * cells_per_floor
 		)
 	
 
@@ -341,12 +363,22 @@ func _subdivide_section_into_clusters(section: Array, rng: RandomNumberGenerator
 	var clusters_created = 0
 	
 	while unassigned_cells.size() > 0:
+		# La grieta: este edificio suelto se construye bajo aunque su manzana sea de torres.
+		var low_floors := min_floors_per_cluster
+		var high_floors := max_floors_per_cluster
+		# La grieta sortea PAREJO: su franja es corta (1 a 4) y sesgarla la dejaría siempre en un piso.
+		var skew := floors_skew
+		if rng.randf() < crack_chance:
+			low_floors = crack_floors.x
+			high_floors = crack_floors.y
+			skew = 1.0
 		var cluster = BuildingCluster.new(
 			start_cluster_id + clusters_created,
 			cluster_seed,
-			min_floors_per_cluster,
-			max_floors_per_cluster,
-			neighborhood_type
+			low_floors,
+			high_floors,
+			neighborhood_type,
+			skew
 		)
 		
 		var start_cell = unassigned_cells[rng.randi_range(0, unassigned_cells.size() - 1)]
@@ -424,6 +456,17 @@ func _assign_block_hearts() -> void:
 				cluster.floor_count = 0
 				hearts_count += 1
 	
+
+## Las alturas de las 4 esquinas de la zona edificable: las de los NODOS del grafo, tal cual, sin recortar
+## con el resto del quad.
+##
+## No se interpolan en el punto retirado a propósito. La zona edificable está metida hacia adentro, así que
+## interpolar ahí le daría a cada manzana un valor distinto en el mismo extremo de la calle —hasta un metro
+## de diferencia— y aparecería una costura entre la vereda y la calzada. Valiendo la altura del nodo, las
+## dos manzanas que dan a una calle coinciden exactas y la calzada queda nivelada a lo ancho (ver
+## CityTerrain).
+func _get_core_block_heights() -> Array[float]:
+	return block_vertex_heights.duplicate()
 
 func _get_core_block_vertices() -> Array[Vector2]:
 	var vertices: Array[Vector2] = []

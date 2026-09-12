@@ -1,4 +1,4 @@
-[gd_scene load_steps=31 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=30 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
 [ext_resource type="Material" uid="uid://da33e5tos7dp0" path="res://Materials/blue.tres" id="4_oilx1"]
@@ -7,15 +7,14 @@
 [ext_resource type="PackedScene" uid="uid://bchdbfnnxbtq2" path="res://Scenes/package.tscn" id="7_k27g2"]
 [ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/core/city.gd" id="9_oilx1"]
 [ext_resource type="Script" uid="uid://bl2t0acm7uwql" path="res://Scripts/character_test.gd" id="10_4i7ud"]
-[ext_resource type="Shader" uid="uid://cwp4o1qsu4vtg" path="res://Shaders/radial_fog.gdshader" id="11_h3puh"]
 [ext_resource type="Script" uid="uid://bby2e141ke1uw" path="res://Scripts/common/fps_graph.gd" id="11_v3boh"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
-[ext_resource type="PackedScene" uid="uid://d2fiffsg4ajn1" path="res://Scenes/world_settings.tscn" id="12_v3boh"]
 [ext_resource type="Script" uid="uid://c4x45acgat3q6" path="res://Scripts/net/character_spawner.gd" id="13_spawn"]
 [ext_resource type="PackedScene" uid="uid://huxsasishwaq" path="res://Models/final simplified with modifiers3.fbx" id="14_k27g2"]
 [ext_resource type="Script" uid="uid://dy2h5n5w1evpo" path="res://Scripts/ui/pause_menu.gd" id="14_pause"]
 [ext_resource type="PackedScene" uid="uid://b5e5knhws3abc" path="res://Models/final simplified with modifiers4.fbx" id="15_6aqh6"]
 [ext_resource type="PackedScene" uid="uid://cnacnp5avt0em" path="res://Models/character.glb" id="16_oxmns"]
+[ext_resource type="Script" uid="uid://dhfmarxgqyivs" path="res://Scripts/city/core/city_fog.gd" id="17_fog"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
 albedo_color = Color(0.36026734, 0.21508548, 0.19387919, 1)
@@ -56,7 +55,7 @@ size = Vector3(0.25, 0.25, 50)
 size = Vector3(0.25, 0.25, 50)
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_2rq0j"]
-ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+ground_horizon_color = Color(0.804, 0.816, 0.843, 1)
 
 [sub_resource type="Sky" id="Sky_420ax"]
 sky_material = SubResource("ProceduralSkyMaterial_2rq0j")
@@ -64,14 +63,18 @@ sky_material = SubResource("ProceduralSkyMaterial_2rq0j")
 [sub_resource type="Environment" id="Environment_bg2jp"]
 background_mode = 2
 sky = SubResource("Sky_420ax")
-ambient_light_color = Color(0.55611324, 0.6317091, 0.81083614, 1)
+ambient_light_color = Color(0.556, 0.632, 0.811, 1)
+ambient_light_energy = 0.35
 tonemap_mode = 2
 glow_enabled = true
+fog_enabled = true
 fog_mode = 1
-fog_light_color = Color(0.7659111, 0.46699548, 0.23651671, 1)
+fog_light_color = Color(0.389, 0.499, 0.952, 1)
+fog_sun_scatter = 0.2
 fog_density = 1.0
 fog_sky_affect = 0.0
 fog_depth_begin = 50.0
+fog_depth_end = 350.0
 volumetric_fog_density = 0.0126
 volumetric_fog_albedo = Color(0.9072337, 0.6909475, 0.34785485, 1)
 volumetric_fog_emission = Color(0.80489886, 0.5607987, 0.35002738, 1)
@@ -86,14 +89,11 @@ radius = 0.25
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 script = ExtResource("11_v3boh")
 
-[node name="WorldSettings" parent="." instance=ExtResource("12_v3boh")]
-fog_start_distance = 7.0
-fog_color = Color(0.7476558, 0.43702698, 0.38007766, 1)
-
 [node name="world" type="Node3D" parent="."]
 
 [node name="Floor" type="MeshInstance3D" parent="world"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.16, -0.01, 0.007)
+visible = false
 mesh = SubResource("BoxMesh_hfvyn")
 skeleton = NodePath("../..")
 
@@ -119,10 +119,12 @@ mesh = SubResource("CapsuleMesh_d6ua1")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 mesh = SubResource("CapsuleMesh_umjme")
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="world"]
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="world" groups=["sun"]]
 transform = Transform3D(1, 0, 0, 0, -0.20497435, 0.9787673, 0, -0.9787673, -0.20497435, 0, 13.165634, 0)
+light_color = Color(1, 0.957, 0.902, 1)
+light_energy = 1.35
 shadow_enabled = true
-directional_shadow_max_distance = 250.0
+directional_shadow_max_distance = 420.0
 
 [node name="DebugBoxes" type="Node3D" parent="world"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18, 0, -20.580421)
@@ -175,6 +177,7 @@ weight = 40.0
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_bg2jp")
+script = ExtResource("17_fog")
 
 [node name="CharacterSpawner" type="Node" parent="." node_paths=PackedStringArray("characters_root", "area_instantiator")]
 script = ExtResource("13_spawn")
@@ -186,7 +189,6 @@ script = ExtResource("14_pause")
 
 [node name="city" type="Node3D" parent="."]
 script = ExtResource("9_oilx1")
-region_size = Vector2(1260, 1260)
 min_distance = 164.255
 generation_seed = 12345
 show_streets = false
@@ -212,7 +214,6 @@ shape = SubResource("CapsuleShape3D_4i7ud")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -3.8859253, 0)
 script = ExtResource("12_k27g2")
 world = NodePath("../..")
-fog_shader = ExtResource("11_h3puh")
 show_traffic_debug = true
 
 [node name="final simplified with modifiers3" parent="." instance=ExtResource("14_k27g2")]

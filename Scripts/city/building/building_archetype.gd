@@ -29,10 +29,13 @@ var has_chamfered_street_corners: bool = false
 func get_color(color_seed: int) -> Color:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = color_seed
+	# Saturación como siempre: el color de debug está para DISTINGUIR arquetipos de un vistazo, y lavarlo
+	# —se probó en pastel— los vuelve indistinguibles entre sí. El valor sí va un escalón por debajo del
+	# original (era 0.6–0.9): con la niebla clara de fondo, los tonos claros se le confundían encima.
 	return Color.from_hsv(
 		base_hue,
 		rng.randf_range(0.5, 0.8),
-		rng.randf_range(0.6, 0.9),
+		rng.randf_range(0.45, 0.75),
 		1.0
 	)
 

@@ -37,11 +37,16 @@ var grid: Array = []
 # Posiciones distorsionadas de cada celda
 var cell_positions: Array = []  # [z][x] -> Vector3
 
+## Altura de las 4 esquinas del quad, en el orden de `vertices` (ver CityTerrain). Cada vértice de la
+## grilla interpola entre ellas; la distorsión de la ola sigue siendo solo horizontal.
+var vertex_heights: Array[float] = []
+
 
 func _init(
 	p_rows: int,
 	p_columns: int,
 	p_vertices: Array[Vector2],
+	p_vertex_heights: Array[float],
 	p_cell_height: float,
 	p_wave_amplitude_x: float = 0.1,
 	p_wave_amplitude_z: float = 0.1,
@@ -54,6 +59,7 @@ func _init(
 	rows = p_rows
 	columns = p_columns
 	vertices = p_vertices
+	vertex_heights = p_vertex_heights if p_vertex_heights.size() == 4 else [0.0, 0.0, 0.0, 0.0]
 	cell_height = p_cell_height
 	
 	# Calcular el tamaño característico del quad irregular
@@ -186,19 +192,19 @@ func get_cell_vertices(x: int, z: int) -> Array[Vector3]:
 	# Calcular explícitamente cada vértice en el orden correcto
 	# Bottom-Left: (x, z)
 	var bl_pos = _calculate_vertex_at(x, z)
-	result.append(Vector3(bl_pos.x, 0.0, bl_pos.y))
+	result.append(Vector3(bl_pos.x, height_at_grid(x, z), bl_pos.y))
 	
 	# Bottom-Right: (x+1, z)
 	var br_pos = _calculate_vertex_at(x + 1, z)
-	result.append(Vector3(br_pos.x, 0.0, br_pos.y))
+	result.append(Vector3(br_pos.x, height_at_grid(x + 1, z), br_pos.y))
 	
 	# Top-Right: (x+1, z+1)
 	var tr_pos = _calculate_vertex_at(x + 1, z + 1)
-	result.append(Vector3(tr_pos.x, 0.0, tr_pos.y))
+	result.append(Vector3(tr_pos.x, height_at_grid(x + 1, z + 1), tr_pos.y))
 	
 	# Top-Left: (x, z+1)
 	var tl_pos = _calculate_vertex_at(x, z + 1)
-	result.append(Vector3(tl_pos.x, 0.0, tl_pos.y))
+	result.append(Vector3(tl_pos.x, height_at_grid(x, z + 1), tl_pos.y))
 	
 	return result
 
@@ -225,6 +231,13 @@ func _calculate_vertex_at(grid_x: int, grid_z: int) -> Vector2:
 	var wave_offset_v = sin(u * wave_frequency_x * TAU + wave_phase_x) * wave_amplitude_z * v_falloff
 	
 	return base_pos + local_u_dir * wave_offset_u + local_v_dir * wave_offset_v
+
+## La altura de un vértice de la grilla: interpolada entre las 4 esquinas del quad, igual que su XZ.
+func height_at_grid(grid_x: int, grid_z: int) -> float:
+	var u = float(grid_x) / max(1, columns)
+	var v = float(grid_z) / max(1, rows)
+	return GridHelper.bilinear_height(vertex_heights, u, v)
+
 
 ## Retorna información sobre los edges conectados a un vértice específico de una celda
 ## vertex_index: 0=BL, 1=BR, 2=TR, 3=TL

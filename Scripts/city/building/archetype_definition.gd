@@ -1,38 +1,36 @@
 class_name ArchetypeDefinitions extends RefCounted
 
-# Registro neighborhood -> arquetipos. Exactamente 2 arquetipos distintos por
-# neighborhood: la garantía es estructural (no se deriva de escanear una lista).
-# Cada entrada es la clase concreta (inner class de BuildingArchetype); se
-# instancia con `.new()`.
+# Registro distrito -> arquetipos. El estilo lo manda el DISTRITO, no la altura (ver NeighborhoodTypes):
+# un mismo distrito se construye igual sea de 2 pisos o de 20. Los dos arquetipos que antes eran de
+# "Downtown" pasaron a ser la cara densa de pobre (MixedUse, el conventillo con local abajo) y de rico
+# (OfficeTower); Downtown dejó de existir como distrito porque era una densidad, no una cultura.
 static var NEIGHBORHOOD_ARCHETYPES = {
-	NeighborhoodTypes.Type.SHANTY_TOWN: [
+	NeighborhoodTypes.District.POOR: [
 		BuildingArchetype.ShantyBasic,
 		BuildingArchetype.ShantyMakeshift,
+		BuildingArchetype.MixedUse,
 	],
-	NeighborhoodTypes.Type.RICH_RESIDENTIAL: [
+	NeighborhoodTypes.District.RICH: [
 		BuildingArchetype.MansionClassic,
 		BuildingArchetype.MansionModern,
+		BuildingArchetype.OfficeTower,
 	],
-	NeighborhoodTypes.Type.INDUSTRIAL: [
+	NeighborhoodTypes.District.INDUSTRIAL: [
 		BuildingArchetype.WarehouseBasic,
 		BuildingArchetype.FactoryModern,
 	],
-	NeighborhoodTypes.Type.DOWNTOWN: [
-		BuildingArchetype.OfficeTower,
-		BuildingArchetype.MixedUse,
-	],
 }
 
-# Selecciona (seed-based) uno de los 2 arquetipos del neighborhood y lo instancia.
+# Selecciona (seed-based) uno de los arquetipos del distrito y lo instancia.
 static func get_archetype_for_cluster(
-	neighborhood_type: NeighborhoodTypes.Type,
+	neighborhood_type: NeighborhoodTypes.District,
 	cluster_seed: int
 ) -> BuildingArchetype:
 
 	var classes = NEIGHBORHOOD_ARCHETYPES.get(neighborhood_type, [])
 
 	if classes.is_empty():
-		push_warning("[ArchetypeDefinitions] No hay archetypes para tipo %d, usando default" % neighborhood_type)
+		push_warning("[ArchetypeDefinitions] No hay archetypes para el distrito %d, usando default" % neighborhood_type)
 		return BuildingArchetype.new()
 
 	var rng = RandomNumberGenerator.new()

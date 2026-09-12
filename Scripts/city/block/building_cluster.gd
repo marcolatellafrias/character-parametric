@@ -11,7 +11,7 @@ var floor_count: int
 var is_block_heart: bool = false
 
 # Contexto urbano y arquetipo
-var neighborhood_type: NeighborhoodTypes.Type
+var neighborhood_type: NeighborhoodTypes.District
 var archetype: BuildingArchetype
 
 # Configuración para crear BuildingModules
@@ -22,15 +22,28 @@ var building_columns: int
 var building_cell_height: float
 var building_alleyway_offsets: Dictionary
 
-# Cache de BuildingModules creados bajo demanda
+## En cuántas celdas de alto se endereza el edificio (ver BuildingModule).
+var taper_cells: int = 1
+## La altura del suelo que le toca a TODO el cluster: el promedio bajo sus celdas. Es lo que hace que un
+## cluster de varias celdas tenga un solo techo plano aunque el terreno debajo suba.
+var ground_reference: float = 0.0
+
+## Módulos ya calculados, cacheados POR LO QUE LOS DETERMINA y no por piso: la clave lleva la celda y sus
+## cuatro tipos de borde. Los bordes se siguen consultando CON el piso, así que si mañana un callejón
+## cambia a cierta altura, esa celda produce una clave distinta y se recalcula sola — la capacidad de
+## variar por piso queda intacta, pero solo se paga donde de verdad varía. Hoy no varía, y eso ahorra
+## calcular ~13 veces el mismo módulo (sus chamfers consultan la grilla vértice por vértice).
 var building_modules: Dictionary = {}
+## Las esquinas de cada celda, que tampoco dependen del piso.
+var _cell_vertices: Dictionary = {}
 
 func _init(
 	p_id: int,
 	p_seed: int,
 	p_min_floors: int = 1,
 	p_max_floors: int = 8,
-	p_neighborhood_type: NeighborhoodTypes.Type = NeighborhoodTypes.Type.DOWNTOWN
+	p_neighborhood_type: NeighborhoodTypes.District = NeighborhoodTypes.District.POOR,
+	p_floors_skew: float = 1.0
 ) -> void:
 	id = p_id
 	neighborhood_type = p_neighborhood_type
@@ -38,7 +51,7 @@ func _init(
 	var rng = RandomNumberGenerator.new()
 	rng.seed = p_seed + id
 
-	floor_count = rng.randi_range(p_min_floors, p_max_floors)
+	floor_count = NeighborhoodTypes.draw_floor_count(p_min_floors, p_max_floors, p_floors_skew, rng)
 
 	# Asignar arquetipo basado en neighborhood y seed
 	archetype = ArchetypeDefinitions.get_archetype_for_cluster(neighborhood_type, p_seed + id)
@@ -54,7 +67,8 @@ func set_grid_config(
 	p_building_rows: int,
 	p_building_columns: int,
 	p_building_cell_height: float,
-	p_building_alleyway_offsets: Dictionary
+	p_building_alleyway_offsets: Dictionary,
+	p_taper_cells: int = 1
 ) -> void:
 	if not p_path_generator.is_generated:
 		push_error("PathGenerator debe ser generado antes de configurar BuildingCluster. Llama a path_generator.generate() primero.")
@@ -66,6 +80,21 @@ func set_grid_config(
 	building_columns = p_building_columns
 	building_cell_height = p_building_cell_height
 	building_alleyway_offsets = p_building_alleyway_offsets
+	taper_cells = maxi(p_taper_cells, 1)
+	_measure_ground()
+
+
+## El suelo promedio bajo el cluster, medido en el centro de cada una de sus celdas.
+func _measure_ground() -> void:
+	ground_reference = 0.0
+	if cells.is_empty():
+		return
+	for cell in cells:
+		var corners = distorted_grid.get_cell_vertices(cell.x, cell.y)
+		if corners.size() != 4:
+			continue
+		ground_reference += (corners[0].y + corners[1].y + corners[2].y + corners[3].y) * 0.25
+	ground_reference /= float(cells.size())
 
 
 func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
@@ -77,15 +106,6 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 		return null
 	
 	if floor < 0 or floor >= floor_count:
-		return null
-	
-	var key = "%d_%d_%d" % [x, z, floor]
-	if key in building_modules:
-		return building_modules[key]
-	
-	var cell_vertices = distorted_grid.get_cell_vertices(x, z)
-	
-	if cell_vertices.size() != 4:
 		return null
 	
 	var edge_types_array: Array[int] = []
@@ -109,7 +129,20 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 		edge_types_array.append(distorted_grid.edge_types[3])
 	else:
 		edge_types_array.append(path_generator.get_path_edge_type_vertices(x, z + 1, x, z, floor))
-	
+
+	var key = "%d_%d_%d_%d_%d_%d" % [x, z,
+		edge_types_array[0], edge_types_array[1], edge_types_array[2], edge_types_array[3]]
+	if key in building_modules:
+		return building_modules[key]
+
+	var cell_key = "%d_%d" % [x, z]
+	if not _cell_vertices.has(cell_key):
+		_cell_vertices[cell_key] = distorted_grid.get_cell_vertices(x, z)
+	var cell_vertices: Array[Vector3] = _cell_vertices[cell_key]
+
+	if cell_vertices.size() != 4:
+		return null
+
 	var building_module = BuildingModule.new(
 		cell_vertices,
 		edge_types_array,
@@ -117,12 +150,13 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 		building_columns,
 		building_cell_height,
 		building_alleyway_offsets,
-		floor,
 		distorted_grid,
 		x,
 		z,
 		path_generator,
-		archetype  # NUEVO: pasar archetype
+		archetype,
+		ground_reference,
+		taper_cells
 	)
 	
 	building_modules[key] = building_module
@@ -176,5 +210,5 @@ func get_is_block_heart() -> bool:
 func get_archetype() -> BuildingArchetype:
 	return archetype
 
-func get_neighborhood_type() -> NeighborhoodTypes.Type:
+func get_neighborhood_type() -> NeighborhoodTypes.District:
 	return neighborhood_type

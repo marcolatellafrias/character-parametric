@@ -107,7 +107,11 @@ enum Shape { DOME, BOX, SMALL_BOX }
 @export var max_vertical_accel := 8.0
 ## Altura global mínima y máxima de la meta. La mínima en 0: la nave arranca en el piso.
 @export var min_altitude := 0.0
-@export var max_altitude := 90.0
+## Techo de la meta, en METROS, pero el número que importa son PISOS: el piso de ciudad mide 6,69 m (la
+## muralla son 13 pisos = 87 m, ver `City._floor_height`), así que 8 pisos × 6,69 ≈ 53,5. Estaba en 90 m,
+## que son 13,4 pisos: la nave pasaba POR ENCIMA de la muralla, que es justo lo que la muralla existe para
+## impedir. Cambiarlo obliga a revisar `NeighborhoodTypes.FLOORS`, que se calibra contra este valor.
+@export var max_altitude := 53.5
 
 @export_group("Avance")
 ## Velocidad hacia adelante con el acelerador a fondo, en m/s.

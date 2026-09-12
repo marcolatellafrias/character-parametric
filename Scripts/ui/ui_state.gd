@@ -10,6 +10,9 @@ const PAUSE := "pause"
 const MENU := "menu"
 const CONSOLE := "console"
 const DEBUG := "debug"
+## El afinador de clima (F6). Se anota acá —y no como el mapa o la lista de F5, que no se anotan—
+## porque hay que arrastrar sliders y abrir selectores de color: necesita el mouse libre.
+const TUNER := "tuner"
 
 signal changed()
 

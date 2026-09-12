@@ -48,6 +48,8 @@ var arms_controller: ArmsController = null
 var _creative: bool = false
 var _debug_panel: DebugPanel = null
 var _map_overlay: CityMapOverlay = null
+var _weather_overlay: WeatherOverlay = null
+var _weather_tuner: WeatherTuner = null
 
 ## Punto de entrada único cuando el BoneInstantiator (re)construye el esqueleto del jugador
 ## activo — tanto el build inicial como cada respawn. Construye lo persistente una sola vez
@@ -142,6 +144,19 @@ func _input(event: InputEvent) -> void:
 	if is_instance_valid(_debug_panel) and event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode == KEY_F1:
 		_debug_panel.toggle()
+		return
+
+	# F5 abre la lista de climas, que se elige a mano con los numeros. Como el mapa de F2, no bloquea el
+	# gameplay: comparar dos iluminaciones es alternarlas parado en el mismo lugar.
+	if is_instance_valid(_weather_overlay) and event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_F5:
+		_weather_overlay.toggle()
+		return
+
+	# F6, el afinador del clima. Este SI libera el mouse (se anota en UIState): hay que arrastrar sliders.
+	if is_instance_valid(_weather_tuner) and event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_F6:
+		_weather_tuner.toggle()
 		return
 
 	# F2, el mapa de al lado: a diferencia del panel, no bloquea el gameplay —se mira en movimiento—.
@@ -584,6 +599,11 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_info("Daily seed",  str(WorldSeeds.daily_seed()))
 	_debug_panel.add_info("Red", _net_status_text())
 
+	# ── Clima ── (F5 recorre la misma rueda)
+	for weather_id: String in WeatherPresets.ids():
+		var label: String = WeatherPresets.get_preset(weather_id)["name"]
+		_debug_panel.add_action("Clima", label, func(): CityFog.apply_to_tree(get_tree(), weather_id))
+
 	# ── Acciones ──
 	_debug_panel.add_action("Acciones", "Toggle creative (V)",      func(): _set_creative(not _creative))
 	_debug_panel.add_action("Acciones", "Toggle ragdoll (G)",       _toggle_ragdoll)
@@ -599,6 +619,8 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Ver wireframe",             func(): CharacterDebugView.toggle_wireframe(get_tree()))
 	_debug_panel.add_action("Acciones", "Indicadores de tráfico",    func(): TrafficDebugDrawer.ENABLED = not TrafficDebugDrawer.ENABLED)
 	_debug_panel.add_action("Acciones", "Nave: paredes traslúcidas", func(): Ship.toggle_translucent_walls(get_tree()))
+	# Apaga la niebla Y el corte por distancia: sin lo segundo la ciudad se corta igual (ver CityDebugView).
+	_debug_panel.add_action("Acciones", "Neblina y corte por distancia", func(): CityDebugView.toggle_fog(get_tree()))
 
 	# ── Arquetipos ──
 	# Dos acciones por arquetipo, y son distintas: "Ser" cambia TU personaje y además deja la P pegada
@@ -647,6 +669,20 @@ func _setup_debug_panel() -> void:
 	_map_overlay = CityMapOverlay.new()
 	_map_overlay.setup(char_rigidbody)
 	add_child(_map_overlay)
+
+	# ── Clima ── la lista de F5, para elegir a mano sin frenar el juego.
+	if is_instance_valid(_weather_overlay):
+		_weather_overlay.queue_free()
+	_weather_overlay = WeatherOverlay.new()
+	add_child(_weather_overlay)
+	_weather_overlay.setup()
+
+	# Y el afinador, para tocar a mano lo que el preset trae fijo (F6).
+	if is_instance_valid(_weather_tuner):
+		_weather_tuner.queue_free()
+	_weather_tuner = WeatherTuner.new()
+	add_child(_weather_tuner)
+	_weather_tuner.setup()
 
 	# ── Performance ──
 	PerformanceToggles.build_tab(_debug_panel, get_tree())

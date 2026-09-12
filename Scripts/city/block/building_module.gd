@@ -20,12 +20,24 @@ var core_max_x: int
 var core_min_z: int
 var core_max_z: int
 
-# Piso al que pertenece este building
-var floor: int
-
 # Chamfers de las esquinas: {vertex_index: [c1, c2]}
 # donde c1 y c2 son el número de celdas chamfereadas
 var chamfers: Dictionary = {}
+
+# ── EL RELIEVE ──────────────────────────────────────────────────────────────────────────────────
+# Todas las alturas del módulo salen de acá (ver `_ground_at`), y por acá pasa TODO lo que se sitúa en la
+# ciudad: los edificios, las veredas, las puertas, las escaleras y los extremos de puente.
+#
+# La altura sale de las CUATRO ESQUINAS DEL PROPIO MÓDULO (`vertices`, que ya vienen con su Y de la celda
+# de grilla), interpolada con la misma bilineal que da el XZ. No hay consulta a ningún campo global: el
+# relieve viaja con la geometría, así que dos piezas vecinas que comparten esquinas coinciden exactas y
+# nada puede clipear contra el suelo (ver CityTerrain).
+#
+# Abajo la pieza SIGUE AL TERRENO y a medida que sube se ENDEREZA hacia `ground_reference`, la altura única
+# del cluster: para la celda `taper_cells` ya está plana, de modo que los techos quedan horizontales aunque
+# el suelo no lo esté. Es el terreno el que se come los pisos de abajo, no el edificio el que se inclina.
+var ground_reference: float = 0.0
+var taper_cells: int = 1
 
 func _init(
 	p_vertices: Array[Vector3],
@@ -34,12 +46,13 @@ func _init(
 	p_columns: int,
 	p_cell_height: float,
 	p_alleyway_offsets: Dictionary,
-	p_floor: int = 0,
 	p_distorted_grid: DistortedGrid = null,
 	p_grid_x: int = -1,
 	p_grid_z: int = -1,
 	p_path_generator: PathGenerator = null,
-	p_archetype: BuildingArchetype = null
+	p_archetype: BuildingArchetype = null,
+	p_ground_reference: float = 0.0,
+	p_taper_cells: int = 1
 ) -> void:
 	vertices = p_vertices
 	edge_types = p_edge_types
@@ -47,7 +60,8 @@ func _init(
 	columns = p_columns
 	cell_height = p_cell_height
 	alleyway_offsets = p_alleyway_offsets
-	floor = p_floor
+	ground_reference = p_ground_reference
+	taper_cells = maxi(p_taper_cells, 1)
 	
 	_calculate_core_area()
 	
@@ -238,10 +252,7 @@ func get_cell_position(grid_x: int, grid_z: int, local_floor: int = 0) -> Vector
 	var u = (float(grid_x) + 0.5) / max(1, columns)
 	var v = (float(grid_z) + 0.5) / max(1, rows)
 	
-	var pos_2d = GridHelper.bilinear_interpolation(vertices_2d, u, v)
-	var y = local_floor * cell_height
-	
-	return Vector3(pos_2d.x, y, pos_2d.y)
+	return _at_height(u, v, local_floor)
 
 
 func get_cell_vertices(grid_x: int, grid_z: int, local_floor: int = 0) -> Array[Vector3]:
@@ -253,23 +264,17 @@ func get_cell_vertices(grid_x: int, grid_z: int, local_floor: int = 0) -> Array[
 	var v_min = float(grid_z) / max(1, rows)
 	var v_max = float(grid_z + 1) / max(1, rows)
 	
-	var y = local_floor * cell_height
-	
 	# Bottom-Left
-	var bl_2d = GridHelper.bilinear_interpolation(vertices_2d, u_min, v_min)
-	result.append(Vector3(bl_2d.x, y, bl_2d.y))
+	result.append(_at_height(u_min, v_min, local_floor))
 	
 	# Bottom-Right
-	var br_2d = GridHelper.bilinear_interpolation(vertices_2d, u_max, v_min)
-	result.append(Vector3(br_2d.x, y, br_2d.y))
+	result.append(_at_height(u_max, v_min, local_floor))
 	
 	# Top-Right
-	var tr_2d = GridHelper.bilinear_interpolation(vertices_2d, u_max, v_max)
-	result.append(Vector3(tr_2d.x, y, tr_2d.y))
+	result.append(_at_height(u_max, v_max, local_floor))
 	
 	# Top-Left
-	var tl_2d = GridHelper.bilinear_interpolation(vertices_2d, u_min, v_max)
-	result.append(Vector3(tl_2d.x, y, tl_2d.y))
+	result.append(_at_height(u_min, v_max, local_floor))
 	
 	return result
 
@@ -283,23 +288,17 @@ func get_core_vertices(local_floor: int = 0) -> Array[Vector3]:
 	var v_min = float(core_min_z) / max(1, rows)
 	var v_max = float(core_max_z + 1) / max(1, rows)
 	
-	var y = local_floor * cell_height
-	
 	# Bottom-Left
-	var bl = GridHelper.bilinear_interpolation(vertices_2d, u_min, v_min)
-	result.append(Vector3(bl.x, y, bl.y))
+	result.append(_at_height(u_min, v_min, local_floor))
 	
 	# Bottom-Right
-	var br = GridHelper.bilinear_interpolation(vertices_2d, u_max, v_min)
-	result.append(Vector3(br.x, y, br.y))
+	result.append(_at_height(u_max, v_min, local_floor))
 	
 	# Top-Right
-	var tr = GridHelper.bilinear_interpolation(vertices_2d, u_max, v_max)
-	result.append(Vector3(tr.x, y, tr.y))
+	result.append(_at_height(u_max, v_max, local_floor))
 	
 	# Top-Left
-	var tl = GridHelper.bilinear_interpolation(vertices_2d, u_min, v_max)
-	result.append(Vector3(tl.x, y, tl.y))
+	result.append(_at_height(u_min, v_max, local_floor))
 	
 	return result
 
@@ -322,16 +321,10 @@ func get_region_vertices(bx_min: int, bx_max: int, bz_min: int, bz_max: int, hei
 	var v_min = float(bz_min) / max(1, rows)
 	var v_max = float(bz_max + 1) / max(1, rows)
 
-	var y = height_index * cell_height
-
-	var bl = GridHelper.bilinear_interpolation(vertices_2d, u_min, v_min)
-	result.append(Vector3(bl.x, y, bl.y))
-	var br = GridHelper.bilinear_interpolation(vertices_2d, u_max, v_min)
-	result.append(Vector3(br.x, y, br.y))
-	var tr = GridHelper.bilinear_interpolation(vertices_2d, u_max, v_max)
-	result.append(Vector3(tr.x, y, tr.y))
-	var tl = GridHelper.bilinear_interpolation(vertices_2d, u_min, v_max)
-	result.append(Vector3(tl.x, y, tl.y))
+	result.append(_at_height(u_min, v_min, height_index))
+	result.append(_at_height(u_max, v_min, height_index))
+	result.append(_at_height(u_max, v_max, height_index))
+	result.append(_at_height(u_min, v_max, height_index))
 
 	return result
 
@@ -351,6 +344,21 @@ func get_chamfers() -> Dictionary:
 	return chamfers
 
 
+## Un punto del módulo en (u, v) y a `height_index` celdas de alto, ya apoyado en el relieve (ver EL
+## RELIEVE). El XZ y la altura salen de la MISMA interpolación sobre las mismas cuatro esquinas.
+func _at_height(u: float, v: float, height_index: int) -> Vector3:
+	var flat := GridHelper.bilinear_interpolation(_vertices_3d_to_2d(), u, v)
+	return Vector3(flat.x, float(height_index) * cell_height + _ground_at(u, v, height_index), flat.y)
+
+
+## Cuánto levanta el relieve en ese punto a esa altura: abajo, el suelo del módulo tal cual; arriba, la
+## altura única del cluster, que es lo que deja los techos planos.
+func _ground_at(u: float, v: float, height_index: int) -> float:
+	var corners := [vertices[0].y, vertices[1].y, vertices[2].y, vertices[3].y]
+	var straightened := clampf(float(height_index) / float(taper_cells), 0.0, 1.0)
+	return lerpf(GridHelper.bilinear_height(corners, u, v), ground_reference, straightened)
+
+
 func _vertices_3d_to_2d() -> Array[Vector2]:
 	var result: Array[Vector2] = []
 	for v in vertices:
@@ -358,5 +366,3 @@ func _vertices_3d_to_2d() -> Array[Vector2]:
 	return result
 
 
-func get_floor() -> int:
-	return floor

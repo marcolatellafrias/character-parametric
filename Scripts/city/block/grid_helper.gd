@@ -8,6 +8,18 @@ extends RefCounted
 ## @param u: Coordenada normalizada horizontal [0, 1]
 ## @param v: Coordenada normalizada vertical [0, 1]
 ## @return: Vector2 interpolado
+## La misma bilineal, pero para 4 alturas. Es lo que hace que el relieve viaje con la geometría: la altura
+## de un punto sale de las esquinas de su quad, igual que su XZ (ver CityTerrain).
+static func bilinear_height(heights: Array, u: float, v: float) -> float:
+	if heights.size() != 4:
+		return 0.0
+	return (
+		float(heights[0]) * (1 - u) * (1 - v) +
+		float(heights[1]) * u * (1 - v) +
+		float(heights[2]) * u * v +
+		float(heights[3]) * (1 - u) * v
+	)
+
 static func bilinear_interpolation(vertices: Array[Vector2], u: float, v: float) -> Vector2:
 	if vertices.size() != 4:
 		push_error("Se requieren exactamente 4 vértices para interpolación bilineal")

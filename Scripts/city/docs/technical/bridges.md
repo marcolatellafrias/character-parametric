@@ -8,22 +8,18 @@ Bridges belong to **graph edges**, not blocks. Each edge between two non-boundar
 
 ## Bridge count per edge
 
-Determined by neighborhood type and street type:
+Decided by **street type** for the base, biased by the **height tier** of the blocks around it (`_get_bridge_count`):
 
-1. Get the edge's neighborhood type via `get_neighborhood_type_for_edge()` (higher-hierarchy of the two adjacent faces).
-2. Read `min_crossings` / `max_crossings` from `NeighborhoodTypes.CONFIGS`.
-3. Adjust range by street type:
-   - **Small (0)**: upper bound halved → fewer bridges.
-   - **Medium (1)**: full range.
-   - **Large (2)**: lower bound raised to midpoint → more bridges.
-   - **Boundary (-1)**: always 0.
+| Street type | Base count |
+|---|---|
+| Small (0) | 0–1 |
+| Medium (1) | 1–2 |
+| Large (2) | 2–3 |
+| Boundary (-1) | always 0 |
 
-| Neighborhood | Config range | Small street | Medium | Large |
-|---|---|---|---|---|
-| Shanty Town | 0–0 | 0 | 0 | 0 |
-| Rich Residential | 0–1 | 0 | 0–1 | 0–1 |
-| Industrial | 1–1 | 1 | 1 | 1 |
-| Downtown | 1–2 | 1 | 1–2 | 1–2 |
+The edge's tier is the **taller of its two blocks** (`get_height_for_edge`), and it shifts the count by `NeighborhoodTypes.FLOORS[tier].bridge_bias`: **-1 for low, 0 for mid, +1 for tall**, clamped at zero. There is nothing to hang a bridge from in a low district, so they mostly vanish there — measured over one city: 562 bridges, only **7** on streets whose blocks are both low (a large avenue can still roll one).
+
+**Superseded:** this used to be documented as a range read from `min_crossings`/`max_crossings` in `NeighborhoodTypes.CONFIGS` per neighbourhood. That table was never read by the code — `_get_bridge_count` ignored its node arguments entirely and keyed off street type alone — and it is gone now that height is its own axis.
 
 ## Bridge structure — two placement systems
 

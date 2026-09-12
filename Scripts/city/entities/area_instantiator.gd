@@ -36,10 +36,6 @@ class_name AreaInstantiator
 @export_range(0.0, 1.0) var far_density_fraction: float = 0.1
 @export_range(1.0, 8.0) var spawn_height_bias: float = 2.5
 @export_flags_3d_physics var los_collision_mask: int = 1
-@export_group("Fog")
-@export var enable_fog: bool = true
-@export var fog_shader: Shader
-
 @export_group("Traffic Debug")
 @export var show_traffic_debug: bool = false
 @export var traffic_debug_corridors: bool = true
@@ -69,8 +65,6 @@ var volume_car_counts: Dictionary = {}
 var car_volume_map: Dictionary = {}
 var time_alive: float = 0.0
 
-var fog_quad: MeshInstance3D = null
-var fog_material: ShaderMaterial = null
 
 func _ready() -> void:
 	add_to_group("area_instantiator")
@@ -84,7 +78,6 @@ func _ready() -> void:
 	_register_all_traffic_lights()
 	_create_cylinder_areas()
 	_setup_visualization_containers()
-	_setup_fog()
 
 	if show_debug_cylinder:
 		_create_debug_cylinders()
@@ -93,7 +86,6 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_update_cylinder_positions()
-	_update_fog_position()
 
 # Spawning runs in the physics step because visibility uses space queries
 # (intersect_ray), which are only valid in a physics context.
@@ -110,8 +102,6 @@ func _physics_process(delta: float) -> void:
 
 func _exit_tree() -> void:
 	_cleanup_containers()
-	if fog_quad and is_instance_valid(fog_quad):
-		fog_quad.queue_free()
 
 # ============================================================================
 # CLAIM REGISTRY
@@ -142,44 +132,7 @@ func _setup_car_manager() -> void:
 	car_manager.name = "CarManager"
 	add_child(car_manager)
 
-# ============================================================================
-# FOG
-# ============================================================================
-
-func _setup_fog() -> void:
-	if not enable_fog or not fog_shader:
-		return
-
-	fog_material = ShaderMaterial.new()
-	fog_material.shader = fog_shader
-	fog_material.set_shader_parameter("inner_radius", WorldSettings.fog_start_distance)
-	fog_material.set_shader_parameter("outer_radius", WorldSettings.render_distance)
-	fog_material.set_shader_parameter("fog_color", WorldSettings.fog_color)
-	fog_material.set_shader_parameter("player_pos", Vector3.ZERO)
-
-	fog_quad = MeshInstance3D.new()
-	fog_quad.name = "RadialFogQuad"
-	var quad_mesh = QuadMesh.new()
-	quad_mesh.size = Vector2(2.0, 2.0)
-	fog_quad.mesh = quad_mesh
-	fog_quad.material_override = fog_material
-	fog_quad.custom_aabb = AABB(Vector3(-1e6, -1e6, -1e6), Vector3(2e6, 2e6, 2e6))
-	add_child(fog_quad)
-
-func _update_fog_position() -> void:
-	if not fog_material:
-		return
-	for camera in cameras:
-		if camera and is_instance_valid(camera):
-			fog_material.set_shader_parameter("player_pos", camera.global_position)
-			return
-
 func _on_settings_changed() -> void:
-	if fog_material:
-		fog_material.set_shader_parameter("inner_radius", WorldSettings.fog_start_distance)
-		fog_material.set_shader_parameter("outer_radius", WorldSettings.render_distance)
-		fog_material.set_shader_parameter("fog_color", WorldSettings.fog_color)
-
 	_rebuild_cylinders()
 
 # La cámara del/los jugador(es) local(es) se inyecta en runtime (el CharacterSpawner

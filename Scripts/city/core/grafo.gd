@@ -13,6 +13,9 @@ var node_types: Dictionary = {}
 var boundary_edges: Dictionary = {}
 var node_to_faces: Dictionary = {}   # node_idx -> Array of face indices
 var edge_to_faces: Dictionary = {}   # edge_key -> Array of face indices
+## Cuadrados inscriptos ya resueltos, válidos mientras los nodos no se muevan. El suavizado pide el de
+## cada cara una vez POR NODO vecino —unas cuatro veces—, y resolverlo es lo caro de todo el grafo.
+var _inscribed_cache: Dictionary = {}
 
 
 # ============================================
@@ -526,6 +529,9 @@ func get_inscribed_square_for_face(face_idx: int, use_original_size: bool = fals
 		push_error("Índice de cara inválido: ", face_idx)
 		return []
 
+	if _inscribed_cache.has(face_idx):
+		return _inscribed_cache[face_idx]
+
 	var face = faces[face_idx]
 	var quad_2d: Array = []
 	for idx in face:
@@ -542,11 +548,13 @@ func get_inscribed_square_for_face(face_idx: int, use_original_size: bool = fals
 	var inscribed_2d: Array = GraphHelper.get_inscribed_square(quad_2d, override_size)
 
 	if inscribed_2d.is_empty():
+		_inscribed_cache[face_idx] = [] as Array[Vector3]
 		return []
 
 	var inscribed_3d: Array[Vector3] = []
 	for p2d in inscribed_2d:
 		inscribed_3d.append(Vector3(p2d.x, 0.0, p2d.y))
+	_inscribed_cache[face_idx] = inscribed_3d
 
 	return inscribed_3d
 
@@ -632,7 +640,9 @@ static func _get_clockwise_sorted_indices(centered_vertices: Array) -> Array:
 	return sorted_indices
 
 
+## Mover nodos invalida todo cuadrado inscripto ya resuelto.
 func move_nodes(node_transformations: Dictionary) -> void:
+	_inscribed_cache.clear()
 	for node_idx in node_transformations:
 		if node_idx >= 0 and node_idx < points.size():
 			if node_types.get(node_idx, 0) != 1:
@@ -641,6 +651,7 @@ func move_nodes(node_transformations: Dictionary) -> void:
 			push_warning("move_nodes: Índice de nodo %d fuera de rango (0-%d)" % [node_idx, points.size() - 1])
 
 func smooth_graph() -> void:
+	_inscribed_cache.clear()  # los nodos se movieron en el paso anterior
 	var use_original_size: bool = (smoothing_steps > 0)
 	var node_transformations: Dictionary = {}
 	

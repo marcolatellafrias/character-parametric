@@ -20,6 +20,9 @@ var volume_height: float
 var block_height: float
 
 var neighborhood_type: int
+## El nivel de altura de esta calle (NeighborhoodTypes.Height): de él sale hasta qué altura pueden
+## spawnear los autos, porque es el que dice qué tan altos son los edificios de al lado.
+var height_tier: int = NeighborhoodTypes.Height.TALL
 
 var raw_data: Dictionary
 
@@ -40,7 +43,8 @@ func _init(volume_data: Dictionary) -> void:
 	street_type = volume_data.get("street_type", 0)
 	volume_height = volume_data.get("height", 0.0)
 	block_height = volume_data.get("block_height", volume_height)
-	neighborhood_type = volume_data.get("neighborhood_type", NeighborhoodTypes.Type.DOWNTOWN)
+	neighborhood_type = volume_data.get("neighborhood_type", NeighborhoodTypes.District.POOR)
+	height_tier = volume_data.get("height_tier", NeighborhoodTypes.Height.TALL)
 	cells_per_floor = volume_data.get("cells_per_floor", 5)
 	
 	_setup_area()
@@ -252,9 +256,10 @@ func validate_face_projection(face_vertices: Array, grid_u: float, grid_v: float
 	
 	return {"valid": true, "collision_plane": ""}
 
+## Hasta qué altura del volumen pueden nacer los autos: la de los techos de al lado. Sale del NIVEL DE
+## ALTURA de la calle — antes lo daba el barrio, cuando el tipo de barrio todavía fijaba los pisos.
 func get_max_spawn_v() -> float:
-	var config = NeighborhoodTypes.CONFIGS[neighborhood_type]
-	var max_floors = config["max_floors"]
+	var max_floors = NeighborhoodTypes.get_floor_range(height_tier).y
 	var max_height_cells = max_floors * cells_per_floor
 	
 	return min(1.0, float(max_height_cells) / float(height_cells))

@@ -49,12 +49,11 @@ const ARROW_HALF_WIDTH := 5.0
 const BRIDGE_SPAN := 10.0
 
 const BACKGROUND := Color(0.08, 0.09, 0.11)
-## Las manzanas, por barrio (ver NeighborhoodTypes.Type).
+## Las manzanas, por distrito (ver NeighborhoodTypes.District).
 const BLOCK_COLORS: Array[Color] = [
-	Color(0.30, 0.26, 0.22),  # villa
-	Color(0.24, 0.32, 0.26),  # residencial
+	Color(0.30, 0.26, 0.22),  # pobre
+	Color(0.24, 0.32, 0.26),  # rico
 	Color(0.28, 0.27, 0.32),  # industrial
-	Color(0.33, 0.30, 0.24),  # centro
 ]
 ## Las calles, por tipo (ver BlockGenerator.StreetType): más grande, más clara.
 const STREET_COLORS := {
