@@ -50,6 +50,10 @@ var _debug_panel: DebugPanel = null
 ## El identificador de piezas de la ciudad del F1 (ver CityInspector). Se usa con el panel CERRADO: el
 ## panel libera el mouse y entonces no se puede apuntar.
 var _inspector: CityInspector = null
+## Si el inspector está prendido. Vive acá y no en el inspector porque el inspector se rehace en cada
+## respawn; así el modo sobrevive a morir, que es cuando más se lo quiere seguir usando.
+var _inspector_on := false
+var _inspector_toggle: CheckButton = null
 var _map_overlay: CityMapOverlay = null
 var _weather_overlay: WeatherOverlay = null
 var _weather_tuner: WeatherTuner = null
@@ -161,6 +165,19 @@ func _input(event: InputEvent) -> void:
 			and event.keycode == KEY_F6:
 		_weather_tuner.toggle()
 		return
+
+	# F3 prende/apaga el inspector y F4 copia al portapapeles lo que está mirando, para pegarlo en un chat.
+	# Van antes del corte de gameplay a propósito: se usan todo el tiempo, y el inspector ya funciona sin
+	# robar el mouse.
+	if is_instance_valid(_inspector) and event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F3:
+			_set_inspector(not _inspector_on)
+			if is_instance_valid(_inspector_toggle):
+				_inspector_toggle.set_pressed_no_signal(_inspector_on)
+			return
+		if event.keycode == KEY_F4:
+			_inspector.copy_to_clipboard()
+			return
 
 	# F2, el mapa de al lado: a diferencia del panel, no bloquea el gameplay —se mira en movimiento—.
 	if is_instance_valid(_map_overlay) and event is InputEventKey and event.pressed and not event.echo \
@@ -584,6 +601,12 @@ func _set_creative(on: bool) -> void:
 		char_rigidbody.rotation.y = camera_yaw
 
 
+func _set_inspector(on: bool) -> void:
+	_inspector_on = on
+	if is_instance_valid(_inspector):
+		_inspector.set_enabled(on)
+
+
 func _setup_debug_panel() -> void:
 	# Se re-llama en cada respawn (desde on_skeleton_built): recreamos el panel para reflejar
 	# el nuevo personaje (y no acumular paneles).
@@ -632,8 +655,9 @@ func _setup_debug_panel() -> void:
 	_inspector = CityInspector.new()
 	add_child(_inspector)
 	_inspector.setup(player_camera, char_rigidbody)
-	_debug_panel.add_toggle("Acciones", "Apuntar para identificar", false,
-		func(on: bool): _inspector.set_enabled(on))
+	_inspector.set_enabled(_inspector_on)
+	_inspector_toggle = _debug_panel.add_toggle("Acciones", "Apuntar para identificar (F3 · F4 copia)",
+		_inspector_on, _set_inspector)
 
 	# ── Arquetipos ──
 	# Dos acciones por arquetipo, y son distintas: "Ser" cambia TU personaje y además deja la P pegada

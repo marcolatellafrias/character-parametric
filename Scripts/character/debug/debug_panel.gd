@@ -54,14 +54,16 @@ func add_action(tab_name: String, label: String, cb: Callable) -> void:
 	btn.pressed.connect(cb)
 	_get_tab(tab_name).add_child(btn)
 
-# Un interruptor que muestra su estado; `cb` recibe el nuevo.
-func add_toggle(tab_name: String, label: String, pressed: bool, cb: Callable) -> void:
+# Un interruptor que muestra su estado; `cb` recibe el nuevo. Se devuelve para que un atajo de teclado que
+# cambie lo mismo pueda reflejarlo sin disparar `cb` otra vez (`set_pressed_no_signal`).
+func add_toggle(tab_name: String, label: String, pressed: bool, cb: Callable) -> CheckButton:
 	var check := CheckButton.new()
 	check.text = label
 	check.button_pressed = pressed
 	check.focus_mode = Control.FOCUS_NONE
 	check.toggled.connect(cb)
 	_get_tab(tab_name).add_child(check)
+	return check
 
 # Cualquier control armado afuera (un texto que se refresca, un separador…).
 func add_control(tab_name: String, control: Control) -> void:

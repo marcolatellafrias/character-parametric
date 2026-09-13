@@ -44,6 +44,12 @@ var _micro_fill: MeshInstance3D = null
 var _highlight: MeshInstance3D = null
 ## La última pieza resaltada, para no reconstruir la malla del contorno en cada frame.
 var _last_key := ""
+## El texto de lo que se está mirando, en versión larga y plana para pegar en un chat. Se arma en cada
+## frame junto con el cartel, y F4 lo copia (ver `copy_to_clipboard`).
+var _report := ""
+## Hasta cuándo el cartel avisa que se copió, en milisegundos de `Time.get_ticks_msec`.
+var _copied_until_ms := 0
+const COPIED_FEEDBACK_MS := 1500
 
 
 func setup(camera: Camera3D, body: PhysicsBody3D = null) -> void:
@@ -161,6 +167,7 @@ func _hide_target() -> void:
 		_marker.visible = false
 	_hide_layers()
 	_last_key = ""
+	_report = ""
 
 
 func _hide_layers() -> void:
@@ -219,7 +226,21 @@ func _aim() -> void:
 	for line: String in info["lines"]:
 		lines.append(line)
 	lines.append("a %.0f m" % from.distance_to(centre))
-	_label.text = "\n".join(lines)
+	_label.text = _with_copied_notice("\n".join(lines))
+
+	# La versión para pegar: todo lo del cartel más lo que hace falta para reproducirlo sin estar mirando
+	# —la seed, dónde pegó el rayo y los ids crudos—.
+	var point: Vector3 = hit["position"]
+	var report: Array[String] = []
+	report.append("[inspector] %s" % str(info["kind_name"]))
+	for line: String in info["lines"]:
+		report.append("  " + line)
+	report.append("  seed: %s" % str(city.generation_seed))
+	report.append("  impacto: (%.2f, %.2f, %.2f)" % [point.x, point.y, point.z])
+	report.append("  centro de la pieza: (%.2f, %.2f, %.2f)" % [centre.x, centre.y, centre.z])
+	report.append("  ids crudos: a=%d b=%d c=%d d=%d · scope %d · pieza %d"
+			% [int(info["id_a"]), int(info["id_b"]), int(info["id_c"]), int(info["id_d"]), scope, piece])
+	_report = "\n".join(report)
 
 	_refresh_highlight(index, piece)
 
@@ -240,15 +261,37 @@ func _excludes() -> Array[RID]:
 	return out
 
 
+## COPIA LO QUE SE ESTÁ MIRANDO al portapapeles del sistema. Devuelve si había algo que copiar.
+func copy_to_clipboard() -> bool:
+	if not enabled or _report.is_empty():
+		return false
+	DisplayServer.clipboard_set(_report)
+	_copied_until_ms = Time.get_ticks_msec() + COPIED_FEEDBACK_MS
+	return true
+
+
+func _with_copied_notice(text: String) -> String:
+	if Time.get_ticks_msec() < _copied_until_ms:
+		return text + "\n(copiado)"
+	return text
+
+
 func _show_unknown(point: Vector3, body: Object) -> void:
 	_marker.global_position = point
 	_marker.visible = true
 	_hide_layers()
 	_last_key = ""
 	var name_hint := "?"
+	var path_hint := "?"
 	if body is Node:
 		name_hint = (body as Node).name
-	_label.text = "sin identificar\n%s" % name_hint
+		if (body as Node).is_inside_tree():
+			path_hint = str((body as Node).get_path())
+	_label.text = _with_copied_notice("sin identificar\n%s" % name_hint)
+	# También se copia: es justo el caso que hay que reportar cuando un sistema no se anotó en el índice, y
+	# la ruta del nodo es lo que dice de qué sistema es (ver "Making a new system identifiable").
+	_report = "[inspector] sin identificar\n  nodo: %s\n  ruta: %s\n  impacto: (%.2f, %.2f, %.2f)" \
+			% [name_hint, path_hint, point.x, point.y, point.z]
 
 
 ## LAS TRES CAPAS: el objeto entero de fondo, la pieza apuntada encima, y sus aristas arriba de todo.
