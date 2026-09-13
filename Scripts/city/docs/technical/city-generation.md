@@ -117,7 +117,7 @@ Within the block core, alleyways create additional gaps:
 
 Two **independent axes**. They used to be one enum of four types, and that was the mistake: *Downtown* is not a culture, it is a density. A rich downtown is glass towers, a poor one is stacked tenements, an industrial one is silos packed together — so raising a slum's height forced it to become another neighbourhood.
 
-- **District** (`NeighborhoodTypes.District`): who lives there and what it is built from — **poor, rich, industrial**. It drives building style (`ArchetypeDefinitions`), which cars drive through, how much traffic there is, and how often a block gets a courtyard. The two archetypes that used to be Downtown's became the dense face of poor (`MixedUse`) and rich (`OfficeTower`), so no style was lost.
+- **District** (`NeighborhoodTypes.District`): who lives there and what it is built from — **poor, rich, industrial**. It drives building style (`ArchetypeDefinitions`), which cars drive through, how much traffic there is, and how often a block gets a courtyard. Each district has **one generic archetype** for now (see "Building archetypes").
 - **Height** (`NeighborhoodTypes.Height`): how many floors, and with them how many bridges cross its streets. This is the **gameplay axis**, calibrated against the ship.
 
 | Tier | Floors | Against the ship |
@@ -202,19 +202,103 @@ Measured on the 1 425.6 m city: top flat at 87 m, base following the terrain, tr
 
 ## Building archetypes
 
-Each `BuildingCluster` is assigned a **building archetype** + seed, the eventual driver of procedural building geometry. Currently the archetype only produces a **debug color** (`archetype.get_color(seed)`), which the renderer reads via `cluster.color`.
+Each `BuildingCluster` is assigned a **building archetype** + seed. A building works like a person: the archetype says what *class* of building it is, and the seed varies the individual within that class.
 
-- **Base class** `BuildingArchetype` ([building_archetype.gd](../../building/building_archetype.gd)) defines the interface (`get_color`, `get_street_corner_chamfer_value`, future `generate_geometry`). The 8 concrete archetypes live as **inner classes** in the same file while small; an archetype can be promoted to its own file once its logic grows, with no caller changes.
-- **Registry** `ArchetypeDefinitions.NEIGHBORHOOD_ARCHETYPES` ([archetype_definition.gd](../../building/archetype_definition.gd)) maps each **district** to two or three archetypes. `get_archetype_for_cluster()` seed-picks one and instantiates it.
-- **Color scheme**: each archetype owns a fixed `base_hue`; the seed varies saturation/value within that family, so a cluster's district and archetype are both readable from its colour. (Colour is a temporary debug variable, expected to disappear once real geometry exists.)
+- **Base class** `BuildingArchetype` ([building_archetype.gd](../../building/building_archetype.gd)) defines the interface (`get_color`, `get_street_corner_chamfer_value`, future `generate_geometry`) and carries the **parameters that feed the rules** — today `roof_pitch_height` and `flat_roof_chance`. The archetype holds no rules of its own: who decides a roof's shape is `RoofPlanner`, which reads these. Concrete archetypes live as **inner classes** while small; one can be promoted to its own file once its logic grows, with no caller changes.
+- **Registry** `ArchetypeDefinitions.NEIGHBORHOOD_ARCHETYPES` ([archetype_definition.gd](../../building/archetype_definition.gd)) maps each **district** to its archetypes. `get_archetype_for_cluster()` seed-picks one and instantiates it — the pick stays even with one entry per district, so adding a second changes nothing else.
+- **Color scheme**: each archetype owns a fixed `base_hue`; the seed varies saturation/value within that family, so a cluster's district is readable from its colour. (Colour is a temporary debug variable, expected to disappear once real geometry exists.)
 
-| District | Archetypes |
+| District | Archetype |
 |---|---|
-| `POOR` | `ShantyBasic`, `ShantyMakeshift`, `MixedUse` |
-| `RICH` | `MansionClassic`, `MansionModern`, `OfficeTower` |
-| `INDUSTRIAL` | `WarehouseBasic`, `FactoryModern` |
+| `POOR` | `GenericPoor` |
+| `RICH` | `GenericRich` |
+| `INDUSTRIAL` | `GenericIndustrial` |
 
-There is no "Downtown" district any more: density became its own axis when districts and heights were split in two (see `NeighborhoodTypes`), so the old fourth row's archetypes were folded into `POOR` and `RICH`.
+**One generic archetype per district**, and the three are identical apart from hue — deliberately. The layer exists so that changing a district's roof, windows or material is changing *data* here, not rules elsewhere.
+
+**Superseded:** there used to be eight archetypes (`ShantyBasic`, `ShantyMakeshift`, `MixedUse`, `MansionClassic`, `MansionModern`, `OfficeTower`, `WarehouseBasic`, `FactoryModern`) that differed **only in `base_hue`** — a distinction that does not exist for the player. Named archetypes come back when there is something real to tell them apart with. There is no "Downtown" district either: density became its own axis when districts and heights were split in two (see `NeighborhoodTypes`).
+
+---
+
+## Roofs — the planner decides, the props execute
+
+A roof is a **height field over the building's footprint**, not a set of pieces. One style is chosen per cluster, and the style is a way of measuring a distance.
+
+- `RoofPlanner` ([roof_planner.gd](../../building/roof_planner.gd)) is a **pure function** of the cluster's footprint, its edge types, its chamfers and the seed. It returns `{"style", "heights"}`, where `heights` maps a **half-cell grid vertex** to metres, and touches no geometry.
+- `RoofProps` ([roof_props.gd](../../props/roof_props.gd)) walks one cell and emits the four half-cell patches that belong to it. `City._visualize_roof_props` decides nothing — it executes.
+
+### Why a field and not a piece per cell
+
+**A cell cannot decide on its own.** The first version picked a piece for each cell from its local neighbourhood, and produced *broken roofs*: on a 1×5 strip the middle cells got a gable, whose high point is the **middle of the shared edge**, and the end cells got a hipped corner, whose high point is a **vertex**. Two neighbouring pieces did not agree on the profile of the edge they share, so they could not meet — visible on nearly every roof as a diagonal mess at the ends of an otherwise clean ridge.
+
+With a field, height lives at grid **vertices** and neighbouring cells read the *same* vertices, so continuity is structural rather than something to get right. The grid is **half a cell** because a ridge has to be able to fall in the middle of a cell, which cell-corner vertices cannot express.
+
+Cells also meet exactly in the world, not only in the field: the edge between two cells of one cluster is `NORMAL`, whose core offset is **0**, and on a shared edge each cell's bilinear reduces to the same linear interpolation over the two shared vertices.
+
+### Drainage priority
+
+`Exposure`, best first: **street > alley > lower neighbour > blocked neighbour > inner**. The shed style needs one direction for the whole building, and it takes the best-scoring edge of any of its cells. Water never runs into the building's own footprint, and never at a neighbour that is equal or taller — at a shorter one it may, which is why the neighbour's `floor_count` is read and not just its presence. The edge type is already resolved in `BuildingModule.edge_types` (`FACADE`/`BOUNDARY` = street, `SMALL`/`BIG` = alley, `NORMAL` = something attached), and `get_cluster_for_cell` separates own footprint from a neighbour.
+
+### What each footprint may become
+
+| Footprint | Options (the seed picks) |
+|---|---|
+| Single cell | shed · gable · French (a four-sided pyramid, at this size) |
+| 2×2 | gable · French |
+| Strip (N×1) | gable · shed · French |
+| Rectangle (N×M) | gable · French |
+| L | French |
+| Irregular | — |
+
+The three styles are three distance measurements over the field:
+
+- **Shed** — a linear ramp from one edge of the footprint to the opposite one. A function of a single coordinate, so it is continuous over any shape.
+- **Gable** — a tent whose ridge sits at the centre of the **footprint**, not of each cell, running along its longer side. A gable spread over four cells therefore reads as one roof with no special case. It asks for a **rectangular** footprint, because its tent is measured across the footprint's width and a stepped shape changes that width from one row to the next.
+- **French** — a mansard: `min(distance to the boundary, cap)`. It gains its full height in the first ring and is flat above, which is the steep-skirt-plus-flat-top roof of French architecture. The distance comes from a multi-source BFS from the boundary vertices, so it knows nothing of axes — which is why it is the one style that turns cleanly through an L or any odd shape, and why on a single cell it comes out as a four-sided pyramid.
+
+The `L` row therefore offers only French. A gable that turns a corner would need per-arm ridges that meet in a valley; the mansard already turns without seams, so that is deliberately not built yet.
+
+**Chamfer decides before footprint**, because it speaks of position in the block rather than shape. `BuildingModule.chamfer_kinds` records what each chamfer is a corner *of*: a **street** chamfer is the block's noble ochava → French or flat; an **alley-only** chamfer is an odd back shape → flat; with both, **street wins**. Without that record the two are indistinguishable, since they produce identical geometry.
+
+**Flat is an option, not a fallback.** It is in almost every row above on purpose: flat roofs give the skyline variety, and they are the only ones a water tank sits on — a French roof's raised inner cap does not count. An irregular footprint has no options, so it lands flat for now; that is the row to extend first.
+
+### The pieces
+
+There is only one now: `RoofProps.roof_from_field` walks a cell and emits its four half-cell patches, taking each corner's height straight from the field. There is no per-shape function left, which is the point — a shape is a field, not a mesh.
+
+**Skirts** (the vertical wall under a patch edge) go only where the roof ends against open air *and* is still raised there, which is exactly a gable's end wall. Never toward the inside of the footprint, where the neighbour's roof continues, and never on a French roof, whose boundary drops to zero.
+
+Colour is per style so the three can be told apart while this is debug, with French deliberately set apart in slate blue-grey — the real material of a mansard.
+
+---
+
+## Identity of a piece
+
+Every visualizer receives data with a name — *this* cluster, *this* cell, *this* floor — and **throws it away when it bakes the merged mesh**. The identity exists at generation time and is gone by the `append_array`. Without somewhere to put it, identifying anything again means reverse-engineering it with rays and point-in-polygon, and that deduction has to be written **again for every new system** (pipes, stairs, windows).
+
+`CityIndex` ([city_index.gd](../../debug/city_index.gd)) is where the identity gets written down, *at the moment it still exists* — right beside the line that already computes the merge offset:
+
+```gdscript
+var offset := merged_verts.size()
+var idx_from := merged_idxs.size()
+...
+city_index.add(scope, Kind.BUILDING, cluster.id, cell.x, cell.y, floor_idx,
+    idx_from, merged_idxs.size(), geo.vertices)
+```
+
+What each piece stores: its **kind**, four **ids** whose meaning depends on the kind, its **triangle range** within the mesh's index array, and its **AABB**.
+
+- **Parallel packed arrays, not a dictionary per piece.** Buildings alone bake tens of thousands of pieces; a `Dictionary` each would be a real memory cost. Each piece is a handful of ints and two `Vector3`s.
+- **The scope** ties a collider to its pieces: the body that stops the ray carries its scope in a meta, and the search runs only inside it. Scope granularity follows *mesh* granularity — per cluster for buildings, per block for roofs, per bridge for bridges. The index also holds each scope's `MeshInstance3D`, so a piece can be drawn without knowing which collider the ray hit.
+- **The object id** is what makes "the whole building" mean something. It **crosses scopes**: a building's walls live in its cluster's mesh and its roof in the block's roof mesh, and both record the same object id, so highlighting the object covers both. ⚠ `cluster.id` cannot be used for this — clusters are numbered **per block** starting at zero, so cluster 5 exists in all 191 blocks; the id is allocated globally by `City._object_for_cluster`.
+- **Two ways to resolve a hit, both generic.** `face_index` from the raycast would give the exact triangle, which works because each collider is built from the **same triangles in the same order** as its mesh — that ordering is a contract, not an accident. Otherwise the smallest AABB containing the point wins. Neither path knows whether it is looking at a roof, a wall or a pipe.
+
+  **Measured in game: the ray does not return `face_index`** — presumably Jolt does not report it — so the **AABB path is the live one**. It is accurate in practice because a building piece *is* a box; the exact-triangle path stays in place, costing nothing, in case a future engine version provides the index.
+- **The triangle range is also what draws the outline**: the inspector copies exactly those triangles out of the city mesh. That is what makes it possible to outline **one cell** of a mesh that merges a whole block — the grabbable outline path works per `MeshInstance3D` and would light up everything.
+
+**What a new system has to do**: record itself when it bakes, and nothing else. No resolver, no interface to implement, no registration. What stays system-specific is only *which ids it writes down* — data, not logic — plus one line in `describe()` to turn those ids back into words. A system that forgets shows up as "sin identificar" the first time it is pointed at.
+
+The identity rides on the **collider** on purpose. A collider is already mandatory for anything solid, so it cannot be silently forgotten: forgetting it means the player walks through the object, which is noticed immediately. An interface that everything is supposed to implement is optional by construction, and gets skipped.
 
 ---
 
@@ -300,7 +384,11 @@ Quads run `[BL, BR, TR, TL]`, the order `get_region_vertices` and `get_core_vert
 
 ### Placement
 
-`show_roof_props` gates it. Per cluster, seeded from the block seed so every peer builds the same city: each cell takes a sloped roof with probability `roof_shape_chance` (0.35), and a cluster that still has a flat cell takes a water tank with probability `water_tank_chance` (0.12) — deliberately low, since a repeated tank stops reading as detail and becomes texture. A tank is skipped when it would not fit the roof. Measured on the current city: 2271 sloped roofs, 271 tanks, 67 826 triangles merged into one mesh per block.
+`show_roof_props` gates it. The shape of each roof comes from `RoofPlanner` (see "Roofs — the planner decides, the props execute"), seeded from the block seed so every peer builds the same city; this function only executes the plan. The archetype owns the style — `flat_roof_chance` (0.35) and `roof_pitch_height` — and is the **only** source for it.
+
+A cluster that came out flat takes a water tank with probability `water_tank_chance` (0.12), deliberately low since a repeated tank stops reading as detail and becomes texture; a tank is skipped when it would not fit the roof. Measured on the current city: **3727 roof pieces, 138 tanks**, merged into one mesh per block.
+
+Tanks dropped from 271 because the decision moved from the cell to the **cluster**: a building is now flat or pitched as a whole, so only the ~35% of clusters that came out flat offer a spot, instead of nearly every cluster having some leftover flat cell.
 
 ---
 

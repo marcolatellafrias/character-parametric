@@ -160,8 +160,6 @@ extends Node3D
 
 @export_group("Objetos de techo")
 @export var show_roof_props: bool = true
-## Cada cuánto una celda de edificio se lleva un techo inclinado en vez de quedar plana.
-@export_range(0.0, 1.0) var roof_shape_chance: float = 0.35
 ## Cada cuánto un CLUSTER de techo plano se lleva un tanque de agua. Bajo a propósito: repetido
 ## demasiado, el tanque deja de leerse como detalle y se vuelve textura.
 @export_range(0.0, 1.0) var water_tank_chance: float = 0.12
@@ -189,6 +187,38 @@ var yellow_phase_active: bool = false
 var _building_material: StandardMaterial3D = null
 ## Semilla del relieve; sale de la del mundo salvo que se fuerce a mano (ver use_world_seed).
 var terrain_seed: int = 0
+
+## QUIÉN ES CADA TRIÁNGULO (ver CityIndex). Se llena mientras se hornea la geometría, que es el único
+## momento en que la identidad de una pieza existe; después, fusionada en la malla, ya no se puede deducir
+## sin reimplementar un resolvedor por cada sistema.
+var city_index := CityIndex.new()
+## El scope y la malla de cada cluster, para que el collider —que se construye en OTRA pasada— pueda
+## estamparse con los mismos. `_visualize_buildings` los llena y `_visualize_building_colliders` los lee;
+## el orden entre las dos está fijado en `generate_and_visualize`.
+var _scope_by_cluster: Dictionary = {}
+## El id de OBJETO de cada cluster. Las paredes y el techo de un edificio lo comparten, y por eso se puede
+## resaltar el edificio entero aunque sus dos mitades vivan en mallas distintas.
+##
+## ⚠ NO sirve `cluster.id` para esto: se numera por manzana y arranca de cero en cada una, así que el
+## cluster 5 existe en las 191 manzanas. Hace falta un id global, y es este.
+var _object_by_cluster: Dictionary = {}
+var _next_object: int = 0
+
+
+func get_city_index() -> CityIndex:
+	return city_index
+
+
+func _object_for_cluster(cluster: BuildingCluster) -> int:
+	if not _object_by_cluster.has(cluster):
+		_next_object += 1
+		_object_by_cluster[cluster] = _next_object
+	return _object_by_cluster[cluster]
+
+
+func _new_object() -> int:
+	_next_object += 1
+	return _next_object
 
 # ============================================
 # INICIALIZACIÓN
@@ -378,6 +408,8 @@ func visualize_graph() -> void:
 		_visualize_stair_zones()
 
 	_visualize_floating_sidewalk_zones()
+
+	print("[Visualizer] Índice de piezas: %d identificables" % city_index.size())
 
 # LaneVolume es Node3D y necesita estar en el árbol para funcionar.
 # Si en el futuro se convierte a RefCounted, este método desaparece.
@@ -830,6 +862,11 @@ func _visualize_buildings() -> void:
 			var cluster_floors := cluster.get_floor_count()
 			var base_color: Color = cluster.color
 
+			# Un scope por edificio: el rayo que pegue en su collider solo va a buscar entre SUS piezas.
+			var scope := city_index.new_scope()
+			_scope_by_cluster[cluster] = scope
+			var object_id := _object_for_cluster(cluster)
+
 			var merged_verts  := PackedVector3Array()
 			var merged_norms  := PackedVector3Array()
 			var merged_colors := PackedColorArray()
@@ -876,11 +913,16 @@ func _visualize_buildings() -> void:
 						continue
 
 					var offset := merged_verts.size()
+					var idx_from := merged_idxs.size()
 					merged_verts.append_array(geo.vertices)
 					merged_norms.append_array(geo.normals)
 					merged_colors.append_array(geo.colors)
 					for idx in geo.indices:
 						merged_idxs.append(idx + offset)
+					# LA IDENTIDAD SE ANOTA ACÁ, al lado de la línea que ya calcula el offset del merge: es
+					# el último momento en que se sabe de quién son estos triángulos.
+					city_index.add(scope, object_id, CityIndex.Kind.BUILDING, cluster.id, cell.x, cell.y,
+						floor_idx, idx_from, merged_idxs.size(), geo.vertices)
 					total_cells += 1
 
 			if merged_verts.is_empty():
@@ -900,6 +942,7 @@ func _visualize_buildings() -> void:
 			mesh_instance.mesh = array_mesh
 			mesh_instance.material_override = mat
 			mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			city_index.set_scope_mesh(scope, mesh_instance)
 			# El occluder va PRIMERO: lee el AABB de la malla, y `_fade_into_fog` la recentra en su propio
 			# centro. Al reves, todos los occluders terminaban apilados en el origen de la ciudad.
 			_add_box_occluder(array_mesh, buildings)
@@ -975,6 +1018,10 @@ func _visualize_building_colliders() -> void:
 			collision_shape.shape = shape
 			var static_body := StaticBody3D.new()
 			static_body.add_child(collision_shape)
+			# EL CUERPO QUE FRENA EL RAYO ES EL QUE DICE QUIÉN ES: lleva el scope de su edificio, y con eso
+			# el índice resuelve tanto la pieza como la malla de la que copiarla (ver CityInspector).
+			if _scope_by_cluster.has(cluster):
+				static_body.set_meta(CityIndex.SCOPE_META, _scope_by_cluster[cluster])
 			colliders.add_child(static_body)
 			total_colliders += 1
 
@@ -1301,6 +1348,7 @@ func _visualize_roof_props() -> void:
 	var mat := _get_building_material()
 	var tanks := 0
 	var roofs := 0
+	var roof_bodies := 0
 
 	for face_idx in generator.get_all_block_faces():
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -1308,14 +1356,39 @@ func _visualize_roof_props() -> void:
 			continue
 		var cells_per_floor := block.get_cells_per_floor()
 		var buffer := PropGeometry.new_buffer()
+		# Un scope por MANZANA, porque los techos se fusionan en una malla por manzana (los edificios, en
+		# cambio, tienen una malla cada uno). La granularidad del scope sigue a la de la malla.
+		var scope := city_index.new_scope()
 
 		for cluster in block.get_all_clusters():
 			if cluster.get_floor_count() <= 0 or cluster.cells.is_empty():
 				continue
 			var rng := RandomNumberGenerator.new()
-			rng.seed = block.cluster_seed + cluster.id * 7919
+			rng.seed = block.cluster_seed + cluster.id * 6151
 			var roof_index := cluster.get_floor_count() * cells_per_floor
+			# El MISMO id de objeto que las paredes de este edificio, aunque la malla sea otra: es lo que
+			# hace que resaltar "el edificio" incluya su techo.
+			var object_id := _object_for_cluster(cluster)
 			var flat_cells: Array = []
+
+			# ACÁ NO SE DECIDE NADA: el plan dice qué pieza va en cada celda y hacia dónde escurre, y esto
+			# solo lo ejecuta (ver RoofPlanner).
+			#
+			# El ESTILO sale del arquetipo del cluster y de ningún otro lado. City tenía además su propia
+			# `roof_shape_chance`, y dos perillas para lo mismo hacen impredecible el resultado; además esa
+			# decidía por celda, cuando la forma de un techo es del edificio entero.
+			var pitch := 2.2
+			var flat_chance := 0.35
+			if cluster.archetype != null:
+				pitch = cluster.archetype.roof_pitch_height
+				flat_chance = cluster.archetype.flat_roof_chance
+			var plan: Dictionary = RoofPlanner.plan(block, cluster, flat_chance, pitch)
+			var style: int = plan.get("style", RoofPlanner.Style.FLAT)
+			var heights: Dictionary = plan.get("heights", {})
+			var roof_color := RoofProps.color_for_style(style)
+			var own := {}
+			for c: Vector2i in cluster.cells:
+				own[c] = true
 
 			for cell in cluster.cells:
 				var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
@@ -1325,19 +1398,34 @@ func _visualize_roof_props() -> void:
 				if quad.size() != 4:
 					continue
 
-				if rng.randf() < roof_shape_chance:
-					if rng.randf() < 0.5:
-						RoofProps.gable_roof(buffer, quad, 2.2, rng.randf() < 0.5)
-					else:
-						RoofProps.shed_roof(buffer, quad, 1.8, rng.randi_range(0, 3))
-					roofs += 1
-				else:
-					flat_cells.append(quad)
+				if heights.is_empty():
+					# Azotea plana, la única que acepta tanque. Se guarda CON su celda para que el tanque
+					# que caiga acá también pueda anotarse en el índice.
+					flat_cells.append({"quad": quad, "cell": cell})
+					continue
+				# Tipos a mano: lo que sale de un Dictionary sin tipar es Variant, y ni `:=` puede inferir
+				# de ahí ni se puede pasar a un parámetro tipado sin que sea una llamada insegura.
+				var idx_from: int = buffer["indices"].size()
+				var v_from: int = buffer["vertices"].size()
+				RoofProps.roof_from_field(buffer, quad, cell, heights, own, roof_color)
+				var idx_to: int = buffer["indices"].size()
+				var piece_verts: PackedVector3Array = buffer["vertices"].slice(v_from)
+				city_index.add(scope, object_id, CityIndex.Kind.ROOF, cluster.id, cell.x, cell.y, 0,
+					idx_from, idx_to, piece_verts)
+				roofs += 1
 
 			# El tanque va sobre una celda que haya quedado PLANA: sobre un techo a dos aguas no se apoya.
 			if not flat_cells.is_empty() and rng.randf() < water_tank_chance:
-				var pick: Array = flat_cells[rng.randi_range(0, flat_cells.size() - 1)]
-				if RoofProps.water_tank(buffer, pick):
+				var pick: Dictionary = flat_cells[rng.randi_range(0, flat_cells.size() - 1)]
+				var tank_quad: Array = pick["quad"]
+				var tank_cell: Vector2i = pick["cell"]
+				var tank_idx_from: int = buffer["indices"].size()
+				var tank_v_from: int = buffer["vertices"].size()
+				if RoofProps.water_tank(buffer, tank_quad):
+					var tank_idx_to: int = buffer["indices"].size()
+					var tank_verts: PackedVector3Array = buffer["vertices"].slice(tank_v_from)
+					city_index.add(scope, object_id, CityIndex.Kind.ROOF, cluster.id,
+						tank_cell.x, tank_cell.y, 1, tank_idx_from, tank_idx_to, tank_verts)
 					tanks += 1
 
 		if buffer["vertices"].is_empty():
@@ -1356,8 +1444,27 @@ func _visualize_roof_props() -> void:
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		_fade_into_fog(mesh_instance)
 		container.add_child(mesh_instance)
+		city_index.set_scope_mesh(scope, mesh_instance)
 
-	print("[Visualizer] Objetos de techo: %d techos inclinados · %d tanques" % [roofs, tanks])
+		# COLLIDER DEL TECHO, con los MISMOS triángulos y en el MISMO orden que la malla. Ese orden es el
+		# contrato del que depende traducir el `face_index` del rayo a una pieza (ver CityIndex).
+		var faces := PackedVector3Array()
+		var roof_verts: PackedVector3Array = buffer["vertices"]
+		for idx: int in buffer["indices"]:
+			faces.append(roof_verts[idx])
+		if not faces.is_empty():
+			var shape := ConcavePolygonShape3D.new()
+			shape.set_faces(faces)
+			var collision_shape := CollisionShape3D.new()
+			collision_shape.shape = shape
+			var body := StaticBody3D.new()
+			body.add_child(collision_shape)
+			body.set_meta(CityIndex.SCOPE_META, scope)
+			container.add_child(body)
+			roof_bodies += 1
+
+	print("[Visualizer] Objetos de techo: %d techos inclinados · %d tanques · %d colliders"
+		% [roofs, tanks, roof_bodies])
 
 # ============================================
 # VISUALIZACIÓN DE DELIVERY DOORS
@@ -1704,6 +1811,7 @@ func _visualize_bridges() -> void:
 				colors = PackedColorArray(),
 				idxs   = PackedInt32Array(),
 			}
+			var scope := city_index.new_scope()
 			_draw_bridge(placed, buf)
 			total += 1
 			if buf.verts.is_empty():
@@ -1721,6 +1829,17 @@ func _visualize_bridges() -> void:
 			mi.material_override = _get_bridge_material()
 			_fade_into_fog(mi)
 			add_child(mi)
+
+			# Un puente entero es UNA pieza por ahora: alcanza para decir cuál es. Partirlo en base,
+			# pasarela, baranda y arcos es anotar un registro por tramo dentro de `_draw_bridge`.
+			var bridge_idxs: PackedInt32Array = buf.idxs
+			var bridge_verts: PackedVector3Array = buf.verts
+			city_index.set_scope_mesh(scope, mi)
+			city_index.add(scope, _new_object(), CityIndex.Kind.BRIDGE, total, int(placed["face_a"]),
+				int(placed["face_b"]), int(placed["floor_idx"]), 0, bridge_idxs.size(), bridge_verts)
+			var bridge_body: Object = buf.get("body")
+			if bridge_body is StaticBody3D:
+				(bridge_body as StaticBody3D).set_meta(CityIndex.SCOPE_META, scope)
 	print("[Visualizer] Puentes: %d" % total)
 
 
@@ -1786,6 +1905,8 @@ func _draw_bridge(placed: Dictionary, buf: Dictionary) -> void:
 				by_base, by_base_top, by_arc_bot, static_body, buf)
 
 	if static_body:
+		# Se devuelve por el buffer para que quien lo llamó pueda estamparlo con su scope (ver CityIndex).
+		buf["body"] = static_body
 		add_child(static_body)
 
 

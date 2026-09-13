@@ -24,6 +24,14 @@ var core_max_z: int
 # donde c1 y c2 son el número de celdas chamfereadas
 var chamfers: Dictionary = {}
 
+## DE QUÉ es esquina cada chaflán: {vertex_index: ChamferKind}.
+##
+## Geométricamente los dos son iguales, pero significan cosas distintas: el de CALLE es la esquina noble de
+## la manzana —la que se ochava y lleva el techo francés— y el de CALLEJÓN es una forma rara de fondo. El
+## techo decide con esto (ver RoofPlanner), así que el tipo se guarda en vez de perderse.
+enum ChamferKind { STREET, ALLEY }
+var chamfer_kinds: Dictionary = {}
+
 # ── EL RELIEVE ──────────────────────────────────────────────────────────────────────────────────
 # Todas las alturas del módulo salen de acá (ver `_ground_at`), y por acá pasa TODO lo que se sitúa en la
 # ciudad: las veredas, las puertas, las escaleras, los extremos de puente y los conectores.
@@ -105,6 +113,7 @@ func _calculate_chamfers(
 				
 				if chamfer_value > 0:
 					chamfers[vertex_index] = [chamfer_value, chamfer_value]
+					chamfer_kinds[vertex_index] = ChamferKind.STREET
 					continue  # Ya procesamos este vértice como street corner
 		
 		# Verificar si es esquina de callejón (alleyway corner)
@@ -150,6 +159,7 @@ func _calculate_chamfers(
 		
 		if chamfer_values.size() == 2:
 			chamfers[vertex_index] = chamfer_values
+			chamfer_kinds[vertex_index] = ChamferKind.ALLEY
 
 
 func _get_edge_type_from_vertices(
@@ -364,6 +374,11 @@ func get_core_info() -> Dictionary:
 
 func get_chamfers() -> Dictionary:
 	return chamfers
+
+
+## De qué es esquina cada chaflán: {vertex_index: ChamferKind}. Solo trae los vértices que tienen chaflán.
+func get_chamfer_kinds() -> Dictionary:
+	return chamfer_kinds
 
 
 ## Un punto del módulo en (u, v) y a `height_index` celdas de alto, ya apoyado en el relieve (ver EL

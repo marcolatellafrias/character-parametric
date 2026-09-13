@@ -2,14 +2,23 @@ class_name BuildingArchetype extends RefCounted
 
 # Clase base de arquetipo de edificio.
 #
-# Un arquetipo, dado un seed, produce los parámetros visuales / geométricos de
-# un edificio. Por ahora solo produce un color (variable temporal de debug,
-# probablemente se deprecará). En el futuro cada subclase implementará
-# `generate_geometry(seed)` para la geometría procedural.
+# Un arquetipo, dado un seed, produce los parámetros visuales / geométricos de un
+# edificio. Es el equivalente de los arquetipos de personaje: el arquetipo dice
+# QUÉ CLASE de edificio es, y el seed varía el individuo dentro de esa clase.
+#
+# HOY HAY UNO GENÉRICO POR DISTRITO y los tres son iguales salvo el tono de debug.
+# Es a propósito: la capa de arquetipos existe para que cambiar el techo, las
+# ventanas o el material de un barrio sea cambiar DATOS acá, sin tocar las reglas.
+# Los arquetipos con nombre propio (fábrica, iglesia, conventillo) entran cuando
+# haya con qué diferenciarlos.
+#
+# ⚠ El arquetipo NO contiene las reglas, solo los parámetros que las alimentan.
+# Quién decide la forma de un techo es `RoofPlanner`, y lee de acá cuánta
+# probabilidad de techo plano hay y qué pendiente usar.
 #
 # Las subclases concretas viven como inner classes al final de este archivo,
 # mientras son pequeñas. Cuando la lógica de un arquetipo crezca, se puede
-# promover ese arquetipo a su propio archivo (`archetypes/office_tower.gd`) y
+# promover ese arquetipo a su propio archivo (`archetypes/factory.gd`) y
 # actualizar la referencia en ArchetypeDefinitions — sin tocar a los callers,
 # porque todo habla con esta interfaz base.
 
@@ -17,12 +26,20 @@ class_name BuildingArchetype extends RefCounted
 var archetype_id: String = "default"
 
 # Familia de tono (0..1) para el color de debug. El seed varía saturación/valor
-# dentro de esta familia, así que dos arquetipos del mismo neighborhood se
-# distinguen a simple vista.
+# dentro de esta familia, así que dos arquetipos distintos se distinguen a simple
+# vista.
 var base_hue: float = 0.0
 
 # Características arquitectónicas
 var has_chamfered_street_corners: bool = false
+
+## Cuánto levanta la pieza de techo, en metros. Es la pendiente: sobre una celda de edificio (~11 m de
+## lado) un valor de 2 m da un techo de inclinación creíble sin volverse una carpa.
+var roof_pitch_height: float = 2.2
+
+## Probabilidad de que el techo salga PLANO del todo, aun cuando su forma permita aguas. No es un caso de
+## descarte: los techos planos dan variedad al conjunto y son los únicos donde se apoya un tanque de agua.
+var flat_roof_chance: float = 0.35
 
 ## Color de debug derivado del arquetipo + seed.
 ## Tono fijo por arquetipo; el seed varía saturación y valor.
@@ -60,59 +77,27 @@ func get_street_corner_chamfer_value(vertex_seed: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Arquetipos concretos (2 por neighborhood).
-# Pequeños por ahora: solo id, tono y chamfer. Aquí crecerá la lógica propia
-# de cada arquetipo hasta que amerite su propio archivo.
+# Arquetipos concretos: UNO GENÉRICO POR DISTRITO.
+#
+# Los tres son iguales salvo el tono, que se mantiene distinto para poder leer el
+# distrito de un cluster de un vistazo mientras el color siga siendo debug. Acá es
+# donde van a divergir: techo, ventanas, material, altura de pendiente.
 # ---------------------------------------------------------------------------
 
-# --- Shanty Town ---
-class ShantyBasic extends BuildingArchetype:
+class GenericPoor extends BuildingArchetype:
 	func _init() -> void:
-		archetype_id = "shanty_basic"
+		archetype_id = "generic_poor"
 		base_hue = 0.05
 		has_chamfered_street_corners = true
 
-class ShantyMakeshift extends BuildingArchetype:
+class GenericRich extends BuildingArchetype:
 	func _init() -> void:
-		archetype_id = "shanty_makeshift"
-		base_hue = 0.10
-		has_chamfered_street_corners = true
-
-# --- Rich Residential ---
-class MansionClassic extends BuildingArchetype:
-	func _init() -> void:
-		archetype_id = "mansion_classic"
+		archetype_id = "generic_rich"
 		base_hue = 0.28
 		has_chamfered_street_corners = true
 
-class MansionModern extends BuildingArchetype:
+class GenericIndustrial extends BuildingArchetype:
 	func _init() -> void:
-		archetype_id = "mansion_modern"
-		base_hue = 0.33
-		has_chamfered_street_corners = true
-
-# --- Industrial ---
-class WarehouseBasic extends BuildingArchetype:
-	func _init() -> void:
-		archetype_id = "warehouse_basic"
+		archetype_id = "generic_industrial"
 		base_hue = 0.55
-		has_chamfered_street_corners = true
-
-class FactoryModern extends BuildingArchetype:
-	func _init() -> void:
-		archetype_id = "factory_modern"
-		base_hue = 0.60
-		has_chamfered_street_corners = true
-
-# --- Downtown ---
-class OfficeTower extends BuildingArchetype:
-	func _init() -> void:
-		archetype_id = "office_tower"
-		base_hue = 0.75
-		has_chamfered_street_corners = true
-
-class MixedUse extends BuildingArchetype:
-	func _init() -> void:
-		archetype_id = "mixed_use"
-		base_hue = 0.83
 		has_chamfered_street_corners = true

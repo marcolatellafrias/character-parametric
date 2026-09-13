@@ -1,27 +1,25 @@
 class_name ArchetypeDefinitions extends RefCounted
 
 # Registro distrito -> arquetipos. El estilo lo manda el DISTRITO, no la altura (ver NeighborhoodTypes):
-# un mismo distrito se construye igual sea de 2 pisos o de 20. Los dos arquetipos que antes eran de
-# "Downtown" pasaron a ser la cara densa de pobre (MixedUse, el conventillo con local abajo) y de rico
-# (OfficeTower); Downtown dejó de existir como distrito porque era una densidad, no una cultura.
+# un mismo distrito se construye igual sea de 2 pisos o de 20.
+#
+# HOY HAY UN SOLO ARQUETIPO GENÉRICO POR DISTRITO, y el sorteo por seed queda de todas formas: cuando un
+# distrito tenga varios (una fábrica y una iglesia en industrial, digamos), se agregan a su lista y nada
+# más cambia. Antes había ocho arquetipos que solo se diferenciaban en el tono del color de debug, que es
+# una diferencia que no existe para el jugador.
 static var NEIGHBORHOOD_ARCHETYPES = {
 	NeighborhoodTypes.District.POOR: [
-		BuildingArchetype.ShantyBasic,
-		BuildingArchetype.ShantyMakeshift,
-		BuildingArchetype.MixedUse,
+		BuildingArchetype.GenericPoor,
 	],
 	NeighborhoodTypes.District.RICH: [
-		BuildingArchetype.MansionClassic,
-		BuildingArchetype.MansionModern,
-		BuildingArchetype.OfficeTower,
+		BuildingArchetype.GenericRich,
 	],
 	NeighborhoodTypes.District.INDUSTRIAL: [
-		BuildingArchetype.WarehouseBasic,
-		BuildingArchetype.FactoryModern,
+		BuildingArchetype.GenericIndustrial,
 	],
 }
 
-# Selecciona (seed-based) uno de los arquetipos del distrito y lo instancia.
+# Selecciona (seed-based) uno de los archetypes del distrito y lo instancia.
 static func get_archetype_for_cluster(
 	neighborhood_type: NeighborhoodTypes.District,
 	cluster_seed: int

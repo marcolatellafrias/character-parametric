@@ -47,6 +47,9 @@ var arms_controller: ArmsController = null
 
 var _creative: bool = false
 var _debug_panel: DebugPanel = null
+## El identificador de piezas de la ciudad del F1 (ver CityInspector). Se usa con el panel CERRADO: el
+## panel libera el mouse y entonces no se puede apuntar.
+var _inspector: CityInspector = null
 var _map_overlay: CityMapOverlay = null
 var _weather_overlay: WeatherOverlay = null
 var _weather_tuner: WeatherTuner = null
@@ -621,6 +624,16 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Nave: paredes traslúcidas", func(): Ship.toggle_translucent_walls(get_tree()))
 	# Apaga la niebla Y el corte por distancia: sin lo segundo la ciudad se corta igual (ver CityDebugView).
 	_debug_panel.add_action("Acciones", "Neblina y corte por distancia", func(): CityDebugView.toggle_fog(get_tree()))
+
+	# Identificar lo que se apunta. Se prende acá y se USA con el panel cerrado, porque el panel libera el
+	# mouse y sin mouse capturado no se puede apuntar.
+	if is_instance_valid(_inspector):
+		_inspector.queue_free()
+	_inspector = CityInspector.new()
+	add_child(_inspector)
+	_inspector.setup(player_camera, char_rigidbody)
+	_debug_panel.add_toggle("Acciones", "Apuntar para identificar", false,
+		func(on: bool): _inspector.set_enabled(on))
 
 	# ── Arquetipos ──
 	# Dos acciones por arquetipo, y son distintas: "Ser" cambia TU personaje y además deja la P pegada
