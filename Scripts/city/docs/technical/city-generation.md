@@ -41,7 +41,9 @@ The **ground mesh** (`City._visualize_ground`) triangulates each graph face in a
 
 Everything placed **in-grid** does, because it all flows through one funnel: `BuildingModule`'s `get_region_vertices` / `get_core_vertices` / `get_cell_vertices` / `get_cell_position` (buildings, external sidewalks, delivery doors, stairs, floating sidewalks, bridge extremes, and future windows/AC/pipes). `DistortedGrid.get_cell_vertices` puts the grid's own vertices on the field too; the wave distortion stays purely horizontal.
 
-**Everything follows the ground, at every height.** In the funnel each corner gets the terrain height at its own position, and the height index adds a **pure vertical offset** on top. So floor N is floor 0 raised in Y: every floor parallel, every floor tilted alike. That is exactly how the visible mesh is built (`City._visualize_buildings`), and it is what makes a placed object land on the face you actually see. Neighbouring pieces agree by construction, since they sample the same continuous field at the same corners.
+**Everything follows the ground, at every height.** In the funnel each corner gets the terrain height at its own position, and the height index adds a **pure vertical offset** on top. So floor N is floor 0 raised in Y: every floor parallel, every floor tilted alike.
+
+The visible mesh goes through that same funnel. `City._visualize_buildings` asks it for the floor's **two** faces — `get_core_vertices(index)` at the bottom and at the top of the floor — instead of computing the top itself, and the building colliders and roof props do the same. So a placed object lands on the face you actually see **by construction, not by agreement**. Neighbouring pieces agree for the same reason: they sample the same continuous field at the same corners.
 
 **Not wired yet:** the **between-grids** placements — bridge middles and lane-volume planes — are still built at `y = 0` (`BlockGenerator`'s lane planes). Until they follow, a bridge's extremes ride the terrain while its middle stays at zero, and cars fly at the old height.
 
@@ -262,6 +264,10 @@ There were **two definitions of "where floor N is"**, and the mesh used the one 
 Measured on a four-storey cluster with 8 m of drop: **0.00 m at floor 0, 0.68 m at floor 1, 1.35 m from floor 2 up**, plus a mismatch in *tilt* — flat against sloped. Anything placed against a facade above floor 1 was landing on a surface that did not exist on screen. It masqueraded as a centimetre-scale alignment bug in bridges, and was chased as one for a while.
 
 **Resolved by making the relief independent of the height index**: `_ground_at(u, v)` returns the module's bilinear ground, full stop, and `_at_height` adds the vertical offset. Mesh and placement now agree on every floor, tilted or not, and the taper was deleted rather than completed.
+
+**And made structural rather than coincidental.** Agreeing was not enough on its own: the mesh still worked out its floor heights with its own arithmetic — `floor_base_y` for the base, a scalar extrusion for the top — so anything that made height depend on the index again would have desynced the two a second time. Both deductions are gone. `_visualize_buildings`, the building colliders and the roof props **ask the grid for the faces they need**, and `DebugUtil.get_skewed_cube_advanced_geometry_from_planes` builds the box between two given quads; the old base-plus-height form delegates to it, so there is exactly one chamfered-box constructor. A taper could now be reintroduced in `_ground_at` alone and the mesh would follow it on its own.
+
+Two approximations are left on purpose, both harmless while floors stay congruent: the cell-to-metre chamfer conversion is measured on the **bottom** quad and applied to both faces, and the cap normals are still hardcoded to ±Y, so a tilted roof is shaded as if it were level.
 
 ### Two constraints for whoever picks this up
 

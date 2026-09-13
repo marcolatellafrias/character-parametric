@@ -1746,10 +1746,18 @@ static func create_debug_sphere_print_int(value: int, color: Color, size: float 
 
 # Returns raw geometry (vertices, normals, colors, indices) for a skewed cube with
 # real-unit chamfers. No nodes created. Used for mesh merging.
-static func get_skewed_cube_advanced_geometry(
-	base_vertices: Array, height: float, color: Color, chamfers: Dictionary
+## UNA CAJA CHAFLANADA ENTRE DOS QUADS: el de arriba SE PIDE, no se deduce del de abajo.
+##
+## Es la forma general, y la que hay que usar cuando las dos caras salen de la grilla. Mientras un piso
+## sea el de abajo trasladado en Y las dos formas coinciden, pero si la altura vuelve a depender del
+## índice —un taper, un plinto, un setback— esta sigue cerrando y la otra no.
+##
+## Cada cara calcula sus chaflanes con SUS propios vértices, así que el contorno de arriba acompaña al
+## quad de arriba en vez de heredar la forma del de abajo.
+static func get_skewed_cube_advanced_geometry_from_planes(
+	bottom_vertices: Array, top_vertices: Array, color: Color, chamfers: Dictionary
 ) -> Dictionary:
-	if base_vertices.size() != 4:
+	if bottom_vertices.size() != 4 or top_vertices.size() != 4:
 		return {}
 
 	var vertices := PackedVector3Array()
@@ -1770,15 +1778,16 @@ static func get_skewed_cube_advanced_geometry(
 		var ch = chamfers.get(i, [0, 0])
 		var c1: float = ch[0] if ch.size() > 0 else 0.0
 		var c2: float = ch[1] if ch.size() > 1 else 0.0
-		var bv_i: Vector3    = base_vertices[i]
-		var bv_prev: Vector3 = base_vertices[(i - 1 + 4) % 4]
-		var bv_next: Vector3 = base_vertices[(i + 1) % 4]
-		var to_prev: Vector3 = (bv_prev - bv_i).normalized()
-		var to_next: Vector3 = (bv_next - bv_i).normalized()
-		bottom_contour.append(bv_i + to_prev * c1)
-		top_contour.append(bv_i    + to_prev * c1 + Vector3(0, height, 0))
-		bottom_contour.append(bv_i + to_next * c2)
-		top_contour.append(bv_i    + to_next * c2 + Vector3(0, height, 0))
+		var bv_i: Vector3 = bottom_vertices[i]
+		var b_prev: Vector3 = (bottom_vertices[(i - 1 + 4) % 4] - bv_i).normalized()
+		var b_next: Vector3 = (bottom_vertices[(i + 1) % 4] - bv_i).normalized()
+		var tv_i: Vector3 = top_vertices[i]
+		var t_prev: Vector3 = (top_vertices[(i - 1 + 4) % 4] - tv_i).normalized()
+		var t_next: Vector3 = (top_vertices[(i + 1) % 4] - tv_i).normalized()
+		bottom_contour.append(bv_i + b_prev * c1)
+		top_contour.append(tv_i + t_prev * c1)
+		bottom_contour.append(bv_i + b_next * c2)
+		top_contour.append(tv_i + t_next * c2)
 
 	var bc := Vector3.ZERO
 	for v in bottom_contour: bc += v
@@ -1796,9 +1805,9 @@ static func get_skewed_cube_advanced_geometry(
 	for i in range(top_contour.size()):
 		add_tri.call(tc, top_contour[(i + 1) % top_contour.size()], top_contour[i], n_top)
 
-	var center := Vector3.ZERO
-	for v in base_vertices: center += v
-	center /= 4.0
+	# El centro del SÓLIDO, para orientar las caras laterales hacia afuera pase lo que pase con las dos
+	# tapas. Antes era el centro del quad base, que alcanzaba solo porque el de arriba era su copia.
+	var center := (bc + tc) * 0.5
 
 	for i in range(bottom_contour.size()):
 		var ni := (i + 1) % bottom_contour.size()
@@ -1813,13 +1822,22 @@ static func get_skewed_cube_advanced_geometry(
 	return {vertices = vertices, normals = normals, colors = colors, indices = indices}
 
 
-# Grid-unit chamfer variant — converts cell counts to real distances, then delegates above.
-static func get_skewed_cube_advanced_grid_geometry(
-	base_vertices: Array, height: float, color: Color, chamfers: Dictionary, rows: int, columns: int
+## La misma caja, cuando la cara de arriba ES la de abajo trasladada en Y. Delega en la forma general
+## para que haya UN solo constructor de cajas chaflanadas, no dos que puedan divergir.
+static func get_skewed_cube_advanced_geometry(
+	base_vertices: Array, height: float, color: Color, chamfers: Dictionary
 ) -> Dictionary:
-	if base_vertices.size() != 4 or rows <= 0 or columns <= 0:
+	if base_vertices.size() != 4:
 		return {}
+	var top: Array = []
+	for v: Vector3 in base_vertices:
+		top.append(v + Vector3(0, height, 0))
+	return get_skewed_cube_advanced_geometry_from_planes(base_vertices, top, color, chamfers)
 
+
+# Grid-unit chamfer variant — converts cell counts to real distances, then delegates above.
+## Pasa chaflanes medidos en CELDAS a metros, usando las aristas del quad dado.
+static func _grid_chamfers_to_metres(quad: Array, chamfers: Dictionary, rows: int, columns: int) -> Dictionary:
 	var real_chamfers := {}
 	for i in range(4):
 		if not chamfers.has(i):
@@ -1830,9 +1848,9 @@ static func get_skewed_cube_advanced_grid_geometry(
 
 		var prev_i: int = (i - 1 + 4) % 4
 		var next_i: int = (i + 1) % 4
-		var bv_i: Vector3    = base_vertices[i]
-		var bv_prev: Vector3 = base_vertices[prev_i]
-		var bv_next: Vector3 = base_vertices[next_i]
+		var bv_i: Vector3    = quad[i]
+		var bv_prev: Vector3 = quad[prev_i]
+		var bv_next: Vector3 = quad[next_i]
 		var edge_prev: float = bv_i.distance_to(bv_prev)
 		var edge_next: float = bv_i.distance_to(bv_next)
 		var div_prev: int = rows if prev_i % 2 == 1 else columns
@@ -1841,5 +1859,28 @@ static func get_skewed_cube_advanced_grid_geometry(
 			c1_cells * edge_prev / float(div_prev),
 			c2_cells * edge_next / float(div_next)
 		]
+	return real_chamfers
 
-	return get_skewed_cube_advanced_geometry(base_vertices, height, color, real_chamfers)
+
+static func get_skewed_cube_advanced_grid_geometry(
+	base_vertices: Array, height: float, color: Color, chamfers: Dictionary, rows: int, columns: int
+) -> Dictionary:
+	if base_vertices.size() != 4 or rows <= 0 or columns <= 0:
+		return {}
+	return get_skewed_cube_advanced_geometry(base_vertices, height, color,
+		_grid_chamfers_to_metres(base_vertices, chamfers, rows, columns))
+
+
+## La variante de dos quads, con los chaflanes en celdas.
+##
+## La medida en metros sale de las aristas del quad de ABAJO y se aplica a las dos caras. Hoy es exacto
+## porque las dos son congruentes; si algún día dejaran de serlo, el de arriba conservaría el chaflán en
+## metros del de abajo en vez de recalcularlo en sus propias celdas.
+static func get_skewed_cube_advanced_grid_geometry_from_planes(
+	bottom_vertices: Array, top_vertices: Array, color: Color, chamfers: Dictionary,
+	rows: int, columns: int
+) -> Dictionary:
+	if bottom_vertices.size() != 4 or top_vertices.size() != 4 or rows <= 0 or columns <= 0:
+		return {}
+	return get_skewed_cube_advanced_geometry_from_planes(bottom_vertices, top_vertices, color,
+		_grid_chamfers_to_metres(bottom_vertices, chamfers, rows, columns))

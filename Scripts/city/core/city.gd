@@ -823,8 +823,6 @@ func _visualize_buildings() -> void:
 			continue
 
 		var cells_per_floor := block.get_cells_per_floor()
-		var building_cell_height := block.get_building_cell_height()
-		var building_height := cells_per_floor * building_cell_height
 		var clusters := block.get_all_clusters()
 		total_clusters += clusters.size()
 
@@ -838,7 +836,7 @@ func _visualize_buildings() -> void:
 			var merged_idxs   := PackedInt32Array()
 
 			for floor_idx in range(cluster_floors):
-				var floor_base_y := floor_idx * cells_per_floor * building_cell_height
+				var floor_base_index := floor_idx * cells_per_floor
 				var floor_color: Color
 				if alternate_floor_shading:
 					floor_color = base_color if floor_idx % 2 == 0 else base_color.darkened(1.0 - floor_shade_factor)
@@ -850,24 +848,25 @@ func _visualize_buildings() -> void:
 					if building_module == null:
 						continue
 
-					var core_vertices := building_module.get_core_vertices(0)
-					if core_vertices.size() != 4:
+					# LAS DOS CARAS DEL PISO SE PIDEN A LA GRILLA, ninguna se deduce sumando metros. Así
+					# la malla no puede quedar desfasada de lo que se apoya sobre ella: si la altura vuelve
+					# a depender del índice, el piso se deforma solo y las dos cosas siguen coincidiendo.
+					var floor_bottom := building_module.get_core_vertices(floor_base_index)
+					var floor_top := building_module.get_core_vertices(floor_base_index + cells_per_floor)
+					if floor_bottom.size() != 4 or floor_top.size() != 4:
 						continue
 
 					var core_info := building_module.get_core_info()
 					if core_info["width"] <= 0 or core_info["depth"] <= 0:
 						continue
 
-					for i in range(core_vertices.size()):
-						core_vertices[i].y += floor_base_y
-
 					var module_color := floor_color
 					if alternate_module_shading and (cell.x + cell.y) % 2 == 1:
 						module_color = floor_color.darkened(1.0 - floor_shade_factor)
 
-					var geo := DebugUtil.get_skewed_cube_advanced_grid_geometry(
-						core_vertices,
-						building_height,
+					var geo := DebugUtil.get_skewed_cube_advanced_grid_geometry_from_planes(
+						floor_bottom,
+						floor_top,
 						module_color,
 						building_module.get_chamfers(),
 						core_info["depth"],
@@ -931,36 +930,32 @@ func _visualize_building_colliders() -> void:
 			continue
 
 		var cells_per_floor = block.get_cells_per_floor()
-		var building_cell_height = block.get_building_cell_height()
-		var building_height = cells_per_floor * building_cell_height
 		var clusters = block.get_all_clusters()
 
 		for cluster in clusters:
 			var faces := PackedVector3Array()
 
 			for floor_idx in range(cluster.get_floor_count()):
-				var floor_base_y = floor_idx * cells_per_floor * building_cell_height
+				var floor_base_index = floor_idx * cells_per_floor
 
 				for cell in cluster.cells:
 					var building_module: BuildingModule = block.get_building_module(cell.x, cell.y, floor_idx)
 					if building_module == null:
 						continue
 
-					var core_vertices = building_module.get_core_vertices(0)
-					if core_vertices.size() != 4:
+					var floor_bottom = building_module.get_core_vertices(floor_base_index)
+					var floor_top = building_module.get_core_vertices(floor_base_index + cells_per_floor)
+					if floor_bottom.size() != 4 or floor_top.size() != 4:
 						continue
 
 					var core_info = building_module.get_core_info()
 					if core_info["width"] <= 0 or core_info["depth"] <= 0:
 						continue
 
-					for i in range(core_vertices.size()):
-						core_vertices[i].y += floor_base_y
-
 					# La MISMA geometría que dibuja el edificio, así no se recalcula nada.
-					var geo := DebugUtil.get_skewed_cube_advanced_grid_geometry(
-						core_vertices,
-						building_height,
+					var geo := DebugUtil.get_skewed_cube_advanced_grid_geometry_from_planes(
+						floor_bottom,
+						floor_top,
 						Color.WHITE,
 						building_module.get_chamfers(),
 						core_info["depth"],
@@ -1295,10 +1290,9 @@ func _visualize_sidewalk_matrices() -> void:
 
 ## Tanques de agua y techos inclinados sobre los edificios (ver RoofProps).
 ##
-## El quad del techo sale de `get_core_vertices(0)` MÁS el desplazamiento del piso, que es exactamente
-## como arma su malla `_visualize_buildings`. Pedirlo con el índice de altura da lo mismo: el relieve ya
-## no depende del índice, así que las dos rutas devuelven la misma superficie (ver EL RELIEVE en
-## BuildingModule).
+## El quad del techo se le PIDE a la grilla en la altura del último piso, igual que hace la malla en
+## `_visualize_buildings`. Nadie suma alturas a mano: si el relieve vuelve a depender del índice, el techo
+## se acomoda solo (ver EL RELIEVE en BuildingModule).
 ##
 ## Todo el bloque se fusiona en UNA malla: son miles de objetos chicos y una malla por objeto sería
 ## desastroso para las draw calls.
@@ -1313,7 +1307,6 @@ func _visualize_roof_props() -> void:
 		if block == null or block.get_distorted_grid() == null:
 			continue
 		var cells_per_floor := block.get_cells_per_floor()
-		var cell_height := block.get_building_cell_height()
 		var buffer := PropGeometry.new_buffer()
 
 		for cluster in block.get_all_clusters():
@@ -1321,18 +1314,16 @@ func _visualize_roof_props() -> void:
 				continue
 			var rng := RandomNumberGenerator.new()
 			rng.seed = block.cluster_seed + cluster.id * 7919
-			var roof_y := float(cluster.get_floor_count()) * float(cells_per_floor) * cell_height
+			var roof_index := cluster.get_floor_count() * cells_per_floor
 			var flat_cells: Array = []
 
 			for cell in cluster.cells:
 				var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
 				if module == null:
 					continue
-				var quad := module.get_core_vertices(0)
+				var quad := module.get_core_vertices(roof_index)
 				if quad.size() != 4:
 					continue
-				for i in range(quad.size()):
-					quad[i].y += roof_y
 
 				if rng.randf() < roof_shape_chance:
 					if rng.randf() < 0.5:
