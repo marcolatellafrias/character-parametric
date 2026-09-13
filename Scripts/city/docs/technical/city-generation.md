@@ -282,7 +282,7 @@ Every visualizer receives data with a name — *this* cluster, *this* cell, *thi
 var offset := merged_verts.size()
 var idx_from := merged_idxs.size()
 ...
-city_index.add(scope, Kind.BUILDING, cluster.id, cell.x, cell.y, floor_idx,
+city_index.add(scope, object_id, Kind.BUILDING, cluster.id, cell.x, cell.y, floor_idx,
     idx_from, merged_idxs.size(), geo.vertices)
 ```
 
@@ -295,6 +295,33 @@ What each piece stores: its **kind**, four **ids** whose meaning depends on the 
 
   **Measured in game: the ray does not return `face_index`** — presumably Jolt does not report it — so the **AABB path is the live one**. It is accurate in practice because a building piece *is* a box; the exact-triangle path stays in place, costing nothing, in case a future engine version provides the index.
 - **The triangle range is also what draws the outline**: the inspector copies exactly those triangles out of the city mesh. That is what makes it possible to outline **one cell** of a mesh that merges a whole block — the grabbable outline path works per `MeshInstance3D` and would light up everything.
+
+### Making a new system identifiable
+
+Everything below happens **inside the builder that bakes the geometry**. Nothing registers anywhere, and no interface is implemented — which is the point, but it also means there is no compiler error if a step is skipped. **The symptom of a missed step is the inspector saying "sin identificar" when you point at the thing.** That is the thing to check first.
+
+In `CityIndex`:
+
+1. Add a value to `Kind`, and its label to `KIND_NAMES` (same order).
+2. Add a branch to `describe()` turning the four ids back into a sentence. This is the *only* place the ids mean anything, and it is the only per-system logic in the whole mechanism.
+
+In the builder, per **mesh** (scope granularity follows mesh granularity — one per merged mesh):
+
+3. `var scope := city_index.new_scope()` before filling the buffer.
+4. `city_index.set_scope_mesh(scope, mesh_instance)` right after creating the `MeshInstance3D`. Skipping this costs the highlight, not the identification — the piece is named but nothing is drawn on it.
+
+Per **piece**, around the append that already exists:
+
+5. Capture the index range: `var idx_from := <indices>.size()` before, and pass `<indices>.size()` after.
+6. Get an object id — `City._object_for_cluster(cluster)` to belong to an existing building (this is how a roof joins its walls), or `City._new_object()` for something standalone.
+7. `city_index.add(scope, object_id, Kind.X, id_a, id_b, id_c, id_d, idx_from, idx_to, piece_verts)`, where `piece_verts` are just that piece's vertices — they are only used to compute its AABB, which is the path that actually resolves hits.
+
+On the **collider**:
+
+8. `body.set_meta(CityIndex.SCOPE_META, scope)`. Without this the ray stops on the object and the inspector has nothing to ask about. If the system has no collider it cannot be pointed at at all — which is deliberate: identity rides on the thing that is already mandatory for anything solid, so it cannot be silently forgotten.
+9. Build the collider's triangles **in the same order as the mesh's**. Only the `face_index` path depends on it, which is currently dormant, so getting it wrong degrades precision rather than breaking anything — but it is a contract worth keeping.
+
+⚠ Types: `<buffer>["indices"].size()` comes out of an untyped `Dictionary` and is therefore `Variant`. `:=` cannot infer from it and it cannot be passed to a typed parameter — declare `var idx_from: int = ...` explicitly. Warnings are errors in this project.
 
 **What a new system has to do**: record itself when it bakes, and nothing else. No resolver, no interface to implement, no registration. What stays system-specific is only *which ids it writes down* — data, not logic — plus one line in `describe()` to turn those ids back into words. A system that forgets shows up as "sin identificar" the first time it is pointed at.
 
