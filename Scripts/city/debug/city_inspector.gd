@@ -45,7 +45,7 @@ var _highlight: MeshInstance3D = null
 ## La última pieza resaltada, para no reconstruir la malla del contorno en cada frame.
 var _last_key := ""
 ## El texto de lo que se está mirando, en versión larga y plana para pegar en un chat. Se arma en cada
-## frame junto con el cartel, y F4 lo copia (ver `copy_to_clipboard`).
+## frame junto con el cartel, y el clic de la ruedita lo copia (ver `copy_to_clipboard`).
 var _report := ""
 ## Hasta cuándo el cartel avisa que se copió, en milisegundos de `Time.get_ticks_msec`.
 var _copied_until_ms := 0

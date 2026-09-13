@@ -166,18 +166,22 @@ func _input(event: InputEvent) -> void:
 		_weather_tuner.toggle()
 		return
 
-	# F3 prende/apaga el inspector y F4 copia al portapapeles lo que está mirando, para pegarlo en un chat.
-	# Van antes del corte de gameplay a propósito: se usan todo el tiempo, y el inspector ya funciona sin
-	# robar el mouse.
-	if is_instance_valid(_inspector) and event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_F3:
-			_set_inspector(not _inspector_on)
-			if is_instance_valid(_inspector_toggle):
-				_inspector_toggle.set_pressed_no_signal(_inspector_on)
-			return
-		if event.keycode == KEY_F4:
-			_inspector.copy_to_clipboard()
-			return
+	# F3 prende/apaga el inspector. Va antes del corte de gameplay a propósito: se usa todo el tiempo, y el
+	# inspector ya funciona sin robar el mouse.
+	if is_instance_valid(_inspector) and event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_F3:
+		_set_inspector(not _inspector_on)
+		if is_instance_valid(_inspector_toggle):
+			_inspector_toggle.set_pressed_no_signal(_inspector_on)
+		return
+
+	# LA RUEDITA PRESIONADA copia al portapapeles lo que se está mirando, para pegarlo en un chat. Es el mouse
+	# y no una tecla porque va con el gesto de apuntar: se mira y se hace clic. Solo se la come con el
+	# inspector prendido, así con el inspector apagado queda libre para cualquier otro uso.
+	if _inspector_on and is_instance_valid(_inspector) and event is InputEventMouseButton \
+			and event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
+		_inspector.copy_to_clipboard()
+		return
 
 	# F2, el mapa de al lado: a diferencia del panel, no bloquea el gameplay —se mira en movimiento—.
 	if is_instance_valid(_map_overlay) and event is InputEventKey and event.pressed and not event.echo \
@@ -656,7 +660,7 @@ func _setup_debug_panel() -> void:
 	add_child(_inspector)
 	_inspector.setup(player_camera, char_rigidbody)
 	_inspector.set_enabled(_inspector_on)
-	_inspector_toggle = _debug_panel.add_toggle("Acciones", "Apuntar para identificar (F3 · F4 copia)",
+	_inspector_toggle = _debug_panel.add_toggle("Acciones", "Apuntar para identificar (F3 · ruedita copia)",
 		_inspector_on, _set_inspector)
 
 	# ── Arquetipos ──
