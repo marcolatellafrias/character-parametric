@@ -435,6 +435,29 @@ func occupy(lo: Vector3i, size: Vector3i) -> void:
 	_occupied.append([lo, lo + size])
 
 
+## Las regiones ocupadas como cajas del MUNDO `[[min, max], ...]`: la envolvente de las ocho esquinas de cada
+## región, ya deformadas. Es lo que se proyecta sobre la matriz rígida de una superficie para saber qué
+## celdas suyas quedaron tapadas por algo deformable.
+func occupied_world_boxes() -> Array:
+	var out: Array = []
+	var fx := float(maxi(columns, 1))
+	var fz := float(maxi(rows, 1))
+	for box: Array in _occupied:
+		var lo: Vector3i = box[0]
+		var hi: Vector3i = box[1]
+		var wmin := Vector3(INF, INF, INF)
+		var wmax := Vector3(-INF, -INF, -INF)
+		for corner in 8:
+			var cx := hi.x if corner & 1 else lo.x
+			var cy := hi.y if corner & 2 else lo.y
+			var cz := hi.z if corner & 4 else lo.z
+			var p := point_at_f(float(cx) / fx, float(cz) / fz, float(cy))
+			wmin = Vector3(minf(wmin.x, p.x), minf(wmin.y, p.y), minf(wmin.z, p.z))
+			wmax = Vector3(maxf(wmax.x, p.x), maxf(wmax.y, p.y), maxf(wmax.z, p.z))
+		out.append([wmin, wmax])
+	return out
+
+
 ## Cuánto levanta el terreno en ese punto: el suelo del propio módulo, interpolado entre sus cuatro
 ## esquinas. NO depende de la altura, y esa es la definición (ver EL RELIEVE).
 func _ground_at(u: float, v: float) -> float:

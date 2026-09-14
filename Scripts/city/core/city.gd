@@ -163,6 +163,9 @@ extends Node3D
 ## Cada cuánto un CLUSTER de techo plano se lleva un tanque de agua. Bajo a propósito: repetido
 ## demasiado, el tanque deja de leerse como detalle y se vuelve textura.
 @export_range(0.0, 1.0) var water_tank_chance: float = 0.12
+## Hasta qué altura sobre la azotea llega su matriz rígida (ver RigidMatrix): lo que se apoye ahí no puede
+## ser más alto que esto.
+const ROOF_SURFACE_DEPTH_M := 10.0
 
 @export_group("Traversal Zones")
 @export var show_stair_zones: bool = false
@@ -1437,18 +1440,19 @@ func _visualize_roof_props() -> void:
 				# índice y la ocupación los resuelve el placer; acá solo se decide dónde y qué.
 				var tank_cell: Vector2i = flat_cells[rng.randi_range(0, flat_cells.size() - 1)]
 				var tank_module: BuildingModule = modules[tank_cell]
-				var size := ModulePlacer.cells_for(tank_module, RoofProps.TANK_DIAMETER_M,
-					RoofProps.tank_height_m(), RoofProps.TANK_DIAMETER_M)
-				var core := tank_module.get_core_info()
-				var core_w: int = core["width"]
-				var core_d: int = core["depth"]
-				# Centrado en el núcleo; si el núcleo es más chico que el tanque, no se pone.
-				if size.x <= core_w and size.z <= core_d:
-					var lo := Vector3i(int(core["min_x"]) + (core_w - size.x) / 2, roof_index,
-						int(core["min_z"]) + (core_d - size.z) / 2)
-					if placer.place(tank_module, lo, size, RoofProps.water_tank_unit(),
-							CityIndex.Kind.ROOF, cluster.id, RoofPlanner.Piece.TANK, -1, -1):
-						tanks += 1
+				# EL TANQUE ES RÍGIDO: va en la matriz rígida de la azotea, sin deformarse (ver RigidMatrix).
+				# La azotea es el quad del núcleo a la altura del último piso; lo que ya haya colocado en el
+				# módulo se proyecta sobre esa matriz como ocupado. Si el tanque no entra en las celdas que
+				# quedan —azotea angosta, torcida, o tapada— no se pone, y ese es todo el filtro.
+				var roof := RigidMatrix.from_quad(tank_module.get_core_vertices(roof_index),
+					ROOF_SURFACE_DEPTH_M, Vector3.UP)
+				for box: Array in tank_module.occupied_world_boxes():
+					roof.mark_world_box(box[0], box[1])
+				var size := roof.cells_for(RoofProps.TANK_DIAMETER_M, RoofProps.tank_height_m(),
+					RoofProps.TANK_DIAMETER_M)
+				if placer.place_rigid(roof, roof.centered(size), size, RoofProps.water_tank_unit(),
+						CityIndex.Kind.ROOF, cluster.id, RoofPlanner.Piece.TANK, -1, -1):
+					tanks += 1
 
 		if buffer["vertices"].is_empty():
 			continue

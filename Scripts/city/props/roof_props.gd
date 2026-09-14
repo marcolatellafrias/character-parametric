@@ -184,8 +184,8 @@ static func slope_unit(outward: int, h_low: float, h_high: float, wall_left: boo
 
 # ── TANQUE ──────────────────────────────────────────────────────────────────────────────────────
 
-## Las medidas del tanque en metros. La región donde se coloca sale de acá (ver `ModulePlacer.cells_for`), y
-## la mesh se diseña en proporciones del cubo unitario que esa región llena.
+## Las medidas del tanque en metros. Es un objeto RÍGIDO: la región donde se coloca sale de acá por
+## `RigidMatrix.cells_for`, y la mesh se diseña en proporciones del cubo unitario que esa región llena.
 const TANK_DIAMETER_M := 3.2
 const TANK_LEG_M := 1.6
 const TANK_BODY_M := 3.4

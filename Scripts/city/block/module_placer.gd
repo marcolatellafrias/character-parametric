@@ -76,6 +76,34 @@ func place(module: BuildingModule, lo: Vector3i, size: Vector3i, mesh: UnitMesh,
 	return true
 
 
+## LA MISMA INTERFAZ PARA UN OBJETO RÍGIDO: una región de celdas de una `RigidMatrix` y una mesh unitaria.
+## La diferencia es que acá la mesh va al mundo con una transformación AFÍN —el marco de la matriz—, sin
+## deformación alguna: es lo que hace que una ventana o un tanque conserven sus proporciones. Igual que
+## `place`, anota en el índice y ocupa; y devuelve false, sin colocar, si la región no entra o no está libre.
+func place_rigid(matrix: RigidMatrix, lo: Vector3i, size: Vector3i, mesh: UnitMesh,
+		kind: int, id_a: int, id_b: int, id_c: int, id_d: int) -> bool:
+	if not matrix.is_free(lo, size):
+		return false
+
+	var idx_from: int = _buffer["indices"].size()
+	var v_from: int = _buffer["vertices"].size()
+	var flo := Vector3(lo)
+	var fsize := Vector3(size)
+	for t in mesh.triangle_count():
+		var a := matrix.cell_to_world(flo + mesh.vertices[mesh.indices[t * 3]] * fsize)
+		var b := matrix.cell_to_world(flo + mesh.vertices[mesh.indices[t * 3 + 1]] * fsize)
+		var c := matrix.cell_to_world(flo + mesh.vertices[mesh.indices[t * 3 + 2]] * fsize)
+		PropGeometry.add_tri_facing(_buffer, a, b, c, matrix.dir_to_world(mesh.facings[t]), mesh.colors[t])
+
+	var idx_to: int = _buffer["indices"].size()
+	if idx_to == idx_from:
+		return false
+	var piece_verts: PackedVector3Array = _buffer["vertices"].slice(v_from)
+	_index.add(_scope, _object, kind, id_a, id_b, id_c, id_d, idx_from, idx_to, piece_verts)
+	matrix.occupy(lo, size)
+	return true
+
+
 ## Un punto del cubo unitario en el mundo. Pasa por `point_at_f` del módulo con las coordenadas del MÓDULO
 ## (no de la región), así la deformación es exactamente la de la grilla y no una aproximación por región.
 static func _to_world(module: BuildingModule, lo: Vector3i, size: Vector3i, p: Vector3,
@@ -84,14 +112,3 @@ static func _to_world(module: BuildingModule, lo: Vector3i, size: Vector3i, p: V
 	var v := (float(lo.z) + p.z * float(size.z)) / fz
 	var h := float(lo.y) + p.y * float(size.y)
 	return module.point_at_f(u, v, h)
-
-
-## Cuántas celdas ocupa una medida en METROS en cada eje del módulo, redondeado y nunca menos de 1. Para
-## los objetos que se dimensionan en metros, como el tanque, que es lo que hace que un tanque mida lo mismo
-## en un módulo chico que en uno grande.
-static func cells_for(module: BuildingModule, width_m: float, height_m: float, depth_m: float) -> Vector3i:
-	var cell := module.cell_metres()
-	return Vector3i(
-		maxi(1, roundi(width_m / maxf(cell.x, 0.001))),
-		maxi(1, roundi(height_m / maxf(module.cell_height, 0.001))),
-		maxi(1, roundi(depth_m / maxf(cell.y, 0.001))))

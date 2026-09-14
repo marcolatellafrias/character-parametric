@@ -439,17 +439,26 @@ Whoever places something thinks about two things: the **region** of building cel
 - **The index.** The piece is recorded in `CityIndex` with the placer's scope and object; the inspector names it with no extra work.
 - **Occupancy.** The region is marked on the module. If it was not free, `place` returns `false` and places nothing: two objects cannot overlap by oversight.
 
-Objects sized in metres (the tank) get their region from `ModulePlacer.cells_for(module, w, h, d)`, so a tank is the same size on a small module and a large one.
-
 **Occupancy is a list of boxes, not a 3D array.** A module is 80×80 cells by 32 per floor; a cell array per module would be tens of millions of entries per city — the reason `SidewalkMatrix` could never be built. Objects are few, so a list and a box-intersection test are enough.
 
-### The rigid matrix (designed, not built yet)
+### The rigid matrix: `RigidMatrix`
 
-- A **surface** is one flat face able to host rigid objects: the side of **one module on one floor**, the flat roof of a cell, the diagonal face of a chamfer. An object that would cross modules is, by definition, deformable.
-- Its matrix is built **from the surface alone**: an origin, three perpendicular axes, and a cell count chosen so cells come out as close to **cubes** as possible, at a target size well under a metre (starting constant: 0.25 m) for granularity. Depth projects outward from the surface and keeps the same cell size.
-- **Availability** comes from the deformable matrix by a conservative projection: the world-space box of each occupied deformable region is expressed in the rigid frame, and every rigid cell it touches is marked. That over-marks a little at chamfers (the frame is rotated 45°) — residual space, accepted.
-- **There is no threshold.** A narrow or skewed surface just yields a small matrix (2×16, or 0×16); an object that needs more cells than there are does not fit. That is the whole filter, and it is what fixes deformed tanks by construction.
+The same call, the other matrix ([rigid_matrix.gd](../../block/rigid_matrix.gd)):
+
+```gdscript
+var roof := RigidMatrix.from_quad(module.get_core_vertices(roof_index), depth_m, Vector3.UP)
+for box in module.occupied_world_boxes():
+    roof.mark_world_box(box[0], box[1])
+placer.place_rigid(roof, roof.centered(size), size, mesh, kind, ids…)   # -> bool
+```
+
+- A **surface** is one flat face able to host rigid objects: the side of **one module on one floor**, the flat roof of a cell, the diagonal face of a chamfer. An object that would cross modules is, by definition, deformable. Today only the flat roof is used (for the tank).
+- Its matrix is built **from the surface alone**: a frame `(u, n, v)` — `u` along the quad's first side, `n` the average normal oriented by an outward hint, `v = u × n` — and, inside the skewed quad, the largest **aligned** rectangle that fits (per axis, from the second-smallest to the second-largest of the four projected corners, which is orientation-independent). The cell count makes cells as close to **cubes** as possible at `TARGET_CELL_M` (0.25 m); depth projects along `n` with the same cell size, up to a depth the surface type sets (`City.ROOF_SURFACE_DEPTH_M`, 10 m for roofs).
+- **Availability** comes from the deformable matrix by a conservative projection: `BuildingModule.occupied_world_boxes()` gives the world envelope of every deformable region on the module, and `mark_world_box` marks every rigid cell that envelope touches. It over-marks a little where the frame is rotated relative to the region — residual space, accepted.
+- **`place_rigid`** maps the unit cube into the cell box **affinely**: nothing is deformed, which is what keeps a tank round and a window rectangular. It records the piece in the index and occupies the cells, like `place`.
+- **There is no threshold.** A narrow or skewed surface just yields a small matrix; `cells_for` rounds a metre size *up*, and an object that needs more cells than there are does not fit. That is the whole filter. Measured: 147 tanks placed deformed became **107** placed rigid — the 40 that vanished are the ones that were too stretched to look right.
 - All floors yield the same matrix, for free: each floor is floor 0 raised in Y (see [What rides on it](#what-rides-on-it)).
+- ⚠ **A roof is not planar.** It comes from a bilinear over the relief with independent heights at its four corners — a saddle. Measured over 6 519 roofs: corners deviate from the plane by **2.2 cm median, 6 cm at the 90th percentile, up to 17 cm**. The matrix uses one plane, centred among the four corners, so the deviation is halved at the corners and near zero in the middle, where a centred object sits; something placed at a corner can still float or sink by those centimetres against the roof mesh (which is itself a triangle fan, not the bilinear). It grows with terrain curvature and cell size. **Facades do not have this problem**: their top edge is the bottom edge raised, which is always a plane — measured 0.000001 m — so windows are unaffected.
 
 ### Order of generation
 
@@ -463,7 +472,7 @@ Deformables always go first, so occupancy flows one way. The bug this order exis
 
 Roof windows that protrude from a mansard skirt are deliberately out of scope: a rigid object crossing an inclined surface is the hardest case of all.
 
-**Status:** step 1 (`ModulePlacer`, validated by migrating the water tank) is done. Next: roof pieces as deformable objects on top of it, then the rigid matrix validated with the tank on the flat roof, then facades and windows.
+**Status:** steps 1–3 are done — `ModulePlacer`, the modular roofs on top of it, and `RigidMatrix` validated with the tank on the flat roof. With only the tank as a rigid object, the projection of deformable occupancy is exercised trivially (a flat roof has nothing on it); its first real test is facades: sidewalks and bridge extremes marking the wall, and doors and windows reading it. That is step 4.
 
 ---
 
