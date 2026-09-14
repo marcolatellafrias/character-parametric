@@ -102,6 +102,10 @@ interact={
 common/physics_ticks_per_second=240
 3d/physics_engine="Jolt Physics"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/SunshineClouds2/plugin.cfg")
+
 [rendering]
 
 anti_aliasing/quality/msaa=2

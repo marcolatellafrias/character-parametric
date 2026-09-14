@@ -1,20 +1,32 @@
-[gd_scene load_steps=30 format=3 uid="uid://px3s6dr8xxni"]
+[gd_scene load_steps=44 format=3 uid="uid://px3s6dr8xxni"]
 
 [ext_resource type="Material" uid="uid://s7fo7igsctb4" path="res://Materials/red.tres" id="3_ecetj"]
 [ext_resource type="Material" uid="uid://da33e5tos7dp0" path="res://Materials/blue.tres" id="4_oilx1"]
 [ext_resource type="Material" uid="uid://dnj4yx07gux3o" path="res://Materials/green.tres" id="5_4i7ud"]
 [ext_resource type="PackedScene" uid="uid://beur8wp4bookx" path="res://Scenes/weighted_box.tscn" id="7_h3puh"]
 [ext_resource type="PackedScene" uid="uid://bchdbfnnxbtq2" path="res://Scenes/package.tscn" id="7_k27g2"]
+[ext_resource type="RDShaderFile" uid="uid://dx1y5cye1m1hu" path="res://addons/SunshineClouds2/SunshineCloudsCompute.glsl" id="7_swxg5"]
+[ext_resource type="CompressedTexture3D" uid="uid://dei12lsgrjpyu" path="res://addons/SunshineClouds2/NoiseTextures/curl_noise_varied.tga" id="8_pwg1e"]
+[ext_resource type="CompressedTexture3D" uid="uid://b3uyfsp4in821" path="res://addons/SunshineClouds2/NoiseTextures/bluenoise_Dither.png" id="9_ienap"]
 [ext_resource type="Script" uid="uid://bln3x4144wxes" path="res://Scripts/city/core/city.gd" id="9_oilx1"]
 [ext_resource type="Script" uid="uid://bl2t0acm7uwql" path="res://Scripts/character_test.gd" id="10_4i7ud"]
+[ext_resource type="Texture2D" uid="uid://de2nsujnhdlg0" path="res://addons/SunshineClouds2/NoiseTextures/ExtraLargeScaleNoise.tres" id="10_e3lie"]
+[ext_resource type="Texture2D" uid="uid://g02m2ewpwusq" path="res://addons/SunshineClouds2/NoiseTextures/HeightGradient.tres" id="11_jr2p6"]
 [ext_resource type="Script" uid="uid://bby2e141ke1uw" path="res://Scripts/common/fps_graph.gd" id="11_v3boh"]
 [ext_resource type="Script" uid="uid://btuoiwrmahgt4" path="res://Scripts/city/entities/area_instantiator.gd" id="12_k27g2"]
+[ext_resource type="NoiseTexture3D" uid="uid://6ed3lvlpbqmg" path="res://addons/SunshineClouds2/NoiseTextures/LargeScaleNoise.tres" id="12_w21b8"]
+[ext_resource type="NoiseTexture3D" uid="uid://dxyewgt7o40m0" path="res://addons/SunshineClouds2/NoiseTextures/MediumScaleNoise.tres" id="13_4ehh5"]
 [ext_resource type="Script" uid="uid://c4x45acgat3q6" path="res://Scripts/net/character_spawner.gd" id="13_spawn"]
 [ext_resource type="PackedScene" uid="uid://huxsasishwaq" path="res://Models/final simplified with modifiers3.fbx" id="14_k27g2"]
 [ext_resource type="Script" uid="uid://dy2h5n5w1evpo" path="res://Scripts/ui/pause_menu.gd" id="14_pause"]
+[ext_resource type="RDShaderFile" uid="uid://cqhejbalsrvjp" path="res://addons/SunshineClouds2/SunshineCloudsPostCompute.glsl" id="14_xp8sf"]
 [ext_resource type="PackedScene" uid="uid://b5e5knhws3abc" path="res://Models/final simplified with modifiers4.fbx" id="15_6aqh6"]
+[ext_resource type="RDShaderFile" uid="uid://crfpk8ta4qxsk" path="res://addons/SunshineClouds2/SunshineCloudsPreCompute.glsl" id="15_urg4o"]
 [ext_resource type="PackedScene" uid="uid://cnacnp5avt0em" path="res://Models/character.glb" id="16_oxmns"]
+[ext_resource type="NoiseTexture3D" uid="uid://bnck2kxeg5bkg" path="res://addons/SunshineClouds2/NoiseTextures/SmallScaleNoise.tres" id="17_3y0tc"]
 [ext_resource type="Script" uid="uid://dhfmarxgqyivs" path="res://Scripts/city/core/city_fog.gd" id="17_fog"]
+[ext_resource type="Script" uid="uid://dnblgqynq1t7l" path="res://addons/SunshineClouds2/SunshineClouds.gd" id="30_clouds"]
+[ext_resource type="Script" uid="uid://djusduuxf0voj" path="res://addons/SunshineClouds2/SunshineCloudsDriver.gd" id="31_clouds_driver"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_k27g2"]
 albedo_color = Color(0.36026734, 0.21508548, 0.19387919, 1)
@@ -80,6 +92,57 @@ volumetric_fog_albedo = Color(0.9072337, 0.6909475, 0.34785485, 1)
 volumetric_fog_emission = Color(0.80489886, 0.5607987, 0.35002738, 1)
 volumetric_fog_sky_affect = 0.35
 adjustment_enabled = true
+
+[sub_resource type="CompositorEffect" id="CompositorEffect_clouds"]
+resource_local_to_scene = false
+resource_name = ""
+enabled = true
+effect_callback_type = 3
+access_resolved_color = true
+access_resolved_depth = true
+needs_motion_vectors = true
+needs_normal_roughness = false
+script = ExtResource("30_clouds")
+clouds_coverage = 0.572
+clouds_density = 19.875
+atmospheric_density = 0.047
+lighting_density = 0.0
+clouds_anisotropy = 0.057
+cloud_ambient_color = Color(1, 1, 1, 1)
+cloud_ambient_tint = Color(0.1276, 0.18766, 0.22, 1)
+atmosphere_color = Color(0.280153, 0.544962, 0.759771, 1)
+ambient_occlusion_color = Color(0.693375, 0.223129, 0, 0.466667)
+accumulation_decay = 0.8
+extra_large_noise_scale = 12000.0
+large_noise_scale = 4000.0
+medium_noise_scale = 1500.0
+small_noise_scale = 500.0
+clouds_sharpness = 0.5
+clouds_detail_power = 0.0
+curl_noise_strength = 150.0
+lighting_sharpness = 0.34
+cloud_floor = 350.0
+cloud_ceiling = 1100.0
+dither_noise = ExtResource("9_ienap")
+height_gradient = ExtResource("11_jr2p6")
+extra_large_noise_patterns = ExtResource("10_e3lie")
+large_scale_noise = ExtResource("12_w21b8")
+medium_scale_noise = ExtResource("13_4ehh5")
+small_scale_noise = ExtResource("17_3y0tc")
+curl_noise = ExtResource("8_pwg1e")
+dither_speed = 100.825
+blur_power = 1.0
+min_step_distance = 15.0
+max_step_distance = 40.0
+lighting_travel_distance = 1500.0
+pre_pass_compute_shader = ExtResource("15_urg4o")
+compute_shader = ExtResource("7_swxg5")
+post_pass_compute_shader = ExtResource("14_xp8sf")
+wind_direction = Vector3(1, 0, 1)
+directional_lights_data = Array[Vector4]([Vector4(0, 0.97876734, -0.20497437, 12), Vector4(1, 0.957, 0.902, 1.4)])
+
+[sub_resource type="Compositor" id="Compositor_clouds"]
+compositor_effects = Array[CompositorEffect]([SubResource("CompositorEffect_clouds")])
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_4i7ud"]
 radius = 0.25
@@ -177,7 +240,20 @@ weight = 40.0
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_bg2jp")
+compositor = SubResource("Compositor_clouds")
 script = ExtResource("17_fog")
+
+[node name="Clouds" type="Node" parent="." node_paths=PackedStringArray("tracked_directional_lights")]
+script = ExtResource("31_clouds_driver")
+update_continuously = true
+clouds_resource = SubResource("CompositorEffect_clouds")
+ambience_sample_environment = SubResource("Environment_bg2jp")
+tracked_directional_lights = [NodePath("../world/DirectionalLight3D")]
+tracked_directional_light_shadow_steps = Array[int]([12])
+extra_large_structures_wind_speed = 6.0
+large_structures_wind_speed = 4.0
+medium_structures_wind_speed = 2.0
+small_structures_wind_speed = 0.6
 
 [node name="CharacterSpawner" type="Node" parent="." node_paths=PackedStringArray("characters_root", "area_instantiator")]
 script = ExtResource("13_spawn")
