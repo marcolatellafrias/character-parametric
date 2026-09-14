@@ -316,31 +316,27 @@ func _flood_fill_section(start_x: int, start_z: int, visited: Dictionary, sectio
 			if not _is_separated_by_alleyway(current, neighbor):
 				queue.append(neighbor)
 
+## Si entre dos celdas VECINAS hay un callejón (o una calle) que las separa.
+##
+## ⚠ TIENE QUE SER SIMÉTRICA, y no lo era. El borde que comparten dos celdas contiguas está siempre en la
+## fila (o columna) de vértices del MAYOR de los dos índices: entre las filas z y z+1, el borde es la fila
+## z+1. La versión anterior usaba el menor cuando la segunda celda venía antes que la primera, o sea que
+## miraba el borde de MÁS ALLÁ de la celda de abajo. Medido sobre una ciudad: 6.222 de 11.460 pares de
+## vecinas daban distinto según el orden, y 148 edificios quedaban partidos por un callejón —con el techo
+## abierto donde creía tener una vecina propia que en realidad estaba del otro lado—.
 func _is_separated_by_alleyway(cell1: Vector2i, cell2: Vector2i) -> bool:
-	var diff = cell2 - cell1
-	
-	if diff.x == 0:
-		var min_z = min(cell1.y, cell2.y)
-		var x = cell1.x
-		var edge_z = min_z if diff.y < 0 else min_z + 1
-		
-		var edge_type = path_generator.get_path_edge_type_vertices(
-			x, edge_z, x + 1, edge_z, 0
-		)
-		
-		return _is_alleyway_type(edge_type)
-	
-	elif diff.y == 0:
-		var min_x = min(cell1.x, cell2.x)
-		var z = cell1.y
-		var edge_x = min_x if diff.x < 0 else min_x + 1
-		
-		var edge_type = path_generator.get_path_edge_type_vertices(
-			edge_x, z, edge_x, z + 1, 0
-		)
-		
-		return _is_alleyway_type(edge_type)
-	
+	var diff := cell2 - cell1
+
+	if diff.x == 0 and absi(diff.y) == 1:
+		var edge_z := maxi(cell1.y, cell2.y)
+		return _is_alleyway_type(path_generator.get_path_edge_type_vertices(
+			cell1.x, edge_z, cell1.x + 1, edge_z, 0))
+
+	if diff.y == 0 and absi(diff.x) == 1:
+		var edge_x := maxi(cell1.x, cell2.x)
+		return _is_alleyway_type(path_generator.get_path_edge_type_vertices(
+			edge_x, cell1.y, edge_x, cell1.y + 1, 0))
+
 	return false
 
 func _is_alleyway_type(edge_type: int) -> bool:
@@ -420,8 +416,11 @@ func _get_unassigned_neighbors(cell: Vector2i, unassigned: Array) -> Array[Vecto
 		Vector2i(cell.x - 1, cell.y)
 	]
 	
+	# UN EDIFICIO NO CRECE A TRAVÉS DE UN CALLEJÓN. Que la celda sea de la misma sección no alcanza: una
+	# sección en forma de U tiene celdas pegadas en la grilla con el callejón en medio, y sin esta condición
+	# el edificio las juntaba igual.
 	for candidate in candidates:
-		if candidate in unassigned:
+		if candidate in unassigned and not _is_separated_by_alleyway(cell, candidate):
 			neighbors.append(candidate)
 	
 	return neighbors

@@ -1349,12 +1349,18 @@ func _visualize_roof_props() -> void:
 	var tanks := 0
 	var roofs := 0
 	var roof_bodies := 0
+	## Edificios cuyo estilo sorteado no cerró como mosaico y quedaron planos, contados por motivo (ver
+	## RoofPlanner.layout). Cualquier número acá es un caso a mirar.
+	var roof_fallbacks := {}
+	## Piezas que el placer rechazó aunque el planner las validó: si no es 0, hay un bug entre los dos.
+	var roof_rejected := 0
 
 	for face_idx in generator.get_all_block_faces():
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
 		if block == null or block.get_distorted_grid() == null:
 			continue
 		var cells_per_floor := block.get_cells_per_floor()
+		var cell_height := block.get_building_cell_height()
 		var buffer := PropGeometry.new_buffer()
 		# Un scope por MANZANA, porque los techos se fusionan en una malla por manzana (los edificios, en
 		# cambio, tienen una malla cada uno). La granularidad del scope sigue a la de la malla.
@@ -1379,54 +1385,70 @@ func _visualize_roof_props() -> void:
 			# decidía por celda, cuando la forma de un techo es del edificio entero.
 			var pitch := 2.2
 			var flat_chance := 0.35
+			var skirt := 8.0
 			if cluster.archetype != null:
 				pitch = cluster.archetype.roof_pitch_height
 				flat_chance = cluster.archetype.flat_roof_chance
-			var plan: Dictionary = RoofPlanner.plan(block, cluster, flat_chance, pitch)
-			var style: int = plan.get("style", RoofPlanner.Style.FLAT)
-			var heights: Dictionary = plan.get("heights", {})
-			var roof_color := RoofProps.color_for_style(style)
-			var own := {}
-			for c: Vector2i in cluster.cells:
-				own[c] = true
+				skirt = cluster.archetype.roof_skirt_building_cells
+			var pitch_cells := maxi(1, roundi(pitch / cell_height))
+			var plan: Dictionary = RoofPlanner.layout(block, cluster, flat_chance, pitch_cells,
+				roundi(skirt), roof_index)
+			var pieces: Array = plan["pieces"]
+			var reason: String = plan["fallback"]
+			if not reason.is_empty():
+				roof_fallbacks[reason] = int(roof_fallbacks.get(reason, 0)) + 1
 
+			var modules := {}
 			for cell in cluster.cells:
 				var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
-				if module == null:
-					continue
-				var quad := module.get_core_vertices(roof_index)
-				if quad.size() != 4:
-					continue
+				if module != null:
+					modules[cell] = module
 
-				if heights.is_empty():
-					# Azotea plana, la única que acepta tanque. Se guarda CON su celda para que el tanque
-					# que caiga acá también pueda anotarse en el índice.
-					flat_cells.append({"quad": quad, "cell": cell})
-					continue
-				# Tipos a mano: lo que sale de un Dictionary sin tipar es Variant, y ni `:=` puede inferir
-				# de ahí ni se puede pasar a un parámetro tipado sin que sea una llamada insegura.
-				var idx_from: int = buffer["indices"].size()
-				var v_from: int = buffer["vertices"].size()
-				RoofProps.roof_from_field(buffer, quad, cell, heights, own, roof_color)
-				var idx_to: int = buffer["indices"].size()
-				var piece_verts: PackedVector3Array = buffer["vertices"].slice(v_from)
-				city_index.add(scope, object_id, CityIndex.Kind.ROOF, cluster.id, cell.x, cell.y, 0,
-					idx_from, idx_to, piece_verts)
+			# TODO SE COLOCA POR LA MISMA INTERFAZ que cualquier otro objeto deformable (ver ModulePlacer): el
+			# planner solo dice qué pieza va en qué región, y el placer deforma, anota en el índice y ocupa.
+			var placer := ModulePlacer.new(city_index, scope, object_id, buffer)
+
+			if pieces.is_empty():
+				# Azotea plana, la única que acepta tanque.
+				for cell in cluster.cells:
+					if modules.has(cell):
+						flat_cells.append(cell)
+			else:
 				roofs += 1
+				var style: int = plan["style"]
+				for p: Dictionary in pieces:
+					# Tipos a mano: lo que sale de un Dictionary sin tipar es Variant, y no se puede pasar a
+					# un parámetro tipado sin que sea una llamada insegura.
+					var piece_cell: Vector2i = p["cell"]
+					if not modules.has(piece_cell):
+						continue
+					var piece_module: BuildingModule = modules[piece_cell]
+					var lo: Vector3i = p["lo"]
+					var size: Vector3i = p["size"]
+					var mesh: UnitMesh = p["mesh"]
+					if not placer.place(piece_module, lo, size, mesh, CityIndex.Kind.ROOF, cluster.id,
+							int(p["piece"]), int(p["side"]), style):
+						# El planner valida el mosaico antes; si igual algo no entra, es un bug del planner.
+						roof_rejected += 1
 
 			# El tanque va sobre una celda que haya quedado PLANA: sobre un techo a dos aguas no se apoya.
 			if not flat_cells.is_empty() and rng.randf() < water_tank_chance:
-				var pick: Dictionary = flat_cells[rng.randi_range(0, flat_cells.size() - 1)]
-				var tank_quad: Array = pick["quad"]
-				var tank_cell: Vector2i = pick["cell"]
-				var tank_idx_from: int = buffer["indices"].size()
-				var tank_v_from: int = buffer["vertices"].size()
-				if RoofProps.water_tank(buffer, tank_quad):
-					var tank_idx_to: int = buffer["indices"].size()
-					var tank_verts: PackedVector3Array = buffer["vertices"].slice(tank_v_from)
-					city_index.add(scope, object_id, CityIndex.Kind.ROOF, cluster.id,
-						tank_cell.x, tank_cell.y, 1, tank_idx_from, tank_idx_to, tank_verts)
-					tanks += 1
+				# COLOCADO POR LA INTERFAZ: una región de celdas y una mesh unitaria. La deformación, el
+				# índice y la ocupación los resuelve el placer; acá solo se decide dónde y qué.
+				var tank_cell: Vector2i = flat_cells[rng.randi_range(0, flat_cells.size() - 1)]
+				var tank_module: BuildingModule = modules[tank_cell]
+				var size := ModulePlacer.cells_for(tank_module, RoofProps.TANK_DIAMETER_M,
+					RoofProps.tank_height_m(), RoofProps.TANK_DIAMETER_M)
+				var core := tank_module.get_core_info()
+				var core_w: int = core["width"]
+				var core_d: int = core["depth"]
+				# Centrado en el núcleo; si el núcleo es más chico que el tanque, no se pone.
+				if size.x <= core_w and size.z <= core_d:
+					var lo := Vector3i(int(core["min_x"]) + (core_w - size.x) / 2, roof_index,
+						int(core["min_z"]) + (core_d - size.z) / 2)
+					if placer.place(tank_module, lo, size, RoofProps.water_tank_unit(),
+							CityIndex.Kind.ROOF, cluster.id, RoofPlanner.Piece.TANK, -1, -1):
+						tanks += 1
 
 		if buffer["vertices"].is_empty():
 			continue
@@ -1463,8 +1485,8 @@ func _visualize_roof_props() -> void:
 			container.add_child(body)
 			roof_bodies += 1
 
-	print("[Visualizer] Objetos de techo: %d techos inclinados · %d tanques · %d colliders"
-		% [roofs, tanks, roof_bodies])
+	print("[Visualizer] Objetos de techo: %d edificios con techo inclinado · %d tanques · %d colliders · piezas rechazadas: %d · planos por no cerrar: %s"
+		% [roofs, tanks, roof_bodies, roof_rejected, str(roof_fallbacks)])
 
 # ============================================
 # VISUALIZACIÓN DE DELIVERY DOORS

@@ -200,8 +200,10 @@ func describe(i: int) -> Dictionary:
 		Kind.BUILDING:
 			lines.append("edificio %d · celda (%d, %d) · piso %d" % [_id_a[i], _id_b[i], _id_c[i], _id_d[i]])
 		Kind.ROOF:
-			var what := "tanque de agua" if _id_d[i] == 1 else "techo"
-			lines.append("%s de edificio %d · celda (%d, %d)" % [what, _id_a[i], _id_b[i], _id_c[i]])
+			# a = edificio, b = pieza, c = lado del contorno (o -1), d = estilo (o -1 en un tanque).
+			var style := "" if _id_d[i] < 0 else " de techo %s" % RoofPlanner.style_name(_id_d[i])
+			var side := "" if _id_c[i] < 0 else " · lado %d" % _id_c[i]
+			lines.append("%s%s · edificio %d%s" % [RoofPlanner.piece_name(_id_b[i]), style, _id_a[i], side])
 		Kind.BRIDGE:
 			lines.append("puente %d · manzanas %d y %d · piso %d" % [_id_a[i], _id_b[i], _id_c[i], _id_d[i]])
 		_:

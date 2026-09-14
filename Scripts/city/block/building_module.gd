@@ -387,8 +387,52 @@ func get_chamfer_kinds() -> Dictionary:
 ## La altura es el relieve MÁS un desplazamiento vertical puro, que es exactamente como la malla arma
 ## cada piso. Por eso lo que se coloque acá cae sobre la cara que se ve, en cualquier piso.
 func _at_height(u: float, v: float, height_index: int) -> Vector3:
+	return point_at(u, v, height_index)
+
+
+## Un punto de la CELDA ENTERA —`u` y `v` de 0 a 1 sobre su cuadrilátero, no sobre el núcleo— a
+## `height_index` celdas de alto. Es la vía para colocar geometría libre dentro del módulo: se arma en
+## coordenadas normalizadas y sale deformada con la grilla e inclinada con el terreno, igual que los techos.
+func point_at(u: float, v: float, height_index: int) -> Vector3:
+	return point_at_f(u, v, float(height_index))
+
+
+## Lo mismo con la altura en celdas FRACCIONARIA: lo que necesita una mesh deformada dentro de una región,
+## cuyos vértices caen entre dos índices.
+func point_at_f(u: float, v: float, height_cells: float) -> Vector3:
 	var flat := GridHelper.bilinear_interpolation(_vertices_3d_to_2d(), u, v)
-	return Vector3(flat.x, float(height_index) * cell_height + _ground_at(u, v), flat.y)
+	return Vector3(flat.x, height_cells * cell_height + _ground_at(u, v), flat.y)
+
+
+## Cuánto mide una celda de edificio en metros, en `x` (a lo largo de `u`) y en `z` (a lo largo de `v`),
+## promediando los dos lados del módulo. Una celda no mide lo mismo en toda la ciudad.
+func cell_metres() -> Vector2:
+	var along_u := (vertices[0].distance_to(vertices[1]) + vertices[3].distance_to(vertices[2])) * 0.5
+	var along_v := (vertices[0].distance_to(vertices[3]) + vertices[1].distance_to(vertices[2])) * 0.5
+	return Vector2(along_u / float(maxi(columns, 1)), along_v / float(maxi(rows, 1)))
+
+
+# ── OCUPACIÓN ───────────────────────────────────────────────────────────────────────────────────
+# Qué regiones de la matriz ya tienen algo. Es una lista de cajas y no una matriz 3D de celdas porque un
+# módulo tiene 80×80 celdas por 32 de alto por piso: una matriz por módulo sería decenas de millones de
+# entradas por ciudad (ver SidewalkMatrix, que por eso nunca se pudo construir). Los objetos son pocos, así
+# que una lista y una prueba de intersección alcanzan.
+var _occupied: Array[Array] = []
+
+
+## Si la región `[lo, lo + size)` no toca nada ya colocado.
+func is_free(lo: Vector3i, size: Vector3i) -> bool:
+	var hi := lo + size
+	for box: Array in _occupied:
+		var o_lo: Vector3i = box[0]
+		var o_hi: Vector3i = box[1]
+		if lo.x < o_hi.x and hi.x > o_lo.x and lo.y < o_hi.y and hi.y > o_lo.y and lo.z < o_hi.z and hi.z > o_lo.z:
+			return false
+	return true
+
+
+func occupy(lo: Vector3i, size: Vector3i) -> void:
+	_occupied.append([lo, lo + size])
 
 
 ## Cuánto levanta el terreno en ese punto: el suelo del propio módulo, interpolado entre sus cuatro

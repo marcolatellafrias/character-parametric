@@ -44,6 +44,8 @@ Changes every week, randomly. Same for all players for the whole week (Buenos Ai
 
 - The **city spawn seed/parameters** (see [city-generation.md](../technical/city-generation.md) for how the city is generated from it).
 
+⚠ **The seed written in a scene is not the one used.** `City.use_world_seed` is on in `Demo.tscn`, and it overwrites `generation_seed` with `WorldSeeds.weekly_seed()` before generating — the `generation_seed = 12345` stored in the scene is never read. So the city **changes every week**, and two runs produce the same city only if they run in the same week. When comparing a game session against a headless run, check the seed rather than assume it: the inspector prints the real one (`seed: …` in what it copies), and so does the F1 panel.
+
 ---
 
 ## Daily bulletin

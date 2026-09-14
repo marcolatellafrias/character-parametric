@@ -37,6 +37,13 @@ var has_chamfered_street_corners: bool = false
 ## lado) un valor de 2 m da un techo de inclinación creíble sin volverse una carpa.
 var roof_pitch_height: float = 2.2
 
+## Cuánto se mete para adentro el faldón del techo francés, en CELDAS DE EDIFICIO (80 por módulo, ~0,15-0,2 m
+## cada una). Va en celdas y no en una fracción del módulo para que el faldón tenga la misma medida sobre un
+## edificio angosto que sobre uno ancho: el que antes medía media celda por construcción dejaba sin tapa a
+## todo edificio de una celda de ancho. Con 2,2 m de alto y ~1,4 m de faldón queda la pendiente empinada de
+## una mansarda.
+var roof_skirt_building_cells: float = 8.0
+
 ## Probabilidad de que el techo salga PLANO del todo, aun cuando su forma permita aguas. No es un caso de
 ## descarte: los techos planos dan variedad al conjunto y son los únicos donde se apoya un tanque de agua.
 var flat_roof_chance: float = 0.35

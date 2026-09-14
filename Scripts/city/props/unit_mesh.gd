@@ -1,0 +1,112 @@
+class_name UnitMesh
+extends RefCounted
+
+## UNA MESH DISEÑADA EN EL CUBO UNITARIO — `x`, `y`, `z` de 0 a 1 — sin saber dónde va a ir.
+##
+## Es la mitad "qué" de la interfaz de colocación: el diseñador arma el objeto acá, en un cubo abstracto, y
+## `ModulePlacer` lo deforma para que calce en una región de celdas de un módulo. Quien diseña la mesh nunca
+## piensa en metros, ni en grillas, ni en terreno: solo en proporciones dentro del cubo.
+##
+## Cada triángulo lleva su color y hacia dónde MIRA (en el espacio del cubo). Se guarda la dirección y no
+## el orden de los vértices porque la deformación puede espejar ejes, y el orden solo se puede decidir
+## después, en el mundo (ver `PropGeometry.add_tri_facing`). Los constructores de acá calculan esa
+## dirección con un punto interior del sólido, igual que `PropGeometry.add_tri`.
+
+const DEFAULT_SEGMENTS := 12
+
+var vertices := PackedVector3Array()
+## Tres índices por triángulo.
+var indices := PackedInt32Array()
+## Un color por triángulo.
+var colors := PackedColorArray()
+## Hacia dónde mira cada triángulo, en el espacio del cubo.
+var facings := PackedVector3Array()
+
+
+func triangle_count() -> int:
+	return indices.size() / 3
+
+
+## Un triángulo mirando hacia afuera de `inside`.
+func add_tri(a: Vector3, b: Vector3, c: Vector3, inside: Vector3, color: Color) -> void:
+	var centroid := (a + b + c) / 3.0
+	var facing := centroid - inside
+	if facing.length_squared() <= 0.0:
+		facing = (b - a).cross(c - a)
+	add_tri_facing(a, b, c, facing, color)
+
+
+## Un triángulo mirando hacia `facing`.
+func add_tri_facing(a: Vector3, b: Vector3, c: Vector3, facing: Vector3, color: Color) -> void:
+	var base := vertices.size()
+	vertices.append(a); vertices.append(b); vertices.append(c)
+	indices.append(base); indices.append(base + 1); indices.append(base + 2)
+	colors.append(color)
+	facings.append(facing.normalized())
+
+
+func add_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, inside: Vector3, color: Color) -> void:
+	add_tri(a, b, c, inside, color)
+	add_tri(a, c, d, inside, color)
+
+
+func add_quad_facing(a: Vector3, b: Vector3, c: Vector3, d: Vector3, facing: Vector3, color: Color) -> void:
+	add_tri_facing(a, b, c, facing, color)
+	add_tri_facing(a, c, d, facing, color)
+
+
+# ── PRIMITIVAS ──────────────────────────────────────────────────────────────────────────────────
+# Todas reciben su caja dentro del cubo unitario: `lo` y `hi` de 0 a 1 en los tres ejes.
+
+## Una caja alineada a los ejes del cubo.
+func add_box(lo: Vector3, hi: Vector3, color: Color) -> void:
+	var inside := (lo + hi) * 0.5
+	var p000 := Vector3(lo.x, lo.y, lo.z); var p100 := Vector3(hi.x, lo.y, lo.z)
+	var p110 := Vector3(hi.x, lo.y, hi.z); var p010 := Vector3(lo.x, lo.y, hi.z)
+	var p001 := Vector3(lo.x, hi.y, lo.z); var p101 := Vector3(hi.x, hi.y, lo.z)
+	var p111 := Vector3(hi.x, hi.y, hi.z); var p011 := Vector3(lo.x, hi.y, hi.z)
+	add_quad(p000, p100, p110, p010, inside, color)  # abajo
+	add_quad(p001, p101, p111, p011, inside, color)  # arriba
+	add_quad(p000, p100, p101, p001, inside, color)  # -z
+	add_quad(p010, p110, p111, p011, inside, color)  # +z
+	add_quad(p000, p010, p011, p001, inside, color)  # -x
+	add_quad(p100, p110, p111, p101, inside, color)  # +x
+
+
+## Un cilindro con el eje en Y, con la elipse inscrita en la caja.
+func add_cylinder(lo: Vector3, hi: Vector3, color: Color, segments: int = DEFAULT_SEGMENTS) -> void:
+	var cx := (lo.x + hi.x) * 0.5
+	var cz := (lo.z + hi.z) * 0.5
+	var rx := (hi.x - lo.x) * 0.5
+	var rz := (hi.z - lo.z) * 0.5
+	var inside := Vector3(cx, (lo.y + hi.y) * 0.5, cz)
+	var bottom_centre := Vector3(cx, lo.y, cz)
+	var top_centre := Vector3(cx, hi.y, cz)
+	for i in segments:
+		var a1 := TAU * float(i) / float(segments)
+		var a2 := TAU * float(i + 1) / float(segments)
+		var b1 := Vector3(cx + cos(a1) * rx, lo.y, cz + sin(a1) * rz)
+		var b2 := Vector3(cx + cos(a2) * rx, lo.y, cz + sin(a2) * rz)
+		var t1 := Vector3(b1.x, hi.y, b1.z)
+		var t2 := Vector3(b2.x, hi.y, b2.z)
+		add_quad(b1, b2, t2, t1, inside, color)
+		add_tri(bottom_centre, b1, b2, inside, color)
+		add_tri(top_centre, t1, t2, inside, color)
+
+
+## Un cono con el eje en Y, apoyado en la elipse inscrita en la base de la caja y con la punta arriba.
+func add_cone(lo: Vector3, hi: Vector3, color: Color, segments: int = DEFAULT_SEGMENTS) -> void:
+	var cx := (lo.x + hi.x) * 0.5
+	var cz := (lo.z + hi.z) * 0.5
+	var rx := (hi.x - lo.x) * 0.5
+	var rz := (hi.z - lo.z) * 0.5
+	var inside := Vector3(cx, lo.y + (hi.y - lo.y) * 0.25, cz)
+	var apex := Vector3(cx, hi.y, cz)
+	var base_centre := Vector3(cx, lo.y, cz)
+	for i in segments:
+		var a1 := TAU * float(i) / float(segments)
+		var a2 := TAU * float(i + 1) / float(segments)
+		var b1 := Vector3(cx + cos(a1) * rx, lo.y, cz + sin(a1) * rz)
+		var b2 := Vector3(cx + cos(a2) * rx, lo.y, cz + sin(a2) * rz)
+		add_tri(b1, b2, apex, inside, color)
+		add_tri(base_centre, b1, b2, inside, color)

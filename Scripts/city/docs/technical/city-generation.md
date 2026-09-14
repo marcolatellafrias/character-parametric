@@ -13,7 +13,9 @@ Technical, code-level breakdown of the procedural city generator. Three subsyste
 2. **Districts and heights** — Each graph face gets a **district** (what it is made of) and, from a separate set of patches, a **height tier** (how many floors). Two independent axes; see [Districts and heights](#districts-and-heights).
 3. **Blocks** — Each face gets a `BlockGenerator`. The edges of the block know which street type borders them, reserving an empty margin (street offset) that visually forms the street.
 4. **Internal alleyways** — Inside each block, `PathGenerator` traces small and big alleyways in the `DistortedGrid`.
-5. **Clusters** — Non-alleyway cells are grouped into `BuildingCluster` via flood-fill, then subdivided (1–8 cells each).
+5. **Clusters** — Non-alleyway cells are grouped into `BuildingCluster` via flood-fill, then subdivided (1–8 cells each). Both steps ask `BlockGenerator._is_separated_by_alleyway`, and **a building never grows across an alley** — belonging to the same section is not enough, since a U-shaped section has grid-adjacent cells with the alley between them.
+
+   ⚠ That test **must be symmetric**, and it was not: the shared edge of two adjacent cells is always at the *larger* index, but the old code took the smaller one whenever the second cell came first, so it looked at the far edge of the lower cell. Measured on one city: 6 222 of 11 460 neighbour pairs answered differently depending on order, and **148 buildings straddled an alley** — with their roofs left open where they believed a neighbour cell of their own continued. Fixing it left streets, alleys and blocks untouched (alleys come from `PathGenerator`, earlier and with its own seed) but regrouped buildings in 129 of 191 blocks, because cluster subdivision draws its random numbers in order.
 6. **Block hearts** — Interior clusters (not on the block perimeter) have a chance of becoming "hearts": their `floor_count` is set to 0, creating empty courtyards inside the block.
 7. **Building modules** — Each cell in each cluster is a `BuildingModule` per floor. Each module knows what borders its 4 sides and shrinks its core area inward (facade/alleyway offset), forming the actual building footprint.
 8. **Sidewalk zones** — The non-core cells of each building module define sidewalk zones: external (between the buildable zone boundary and the building face) and internal (alleyway offset areas between buildings). See [sidewalks.md](sidewalks.md).
@@ -222,53 +224,80 @@ Each `BuildingCluster` is assigned a **building archetype** + seed. A building w
 
 ## Roofs — the planner decides, the props execute
 
-A roof is a **height field over the building's footprint**, not a set of pieces. One style is chosen per cluster, and the style is a way of measuring a distance.
+A roof is **a small catalogue of modular pieces placed on the building grid through `ModulePlacer`** — the same interface every deformable object uses (see [Placing objects](#placing-objects--deformable-and-rigid)). One style is chosen per building.
 
-- `RoofPlanner` ([roof_planner.gd](../../building/roof_planner.gd)) is a **pure function** of the cluster's footprint, its edge types, its chamfers and the seed. It returns `{"style", "heights"}`, where `heights` maps a **half-cell grid vertex** to metres, and touches no geometry.
-- `RoofProps` ([roof_props.gd](../../props/roof_props.gd)) walks one cell and emits the four half-cell patches that belong to it. `City._visualize_roof_props` decides nothing — it executes.
+- `RoofPlanner` ([roof_planner.gd](../../building/roof_planner.gd)) is a **pure function** of the cluster's footprint, its edge types, its chamfers and the seed. `layout()` returns `{"style", "pieces", "fallback"}`: each piece is a module, a region of building cells, a `UnitMesh`, and which catalogue piece it is. It touches no mesh.
+- `RoofProps` ([roof_props.gd](../../props/roof_props.gd)) is the catalogue: each piece authored **once**, in the unit cube, in a canonical orientation, and rotated in quarter turns for the other three.
+- `City._visualize_roof_props` decides nothing — it calls `placer.place()` per piece.
 
-### Why a field and not a piece per cell
+### The catalogue
 
-**A cell cannot decide on its own.** The first version picked a piece for each cell from its local neighbourhood, and produced *broken roofs*: on a 1×5 strip the middle cells got a gable, whose high point is the **middle of the shared edge**, and the end cells got a hipped corner, whose high point is a **vertex**. Two neighbouring pieces did not agree on the profile of the edge they share, so they could not meet — visible on nearly every roof as a diagonal mess at the ends of an otherwise clean ridge.
+| Piece | Where it goes | Geometry in the unit cube |
+|---|---|---|
+| **top** | the flat inside | a quad at `y = 1` |
+| **skirt** | each straight outline run, `s` cells deep | plane rising from the outer edge to `y = 1` |
+| **corner** | `s × s` at a convex vertex | `min(x, z)` — two triangles meeting on the hip |
+| **inner corner** | `s × s` at a reflex vertex | `max(x, z)` — the valley where two skirts meet |
+| **chamfer** | the ochava's own square | three skirts (two edges, the cut) and the remaining top |
+| **slope** | one band of a gable or shed, per module | plane from `h_low` to `h_high`, with optional walls on three sides |
+| **tank** | a flat roof | legs, cylinder, cone |
 
-With a field, height lives at grid **vertices** and neighbouring cells read the *same* vertices, so continuity is structural rather than something to get right. The grid is **half a cell** because a ridge has to be able to fall in the middle of a cell, which cell-corner vertices cannot express.
+Pieces carry **numeric parameters** — heights at their edges, where a chamfer's cut falls — rather than existing in one variant per size. That is what lets a skirt that crosses three modules be placed as three skirts that meet exactly, and what keeps a gable's ridge at the same height whatever the building's width (if each band rose a fixed step, a four-cell-wide building would get a nine-metre roof). It is still a finite catalogue placed by rule; the pieces just know how to stretch.
 
-Cells also meet exactly in the world, not only in the field: the edge between two cells of one cluster is `NORMAL`, whose core offset is **0**, and on a shared edge each cell's bilinear reduces to the same linear interpolation over the two shared vertices.
+### Everything is reasoned in whole building cells
 
-### Drainage priority
+The block's building grid is one integer lattice: cell `(cx, cz)` contributes its 80×80 cells from `cx·80`. Cores of two cells in one building touch on an exact shared edge (offset 0 on a `NORMAL` edge), so the footprint is a **union of integer rectangles**, and its outline always lies on cell lines. No polygons, no insets, no clipping:
 
-`Exposure`, best first: **street > alley > lower neighbour > blocked neighbour > inner**. The shed style needs one direction for the whole building, and it takes the best-scoring edge of any of its cells. Water never runs into the building's own footprint, and never at a neighbour that is equal or taller — at a shorter one it may, which is why the neighbour's `floor_count` is read and not just its presence. The edge type is already resolved in `BuildingModule.edge_types` (`FACADE`/`BOUNDARY` = street, `SMALL`/`BIG` = alley, `NORMAL` = something attached), and `get_cluster_for_cell` separates own footprint from a neighbour.
+1. **Vertices.** Every rectangle corner is classified by which of its four surrounding cells are inside the union: 1 → convex corner, 3 → reflex corner, 2 adjacent → straight, 2 diagonal → two footprints touching at a point, which is rejected.
+2. **Runs.** Each rectangle side minus the intervals covered by other rectangles across the line — plain 1-D interval subtraction — gives the outline runs. Each run is shortened at its ends by whatever the corner piece there occupies (`s`, or the chamfer square, or nothing at a reflex or straight vertex) and becomes a skirt.
+3. **Tops.** Each core rectangle minus every piece that intersects it, as rectangles.
+4. **Validation.** No two regions overlap and none crosses a module line; otherwise the roof is flat and counted **by reason** in the visualizer's print (`planos por no cerrar`). The placer's own occupancy check is the second line of defence — `piezas rechazadas` must stay at 0, and any other value means the planner and the placer disagree.
+
+Cutting pieces where the exposure changes, not in fixed quadrants, is what makes the awkward cases fall out: the strip where a neighbour's core does not reach (different setbacks on the same side) is just a shorter skirt plus an inner corner, produced by the same walk.
+
+**One chamfer piece covers both kinds of chamfer**, because they differ only in what each flank faces:
+
+- A **street** chamfer is the ochava at a block corner: both flanks face the street, so each is a skirt, and the cut's skirt meets them at mitre points.
+- An **alley** chamfer sits at the dead end of an alley, on a cell whose two neighbours are attached but set back from the alley by 18 cells — the same 18 as the cut, so the diagonal runs exactly from one step to the other. Each flank faces a cell of the **same building**, and what arrives there is the neighbour's skirt, at top height at the far corner: the flank is a **valley** (the neighbour's plane meeting the cut's plane on a hip-valley line), not a skirt. The piece already contains that valley, so the step's reflex vertex is struck off and gets no inner-corner piece of its own.
+
+The region is `cut + s` per axis — where the neighbour's skirt reaches — which is whole cells without rounding since both are integers. The piece's points are computed in cells in its canonical frame and passed as fractions; `chamfer_unit` takes each flank's mode. Strips have every chamfer region subtracted as rectangles rather than being shortened at the vertex, which is what lets a chamfer consume a whole run: both legs of an alley notch live inside its piece. The cut can differ per axis (`c1 ≠ c2`), and a quarter turn swaps a piece's x and z, so cuts are crossed for odd rotations.
+
+This replaced an approximation that ignored alley chamfers and set a convex corner piece there: the roof overhung the ochavated wall at every alley dead end, visibly.
+
+### Gable and shed
+
+Only on a footprint whose cores form a **single rectangle** (they fill their bounding box). The ridge runs along the **longer** side measured in **world metres** — cells are not square. Each half (or the whole depth, for a shed) is split into bands at every module line in both axes, and each band is a slope piece with its start and end heights as fractions of the half's depth. Walls go on the pieces that touch the rectangle's short ends (the gable ends) and, for a shed, on the high long side. The shed drops toward the more exposed long side (`Exposure`: street > alley > lower neighbour > blocked neighbour, sampled over the cells along that side).
 
 ### What each footprint may become
 
 | Footprint | Options (the seed picks) |
 |---|---|
-| Single cell | shed · gable · French (a four-sided pyramid, at this size) |
+| Single cell | shed · gable |
 | 2×2 | gable · French |
 | Strip (N×1) | gable · shed · French |
 | Rectangle (N×M) | gable · French |
 | L | French |
 | Irregular | — |
 
-The three styles are three distance measurements over the field:
+A single cell never gets French. If the cell footprint is rectangular but the cores are not (different setbacks on a side leave a step), shed and gable are removed from the options.
 
-- **Shed** — a linear ramp from one edge of the footprint to the opposite one. A function of a single coordinate, so it is continuous over any shape.
-- **Gable** — a tent whose ridge sits at the centre of the **footprint**, not of each cell, running along its longer side. A gable spread over four cells therefore reads as one roof with no special case. It asks for a **rectangular** footprint, because its tent is measured across the footprint's width and a stepped shape changes that width from one row to the next.
-- **French** — a mansard: `min(distance to the boundary, cap)`. It gains its full height in the first ring and is flat above, which is the steep-skirt-plus-flat-top roof of French architecture. The distance comes from a multi-source BFS from the boundary vertices, so it knows nothing of axes — which is why it is the one style that turns cleanly through an L or any odd shape, and why on a single cell it comes out as a four-sided pyramid.
+**Chamfer decides before footprint.** `BuildingModule.chamfer_kinds` records what each chamfer is a corner *of*: a **street** chamfer → French or flat (flat on a single cell); **alley-only** → flat; both → street wins.
 
-The `L` row therefore offers only French. A gable that turns a corner would need per-arm ridges that meet in a valley; the mansard already turns without seams, so that is deliberately not built yet.
+**Flat is an option, not a fallback.** It is in every row on purpose: flat roofs give the skyline variety, and they are the only ones a water tank sits on. Irregular footprints have no options for now, although the walk above works on any union of rectangles, courtyards included, so they could take French once wanted.
 
-**Chamfer decides before footprint**, because it speaks of position in the block rather than shape. `BuildingModule.chamfer_kinds` records what each chamfer is a corner *of*: a **street** chamfer is the block's noble ochava → French or flat; an **alley-only** chamfer is an odd back shape → flat; with both, **street wins**. Without that record the two are indistinguishable, since they produce identical geometry.
+**The skirt is measured in building cells** (`BuildingArchetype.roof_skirt_building_cells`, 8 by default, ~1.4 m) so it is the same size on a narrow building as on a wide one; with the 2.2 m pitch that is the steep slope of a mansard.
 
-**Flat is an option, not a fallback.** It is in almost every row above on purpose: flat roofs give the skyline variety, and they are the only ones a water tank sits on — a French roof's raised inner cap does not count. An irregular footprint has no options, so it lands flat for now; that is the row to extend first.
+### Superseded — three earlier designs
 
-### The pieces
+Recorded because each failure is easy to reintroduce.
 
-There is only one now: `RoofProps.roof_from_field` walks a cell and emits its four half-cell patches, taking each corner's height straight from the field. There is no per-shape function left, which is the point — a shape is a field, not a mesh.
+- **A piece per cell chosen from the cell's neighbourhood** produced broken roofs: neighbouring pieces disagreed on the profile of the edge they share. *A cell cannot decide on its own.*
+- **A height field on a half-cell lattice** fixed continuity but invented a resolution the grid does not have: the French skirt was half a cell by construction, so a building one cell wide had no room for a top and looked exactly like a gable (**651 of 929**); a fixed diagonal per patch left a false chamfer at two corners of every roof; and it ignored real chamfers, so roofs overhung the ochava.
+- **A procedural outline (polygon union + inset) clipped along cell lines** got the shapes right, but with many spurious lines and it was not the modular interface every other object was going to use — anyone placing something had to think in silhouettes.
 
-**Skirts** (the vertical wall under a patch edge) go only where the roof ends against open air *and* is still raised there, which is exactly a gable's end wall. Never toward the inside of the footprint, where the neighbour's roof continues, and never on a French roof, whose boundary drops to zero.
+### In the index
 
-Colour is per style so the three can be told apart while this is debug, with French deliberately set apart in slate blue-grey — the real material of a mansard.
+One record **per piece**: ids are `a` = building, `b` = piece (`RoofPlanner.Piece`), `c` = outline side or −1, `d` = style or −1. The inspector names them — "faldon de techo frances · edificio 16 · lado 3". Colour is per style, with French set apart in slate blue-grey — the real material of a mansard — and vertical walls in the side colour.
 
 ---
 
@@ -297,6 +326,8 @@ What each piece stores: its **kind**, four **ids** whose meaning depends on the 
 - **The triangle range is also what draws the outline**: the inspector copies exactly those triangles out of the city mesh. That is what makes it possible to outline **one cell** of a mesh that merges a whole block — the grabbable outline path works per `MeshInstance3D` and would light up everything.
 
 ### Making a new system identifiable
+
+**If the object is placed through `ModulePlacer`, steps 5 and 7 below happen inside `place()`** — the placer is built with the scope and object id and records the piece itself. What remains yours is the per-mesh part (a scope and its mesh, the object id, the collider stamp). See [Placing objects](#placing-objects--deformable-and-rigid).
 
 Everything below happens **inside the builder that bakes the geometry**. Nothing registers anywhere, and no interface is implemented — which is the point, but it also means there is no compiler error if a step is skipped. **The symptom of a missed step is the inspector saying "sin identificar" when you point at the thing.** That is the thing to check first.
 
@@ -384,6 +415,55 @@ Two approximations are left on purpose, both harmless while floors stay congruen
 
 - The field must derive from the **world seed**. Traffic assumes every peer generates identical geometry.
 - Steps 3 and 7 are one subject: give the lane volumes the field, then copy the bridge planner's shape — an immutable route plus a Y profile frozen at spawn — into a `GroundPlanner`. Its one new rule is that a ground-hugging car may not duck *downwards* to avoid a bridge, because the ground is there.
+
+---
+
+## Placing objects — deformable and rigid
+
+Everything that goes on a building falls into one of two kinds, and the kind decides which matrix it lives in. **Both matrices exist from the start**; neither is derived from the objects in the other.
+
+- **Deformable** — can be stretched without looking wrong, *and* has to line up with its neighbours across modules: roof pieces, columns, bridge extremes, pipes, and **walkways** — a building's floating sidewalk and the bridge pathway it meets are the clearest case, since the whole point of them is to join. It lives in the **building grid** of the module (80×80 cells per module, 32 per floor), which is bent by the distorted grid and tilted by the terrain. It has no distortion threshold, ever — that is what deformable means.
+- **Rigid** — must keep its proportions: windows, doors, water tanks, balconies. It lives in a **rigid matrix** projected from a flat surface, in that surface's own orthonormal frame, so it is never deformed at all. The city's distortion only changes how *many* rigid cells a surface yields.
+
+### The deformable interface: `ModulePlacer`
+
+One call, for roofs and for everything after them ([module_placer.gd](../../block/module_placer.gd)):
+
+```gdscript
+placer.place(module, lo, size, mesh, kind, id_a, id_b, id_c, id_d)  # -> bool
+```
+
+Whoever places something thinks about two things: the **region** of building cells it occupies (`lo` and `size` in module cells; `y` is the height index) and the **mesh**, authored in the unit cube (`UnitMesh`, [unit_mesh.gd](../../props/unit_mesh.gd)): x, y, z from 0 to 1, with a colour and an outward direction per triangle. Nothing else — never silhouettes, never neighbours, never slopes. The rest happens inside `place`, and that is the part that cannot be forgotten:
+
+- **Deformation.** Every vertex goes through `BuildingModule.point_at_f` with the *module's* coordinates (not the region's), so the bend is exactly the grid's, and two pieces in neighbouring modules that share an edge coincide there — on a shared edge both bilinears reduce to the same line. Face orientation is measured in the world after deformation, because the bend can mirror an axis.
+- **The index.** The piece is recorded in `CityIndex` with the placer's scope and object; the inspector names it with no extra work.
+- **Occupancy.** The region is marked on the module. If it was not free, `place` returns `false` and places nothing: two objects cannot overlap by oversight.
+
+Objects sized in metres (the tank) get their region from `ModulePlacer.cells_for(module, w, h, d)`, so a tank is the same size on a small module and a large one.
+
+**Occupancy is a list of boxes, not a 3D array.** A module is 80×80 cells by 32 per floor; a cell array per module would be tens of millions of entries per city — the reason `SidewalkMatrix` could never be built. Objects are few, so a list and a box-intersection test are enough.
+
+### The rigid matrix (designed, not built yet)
+
+- A **surface** is one flat face able to host rigid objects: the side of **one module on one floor**, the flat roof of a cell, the diagonal face of a chamfer. An object that would cross modules is, by definition, deformable.
+- Its matrix is built **from the surface alone**: an origin, three perpendicular axes, and a cell count chosen so cells come out as close to **cubes** as possible, at a target size well under a metre (starting constant: 0.25 m) for granularity. Depth projects outward from the surface and keeps the same cell size.
+- **Availability** comes from the deformable matrix by a conservative projection: the world-space box of each occupied deformable region is expressed in the rigid frame, and every rigid cell it touches is marked. That over-marks a little at chamfers (the frame is rotated 45°) — residual space, accepted.
+- **There is no threshold.** A narrow or skewed surface just yields a small matrix (2×16, or 0×16); an object that needs more cells than there are does not fit. That is the whole filter, and it is what fixes deformed tanks by construction.
+- All floors yield the same matrix, for free: each floor is floor 0 raised in Y (see [What rides on it](#what-rides-on-it)).
+
+### Order of generation
+
+```
+1. deformable structure   buildings, roof pieces, walkways, bridge extremes, pipes   → mark building-grid occupancy
+2. surfaces               facades, flat roofs, skirts                     → each builds its rigid matrix
+3. rigid objects          doors, windows, tanks, balconies                 → read projected availability
+```
+
+Deformables always go first, so occupancy flows one way. The bug this order exists to make impossible has already happened once: **doors (rigid) placed straight through floating sidewalks (deformable)**, because nothing recorded that the sidewalk was there. With the sidewalk marking building-grid occupancy and the facade's rigid matrix reading it, that door simply has no free cells to go in.
+
+Roof windows that protrude from a mansard skirt are deliberately out of scope: a rigid object crossing an inclined surface is the hardest case of all.
+
+**Status:** step 1 (`ModulePlacer`, validated by migrating the water tank) is done. Next: roof pieces as deformable objects on top of it, then the rigid matrix validated with the tank on the flat roof, then facades and windows.
 
 ---
 
