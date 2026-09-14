@@ -503,10 +503,17 @@ Tanks dropped from 271 because the decision moved from the cell to the **cluster
 
 Building modules can have **chamfered corners** — rectangular regions cut from the core at vertices where streets or alleyways meet. Chamfers are computed per-module in `BuildingModule._calculate_chamfers()`.
 
-### Types
+### Types — and why they are opposite situations
 
 - **Street corner chamfers**: applied at DistortedGrid vertices where two streets intersect. Controlled by `BuildingArchetype.get_street_corner_chamfer_value()` (currently 16 cells, 100% probability).
 - **Alleyway corner chamfers**: applied at vertices where two alleyway edges meet. The chamfer size equals the alleyway offsets of the two edges.
+
+The two are the same cut in the module's geometry but **sit in opposite situations**, and everything placed at a chamfered corner has to know which:
+
+- A street chamfer is **convex**: the ochava of a block corner. Both flanks of the cut face the street — open air on both sides.
+- An alley chamfer is **concave**: it sits at the **dead end of an alley**, on the corner of a cell whose two neighbours are attached to it but set back from the alley. Because the cut equals the alley setback (both 18 cells), the diagonal runs exactly from one neighbour's step to the other's. Both flanks of the cut face **attached building**, so the cut is the inner corner of a notch, not the outer corner of a mass.
+
+`BuildingModule.chamfer_kinds` records which kind each chamfer is; the geometry alone cannot tell them apart. The roof planner uses it to decide style (see [Roofs](#roofs--the-planner-decides-the-props-execute)) and, more importantly, the chamfer *piece* changes shape with the situation: skirts on both flanks for the convex case, valleys meeting the neighbours' skirts for the concave one. Treating the concave case as convex — the first version did — puts a full outer corner where the wall is cut, visibly overhanging the notch at every alley dead end. Anything else that lands on a chamfered corner (future windows, pipes, balconies) faces the same distinction.
 
 ### Geometry
 
