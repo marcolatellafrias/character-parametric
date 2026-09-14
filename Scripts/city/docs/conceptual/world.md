@@ -14,6 +14,8 @@ Universal for all players, based on the real Buenos Aires timezone. The whole pl
 
 ## Climate
 
+**Not in v1.** The first version ships a single fixed weather — no cycle, no changing states; what follows is the design for later. How that one weather is built and tuned is in [city-generation.md](../technical/city-generation.md#the-weather-fog-sky-ambient-screen-tint-and-clouds-are-one-decision).
+
 One day has exactly **one climate at a time**, chosen by that day's seed and announced in the [daily bulletin](#daily-bulletin).
 
 | Climate | Probability | Effect |

@@ -3,7 +3,7 @@ extends Node
 signal settings_changed
 
 @export_group("Fog")
-@export var fog_start_distance: float = 50.0:
+@export_range(0.0, 600.0, 5.0) var fog_start_distance: float = 0.0:
 	set(value):
 		fog_start_distance = value
 		settings_changed.emit()
@@ -16,14 +16,14 @@ signal settings_changed
 ## 350 m son los de la build del 25/6, elegidos a ojo y confirmados despues: con niebla FUERTE (que este
 ## juego necesita, o el mundo se ve monotono) ese radio no se siente encerrado. Se probo 800 y se sintio
 ## peor, no mejor: lo que abre el mundo es el color de la niebla, no su alcance.
-@export var render_distance: float = 350.0:
+@export_range(100.0, 2000.0, 10.0) var render_distance: float = 1400.0:
 	set(value):
 		render_distance = value
 		settings_changed.emit()
 
 ## Ancho MINIMO del anillo donde las piezas entran fundiendose, justo antes de que se dejen de dibujar.
 ## El ancho real lo da `fade_ring_for()`, que lo escala con la distancia —ver ahi por que—.
-@export var fade_ring: float = 20.0:
+@export_range(0.0, 200.0, 1.0) var fade_ring: float = 33.0:
 	set(value):
 		fade_ring = value
 		settings_changed.emit()

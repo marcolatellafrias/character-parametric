@@ -55,7 +55,6 @@ var _inspector: CityInspector = null
 var _inspector_on := false
 var _inspector_toggle: CheckButton = null
 var _map_overlay: CityMapOverlay = null
-var _weather_overlay: WeatherOverlay = null
 var _weather_tuner: WeatherTuner = null
 
 ## Punto de entrada único cuando el BoneInstantiator (re)construye el esqueleto del jugador
@@ -153,14 +152,8 @@ func _input(event: InputEvent) -> void:
 		_debug_panel.toggle()
 		return
 
-	# F5 abre la lista de climas, que se elige a mano con los numeros. Como el mapa de F2, no bloquea el
-	# gameplay: comparar dos iluminaciones es alternarlas parado en el mismo lugar.
-	if is_instance_valid(_weather_overlay) and event is InputEventKey and event.pressed and not event.echo \
-			and event.keycode == KEY_F5:
-		_weather_overlay.toggle()
-		return
-
-	# F6, el afinador del clima. Este SI libera el mouse (se anota en UIState): hay que arrastrar sliders.
+	# F6, el afinador del clima y las nubes. Este SI libera el mouse (se anota en UIState): hay que
+	# arrastrar sliders.
 	if is_instance_valid(_weather_tuner) and event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode == KEY_F6:
 		_weather_tuner.toggle()
@@ -629,11 +622,6 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_info("Daily seed",  str(WorldSeeds.daily_seed()))
 	_debug_panel.add_info("Red", _net_status_text())
 
-	# ── Clima ── (F5 recorre la misma rueda)
-	for weather_id: String in WeatherPresets.ids():
-		var label: String = WeatherPresets.get_preset(weather_id)["name"]
-		_debug_panel.add_action("Clima", label, func(): CityFog.apply_to_tree(get_tree(), weather_id))
-
 	# ── Acciones ──
 	_debug_panel.add_action("Acciones", "Toggle creative (V)",      func(): _set_creative(not _creative))
 	_debug_panel.add_action("Acciones", "Toggle ragdoll (G)",       _toggle_ragdoll)
@@ -711,14 +699,7 @@ func _setup_debug_panel() -> void:
 	_map_overlay.setup(char_rigidbody)
 	add_child(_map_overlay)
 
-	# ── Clima ── la lista de F5, para elegir a mano sin frenar el juego.
-	if is_instance_valid(_weather_overlay):
-		_weather_overlay.queue_free()
-	_weather_overlay = WeatherOverlay.new()
-	add_child(_weather_overlay)
-	_weather_overlay.setup()
-
-	# Y el afinador, para tocar a mano lo que el preset trae fijo (F6).
+	# ── Clima ── el afinador de F6: clima, alcance de la niebla y nubes.
 	if is_instance_valid(_weather_tuner):
 		_weather_tuner.queue_free()
 	_weather_tuner = WeatherTuner.new()

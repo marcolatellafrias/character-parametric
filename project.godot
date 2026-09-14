@@ -27,6 +27,10 @@ NetSpawner="*res://Scripts/net/net_spawner.gd"
 
 window/size/mode=2
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/SunshineClouds2/plugin.cfg")
+
 [file_customization]
 
 folder_colors={
@@ -101,10 +105,6 @@ interact={
 
 common/physics_ticks_per_second=240
 3d/physics_engine="Jolt Physics"
-
-[editor_plugins]
-
-enabled=PackedStringArray("res://addons/SunshineClouds2/plugin.cfg")
 
 [rendering]
 
