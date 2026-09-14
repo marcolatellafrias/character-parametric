@@ -27,6 +27,17 @@ var _object: int
 var _buffer: Dictionary
 
 
+## Un buffer de malla vacío: `{vertices, normals, colors, indices}`, triángulos planos sin compartir vértices.
+## Es el formato que `City._bake_placed` convierte en `ArrayMesh`.
+static func new_buffer() -> Dictionary:
+	return {
+		"vertices": PackedVector3Array(),
+		"normals": PackedVector3Array(),
+		"colors": PackedColorArray(),
+		"indices": PackedInt32Array(),
+	}
+
+
 func _init(index: CityIndex, scope: int, object: int, buffer: Dictionary) -> void:
 	_index = index
 	_scope = scope

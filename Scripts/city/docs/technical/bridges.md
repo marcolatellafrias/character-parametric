@@ -23,10 +23,10 @@ The edge's tier is the **taller of its two blocks** (`get_height_for_edge`), and
 
 ## Bridge structure — two placement systems
 
-A bridge has two distinct placement systems (see "Object placement — two systems" in [city-generation.md](city-generation.md#object-placement--two-systems)):
+A bridge has two parts placed in two different ways (see [Connectors between grids](city-generation.md#connectors-between-grids)):
 
-- **Middle part** (between-grids): spans between the two facade faces across the street. Uses `create_skewed_cube_from_planes` with both faces from `FacadeHelper.facade_span_quad()` — sampled from the building grid at the span's end cells and at **both** height indices, so the connector inherits the facade's torsion instead of imposing a horizontal plane of its own.
-- **Extremes** (in-grid): extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Placed through `GridPlacer`, so they occupy the building module.
+- **Middle part** (between grids): spans between the two facade faces across the street. Uses `get_skewed_cube_from_planes_geometry` with both faces from `FacadeHelper.facade_span_quad()` — sampled from the building grid at the span's end cells and at **both** height indices, so the connector inherits the facade's torsion instead of imposing a horizontal plane of its own.
+- **Extremes** (in grid): extend from the buildable zone boundary inward through the sidewalk to the building face. Placed through `GridPlacer`, so they occupy the building module.
 
 ## Bridge parts — middle (from-planes)
 
@@ -37,7 +37,7 @@ A bridge has two distinct placement systems (see "Object placement — two syste
 | Pathway | Yellow | = base | 1 cell | Full bridge span |
 | Railing | Cyan | 1 cell × 2 | `railing_height` cells | Full bridge span |
 
-## Bridge parts — extremes (skewed cubes)
+## Bridge parts — extremes
 
 | Part | Color (debug) | Width | Height | Depth | Condition |
 |---|---|---|---|---|---|
@@ -75,21 +75,21 @@ The weight function (`_get_archetype_weights`) is extensible: new factors (neigh
 
 1. Get the buildable zone boundary lines on both sides via `get_block_corner_with_offset()` → 4 corner points (2 per face).
 2. Find the edge index in each face and compute the DistortedGrid cells along the facade for both sides.
-3. **Build sidewalk vertical grids** for both sides (computed once per edge, reused for all attempts).
+3. **Build the facade mask** for both sides (computed once per edge, reused for all attempts).
 4. Compute `max_height = min(block_a.max_height, block_b.max_height)`.
 5. For each bridge to place (up to 20 attempts):
    - Instantiate a random `Bridge` archetype (seed-based).
    - Pick a random `t` position along the facade.
    - **Floor-aligned height**: pick a random floor (≥ 1). The pathway bottom aligns with the floor start, so `h_base = floor * floor_height - base_height * cell_height`. This ensures people can walk from a building floor directly onto the bridge pathway.
-   - **Sidewalk vertical grid check**: verify that ALL building cells within the bridge's t range on both sides have sufficient height.
+   - **Facade mask check**: verify that ALL building cells within the bridge's t range on both sides have wall up to the required height.
    - Compute a **slot**: `{t_start, t_end, h_start, h_end}` where h includes the arc below.
    - Check overlap against all previously placed slots on this edge.
    - If no overlap and fits within `max_height`, accept.
 6. Store placed bridges with their facade corners, parametric positions, archetype, and extreme data. The extremes occupy their modules when they are placed, at visualisation.
 
-## Sidewalk vertical grid (bridge/pipe validation)
+## Facade mask (bridge/pipe validation)
 
-Validates that bridge/pipe middle parts have solid building wall to anchor to. A **2D vertical grid** along the buildable zone boundary: one axis is horizontal position (building cells along the edge), the other is height (vertical building cells). Each cell is available or not.
+Validates that a middle part has solid building wall to anchor to: per building cell along the edge, the height up to which there is wall (`GraphCityGenerator._build_facade_mask`).
 
 Built by iterating each DistortedGrid cell along the facade edge:
 

@@ -8,9 +8,9 @@ extends RefCounted
 ## piensa en metros, ni en grillas, ni en terreno: solo en proporciones dentro del cubo.
 ##
 ## Cada triángulo lleva su color y hacia dónde MIRA (en el espacio del cubo). Se guarda la dirección y no
-## el orden de los vértices porque la deformación puede espejar ejes, y el orden solo se puede decidir
-## después, en el mundo (ver `PropGeometry.add_tri_facing`). Los constructores de acá calculan esa
-## dirección con un punto interior del sólido, igual que `PropGeometry.add_tri`.
+## el orden de los vértices porque la grilla puede espejar ejes, y el orden solo se puede decidir después,
+## en el mundo (lo hace `GridPlacer.place`). Los constructores de acá calculan esa dirección con un punto
+## interior del sólido.
 
 const DEFAULT_SEGMENTS := 12
 

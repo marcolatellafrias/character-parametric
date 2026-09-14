@@ -1320,7 +1320,7 @@ func _visualize_roof_props() -> void:
 			continue
 		var cells_per_floor := block.get_cells_per_floor()
 		var cell_height := block.get_building_cell_height()
-		var buffer := PropGeometry.new_buffer()
+		var buffer := GridPlacer.new_buffer()
 		# Un scope por MANZANA, porque los techos se fusionan en una malla por manzana (los edificios, en
 		# cambio, tienen una malla cada uno). La granularidad del scope sigue a la de la malla.
 		var scope := city_index.new_scope()
@@ -1483,12 +1483,12 @@ func _visualize_facade_objects() -> void:
 			continue
 		var surfaces := {}
 		if show_delivery_doors:
-			var door_buffer := PropGeometry.new_buffer()
+			var door_buffer := GridPlacer.new_buffer()
 			var door_scope := city_index.new_scope()
 			_place_delivery_doors(block, surfaces, door_buffer, door_scope, door_mesh, doors)
 			_bake_placed(door_container, door_buffer, door_scope, true)
 		if show_windows:
-			var window_buffer := PropGeometry.new_buffer()
+			var window_buffer := GridPlacer.new_buffer()
 			var window_scope := city_index.new_scope()
 			_place_windows(block, surfaces, window_buffer, window_scope, window_mesh, windows)
 			window_triangles += window_buffer["indices"].size() / 3
@@ -1819,7 +1819,7 @@ func _visualize_floating_sidewalk_zones() -> void:
 		if block == null or block.get_distorted_grid() == null:
 			continue
 		var cells_per_floor := block.get_cells_per_floor()
-		var buffer := PropGeometry.new_buffer()
+		var buffer := GridPlacer.new_buffer()
 		var scope := city_index.new_scope()
 
 		for sw: Dictionary in block.traversal.floating_sidewalk_zones:
@@ -1859,7 +1859,7 @@ func _visualize_bridges() -> void:
 	_bridge_extremes_rejected = 0
 	for edge_key in generator.bridges:
 		for placed in generator.bridges[edge_key]:
-			var buf := PropGeometry.new_buffer()
+			var buf := GridPlacer.new_buffer()
 			var scope := city_index.new_scope()
 			var object_id := _new_object()
 			total += 1

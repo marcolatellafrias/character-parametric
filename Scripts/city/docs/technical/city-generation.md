@@ -13,16 +13,13 @@ Technical, code-level breakdown of the procedural city generator. Three subsyste
 2. **Districts and heights** — Each graph face gets a **district** (what it is made of) and, from a separate set of patches, a **height tier** (how many floors). Two independent axes; see [Districts and heights](#districts-and-heights).
 3. **Blocks** — Each face gets a `BlockGenerator`. The edges of the block know which street type borders them, reserving an empty margin (street offset) that visually forms the street.
 4. **Internal alleyways** — Inside each block, `PathGenerator` traces small and big alleyways in the `DistortedGrid`.
-5. **Clusters** — Non-alleyway cells are grouped into `BuildingCluster` via flood-fill, then subdivided (1–8 cells each). Both steps ask `BlockGenerator._is_separated_by_alleyway`, and **a building never grows across an alley** — belonging to the same section is not enough, since a U-shaped section has grid-adjacent cells with the alley between them.
-
-   ⚠ That test **must be symmetric**, and it was not: the shared edge of two adjacent cells is always at the *larger* index, but the old code took the smaller one whenever the second cell came first, so it looked at the far edge of the lower cell. Measured on one city: 6 222 of 11 460 neighbour pairs answered differently depending on order, and **148 buildings straddled an alley** — with their roofs left open where they believed a neighbour cell of their own continued. Fixing it left streets, alleys and blocks untouched (alleys come from `PathGenerator`, earlier and with its own seed) but regrouped buildings in 129 of 191 blocks, because cluster subdivision draws its random numbers in order.
-6. **Block hearts** — Interior clusters (not on the block perimeter) have a chance of becoming "hearts": their `floor_count` is set to 0, creating paved plazas inside the block (their floor-0 modules still exist, and the sidewalk pass fills them).
-7. **Building modules** — Each cell in each cluster is a `BuildingModule` per floor. Each module knows what borders its 4 sides and shrinks its core area inward (facade/alleyway offset), forming the actual building footprint.
-8. **Sidewalk zones** — The non-core cells of each building module define sidewalk zones: external (between the buildable zone boundary and the building face) and internal (alleyway offset areas between buildings). See [sidewalks.md](sidewalks.md).
-9. **Occupancy** — There is no availability matrix. Each `BuildingModule` keeps a list of the regions placed in it; whatever needs free space asks the module (see [Placing objects](#placing-objects--one-grid-two-kinds-of-cells)).
-10. **Sidewalk instances** — Physical walkable surfaces, decided per module: a strip per side covering the whole offset (alleys end up paved edge to edge), a corner wherever two sides both have one (curved where both are streets), a fill under each chamfer, and a plaza for a block heart. Higher-floor floating sidewalks are bridge-dependent (rules TBD). See [sidewalks.md](sidewalks.md).
-11. **Wall** — A closed barrier on the graph's boundary edges, the limit of the playable world. See [The wall](#the-wall).
-12. **Bridges** — Placed on graph edges. Middle parts span between opposing buildable zone boundaries. Extremes extend through external sidewalk zones to the building face. See [bridges.md](bridges.md).
+5. **Clusters** — Non-alleyway cells are grouped into `BuildingCluster` via flood-fill, then subdivided (1–8 cells each). Both steps ask `BlockGenerator._is_separated_by_alleyway`, and **a building never grows across an alley** — belonging to the same section is not enough, since a U-shaped section has grid-adjacent cells with the alley between them. ⚠ That test **must be symmetric**: the shared edge of two adjacent cells is always at the *larger* index. It once took the smaller one whenever the second cell came first, and 148 buildings straddled an alley with their roofs open across it.
+6. **Block hearts** — Interior clusters (not on the block perimeter) become "hearts" with probability `block_heart_probability` per district (30 % poor, 20 % rich and industrial): `floor_count` 0, a paved plaza inside the block. Their floor-0 module still exists, and the sidewalk pass fills it.
+7. **Building modules** — Each cell in each cluster is a `BuildingModule` per floor. Each module knows what borders its 4 sides and shrinks its core area inward (facade/alleyway offset), forming the actual building footprint. It is also the grid everything on the building is placed in; see [Placing objects](#placing-objects--one-grid-two-kinds-of-cells).
+8. **Sidewalks** — Everything at ground level that is not building, decided per module. See [sidewalks.md](sidewalks.md).
+9. **Wall** — A closed barrier on the graph's boundary edges, the limit of the playable world. See [The wall](#the-wall).
+10. **Bridges** — Placed on graph edges. Middle parts span between opposing buildable zone boundaries; extremes occupy the modules they rest on. See [bridges.md](bridges.md).
+11. **Roofs, doors and windows** — placed on the modules and on their surfaces, in that order. See [Roofs](#roofs--the-planner-decides-the-props-execute) and [Facades](#facades--windows-and-doors).
 
 ---
 
@@ -45,9 +42,9 @@ Everything placed **in-grid** does, because it all flows through one funnel: `Bu
 
 **Everything follows the ground, at every height.** In the funnel each corner gets the terrain height at its own position, and the height index adds a **pure vertical offset** on top. So floor N is floor 0 raised in Y: every floor parallel, every floor tilted alike.
 
-The visible mesh goes through that same funnel. `City._visualize_buildings` asks it for the floor's **two** faces — `get_core_vertices(index)` at the bottom and at the top of the floor — instead of computing the top itself, and the building colliders and roof props do the same. So a placed object lands on the face you actually see **by construction, not by agreement**. Neighbouring pieces agree for the same reason: they sample the same continuous field at the same corners.
+The visible mesh goes through that same funnel: `City._visualize_buildings` asks it for the floor's **two** faces (`get_core_vertices` at the bottom and at the top of the floor) instead of computing the top itself, and so do the building colliders. A placed object therefore lands on the face you see **by construction, not by agreement** — see [Buildings on sloped terrain](#buildings-on-sloped-terrain) for the bug that rule closed.
 
-**Not wired yet:** the **between-grids** placements — bridge middles and lane-volume planes — are still built at `y = 0` (`BlockGenerator`'s lane planes). Until they follow, a bridge's extremes ride the terrain while its middle stays at zero, and cars fly at the old height.
+**Not wired yet:** the lane volumes are still built at `y = 0` (`BlockGenerator.get_edge_lane_volume`), so cars fly at the old height. Bridge middles do follow, because they stretch between two facade faces that come from the funnel.
 
 The relief **inside** a block does not live here: that one is discrete and stepped, rides on the `DistortedGrid`, and falls off to zero at the block perimeter so the border is worth exactly what this field says — the same trick the wave distortion already uses (see the alignment guarantee below).
 
@@ -69,11 +66,11 @@ This is only the **last step**, the emission. Everything upstream stays per cell
 
 ## Grid types — there are 3
 
-| Level | Class | Approx. size |
+| Level | Class | Size |
 |---|---|---|
-| City | `BlockGenerator` per graph face | 100×100 cells |
-| Block | `DistortedGrid` (sinusoidal distortion) | 6×6 cells |
-| Building | `BuildingModule` per floor | 20×20 cells |
+| City | `BlockGenerator` per graph face | one per block |
+| Block | `DistortedGrid` (sinusoidal distortion) | ~6×6 cells of ~11 m |
+| Building | `BuildingModule` per cell | 80×80 cells of ~0.14 m, 32 cells (~0.21 m) per floor |
 
 ---
 
@@ -94,24 +91,16 @@ This is only the **last step**, the emission. Everything upstream stays per cell
 
 The street offset shrinks the block inward, creating the **buildable zone**. The space between opposing buildable zone boundaries forms the street.
 
-**Facade offset** (module level, in building cells — creates sidewalks):
+**Facade offset** (module level, in building cells — the module's core is inset by it):
 
 | Adjacent cell type | Cells |
 |---|---|
-| Normal | 0 |
-| Boundary | 0 |
-| Facade | 24 |
-| Small alleyway | 18 |
-| Big alleyway | 18 |
+| Normal (attached neighbour) | 0 |
+| Boundary (world edge) | 0 |
+| Facade (street) | 24 |
+| Small / big alleyway | 18 |
 
-On street-facing (FACADE) edges, the facade offset creates the **external sidewalk** — the strip between the buildable zone boundary and the building face. On alleyway edges, it creates **internal sidewalks** — strips between adjacent building cores.
-
-**Block core** = buildable zone minus external sidewalk. Contains buildings and alleyways (including internal sidewalk zones). Building faces sit at the block core boundary.
-
-Within the block core, alleyways create additional gaps:
-```
-[building core A]  ←internal sidewalk→  [alleyway]  ←internal sidewalk→  [building core B]
-```
+Toward a street the offset is the external sidewalk, up to the kerb; toward an alley it is the module's half of the alley, and the two modules flanking it pave it edge to edge. Building faces sit at the core boundary. Everything in the offset is decided per module (see [sidewalks.md](sidewalks.md)).
 
 ---
 
@@ -134,9 +123,9 @@ Both axes are spread as **patches** (`_assign_patches`: seeds on random faces, a
 
 **Cracks.** Inside a block that is *not* low, each building has a `CRACK_CHANCE` (12%) of breaking its tier and building from the **low** range instead. They are the gaps a pilot can spot and cut through between towers — player expression, so the only options aren't "straight over a breather patch" or "along the street". A building is a cluster of 1–8 cells and a cell is ~27 m, so even the smallest crack is far wider than an alleyway: it does not break the rule that the ship never flies into alleyways. The majority stays tall, so the maze holds.
 
-**Measured** over one 312-block city (1 782 m across, 10 district seeds, 28 height patches): tiers came out **18% low / 26% mid / 57% tall** against the 20/25/55 asked, 3 399 buildings with **none outside its patch's range**, and **392 cracks (11.5%)** with none in low blocks. Generating it takes **56 s**: 6.4 s of data (graph included) and **50 s of mesh and collider emission**, which is per built block and per floor — that is the number to attack if startup ever becomes unbearable, not the graph.
+**Measured** over one 312-block city: tiers came out **18 % low / 26 % mid / 57 % tall** against the 20/25/55 asked, no building outside its patch's range, and **11.5 % cracks**, none in low blocks. Generation time is dominated by mesh emission, not by the graph.
 
-**History:** floors used to be blended toward the average of all types by `pow(distance_to_seed, neighborhood_height_falloff)`, with the exponent at 0.3. Because it is below 1 the blend rose very fast — 66% blended at a quarter of the distance — so only seed blocks kept their own range. Measured: **24 one-floor buildings in the whole map**, Downtown building 4-floor blocks where it asks for 8, and all four types averaging between 3.9 and 6.7 floors. The whole mechanism was removed with the four-type enum.
+**Superseded:** floors used to be blended toward the city average by `pow(distance_to_seed, 0.3)`; an exponent below 1 blends almost everything, so only seed blocks kept their own range (24 one-floor buildings in a whole map). Gone with the four-type enum.
 
 ---
 
@@ -146,7 +135,7 @@ The limit of the playable world: a barrier that cannot be cleared, not even with
 
 Its **base follows the terrain** and its **top stays at a constant altitude** (`City.wall_floors`, **13 floors ≈ 87 m**). That height is chosen against the ship, not against the buildings: its altitude target tops out at **8 floors** (53.5 m, `Ship.max_altitude`), so 13 floors stays out of reach by five without walling the city in. (The vertical thruster the design calls for does not exist in code yet — until it does, 8 floors is the whole ceiling. It previously sat at 90 m, i.e. 13.4 floors, which let the ship clear the wall outright.) The tallest buildings (11–18 floors, up to 120 m) **rise above it on purpose** — a wall taller than every tower makes the city read as a toy box. The constant top is the point: a top that followed the hills would dip in the valleys and stop being impassable exactly where the terrain already sinks the player. A square **post at each boundary node** covers the joint between two runs, which would otherwise leave a wedge of air at open corners.
 
-Unlike buildings, bridges and floating sidewalks — which are cut at `WorldSettings.render_distance` by `City._fade_into_fog` — the wall carries **no distance range at all**: it is one mesh spanning the city, so its centre-of-geometry origin lands in the middle of the map and "distance to the wall" means nothing. Given a range it simply vanished from everywhere but the city centre. What keeps its silhouette from shrinking the city is the fog below, not culling.
+Unlike everything else the wall carries **no distance range** — see [Meshes are built in world space](#meshes-are-built-in-world-space--mind-the-origin).
 
 ### Meshes are built in world space — mind the origin
 
@@ -233,7 +222,7 @@ The same split as roofs, for walls ([facade_planner.gd](../../building/facade_pl
 - **`RANDOM`** — `window_attempts` positions drawn per facade per floor between the sill and a top margin; the ones that collide are dropped by the matrix.
 - **Pieces** are in `FacadeProps` ([facade_props.gd](../../props/facade_props.gd)). ⚠ A facade's frame is not a roof's: `x` along the wall, **`y` out toward the street**, `z` up. The `y = 0` face rests on the wall and is not drawn.
 - **One pass per block** (`City._visualize_facade_objects`): doors first (gameplay), then windows, sharing one matrix per `(module, side, floor)` so a window can only avoid a door by reading the matrix the door occupies. Randomness is seeded from the block seed, cluster, cell, side and floor.
-- **Cost, measured:** 376 621 windows on 134 341 visible facades, 3.8 M triangles, one mesh per block, **no collider and no shadow**; ~8 100 candidates rejected. The pass takes **~28 s** of a 63 s headless run. What got it there from 48 s: `point_at_f` stopped allocating two arrays per call; `place` builds each piece in local arrays and appends once, with the region's bilinear precomputed (`region_frame`) so nothing is called per vertex; a floor's facade grid is floor 0's translated (`RigidMatrix.translated`) instead of rebuilt; `CityIndex.add` appends in place instead of copying each scope's list. What remains is per-triangle work in GDScript — see the caveat below.
+- **Cost, measured:** ~377 000 windows, 3.8 M triangles, one mesh per block, **no collider and no shadow**. The pass takes **~28 s** of a 63 s headless run, all of it per-vertex work in GDScript — see the caveat below. Three things keep it there and not higher: `point_at_f` allocates nothing, `place` writes each piece in bulk with the region's bilinear precomputed, and a floor's facade grid is floor 0's translated rather than rebuilt.
 - ⚠ **Windows are not individually pointable**: without a collider the inspector's ray hits the wall. They are indexed under the building's object, so highlighting the building includes them.
 - ⚠ **The residual cost is structural.** A rigid object is, by definition, its unit mesh under one affine transform — exactly what a GPU instance is. Hundreds of thousands of identical windows written triangle by triangle in GDScript are the expensive way to draw a transform. Moving rigid repeated pieces to `MultiMesh` would remove most of the pass and the triangles from the CPU side, at the price of not copying their triangles for highlighting. Not done: it is a decision, not a fix.
 
@@ -302,13 +291,11 @@ A single cell never gets French. If the cell footprint is rectangular but the co
 
 **The skirt is measured in building cells** (`BuildingArchetype.roof_skirt_building_cells`, 8 by default, ~1.4 m) so it is the same size on a narrow building as on a wide one; with the 2.2 m pitch that is the steep slope of a mansard.
 
-### Superseded — three earlier designs
+### Superseded — three earlier designs, each easy to reintroduce
 
-Recorded because each failure is easy to reintroduce.
-
-- **A piece per cell chosen from the cell's neighbourhood** produced broken roofs: neighbouring pieces disagreed on the profile of the edge they share. *A cell cannot decide on its own.*
-- **A height field on a half-cell lattice** fixed continuity but invented a resolution the grid does not have: the French skirt was half a cell by construction, so a building one cell wide had no room for a top and looked exactly like a gable (**651 of 929**); a fixed diagonal per patch left a false chamfer at two corners of every roof; and it ignored real chamfers, so roofs overhung the ochava.
-- **A procedural outline (polygon union + inset) clipped along cell lines** got the shapes right, but with many spurious lines and it was not the modular interface every other object was going to use — anyone placing something had to think in silhouettes.
+- **A piece per cell chosen from the cell's neighbourhood**: neighbouring pieces disagreed on the profile of the edge they share. *A cell cannot decide on its own.*
+- **A height field on a half-cell lattice**: continuity, but at a resolution the grid does not have — a one-cell building had no room for a top and looked like a gable (651 of 929), and it ignored real chamfers.
+- **A procedural outline (polygon union + inset)**: right shapes, but not the modular interface every other object uses — whoever placed something had to think in silhouettes.
 
 ### In the index
 
@@ -369,67 +356,33 @@ On the **collider**:
 
 ⚠ Types: `<buffer>["indices"].size()` comes out of an untyped `Dictionary` and is therefore `Variant`. `:=` cannot infer from it and it cannot be passed to a typed parameter — declare `var idx_from: int = ...` explicitly. Warnings are errors in this project.
 
-**What a new system has to do**: record itself when it bakes, and nothing else. No resolver, no interface to implement, no registration. What stays system-specific is only *which ids it writes down* — data, not logic — plus one line in `describe()` to turn those ids back into words. A system that forgets shows up as "sin identificar" the first time it is pointed at.
-
-The identity rides on the **collider** on purpose. A collider is already mandatory for anything solid, so it cannot be silently forgotten: forgetting it means the player walks through the object, which is noticed immediately. An interface that everything is supposed to implement is optional by construction, and gets skipped.
+What stays system-specific is only *which ids it writes down* — data, not logic — plus one line in `describe()`. Identity rides on the collider on purpose: a collider is already mandatory for anything solid, so it cannot be silently forgotten, while an interface everything is supposed to implement is optional by construction, and gets skipped.
 
 ---
 
 ## Buildings on sloped terrain
 
-A building is a box whose floors are **parallel to the ground beneath it**. Each corner takes the terrain height at its own position (`BuildingModule.point_at_f`, one bilinear over the module's four 3D corners), and each floor is that same quad raised by a pure vertical offset. No cluster is anchored to a single height, so none is buried on the uphill side or stilted on the downhill one: the box tilts with the hill.
+A building is a box whose floors are **parallel to the ground beneath it**: each corner takes the terrain height at its own position and each floor is that quad raised by a pure vertical offset. No cluster is anchored to a single height, so none is buried uphill or stilted downhill; roofs tilt with the hill, which is the price, and the look that was approved on sight.
 
-Roofs tilt with it, which is the price. It is acceptable while the character gains slope handling, and it is the look that was approved on sight.
+⚠ **There must be one definition of "where floor N is", and the mesh must ask for it.** There were two once: the mesh built floor N as floor 0 raised, while placement went through a taper that straightened the module toward the cluster's mean height over the first floors — a horizontal surface from floor 2 up, 1.35 m off the visible wall, chased for a while as a centimetre-scale bridge bug. The taper is gone, and the fix was made structural: `_visualize_buildings`, the colliders and every placed object **ask the grid for the faces they need** (`point_at_f`, `get_core_vertices` at both floor indices), and `DebugUtil.get_skewed_cube_advanced_geometry_from_planes` builds the box between two given quads. If horizontal roofs are ever wanted again, change `point_at_f` and everything follows; changing the mesh or the placement alone is precisely the bug that was removed.
 
-**Superseded — the average anchor and its taper.** Clusters used to be anchored at `ground_reference`, the mean ground under their cells, with `_ground_at` straightening the module toward it over `TAPER_FLOORS × cells_per_floor` so roofs came out horizontal. It never reached the geometry, because the wall mesh never called that path — it only displaced the **placement** grid, by up to 1.35 m from floor 2 up (see "Step 4" below). Removed, along with `ground_reference`, `taper_cells` and `TAPER_FLOORS`.
+Two approximations are left on purpose, both harmless while floors stay congruent: the cell-to-metre chamfer conversion is measured on the **bottom** quad and applied to both faces, and the cap normals are hardcoded to ±Y.
 
-⚠ If horizontal roofs are ever wanted again, the **mesh and the placement grid have to change together**. Doing it in one alone is precisely the bug that was removed.
+### The terrain plan, and where it stopped
 
----
-
-## The terrain plan, and where it stopped
-
-Terrain was introduced as a seven-step plan. Three steps landed, one landed inconsistently, three were never started. It is written down here so the half-finished parts are visible instead of surprising.
-
-### Why it is only two funnels
-
-The whole plan rests on a finding worth keeping: **everything that sits in the city passes through two places**, so terrain never had to be threaded through the whole system.
-
-- `BuildingModule.point_at_f()` — everything on a building: the module quads (`get_region_vertices`, `get_core_vertices`, `get_facade_quad`), and through them `GridPlacer` and every `RigidMatrix` surface.
-- `BlockGenerator.get_edge_lane_volume()` — all traffic.
-
-Bilinear interpolation (`GridHelper`) is pure 2D; Y is added afterwards. Module occupancy, door `{cell, edge, floor}` triples and the bridge grid are **logical indices in module space**, not metres, so they keep working untouched.
-
-### Status
+Everything that sits in the city passes through two places, so terrain never had to be threaded through the whole system: `BuildingModule.point_at_f()` for everything on a building, and `BlockGenerator.get_edge_lane_volume()` for all traffic. Module occupancy, door triples and the bridge grid are logical indices in module space, not metres, so they never noticed.
 
 | | Step | State |
 |---|---|---|
 | 1 | Height field at the graph nodes, plus the ground mesh and its collider | **done** — `CityTerrain`, `City._visualize_ground` |
 | 2 | Heights at the distorted-grid vertices, falling off to zero at the block perimeter so neighbouring blocks still meet | **done** — `DistortedGrid.vertex_heights`, `edge_falloff_sharpness` |
-| 3 | Lane volumes riding the field | **not started** — `get_edge_lane_volume` still writes `0.0` at the bottom and `max_height_global` at the top: one global height for the entire city |
-| 4 | Buildings riding the field | **done** — every floor is the base quad raised in Y, so mesh and placement agree; the taper was removed rather than completed (see below) |
-| 5 | A *buried* predicate for placed objects | **dropped**: ground-floor objects anchor at `height_index 0`, which follows the terrain, so nothing can end up under it |
+| 3 | Lane volumes riding the field | **not started** — `get_edge_lane_volume` still writes `0.0` at the bottom and `max_height_global` at the top |
+| 4 | Buildings riding the field | **done** — see above |
+| 5 | A *buried* predicate for placed objects | **dropped**: ground-floor objects anchor at height index 0, which follows the terrain |
 | 6 | Stepped field inside the block, stairs in the alleys (parkour) | **partial** — `TraversalGenerator.stair_zones` exists; the stepped field does not |
 | 7 | `GroundPlanner`: cars that hug the ground | **not started** — nothing in the traffic code reads the terrain |
 
-### Step 4: how the contradiction was settled
-
-There were **two definitions of "where floor N is"**, and the mesh used the one nobody was maintaining.
-
-`City._visualize_buildings` builds every floor from `get_core_vertices(0)` plus a hand-added `floor_base_y`, and extrudes vertically — so to the mesh, floor N has always been floor 0 raised in Y, tilted like the ground. Placement went through `_ground_at`, which lerped toward `ground_reference` over `TAPER_FLOORS × cells_per_floor` and so returned a **horizontal** surface from floor 2 up.
-
-Measured on a four-storey cluster with 8 m of drop: **0.00 m at floor 0, 0.68 m at floor 1, 1.35 m from floor 2 up**, plus a mismatch in *tilt* — flat against sloped. Anything placed against a facade above floor 1 was landing on a surface that did not exist on screen. It masqueraded as a centimetre-scale alignment bug in bridges, and was chased as one for a while.
-
-**Resolved by making the relief independent of the height index**: the ground became the module's bilinear ground, full stop, with the vertical offset added on top — today both live in `point_at_f`. Mesh and placement now agree on every floor, tilted or not, and the taper was deleted rather than completed.
-
-**And made structural rather than coincidental.** Agreeing was not enough on its own: the mesh still worked out its floor heights with its own arithmetic — `floor_base_y` for the base, a scalar extrusion for the top — so anything that made height depend on the index again would have desynced the two a second time. Both deductions are gone. `_visualize_buildings`, the building colliders and the roof props **ask the grid for the faces they need**, and `DebugUtil.get_skewed_cube_advanced_geometry_from_planes` builds the box between two given quads; the old base-plus-height form delegates to it, so there is exactly one chamfered-box constructor. A taper could now be reintroduced in `point_at_f` alone and the mesh would follow it on its own.
-
-Two approximations are left on purpose, both harmless while floors stay congruent: the cell-to-metre chamfer conversion is measured on the **bottom** quad and applied to both faces, and the cap normals are still hardcoded to ±Y, so a tilted roof is shaded as if it were level.
-
-### Two constraints for whoever picks this up
-
-- The field must derive from the **world seed**. Traffic assumes every peer generates identical geometry.
-- Steps 3 and 7 are one subject: give the lane volumes the field, then copy the bridge planner's shape — an immutable route plus a Y profile frozen at spawn — into a `GroundPlanner`. Its one new rule is that a ground-hugging car may not duck *downwards* to avoid a bridge, because the ground is there.
+Two constraints for whoever picks this up: the field must derive from the **world seed** (traffic assumes every peer generates identical geometry); and steps 3 and 7 are one subject — give the lane volumes the field, then copy the bridge planner's shape (an immutable route plus a Y profile frozen at spawn) into a `GroundPlanner`, whose one new rule is that a ground-hugging car may not duck *downwards* to avoid a bridge.
 
 ---
 
@@ -482,39 +435,19 @@ Deformables always go first, so occupancy flows one way — and `City.visualize_
 
 Roof windows that protrude from a mansard skirt are deliberately out of scope: a rigid object crossing an inclined surface is the hardest case of all.
 
-**Status:** done. Through the module: roof pieces, the floor-0 sidewalks (`SidewalkProps`, `_visualize_floating_sidewalk_zones`) and the bridge extremes (`_place_bridge_extreme`, collider from the very vertices the placer wrote). Through surfaces: the tank on the roof, the delivery doors and windows on the facade (`_visualize_facade_objects`, see [Facades](#facades--windows-and-doors)). Every one of them is indexed (`CityIndex.Kind.SIDEWALK`, `DOOR`, `WINDOW`; extremes carry their bridge's ids) and baked by one function, `_bake_placed`. Counters printed at generation, all expected to be 0: sidewalk rejections, extremes without room, doors without room. Measured: 22 397 sidewalk pieces, 567 bridges, 147 tanks, 764 doors (4 slid along the wall by at most a cell), 376 621 windows. Not done: floating sidewalks above floor 0 and the stairs (`_visualize_stair_zones` still draws its own cubes; the zones are empty anyway).
+**What goes through it today.** On the module: roof pieces, the floor-0 sidewalks and the bridge extremes (`_place_bridge_extreme`, collider from the very vertices the placer wrote). On surfaces: the tank on the roof, doors and windows on the facade. All indexed (`CityIndex.Kind`) and baked by one function, `_bake_placed`. Generation prints counters that must stay at 0 — sidewalk rejections, extremes without room, doors without room — and the roof planner's `piezas rechazadas`; any other value is a bug between a planner and the placer. Not yet: floating sidewalks above floor 0 and the stairs (`_visualize_stair_zones` still draws its own cubes over empty zones).
 
 ---
 
-## Props — objects built inside a quad
+## Props — the catalogues
 
-`Scripts/city/props/` holds procedural objects placed on the city: `PropGeometry` (the primitives) and `RoofProps` (what is composed from them). Today that is a water tank, a shed roof and a gable roof, all placeholders.
+`Scripts/city/props/` holds what gets placed, all authored in the **unit cube** as `UnitMesh` ([unit_mesh.gd](../../props/unit_mesh.gd)): `x`, `y`, `z` from 0 to 1, a colour and an outward direction per triangle. Whoever designs a piece never thinks in metres, grids or terrain — only in proportions inside the cube; `GridPlacer` takes it to a region of cells and the grid's cells give it its real shape (see [Placing objects](#placing-objects--one-grid-two-kinds-of-cells)).
 
-### Everything is built in the quad's own (u,v) space
+- `RoofProps` — the roof pieces and the water tank. Each authored **once**, canonical, and turned in quarters (`UnitMesh.rotated`) for the other orientations.
+- `SidewalkProps` — slab, curved corner, chamfer fill.
+- `FacadeProps` — door and window panels. ⚠ In a facade's grid `y` points **out of the wall** and `z` up, so the face at `y = 0` is the one against the wall and is not drawn.
 
-This is the decision that matters, and it is what makes skew stop being a problem. A building's roof is not a rectangle: the distorted grid deforms it and the terrain tilts it. Building an axis-aligned object and then rotating it would mean carrying those angles everywhere.
-
-Instead every point is given in **normalised `(u, v)` coordinates of the base quad** and interpolated — bilinear in XZ via `GridHelper.bilinear_interpolation`, bilinear in Y via `GridHelper.bilinear_height`. The object is therefore born deformed exactly like the surface it stands on. **There is no skew step anywhere**, because none is needed. A cylinder is the circle *inscribed in a sub-quad*, so on a deformed roof it comes out elliptical — which is what you want.
-
-Quads run `[BL, BR, TR, TL]`, the order `get_region_vertices` and `get_core_vertices` return.
-
-### Why a separate class instead of DebugUtil
-
-`DebugUtil` is a large bag of debugging helpers; props are world **content**. Mixing them would leave neither legible. The one thing borrowed is **boxes**: `DebugUtil.get_skewed_cube_advanced_geometry` already produces a correctly wound skewed box from four base vertices, so `PropGeometry.add_box` delegates to it rather than reimplementing it. Output is the same `{vertices, normals, colors, indices}` dictionary `_visualize_buildings` merges.
-
-### Two traps, both paid for once
-
-**The roof quad must come from the mesh convention, not the placement one.** `City._visualize_roof_props` takes `get_core_vertices(0)` and adds the floor offset by hand, exactly as `_visualize_buildings` builds its walls. Using `get_region_vertices(..., roof_index)` would give the *placement* surface, which on upper floors sits up to 1.35 m below the roof you can see, and the props would float. See the terrain plan above.
-
-**Winding.** The material uses `CULL_BACK`, so vertex order alone decides whether a face is visible. The convention, confirmed by rendering a single triangle against a control: for emitted order `(A, B, C)` the visible face has normal **`(C - A) × (B - A)`**. `City._ground_triangle` picks its order with that same product, and `get_skewed_cube_advanced_geometry` agrees once you account for it emitting `(v1, v3, v2)`. Writing the cross product the other way compiles, runs, and silently inverts every face — from outside you then see the inside of the far side. `PropGeometry.add_tri` orients each triangle away from a supplied interior point; `add_tri_facing` orients toward a given direction instead, for flat faces where the interior-point test degenerates (a shed roof's plane has its centroid exactly at that point).
-
-### Placement
-
-`show_roof_props` gates it. The shape of each roof comes from `RoofPlanner` (see "Roofs — the planner decides, the props execute"), seeded from the block seed so every peer builds the same city; this function only executes the plan. The archetype owns the style — `flat_roof_chance` (0.35) and `roof_pitch_height` — and is the **only** source for it.
-
-A cluster that came out flat takes a water tank with probability `water_tank_chance` (0.12), deliberately low since a repeated tank stops reading as detail and becomes texture; a tank is skipped when it would not fit the roof. Measured on the current city: **3727 roof pieces, 138 tanks**, merged into one mesh per block.
-
-Tanks dropped from 271 because the decision moved from the cell to the **cluster**: a building is now flat or pitched as a whole, so only the ~35% of clusters that came out flat offer a spot, instead of nearly every cluster having some leftover flat cell.
+**A triangle stores which way it faces, not a vertex order.** A grid can mirror an axis, so the order is decided in the world by the placer, from that direction. See [Mesh generation](#mesh-generation--normals--winding) for the convention.
 
 ---
 
@@ -542,74 +475,45 @@ Each chamfer is `[c1, c2]` in building cells:
 
 The chamfer creates a rectangular exclusion rect within the core. For vertex 0 (BL): `c2` cells along +x, `c1` cells along +z from the core corner.
 
-Chamfers affect the sidewalk vertical grid — building cells inside a chamfer rect are treated as "no building face" for bridge placement.
+`BuildingModule.get_facade_span` is the one definition of where a side still has wall once its chamfers are removed: the facade surface, the door positions and the bridge facade mask all read it.
 
 ---
 
 ## DistortedGrid cell types
 
 - `NORMAL` — buildable interior
-- `FACADE` — block perimeter facing a street (facade offset = 20 → external sidewalk zone)
+- `FACADE` — block perimeter facing a street (facade offset 24 → external sidewalk)
 - `BOUNDARY` — block perimeter coinciding with the city boundary (facade offset = 0 → no sidewalk)
 - `SMALL` / `BIG` — small / big alleyway
 - `SMALL_ORIGIN` / `BIG_ORIGIN` — alleyway starting point
 
 ---
 
-## Block hearts (courtyards)
-
-After clusters are created, each **interior cluster** (not touching the block perimeter) has a probability of becoming a "block heart" — its `floor_count` is set to 0, leaving an empty courtyard inside the block.
-
-Probability per neighborhood type (`block_heart_probability` in `NeighborhoodTypes.CONFIGS`):
-
-| Neighborhood | Probability |
-|---|---|
-| Shanty Town | 30% |
-| Rich Residential | 20% |
-| Industrial | 20% |
-| Downtown | 20% |
-
-Only clusters that pass `is_interior_cluster()` are candidates. The check runs in `BlockGenerator._assign_block_hearts()` using a per-block RNG seeded from `cluster_seed`.
-
----
-
 ## Mesh generation — normals & winding
 
-All city meshes are generated via `DebugUtil`. All variants use the same rendering approach:
+The building material uses `CULL_BACK`, so vertex order alone decides whether a face is visible. The convention, confirmed by rendering a single triangle against a control: for emitted order `(A, B, C)` the visible face has normal **`(C − A) × (B − A)`**. `City._ground_triangle` picks its order with that product, `GridPlacer.place` flips a triangle whose product disagrees with the direction its `UnitMesh` says it faces, and `DebugUtil._add_quad` orients each quad away from the box's centroid. Writing the cross product the other way compiles, runs, and silently inverts every face.
 
-- **Winding & normals**: every face goes through `_add_quad`, which computes the cross-product normal, checks it against the mesh centroid (computed from all 8 vertices), and swaps winding if the normal points inward. This auto-correction means input vertex order (CW or CCW) does not matter.
-- **Cull mode**: `CULL_BACK` for all variants.
-- **Godot/Vulkan convention**: CW front-face. The cross product `(b-a).cross(c-a)` points toward the CCW side. If it points away from the centroid (`n.dot(face_center - mesh_center) > 0`), winding is swapped so the front face points outward.
-
-### Input formats
+`DebugUtil` still builds the boxes that are not placed pieces:
 
 | Function | Input | Used for |
 |---|---|---|
-| `create_skewed_cube` | 4 base vertices `[BL, BR, TR, TL]` + height | In-grid objects: buildings, bridge extremes, sidewalks |
-| `create_skewed_cube_from_planes` | Two opposing quads `[BL, BR, TR, TL]` each | Between-grids objects: bridge middles, lane volumes |
-| `create_skewed_cube_advanced_grid` | Base vertices + height + chamfers dict + grid dims | Buildings with chamfered corners |
+| `get_skewed_cube_advanced_grid_geometry_from_planes` | two quads `[BL, BR, TR, TL]` + chamfers in cells | building floors and their colliders |
+| `get_skewed_cube_from_planes_geometry` / `create_collision_shape_from_planes` | two opposing quads | bridge middles, lane volumes |
+| `create_skewed_cube` (+ `_collider`) | 4 base vertices + height | the stair-zone debug view only |
 
 ---
 
-## Object placement — two systems
+## Connectors between grids
 
-All objects placed on or between buildings use one of two systems. Both are managed through `FacadeHelper` which centralizes edge-direction logic.
+A bridge middle joins two facades across a street. It lives in no grid: it takes the **real face** of each facade and stretches one to the other. `FacadeHelper` centralises the edge-direction logic both ends need.
 
 ### Edge conventions
 
-Edges are numbered 0–3 per face: 0=north, 1=east, 2=south, 3=west. Edges 0/1 iterate cells in increasing order (x or z). Edges 2/3 iterate in decreasing order. The `reversed` flag (from graph node order vs face node order) may flip the iteration again.
+Edges are numbered 0–3 per face: 0=north, 1=east, 2=south, 3=west. Edges 0/1 iterate cells in increasing order (x or z), edges 2/3 in decreasing order, and the `reversed` flag (graph node order vs face node order) may flip the iteration again. Whether building cell indices within a module run with or against the facade order is `FacadeHelper.needs_cell_reversal()`: `(edge_idx >= 2) XOR is_reversed`, the single source of truth for every facade-to-grid conversion.
 
-The combination determines whether building cell indices within a module run in the same or opposite direction as the facade order:
+### The middle
 
-```
-needs_reversal = (edge_idx >= 2) XOR is_reversed
-```
-
-This formula lives in `FacadeHelper.needs_cell_reversal()`. It is the single source of truth for all facade-to-grid coordinate conversions.
-
-### Between-grids placement (bridge middles, future pipes)
-
-Objects that span the street between two blocks. Two facade faces (one per block) connected via `create_skewed_cube_from_planes`.
+Two facade faces (one per block) connected via `get_skewed_cube_from_planes_geometry`.
 
 - **Position**: both faces come from `FacadeHelper.facade_span_quad()`, which samples the building grid at the span's two end cells and at **both** height indices. The connector contributes no shape of its own — it only stretches one real facade face to the other.
 - **Vertex correspondence**: each face is returned as `[start_bottom, end_bottom, end_top, start_top]`, the order `get_skewed_cube_from_planes_geometry` pairs vertex-to-vertex.
@@ -618,16 +522,12 @@ Objects that span the street between two blocks. Two facade faces (one per block
 
 **Superseded:** the middle used to be built by `_bridge_plane()`, lerping between block core corners (`c_a1.lerp(c_a2, t)`) at a single scalar height per side. That gives a **horizontal** edge while the real facade face is torsioned — measured up to 0.205 m along one span — so the two met at a point and nowhere else. Connectors are the sole exception to the golden rule documented in `FacadeHelper`: they obey no grid, but they may not invent a plane either.
 
-### In-grid placement (bridge extremes)
+### The extremes
 
-The extremes are deformable objects placed through `GridPlacer` (see [Placing objects](#placing-objects--one-grid-two-kinds-of-cells)): a region of building cells and a unit box.
-
-- **Cell mapping**: `FacadeHelper.facade_to_grid_rect()` converts facade-order cell indices to `(bx_min, bx_max, bz_min, bz_max)` in building grid coordinates, applying the reversal formula as needed.
-- **Multi-cell spanning**: one piece per distorted grid cell. If an object crosses DG cell boundaries, it produces one region per DG cell.
-- **Construction**: `City._place_bridge_extreme` — `placer.place()` with the region between `by_base` and `by_base_top` (and `by_arc_bot`..`by_base` for the arc); the convex collider is built from the vertices the placer just wrote, so mesh and collision cannot differ. The region is **occupied** on the module, which is how a facade knows a bridge rests on it.
+Deformable pieces placed through `GridPlacer` on the modules they rest on (`City._place_bridge_extreme`): `FacadeHelper.facade_to_grid_rect()` converts facade-order cell indices to a module region, one region per distorted-grid cell the extreme crosses, and the convex collider is built from the vertices the placer just wrote. Occupying the module is how the facade knows a bridge rests on it.
 
 ### Alignment guarantee
 
 The middle and the extremes cannot diverge, because both read the same source at the same indices: the extremes are deformed by `point_at_f` at the two sampled heights and the middle's end faces are sampled from that same grid. The pathway's bottom sits at `floor_idx * cells_per_floor` — the **start of a floor** — so a building's floating sidewalk and the bridge pathway meet as one continuous walkable surface.
 
-**Superseded:** this used to be justified by the distorted grid having zero wave distortion at the facade edge (edge falloff), which would make a lerped plane and a grid-sampled face agree there. The argument only covered XZ: it ignored the building grid's **Y** distortion, which comes from `_ground_at(u, v, height_index)` and does not vanish at the edge.
+**Superseded:** this used to be justified by the wave distortion vanishing at the facade edge, which would make a lerped plane and a grid-sampled face agree there. The argument only covered XZ and ignored the terrain's Y, which does not vanish at the edge.

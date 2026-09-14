@@ -1800,20 +1800,6 @@ static func get_skewed_cube_advanced_geometry_from_planes(
 	return {vertices = vertices, normals = normals, colors = colors, indices = indices}
 
 
-## La misma caja, cuando la cara de arriba ES la de abajo trasladada en Y. Delega en la forma general
-## para que haya UN solo constructor de cajas chaflanadas, no dos que puedan divergir.
-static func get_skewed_cube_advanced_geometry(
-	base_vertices: Array, height: float, color: Color, chamfers: Dictionary
-) -> Dictionary:
-	if base_vertices.size() != 4:
-		return {}
-	var top: Array = []
-	for v: Vector3 in base_vertices:
-		top.append(v + Vector3(0, height, 0))
-	return get_skewed_cube_advanced_geometry_from_planes(base_vertices, top, color, chamfers)
-
-
-# Grid-unit chamfer variant — converts cell counts to real distances, then delegates above.
 ## Pasa chaflanes medidos en CELDAS a metros, usando las aristas del quad dado.
 static func _grid_chamfers_to_metres(quad: Array, chamfers: Dictionary, rows: int, columns: int) -> Dictionary:
 	var real_chamfers := {}
@@ -1840,16 +1826,7 @@ static func _grid_chamfers_to_metres(quad: Array, chamfers: Dictionary, rows: in
 	return real_chamfers
 
 
-static func get_skewed_cube_advanced_grid_geometry(
-	base_vertices: Array, height: float, color: Color, chamfers: Dictionary, rows: int, columns: int
-) -> Dictionary:
-	if base_vertices.size() != 4 or rows <= 0 or columns <= 0:
-		return {}
-	return get_skewed_cube_advanced_geometry(base_vertices, height, color,
-		_grid_chamfers_to_metres(base_vertices, chamfers, rows, columns))
-
-
-## La variante de dos quads, con los chaflanes en celdas.
+## La caja chaflanada entre dos quads, con los chaflanes en celdas.
 ##
 ## La medida en metros sale de las aristas del quad de ABAJO y se aplica a las dos caras. Hoy es exacto
 ## porque las dos son congruentes; si algún día dejaran de serlo, el de arriba conservaría el chaflán en
