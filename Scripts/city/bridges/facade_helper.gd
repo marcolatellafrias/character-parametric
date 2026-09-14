@@ -140,24 +140,6 @@ static func _facade_edge_point(block: BlockGenerator, edge_idx: int, is_reversed
 	return [bottom[which], top[which]]
 
 
-# Get the along_min, along_max, and depth_pos for facade mask building.
-# Used by _build_facade_mask in grafo_ciudad.gd.
-static func get_mask_ranges(edge_idx: int, core: Dictionary) -> Dictionary:
-	match edge_idx:
-		0: return {"along_min": core["min_x"], "along_max": core["max_x"], "depth": core["min_z"]}
-		1: return {"along_min": core["min_z"], "along_max": core["max_z"], "depth": core["max_x"]}
-		2: return {"along_min": core["min_x"], "along_max": core["max_x"], "depth": core["max_z"]}
-		3: return {"along_min": core["min_z"], "along_max": core["max_z"], "depth": core["min_x"]}
-	return {}
-
-
-# Convert a building cell along-index to bx/bz for mask building.
-static func along_to_bx_bz(edge_idx: int, along: int, depth: int) -> Vector2i:
-	if edge_idx == 0 or edge_idx == 2:
-		return Vector2i(along, depth)
-	return Vector2i(depth, along)
-
-
 # Convert a building cell along-index to a global mask index.
 # Edges 2/3 reverse the mapping within each distorted grid cell.
 static func along_to_mask_index(edge_idx: int, ci: int, along: int, building_dim: int) -> int:

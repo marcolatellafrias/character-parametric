@@ -1,6 +1,6 @@
 # Sidewalks & Traversal
 
-Walkable-surface generation: the sidewalk zones carved out of the building grid, the physical sidewalk instances placed in them, the delivery doors packages target, the traversal infrastructure (stairs + floating sidewalks) that connects floor 0 to elevated doors, and the sidewalk 3D matrix that tracks free space for all of it. Part of [city generation](city-generation.md); bridge extremes that land in these zones are generated in [bridges.md](bridges.md).
+Walkable-surface generation: the sidewalk zones carved out of the building grid, the physical sidewalk instances placed in them, the delivery doors packages target, and the traversal infrastructure (stairs + floating sidewalks) that connects floor 0 to elevated doors. Part of [city generation](city-generation.md); bridge extremes that land in these zones are generated in [bridges.md](bridges.md).
 
 ## Sidewalk zones
 
@@ -94,30 +94,8 @@ At the corner DG cells, connectors are **trimmed** to avoid overlapping the corn
 
 The iteration goes low-to-high index for all edges (x=0→cols-1 or z=0→rows-1), so `is_first` always corresponds to the low-index corner and `is_last` to the high-index corner.
 
-## Sidewalk 3D matrix
+## Where free space is tracked
 
-Per distorted grid cell, a 3D matrix `(bx, bz, by)` tracking cell availability in the **non-building-core** space. Restructured from the former `BuildingGridHelper`.
+There is no sidewalk matrix. What is placed in a module — sidewalks, bridge extremes, roof pieces — **occupies the module itself** (`BuildingModule.occupy` / `is_free`, a list of boxes), and rigid surfaces project that occupancy onto their own matrix. See [Placing objects](city-generation.md#placing-objects--deformable-and-rigid).
 
-### Cell states (`CellState`)
-
-| State | Value | Meaning |
-|---|---|---|
-| `AVAILABLE` | 0 | Outside building core, on a normal floor — can receive objects, bridge extremes, sidewalks |
-| `UNAVAILABLE` | 1 | Inside building core, in chamfer, or occupied by a placed object |
-| `ROOF_ONLY` | 2 | Above building's floor count — only roof objects (antennas, water tanks) |
-
-Rules (inverted from the former BuildingGridHelper):
-- A cell starts `AVAILABLE` if it is **outside** the building core.
-- If it's **inside** the building core: → `UNAVAILABLE`.
-- If it's inside a chamfer rectangle: → `UNAVAILABLE`.
-- If it's above the building's floor count and not inside core: → `ROOF_ONLY`.
-
-### Sidewalk 3D matrices (per block)
-
-All per-cell sidewalk 3D matrices from every distorted grid cell in a block, combined into one queryable collection. Objects and bridge extremes that span multiple distorted grid cells query this combined structure.
-
-### Derived availability (lazy, not stored)
-
-- **Vertex**: available if any of its 8 neighbor cells is `AVAILABLE`.
-- **Edge**: available if any of its 4 neighbor cells is `AVAILABLE`.
-- **Face**: available if any of its 2 neighbor cells is `AVAILABLE`.
+**Deleted:** `SidewalkMatrix` (`building_grid_helper.gd`), a per-cell 3D array `(bx, bz, by)` with `AVAILABLE / UNAVAILABLE / ROOF_ONLY` states, built lazily per block. It was tens of millions of entries per city, so it never ran outside a debug visualiser, and nothing ever wrote occupancy into it — bridge extremes and doors were placed without consulting it, which is how doors ended up through sidewalks. Its one real job, "is this facade cell chamfered?", lives in `BuildingModule.get_facade_span`.

@@ -152,8 +152,6 @@ extends Node3D
 @export var traffic_light_cycle_duration: float = 5.0
 @export var traffic_light_yellow_duration: float = 2.0
 
-@export var show_sidewalk_matrices: bool = false
-
 @export_group("Delivery Doors")
 @export var show_delivery_doors: bool = false
 @export var delivery_door_color: Color = Color(0.9, 0.9, 0.85)
@@ -398,9 +396,6 @@ func visualize_graph() -> void:
 	if show_nodes:
 		_visualize_nodes()
 		
-	if show_sidewalk_matrices:
-		_visualize_sidewalk_matrices()
-
 	# EL ORDEN IMPORTA: primero todo lo DEFORMABLE, que ocupa la grilla del módulo (extremos de puente,
 	# veredas, piezas de techo); después lo RÍGIDO, que lee esa ocupación proyectada sobre su superficie
 	# (tanques, puertas). Al revés, una puerta se coloca antes de saber que la vereda está delante, que es
@@ -1291,55 +1286,6 @@ func get_block_grid(face_idx: int) -> BlockGenerator:
 		push_error("CityVisualizer: generator no inicializado")
 		return null
 	return generator.get_block_grid(face_idx)
-
-func _visualize_sidewalk_matrices() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	var total_cells = 0
-	var available_cells = 0
-
-	for face_idx in all_block_faces:
-		var helper: SidewalkMatrix = generator.get_sidewalk_matrix(face_idx)
-		if helper == null:
-			continue
-
-		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		if block == null:
-			continue
-
-		for coord_key in helper.matrices:
-			var parts = coord_key.split("_")
-			var coord = Vector2i(int(parts[0]), int(parts[1]))
-
-			var base_module: BuildingModule = block.get_building_module(coord.x, coord.y, 0)
-			if base_module == null:
-				continue
-
-			var cell_matrix = helper.matrices[coord_key]
-			var building_cell_height = cell_matrix["cell_height"]
-
-			for cell_key in cell_matrix["cells"]:
-				var cell = cell_matrix["cells"][cell_key]
-				var cell_state: int = cell["state"]
-				var color: Color
-				match cell_state:
-					SidewalkMatrix.CellState.AVAILABLE:   color = Color(0.0, 1.0, 0.0, 0.5)
-					SidewalkMatrix.CellState.ROOF_ONLY:   color = Color(0.0, 0.5, 1.0, 0.5)
-					_:                                        color = Color(1.0, 0.0, 0.0, 0.5)
-
-				var bottom_vertices = base_module.get_cell_vertices(cell["bx"], cell["bz"], cell["height_index"])
-				if bottom_vertices.size() != 4:
-					continue
-
-				add_child(DebugUtil.create_skewed_cube(bottom_vertices, building_cell_height, color, true))
-
-				total_cells += 1
-				if cell_state == SidewalkMatrix.CellState.AVAILABLE:
-					available_cells += 1
-
-	print("[Visualizer] Building grid cells: %d total (%d available, %d unavailable)" % [
-		total_cells, available_cells, total_cells - available_cells
-	])
-
 
 # ============================================
 # OBJETOS DE TECHO

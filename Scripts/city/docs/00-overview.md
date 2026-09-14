@@ -43,7 +43,7 @@ The docs are split into **conceptual** (game design — the `conceptual/` folder
 | File | What's in it |
 |---|---|
 | [technical/city-generation.md](technical/city-generation.md) | Procedural city-generation breakdown: street graph, grids, offsets, building archetypes, chamfers, block hearts, mesh generation, object placement. |
-| [technical/sidewalks.md](technical/sidewalks.md) | Sidewalk zones & instances, the sidewalk 3D matrix, delivery doors, and traversal infrastructure (stairs + floating sidewalks). |
+| [technical/sidewalks.md](technical/sidewalks.md) | Sidewalk zones & instances, delivery doors, and traversal infrastructure (stairs + floating sidewalks). |
 | [technical/bridges.md](technical/bridges.md) | Bridge ownership, count, structure, archetypes, and the placement algorithm. |
 | [technical/traffic.md](technical/traffic.md) | The ambient flying-car simulation: lane volumes, movement, spawning, collision avoidance, and bridge navigation. |
 | [technical/characters.md](technical/characters.md) | The character's two layers (physics capsule vs aesthetic skeleton), the impact→fall model, the ragdoll, the grab/interaction system, the visual-height vs gameplay-height rule, and the decoupling loose ends. |

@@ -16,7 +16,6 @@ var traffic_indices: Dictionary = {}
 # When false, lane volumes are built WITHOUT a traffic plane at all — no node, no
 # blocking claim, no visual. Set by the city script before generation.
 var enable_traffic_lights: bool = true
-var sidewalk_matrices: Dictionary = {}       # face_idx -> SidewalkMatrix
 var bridges: Dictionary = {}               # edge_key -> Array[Dictionary]
 
 
@@ -464,8 +463,7 @@ func _generate_block_grids(
 	building_cell_height: float
 ) -> void:
 	block_grids.clear()
-	sidewalk_matrices.clear()
-	
+
 	for face_idx in range(plain_graph.faces.size()):
 		var face_nodes = plain_graph.faces[face_idx]
 		var face_vertices: Array[Vector2] = []
@@ -546,15 +544,7 @@ func _generate_block_grids(
 		
 		block_grids[face_idx] = block
 	
-	print("[GraphCityGenerator] Block grids generados: %d (SidewalkMatrices se crean bajo demanda)" % block_grids.size())
-
-func get_sidewalk_matrix(face_idx: int) -> SidewalkMatrix:
-	if face_idx not in sidewalk_matrices:
-		var block = block_grids.get(face_idx, null)
-		if block == null:
-			return null
-		sidewalk_matrices[face_idx] = SidewalkMatrix.new(block)
-	return sidewalk_matrices[face_idx]
+	print("[GraphCityGenerator] Block grids generados: %d" % block_grids.size())
 
 func _is_face_clockwise(vertices: Array[Vector2]) -> bool:
 	var area = 0.0
@@ -1315,15 +1305,13 @@ static func _build_facade_mask(block: BlockGenerator, cells: Array, edge_idx: in
 		if module == null:
 			continue
 
-		var core = module.get_core_info()
-		var chamfer_rects = SidewalkMatrix._get_chamfer_rects_static(module)
-		var ranges = FacadeHelper.get_mask_ranges(edge_idx, core)
+		# Dónde hay pared en ese lado lo dice el módulo (`get_facade_span`, que descuenta los chaflanes): las
+		# celdas fuera de ese tramo son ochava y no sostienen un puente.
+		var span := module.get_facade_span(edge_idx)
+		var wall_from := ceili(minf(span.x, span.y))
+		var wall_to := floori(maxf(span.x, span.y))
 
-		for along in range(ranges["along_min"], ranges["along_max"] + 1):
-			var cell_pos = FacadeHelper.along_to_bx_bz(edge_idx, along, ranges["depth"])
-			if SidewalkMatrix._is_cell_in_chamfer_static(cell_pos.x, cell_pos.y, chamfer_rects):
-				continue
-
+		for along in range(wall_from, wall_to):
 			var global_idx = FacadeHelper.along_to_mask_index(edge_idx, ci, along, building_dim)
 			if global_idx >= 0 and global_idx < total:
 				mask[global_idx] = cluster_height

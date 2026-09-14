@@ -26,7 +26,7 @@ The edge's tier is the **taller of its two blocks** (`get_height_for_edge`), and
 A bridge has two distinct placement systems (see "Object placement — two systems" in [city-generation.md](city-generation.md#object-placement--two-systems)):
 
 - **Middle part** (between-grids): spans between the two facade faces across the street. Uses `create_skewed_cube_from_planes` with both faces from `FacadeHelper.facade_span_quad()` — sampled from the building grid at the span's end cells and at **both** height indices, so the connector inherits the facade's torsion instead of imposing a horizontal plane of its own.
-- **Extremes** (in-grid): extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Live inside the sidewalk 3D matrix. Uses `create_skewed_cube` with base vertices from `get_region_vertices`.
+- **Extremes** (in-grid): extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Placed through `ModulePlacer`, so they occupy the building module.
 
 ## Bridge parts — middle (from-planes)
 
@@ -85,8 +85,7 @@ The weight function (`_get_archetype_weights`) is extensible: new factors (neigh
    - Compute a **slot**: `{t_start, t_end, h_start, h_end}` where h includes the arc below.
    - Check overlap against all previously placed slots on this edge.
    - If no overlap and fits within `max_height`, accept.
-6. Store placed bridges with their facade corners, parametric positions, archetype, and extreme data.
-7. Mark extreme cells as `UNAVAILABLE` in the sidewalk 3D matrices on both sides.
+6. Store placed bridges with their facade corners, parametric positions, archetype, and extreme data. The extremes occupy their modules when they are placed, at visualisation.
 
 ## Sidewalk vertical grid (bridge/pipe validation)
 
@@ -95,9 +94,8 @@ Validates that bridge/pipe middle parts have solid building wall to anchor to. A
 Built by iterating each DistortedGrid cell along the facade edge:
 
 1. Get the cell's cluster. If none or `floor_count == 0` → all entries for this cell are unavailable.
-2. Get the building module (floor 0) and read its **core area** (`core_min/max`).
-3. Get the module's **chamfer rects**. Cells inside a chamfer rect are excluded.
-4. For each building cell along the facade that is inside the core AND not in a chamfer → mark as available up to the cluster's height.
+2. Get the building module (floor 0) and ask it where there is wall on that side: `BuildingModule.get_facade_span(edge)` — the core's edge minus the chamfers at both ends, the same definition the facade's rigid surface and the door positions use.
+3. Every building cell in that span → available up to the cluster's height (`GraphCityGenerator._build_facade_mask`).
 
 **Corner exclusion**: at each end of the edge, `max(facade_offset, chamfer_along_this_edge)` building cells are excluded. These correspond to the external sidewalk corner zones (the `facade_offset × facade_offset` squares at block corners) which have no building face behind them. The exclusion is applied per-end as a number of building cells from the edge's start/end — it manifests as unavailable entries in the horizontal axis of the grid, spanning all heights.
 

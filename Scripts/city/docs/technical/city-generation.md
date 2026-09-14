@@ -2,7 +2,7 @@
 
 Technical, code-level breakdown of the procedural city generator. Three subsystems each have their own file:
 
-- [sidewalks.md](sidewalks.md) — sidewalk zones, physical instances, the sidewalk 3D matrix, delivery doors, and traversal infrastructure (stairs + floating sidewalks).
+- [sidewalks.md](sidewalks.md) — sidewalk zones, physical instances, delivery doors, and traversal infrastructure (stairs + floating sidewalks).
 - [bridges.md](bridges.md) — bridge ownership, count, structure, archetypes, and placement.
 - [traffic.md](traffic.md) — the ambient flying-car simulation.
 
@@ -19,7 +19,7 @@ Technical, code-level breakdown of the procedural city generator. Three subsyste
 6. **Block hearts** — Interior clusters (not on the block perimeter) have a chance of becoming "hearts": their `floor_count` is set to 0, creating empty courtyards inside the block.
 7. **Building modules** — Each cell in each cluster is a `BuildingModule` per floor. Each module knows what borders its 4 sides and shrinks its core area inward (facade/alleyway offset), forming the actual building footprint.
 8. **Sidewalk zones** — The non-core cells of each building module define sidewalk zones: external (between the buildable zone boundary and the building face) and internal (alleyway offset areas between buildings). See [sidewalks.md](sidewalks.md).
-9. **Sidewalk 3D matrices** — Each distorted grid cell gets a 3D matrix tracking cell availability in the sidewalk zones, extruded vertically. Combined per block for cross-cell queries.
+9. **Occupancy** — There is no availability matrix. Each `BuildingModule` keeps a list of the regions placed in it; whatever needs free space asks the module (see [Placing objects](#placing-objects--deformable-and-rigid)).
 10. **Sidewalk instances** — Physical walkable surfaces spawned within sidewalk zones. Floor 0 gets sidewalks everywhere. Higher-floor floating sidewalks are bridge-dependent (rules TBD).
 11. **Wall** — A closed barrier on the graph's boundary edges, the limit of the playable world. See [The wall](#the-wall).
 12. **Bridges** — Placed on graph edges. Middle parts span between opposing buildable zone boundaries. Extremes extend through external sidewalk zones to the building face. See [bridges.md](bridges.md).
@@ -57,7 +57,7 @@ The relief **inside** a block does not live here: that one is discrete and stepp
 
 The scene the city emits is **coarser than the data behind it, on purpose**. Per building (`BuildingCluster`) it emits exactly **one mesh** and **one collider**, merged from every cell of every floor — not one node per cell per floor.
 
-This is only the **last step**, the emission. Everything upstream stays per cell and per floor: `BuildingModule` (core area, chamfers, the funnel every placeable position flows through) and the sidewalk 3D matrix. Future placeables — windows, balconies, AC units, signs, roof tanks — will ask *those* for their position, never the scene tree, so merging the output costs them nothing. Splitting it back into pieces is a change to one function (`City._visualize_building_colliders` / `_visualize_buildings`) and nothing else.
+This is only the **last step**, the emission. Everything upstream stays per cell and per floor: `BuildingModule` (core area, chamfers, occupancy, the funnel every placeable position flows through). Future placeables — windows, balconies, AC units, signs, roof tanks — will ask *those* for their position, never the scene tree, so merging the output costs them nothing. Splitting it back into pieces is a change to one function (`City._visualize_building_colliders` / `_visualize_buildings`) and nothing else.
 
 **Why it matters** (measured on the 312-block city): colliders went from **145 264 collision shapes to 22 596** — the building half from 126 777 down to 4 109, one per building. Those shapes sit in Jolt's broadphase no matter where the player is, so this is a per-frame and memory win, not only a startup one. The collider is built from the **same geometry the mesh pass already computes** (`DebugUtil.get_skewed_cube_advanced_grid_geometry`), so nothing is calculated twice.
 
@@ -383,7 +383,7 @@ The whole plan rests on a finding worth keeping: **everything that sits in the c
 - `BuildingModule.point_at_f()` — everything on a building: the module quads (`get_region_vertices`, `get_core_vertices`, `get_facade_quad`), and through them `ModulePlacer` and every `RigidMatrix` surface.
 - `BlockGenerator.get_edge_lane_volume()` — all traffic.
 
-Bilinear interpolation (`GridHelper`) is pure 2D; Y is added afterwards. The 3D sidewalk matrix, door `{cell, edge, floor}` triples and the bridge grid are **logical indices in module space**, not metres, so they keep working untouched.
+Bilinear interpolation (`GridHelper`) is pure 2D; Y is added afterwards. Module occupancy, door `{cell, edge, floor}` triples and the bridge grid are **logical indices in module space**, not metres, so they keep working untouched.
 
 ### Status
 
@@ -393,7 +393,7 @@ Bilinear interpolation (`GridHelper`) is pure 2D; Y is added afterwards. The 3D 
 | 2 | Heights at the distorted-grid vertices, falling off to zero at the block perimeter so neighbouring blocks still meet | **done** — `DistortedGrid.vertex_heights`, `edge_falloff_sharpness` |
 | 3 | Lane volumes riding the field | **not started** — `get_edge_lane_volume` still writes `0.0` at the bottom and `max_height_global` at the top: one global height for the entire city |
 | 4 | Buildings riding the field | **done** — every floor is the base quad raised in Y, so mesh and placement agree; the taper was removed rather than completed (see below) |
-| 5 | A *buried* predicate in the 3D sidewalk matrix | **not started**, and largely unnecessary: ground-floor doors anchor at `height_index 0`, which follows the terrain |
+| 5 | A *buried* predicate for placed objects | **dropped**: ground-floor objects anchor at `height_index 0`, which follows the terrain, so nothing can end up under it |
 | 6 | Stepped field inside the block, stairs in the alleys (parkour) | **partial** — `TraversalGenerator.stair_zones` exists; the stepped field does not |
 | 7 | `GroundPlanner`: cars that hug the ground | **not started** — nothing in the traffic code reads the terrain |
 
@@ -439,7 +439,7 @@ Whoever places something thinks about two things: the **region** of building cel
 - **The index.** The piece is recorded in `CityIndex` with the placer's scope and object; the inspector names it with no extra work.
 - **Occupancy.** The region is marked on the module. If it was not free, `place` returns `false` and places nothing: two objects cannot overlap by oversight.
 
-**Occupancy is a list of boxes, not a 3D array.** A module is 80×80 cells by 32 per floor; a cell array per module would be tens of millions of entries per city — the reason `SidewalkMatrix` could never be built. Objects are few, so a list and a box-intersection test are enough.
+**Occupancy is a list of boxes, not a 3D array.** A module is 80×80 cells by 32 per floor; a cell array per module would be tens of millions of entries per city — the reason the old `SidewalkMatrix` never ran outside a debug view, and was deleted. Objects are few, so a list and a box-intersection test are enough.
 
 ### The rigid matrix: `RigidMatrix`
 

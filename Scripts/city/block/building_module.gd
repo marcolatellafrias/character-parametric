@@ -397,7 +397,7 @@ func cell_metres() -> Vector2:
 # ── OCUPACIÓN ───────────────────────────────────────────────────────────────────────────────────
 # Qué regiones de la matriz ya tienen algo. Es una lista de cajas y no una matriz 3D de celdas porque un
 # módulo tiene 80×80 celdas por 32 de alto por piso: una matriz por módulo sería decenas de millones de
-# entradas por ciudad (ver SidewalkMatrix, que por eso nunca se pudo construir). Los objetos son pocos, así
+# entradas por ciudad (hubo una matriz así, `SidewalkMatrix`, y por eso nunca se pudo construir). Los objetos son pocos, así
 # que una lista y una prueba de intersección alcanzan.
 var _occupied: Array[Array] = []
 
