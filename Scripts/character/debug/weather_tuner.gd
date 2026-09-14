@@ -50,7 +50,7 @@ const HELP := {
 	"fade_ring": "Metros de fundido con los que entra una pieza antes de su corte.",
 	# ── Nubes ──
 	"clouds_coverage": "Umbral sobre el ruido grande: cuanto cielo ocupan. Moverlo cambia QUE nubes hay, no solo cuantas. Ademas amplifica lighting_density.",
-	"clouds_density": "Multiplica la densidad de cada muestra. Mas densas = mas opacas y mas oscuras por dentro.",
+	"clouds_density": "Multiplica la densidad de cada muestra, y la alfa final es esa densidad acumulada hasta saturar en 1. El addon la declara hasta 20; el slider llega a 4, que a escala de ciudad ya es opacidad total y de sobra.",
 	"atmospheric_density": "Cuanto se funden las nubes con el color de niebla a medida que se alejan. Es el velo blanco del horizonte.",
 	"lighting_density": "Cuanto se tapa la nube a si misma del sol. Es LA perilla contra el aspecto plano: junto con lighting_travel_distance decide la profundidad de la sombra propia.",
 	"fog_effect_ground": "Cuanto de ese velo atmosferico se aplica tambien sobre la geometria del mundo, no solo sobre el cielo.",
@@ -174,7 +174,12 @@ func _sections() -> Array[Dictionary]:
 		# Environment, asi que a mano seria una perilla que se pisa sola.
 		out.append({"title": "NUBES → Scenes/clouds.tres", "target": clouds,
 			"include": PackedStringArray(["Basic Settings", "Colors", "Structure", "Performance"]),
-			"skip": PackedStringArray(["sampled_environment_fog_color"]), "help": HELP})
+			"skip": PackedStringArray(["sampled_environment_fog_color"]),
+			# El addon declara la densidad hasta 20, que es honesto para una capa de 15 km. A escala de
+			# ciudad todo lo util vive abajo de 4, o sea en el 20% inicial del recorrido, y un slider lo
+			# limitan los pixeles y no el paso. Es la unica que lo necesita: el resto de los rangos del
+			# addon caen donde caen los valores que usamos.
+			"ranges": {"clouds_density": [0.0, 4.0]}, "help": HELP})
 	var driver := get_tree().get_first_node_in_group("clouds_driver")
 	if driver != null:
 		out.append({"title": "LUZ Y VIENTO DE LAS NUBES → Scenes/Demo.tscn, nodo Clouds",

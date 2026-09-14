@@ -38,22 +38,22 @@ extends Resource
 @export var fog_from_sky := true
 ## Como se reparte la densidad entre las dos distancias: >1 la empuja al fondo y deja el medio campo
 ## limpio. En 1.0 sube lineal desde `fog_start_distance` y la ciudad se siente encerrada.
-@export_range(0.1, 8.0, 0.05) var fog_curve := 1.35
+@export_range(0.1, 8.0, 0.05) var fog_curve := 1.05
 ## Cuanto se aclara la niebla mirando hacia el sol.
 @export_range(0.0, 1.0, 0.01) var fog_sun_scatter := 0.13
 
 @export_group("Cielo")
-@export var sky_top := Color(0.45515442, 0.5329677, 0.63671875)
-@export var sky_horizon := Color(0.35346985, 0.48960796, 0.80078125)
-@export_range(0.0, 1.0, 0.01) var sky_curve := 0.18
+@export var sky_top := Color(0.16529846, 0.34908625, 0.61328125)
+@export var sky_horizon := Color(0.5192261, 0.5990432, 0.70703125)
+@export_range(0.0, 1.0, 0.01) var sky_curve := 0.17
 
 @export_group("Luz ambiente")
 @export var ambient := Color(0.20040894, 0.36905152, 0.77734375)
-@export_range(0.0, 1.2, 0.01) var ambient_energy := 0.31
+@export_range(0.0, 1.2, 0.01) var ambient_energy := 0.25
 
 @export_group("Sol")
 @export var sun_core := Color(1, 0.957, 0.902)
-@export_range(0.0, 4.0, 0.05) var sun_energy := 1.0
+@export_range(0.0, 4.0, 0.05) var sun_energy := 1.1
 ## Altura sobre el horizonte, en grados: 0 es el horizonte, 90 el cenit.
 @export_range(-10.0, 90.0, 1.0) var sun_elevation := 62.0
 @export_range(0.0, 360.0, 1.0) var sun_azimuth := 35.0
@@ -63,7 +63,7 @@ extends Resource
 @export_range(0.0, 4.0, 0.05) var shadow_softness := 0.3
 ## El brillo del disco y su halo. Va aparte de `sun_energy` porque son dos luces: subir la luz del
 ## mundo hasta donde se ve bien no tiene por que ser el mismo numero que hace que el sol se vea.
-@export_range(0.0, 8.0, 0.05) var sun_disc_energy := 1.0
+@export_range(0.0, 8.0, 0.05) var sun_disc_energy := 0.95
 ## El radio del halo alrededor del disco, en grados. Grande reparte el mismo brillo sobre medio cielo
 ## y el sol queda como un degrade lavado.
 @export_range(0.0, 90.0, 1.0) var sun_glow := 56.0

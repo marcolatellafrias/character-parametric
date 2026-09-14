@@ -13,6 +13,9 @@ extends RefCounted
 ##   include    nombres de grupo a mostrar; vacio muestra todo. Filtra por el grupo mas interno: si la
 ##              propiedad esta en un subgrupo manda el subgrupo, si no manda el grupo.
 ##   skip       nombres de propiedad que maneja el juego y no la mano
+##   ranges     nombre de propiedad -> [min, max] que reemplaza al declarado, SOLO para el slider: el
+##              valor guardado no se toca. Es para cuando el `@export_range` de un addon es honesto
+##              para su escala y absurdo para la nuestra
 ##   help       nombre de propiedad -> una linea de que hace, que se dibuja debajo del control
 ##   on_change  se llama despues de cada escritura; puede ser vacia si el objeto se relee solo
 ##
@@ -58,7 +61,7 @@ static func build(box: VBoxContainer, spec: Dictionary) -> void:
 		label.custom_minimum_size = Vector2(NAME_WIDTH, 0.0)
 		var row := HBoxContainer.new()
 		row.add_child(label)
-		var control := _control(target, prop, label, on_change)
+		var control := _control(spec, prop, label)
 		control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(control)
 		box.add_child(row)
@@ -123,7 +126,9 @@ static func _properties(spec: Dictionary) -> Array[Dictionary]:
 
 ## El control que le corresponde al tipo (`_properties` ya garantizo que es uno de `TUNABLE`). `label`
 ## muestra el valor vivo al lado del nombre.
-static func _control(target: Object, prop: Dictionary, label: Label, on_change: Callable) -> Control:
+static func _control(spec: Dictionary, prop: Dictionary, label: Label) -> Control:
+	var target: Object = spec["target"]
+	var on_change: Callable = spec.get("on_change", Callable())
 	var prop_name := str(prop["name"])
 	var type := int(prop["type"])
 	if type == TYPE_BOOL:
@@ -148,7 +153,7 @@ static func _control(target: Object, prop: Dictionary, label: Label, on_change: 
 
 	# Sin rango declarado va un campo con flechas: inventarle un maximo a algo como `cloud_ceiling`
 	# seria mentir, y un slider necesita dos extremos.
-	var limits := _range(prop)
+	var limits := _range(prop, spec.get("ranges", {}))
 	if limits.is_empty():
 		var spin := SpinBox.new()
 		spin.min_value = -1000000.0
@@ -184,9 +189,15 @@ static func _control(target: Object, prop: Dictionary, label: Label, on_change: 
 	return slider
 
 
-## `[min, max, step]` de un `@export_range`, o vacio si no lo tiene. Godot omite el paso cuando no se
-## declara, y ahi se toma uno fino: el slider igual se lee con el numero al lado.
-static func _range(prop: Dictionary) -> PackedFloat64Array:
+## `[min, max, step]` de un `@export_range`, o vacio si no lo tiene. `ranges` puede reemplazar los dos
+## extremos: un slider esta limitado por sus PIXELES, no por su paso, asi que un rango diez veces mas
+## grande que la banda util no se arregla afinando el step.
+##
+## Cuando el rango no declara paso —y el addon de nubes no lo declara NUNCA— hay que inventarle uno, y
+## el obvio, un doscientosavo del rango, miente: `clouds_density` va de 0 a 20, asi que el paso daba 0,1
+## y el valor mas chico que se podia poner era exactamente 0,1, con toda la banda translucida de abajo
+## fuera de alcance. Va un paso fino, y de que igual se lea se encarga el numero al lado del slider.
+static func _range(prop: Dictionary, ranges: Dictionary) -> PackedFloat64Array:
 	if int(prop["hint"]) != PROPERTY_HINT_RANGE:
 		return PackedFloat64Array()
 	var parts := str(prop["hint_string"]).split(",")
@@ -194,7 +205,12 @@ static func _range(prop: Dictionary) -> PackedFloat64Array:
 		return PackedFloat64Array()
 	var low := float(parts[0])
 	var high := float(parts[1])
-	var step := float(parts[2]) if parts.size() > 2 else (high - low) / 200.0
+	if ranges.has(str(prop["name"])):
+		var override: Array = ranges[str(prop["name"])]
+		low = float(override[0])
+		high = float(override[1])
+	var fine := 1.0 if int(prop["type"]) == TYPE_INT else 0.001
+	var step := float(parts[2]) if parts.size() > 2 else fine
 	return PackedFloat64Array([low, high, step])
 
 
