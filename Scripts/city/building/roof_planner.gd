@@ -500,7 +500,7 @@ static func _chamfer_piece(rects: Array, v: Vector2i, q: int, module: BuildingMo
 
 
 ## Un punto del retículo girado `k` cuartos de vuelta alrededor del origen, con el mismo sentido que
-## `RoofProps.rotated`: cada cuarto lleva (x, z) a (-z, x).
+## `UnitMesh.rotated`: cada cuarto lleva (x, z) a (-z, x).
 static func _rot_point(p: Vector2i, k: int) -> Vector2i:
 	var out := p
 	for _i in posmod(k, 4):

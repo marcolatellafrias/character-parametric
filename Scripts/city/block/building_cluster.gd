@@ -83,7 +83,10 @@ func get_building_module(x: int, z: int, floor: int) -> BuildingModule:
 	if not contains_cell(x, z):
 		return null
 	
-	if floor < 0 or floor >= floor_count:
+	# El piso 0 existe siempre, también en un corazón de manzana sin edificio (`floor_count` 0): es el
+	# módulo donde se apoya lo que va a nivel de suelo —su plaza—. Quien dibuja edificios itera pisos y no
+	# llega acá con 0.
+	if floor < 0 or floor >= maxi(floor_count, 1):
 		return null
 	
 	var edge_types_array: Array[int] = []

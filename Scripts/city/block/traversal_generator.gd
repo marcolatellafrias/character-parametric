@@ -134,109 +134,113 @@ func _door_span(module: BuildingModule, edge_idx: int, rng: RandomNumberGenerato
 	}
 
 
+## Si ese lado del módulo da a la calle. Solo ahí hay cordón: un callejón es vereda de lado a lado.
+static func _is_street(module: BuildingModule, edge_idx: int) -> bool:
+	var sides := ["north", "east", "south", "west"]
+	return module.get_edge_type(sides[edge_idx]) == DistortedGrid.CellType.FACADE
+
+
+## LAS VEREDAS DEL PISO 0, MÓDULO POR MÓDULO. Todo lo que no es edificio a nivel de suelo es vereda: cada
+## módulo pavimenta SU RETIRO ENTERO —hacia la calle hasta el cordón, hacia un callejón hasta el medio, así
+## los dos módulos que lo flanquean lo cubren completo: los callejones son vereda pura—. Se parte en una
+## TIRA por lado con retiro y una ESQUINA en cada vértice cuyos dos lados tienen retiro; la tira se acorta
+## donde hay esquina y llega hasta el borde del módulo donde no la hay, así contra un vecino adosado las
+## tiras de los dos módulos se continúan. No hay piezas "de manzana".
+##
+## La esquina es CURVA solo donde los dos lados son calle —ahí hay cordón que dobla—. En la boca de un
+## callejón sobre la calle el cordón sigue recto y el pavimento del callejón llega a ras, y en un cruce de
+## callejones todo es losa: esas esquinas son cuadradas.
+##
+## Dos casos más completan el suelo: el CORAZÓN DE MANZANA, sin edificio, es una plaza —la celda entera—, y
+## el chaflán le quita al edificio un triángulo de núcleo que se rellena para que la vereda llegue a la pared
+## ochavada (ver SidewalkProps).
 func _generate_floor_sidewalks() -> void:
 	var grid = block.get_distorted_grid()
 	if grid == null:
 		return
-
-	var cols = grid.columns
-	var rows = grid.rows
-
-	# Corners: facade_offset × facade_offset at each block corner
-	var corner_cells = {
-		"nw": {"cell": Vector2i(0, 0), "edges": [3, 0]},
-		"ne": {"cell": Vector2i(cols - 1, 0), "edges": [0, 1]},
-		"se": {"cell": Vector2i(cols - 1, rows - 1), "edges": [1, 2]},
-		"sw": {"cell": Vector2i(0, rows - 1), "edges": [2, 3]},
-	}
-
-	for key in corner_cells:
-		var info = corner_cells[key]
-		var cell: Vector2i = info["cell"]
-		var module = block.get_building_module(cell.x, cell.y, 0)
-		if module == null:
-			continue
-
-		var core = module.get_core_info()
-		var bx_min: int; var bx_max: int; var bz_min: int; var bz_max: int
-		match key:
-			"nw":
-				bx_min = 0; bx_max = core["min_x"] - 1
-				bz_min = 0; bz_max = core["min_z"] - 1
-			"ne":
-				bx_min = core["max_x"] + 1; bx_max = module.columns - 1
-				bz_min = 0; bz_max = core["min_z"] - 1
-			"se":
-				bx_min = core["max_x"] + 1; bx_max = module.columns - 1
-				bz_min = core["max_z"] + 1; bz_max = module.rows - 1
-			"sw":
-				bx_min = 0; bx_max = core["min_x"] - 1
-				bz_min = core["max_z"] + 1; bz_max = module.rows - 1
-
-		if bx_min > bx_max or bz_min > bz_max:
-			continue
-
-		var cluster = block.get_cluster_for_cell(cell.x, cell.y)
-		if cluster == null:
-			continue
-
-		floating_sidewalk_zones.append({
-			"cell": cell, "edge": info["edges"][0], "floor": 0,
-			"cluster_id": cluster.id,
-			"bx_min": bx_min, "bx_max": bx_max, "bz_min": bz_min, "bz_max": bz_max
-		})
-
-	# Sides: one strip per DG cell along each perimeter edge
-	var side_edges = [
-		[0, 0,       0, cols - 1],
-		[1, cols - 1, 0, rows - 1],
-		[2, rows - 1, 0, cols - 1],
-		[3, 0,       0, rows - 1],
-	]
-	for side_info in side_edges:
-		var edge_idx: int = side_info[0]
-		var fixed: int = side_info[1]
-		var range_start: int = side_info[2]
-		var range_end: int = side_info[3]
-		for i in range(range_start, range_end + 1):
-			var coord: Vector2i
-			if edge_idx == 0 or edge_idx == 2:
-				coord = Vector2i(i, fixed)
-			else:
-				coord = Vector2i(fixed, i)
-			var module = block.get_building_module(coord.x, coord.y, 0)
-			if module == null:
+	for z in range(grid.rows):
+		for x in range(grid.columns):
+			var cell := Vector2i(x, z)
+			var cluster = block.get_cluster_for_cell(x, z)
+			var module: BuildingModule = block.get_building_module(x, z, 0)
+			if cluster == null or module == null:
 				continue
-			var core = module.get_core_info()
-			var is_first = (i == range_start)
-			var is_last = (i == range_end)
-			var bx_min: int; var bx_max: int; var bz_min: int; var bz_max: int
-			match edge_idx:
-				0:
-					bx_min = core["min_x"] if is_first else 0
-					bx_max = core["max_x"] if is_last else module.columns - 1
-					bz_min = 0; bz_max = core["min_z"] - 1
-				1:
-					bx_min = core["max_x"] + 1; bx_max = module.columns - 1
-					bz_min = core["min_z"] if is_first else 0
-					bz_max = core["max_z"] if is_last else module.rows - 1
-				2:
-					bx_min = core["min_x"] if is_first else 0
-					bx_max = core["max_x"] if is_last else module.columns - 1
-					bz_min = core["max_z"] + 1; bz_max = module.rows - 1
-				3:
-					bx_min = 0; bx_max = core["min_x"] - 1
-					bz_min = core["min_z"] if is_first else 0
-					bz_max = core["max_z"] if is_last else module.rows - 1
-			if bx_min > bx_max or bz_min > bz_max:
+			var cols: int = module.columns
+			var rows: int = module.rows
+			if cluster.floor_count <= 0:
+				_add_sidewalk_zone(cell, cluster.id, SidewalkProps.Piece.PLAZA, -1,
+						Vector4i(0, cols - 1, 0, rows - 1))
 				continue
 
-			var cluster = block.get_cluster_for_cell(coord.x, coord.y)
-			if cluster == null:
-				continue
+			var core := module.get_core_info()
+			# El retiro de cada lado (norte, este, sur, oeste), en celdas: cero contra un vecino adosado o
+			# contra el límite del mundo.
+			var w: Array[int] = [int(core["min_z"]), cols - 1 - int(core["max_x"]),
+					rows - 1 - int(core["max_z"]), int(core["min_x"])]
+			# Hasta dónde llega una tira a lo largo de su lado: al núcleo si el lado vecino tiene retiro (ahí
+			# va la esquina), al borde del módulo si no.
+			var x_from: int = core["min_x"] if w[3] > 0 else 0
+			var x_to: int = core["max_x"] if w[1] > 0 else cols - 1
+			var z_from: int = core["min_z"] if w[0] > 0 else 0
+			var z_to: int = core["max_z"] if w[2] > 0 else rows - 1
+			# El espesor de cada tira, del borde del módulo al núcleo: [min, max] en profundidad, por lado.
+			var depth := [
+				Vector2i(0, core["min_z"] - 1),
+				Vector2i(core["max_x"] + 1, cols - 1),
+				Vector2i(core["max_z"] + 1, rows - 1),
+				Vector2i(0, core["min_x"] - 1),
+			]
+			var strips := [
+				Vector4i(x_from, x_to, depth[0].x, depth[0].y),
+				Vector4i(depth[1].x, depth[1].y, z_from, z_to),
+				Vector4i(x_from, x_to, depth[2].x, depth[2].y),
+				Vector4i(depth[3].x, depth[3].y, z_from, z_to),
+			]
+			for edge_idx in 4:
+				if w[edge_idx] > 0:
+					_add_sidewalk_zone(cell, cluster.id, SidewalkProps.Piece.STRIP, edge_idx, strips[edge_idx])
 
-			floating_sidewalk_zones.append({
-				"cell": coord, "edge": edge_idx, "floor": 0,
-				"cluster_id": cluster.id,
-				"bx_min": bx_min, "bx_max": bx_max, "bz_min": bz_min, "bz_max": bz_max
-			})
+			# Esquinas, numeradas como los cuartos de vuelta de UnitMesh.rotated: 0 NO, 1 NE, 2 SE, 3 SO.
+			# Cada una es el retiro de su lado en x por el retiro de su lado en z.
+			var corner_sides := [Vector2i(3, 0), Vector2i(1, 0), Vector2i(1, 2), Vector2i(3, 2)]
+			for k in 4:
+				var sides: Vector2i = corner_sides[k]
+				if w[sides.x] <= 0 or w[sides.y] <= 0:
+					continue
+				var curved := _is_street(module, sides.x) and _is_street(module, sides.y)
+				var piece: int = SidewalkProps.Piece.CURVED_CORNER if curved else SidewalkProps.Piece.CORNER
+				var along_x: Vector2i = depth[sides.x]
+				var along_z: Vector2i = depth[sides.y]
+				_add_sidewalk_zone(cell, cluster.id, piece, k,
+						Vector4i(along_x.x, along_x.y, along_z.x, along_z.y))
+
+			# Rellenos de ochava: el cuadrado del chaflán en cada esquina del núcleo, mismo índice de vértice
+			# que `chamfers` (0 NO, 1 NE, 2 SE, 3 SO). `c1` va sobre la arista anterior y `c2` sobre la
+			# siguiente, como en el constructor de la pared (DebugUtil._grid_chamfers_to_metres).
+			var chamfers: Dictionary = module.get_chamfers()
+			for k in 4:
+				if not chamfers.has(k):
+					continue
+				var cut: Array = chamfers[k]
+				var c1 := int(cut[0])
+				var c2 := int(cut[1])
+				if c1 <= 0 or c2 <= 0:
+					continue
+				var rect: Vector4i
+				match k:
+					0: rect = Vector4i(core["min_x"], core["min_x"] + c2 - 1, core["min_z"], core["min_z"] + c1 - 1)
+					1: rect = Vector4i(core["max_x"] - c1 + 1, core["max_x"], core["min_z"], core["min_z"] + c2 - 1)
+					2: rect = Vector4i(core["max_x"] - c2 + 1, core["max_x"], core["max_z"] - c1 + 1, core["max_z"])
+					_: rect = Vector4i(core["min_x"], core["min_x"] + c1 - 1, core["max_z"] - c2 + 1, core["max_z"])
+				_add_sidewalk_zone(cell, cluster.id, SidewalkProps.Piece.CHAMFER, k, rect)
+
+
+## Una zona de vereda: qué `piece` va (SidewalkProps.Piece) y su `side` —el lado de una tira, la esquina de
+## una esquina o de un relleno, -1 en una plaza—. `rect` es (bx_min, bx_max, bz_min, bz_max), inclusivo.
+func _add_sidewalk_zone(cell: Vector2i, cluster_id: int, piece: int, side: int, rect: Vector4i) -> void:
+	if rect.x > rect.y or rect.z > rect.w:
+		return
+	floating_sidewalk_zones.append({
+		"cell": cell, "piece": piece, "side": side, "floor": 0, "cluster_id": cluster_id,
+		"bx_min": rect.x, "bx_max": rect.y, "bz_min": rect.z, "bz_max": rect.w,
+	})

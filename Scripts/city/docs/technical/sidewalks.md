@@ -4,37 +4,35 @@ Walkable-surface generation: the sidewalk zones carved out of the building grid,
 
 ## Sidewalk zones
 
-The non-building-core cells of the building grid form **sidewalk zones** — areas where sidewalks, bridge extremes, and facade objects (windows, balconies, AC units, etc.) can be placed.
+The non-building-core cells of the building grid — the module's **offset** (24 cells toward a street, 18 toward an alley, 0 toward an attached neighbour or the world boundary) — are where sidewalks, bridge extremes and facade objects live.
 
-### External sidewalk zone
+**Sidewalks are decided per module, in its own offset**, by `TraversalGenerator._generate_floor_sidewalks`. There are no block-level pieces and no ownership rules between zones: every module places its own, and they meet exactly at module edges because both sides are deformed by the same grid.
 
-The facade offset strip (20 building cells deep) between the buildable zone boundary and the building face, wrapping around the block perimeter.
+**Everything at ground level that is not building is sidewalk.** Each module paves its **whole offset**: toward a street up to the kerb (24), toward an alley up to the alley's middle (18), so the two flanking modules cover it completely — **alleys are pure sidewalk**, one continuous slab at sidewalk height (a lower channel in the middle was tried and rejected). The offset is split into pieces (`SidewalkProps.Piece`):
 
-**Geometry** — decomposed into **8 pieces** per block:
-- **4 corners**: `facade_offset × facade_offset` squares (e.g. 24×24) at each block corner, where two perimeter edges meet. These sit at the outermost part of the sidewalk, nearest the street intersection, farthest from any building face.
-- **4 sides**: rectangular strips connecting adjacent corners along each block edge. Each side is a single piece spanning the full edge.
-
-### Internal sidewalk zone
-
-The alleyway offset strips (18 building cells deep) between adjacent building cores, inside the block.
-
-**Geometry** — decomposed into:
-- **Connecting sectors**: straight strips running along alleyway edges between buildings.
-- **Corners**: where two alleyways intersect.
-
-**Corner ownership**: where an internal sidewalk zone meets an external sidewalk zone, the corner is always owned by the external zone — external has higher hierarchy. There must never be conflicting ownership of corners.
+- **A strip per side with offset > 0**, pressed against the core. Along its side it runs to the *core* where the neighbouring side has an offset (the corner goes there) and to the *module edge* where it does not, so against an attached neighbour the two modules' strips continue into one another.
+- **A corner at every module vertex whose two sides both have an offset**: `offset_x × offset_z`, at the core's corner. It is **curved only where both sides are streets** — the block corner, where the kerb turns. At an alley mouth the kerb runs straight across and the alley's pavement meets the street sidewalk flush; at an alley crossing everything is slab. Those corners are plain squares.
+- **A chamfer fill at every chamfered core corner**: the `c1 × c2` square the chamfer cut out of the building, filled with a triangular prism whose hypotenuse is the base of the diagonal wall, so the sidewalk reaches the ochava. Same for the concave alley chamfer.
+- **A plaza for a block heart**: a cluster with `floor_count` 0 has no building, so its whole cell is one slab. (`BuildingCluster.get_building_module` always yields the floor-0 module, even with 0 floors, for exactly this.)
 
 ## Sidewalk instances
 
-A sidewalk instance is a physical walkable surface: a **1-cell-tall box** at a specific floor. Sidewalks are always **floor-aligned** — the bottom sits at the start of a floor.
+A sidewalk instance is a physical walkable surface: a **1-cell-thick** piece at a specific floor. Sidewalks are always **floor-aligned** — the bottom sits at the start of a floor.
 
-Sidewalks are **deformable objects placed through `ModulePlacer`** (`City._visualize_floating_sidewalk_zones`; see [Placing objects](city-generation.md#placing-objects--deformable-and-rigid)): a region `(bx, bz)` × 1 cell high and a unit box, deformed by the module's grid so neighbouring strips meet exactly, indexed as `CityIndex.Kind.SIDEWALK` under the building's object, and — the part everything else depends on — **occupying the module**, so the facade's rigid matrix sees them and a door stands on the slab instead of going through it. One mesh and one trimesh collider per block (`_bake_placed`).
+Sidewalks are **deformable objects placed through `ModulePlacer`** (`City._visualize_floating_sidewalk_zones`; see [Placing objects](city-generation.md#placing-objects--deformable-and-rigid)): a region `(bx, bz)` × 1 cell high and a unit mesh, deformed by the module's grid so neighbouring pieces meet exactly, indexed as `CityIndex.Kind.SIDEWALK` under the building's object (ids: piece, and its side or corner), and — the part everything else depends on — **occupying the module**, so the facade's rigid matrix sees them and a door stands on the slab instead of going through it. One mesh and one trimesh collider per block (`_bake_placed`).
+
+The pieces are in `SidewalkProps` ([sidewalk_props.gd](../../props/sidewalk_props.gd)), authored in the unit cube like the roof pieces; `unit_for(piece, k)` picks and orients one:
+
+- **`slab_unit`** — a box: strips, square corners, plazas.
+- **`corner_unit(k, radius)`** — the curved block corner. Canonical for the module's north-west corner: the inner corner (the building's) at `(1, 1)`, the outer one at `(0, 0)`; the kerb is a quarter circle centred on the inner corner with `radius` in unit space (1 = the whole corner), and what is left of the square toward `(0, 0)` is street. Deformed to an `offset_x × offset_z` region it becomes a quarter ellipse, so the same piece serves every sidewalk and street width without change. `k` quarter turns (`UnitMesh.rotated`) take it to the other corners: 0 NW, 1 NE, 2 SE, 3 SW — the numbering `_generate_floor_sidewalks` uses.
+- **`chamfer_fill_unit(k)`** — the triangle: right angle at the corner the building gave up, hypotenuse from `(1, 0)` to `(0, 1)`, which is exactly the diagonal wall's base as `DebugUtil` builds it; the region is the chamfer's `c2 × c1` square at the core corner, with `c1` on the previous edge and `c2` on the next, as in `chamfers`.
+
+Measured: 22 397 pieces on the generated city, 0 rejected for overlap (the zones are disjoint by construction; any rejection is a bug), and every one of the 764 doors stands on a sidewalk.
 
 ### Spawn rules
 
-- **Floor 0**: all external sidewalk zones get a sidewalk.
+- **Floor 0**: every module places its strips, corners, chamfer fills and plaza as above.
 - **Higher floors (floating sidewalks)**: generated by the traversal infrastructure system. Placed at stair endpoints and horizontal traversal waypoints.
-- **Internal sidewalks**: TBD.
 
 ## Delivery doors
 
@@ -46,20 +44,20 @@ Each block has a set of **delivery door zones** — locations where package deli
 
 **Ground floor only, for now** — `_generate_ground_doors` places at floor 0; nothing prevents other floors any more (mesh and placement agree on every floor since the taper was removed).
 
-**The door is a rigid object on the facade's `RigidMatrix`** (`City._visualize_delivery_doors`; see [Placing objects](city-generation.md#placing-objects--deformable-and-rigid)). The facade quad of that module side and floor gets one matrix, shared by everything on that wall; every deformable region already on the module (the sidewalk in front, a bridge extreme) is projected onto it as occupied; the door's along-span is mapped to matrix cells *through world coordinates* (the one system both grids share) and slid into the matrix if it fell in the residual it does not cover; then `first_free_along_v` raises it to the first free row, so it **stands on the sidewalk** — up to `DOOR_MAX_STEP_M` (0.5 m), beyond which whatever is in front is an obstacle and the door is dropped. Generation prints placed / standing on a sidewalk / slid / dropped; dropped is expected to be 0. Measured: 764 doors, 232 on a sidewalk, 28 slid by at most one cell, 0 dropped; the standing ones float **4–4.7 cm** above the slab (rows are 0.248 m, the slab 0.21 m — the grid's granularity, see the caveat in city-generation).
+**The door is a rigid object on the facade's `RigidMatrix`** (`City._visualize_delivery_doors`; see [Placing objects](city-generation.md#placing-objects--deformable-and-rigid)). The facade quad of that module side and floor gets one matrix, shared by everything on that wall; every deformable region already on the module (the sidewalk in front, a bridge extreme) is projected onto it as occupied; the door's along-span is mapped to matrix cells *through world coordinates* (the one system both grids share) and slid into the matrix if it fell in the residual it does not cover; then `first_free_along_v` raises it to the first free row, so it **stands on the sidewalk** — up to `DOOR_MAX_STEP_M` (0.5 m), beyond which whatever is in front is an obstacle and the door is dropped. Generation prints placed / standing on a sidewalk / slid / dropped; dropped is expected to be 0. Measured: 764 doors, all on a sidewalk (232 before alleys had one), 28 slid by at most one cell, 0 dropped; the standing ones float **4–4.7 cm** above the slab (rows are 0.248 m, the slab 0.21 m — the grid's granularity, see the caveat in city-generation).
 
 The door is **geometry laid over the facade**: a 0.25 m-thick slab in front of the wall, indexed as `CityIndex.Kind.DOOR` under the building's object, with a collider (one trimesh per block). Nothing is cut out of the module mesh; real openings come later, with real building geometry.
 
 ## Traversal infrastructure (stairs + floating sidewalks)
 
-> **Not implemented.** `TraversalGenerator.stair_zones` is declared and cleared but never written, and `floating_sidewalk_zones` only gets the floor-0 perimeter strips from `_generate_floor_sidewalks`. The visualisers (`City._visualize_stair_zones`) exist and iterate empty arrays. What follows is the design, not a description of the code.
+> **Not implemented.** `TraversalGenerator.stair_zones` is declared and cleared but never written, and `floating_sidewalk_zones` only gets the floor-0 pieces from `_generate_floor_sidewalks`. The visualisers (`City._visualize_stair_zones`) exist and iterate empty arrays. What follows is the design, not a description of the code.
 
 Connects floor 0 to each delivery door via a bottom-up convergent path of stairs and floating sidewalks.
 
 ### Data
 
 - `BlockGenerator.stair_zones` — array of `{cell, edge, floor, cluster_id, along_start}`. A stair at floor F connects floor F to floor F+1. `along_start` is the stair's position in building cells along the edge.
-- `BlockGenerator.floating_sidewalk_zones` — array of `{cell, edge, floor, cluster_id, along_min, along_max}`. A walkable surface section at floor F on that cell-edge, covering building cells `[along_min, along_max]` along the face.
+- `TraversalGenerator.floating_sidewalk_zones` — array of `{cell, piece, side, floor, cluster_id, bx_min, bx_max, bz_min, bz_max}` (the shape the floor-0 pieces already use: a region of the module, the `SidewalkProps.Piece` that goes there, and its side or corner). A walkable surface section at floor F.
 
 ### Path-building algorithm (bottom-up convergent)
 
@@ -80,19 +78,6 @@ Doors are processed sorted by floor ascending. For each delivery door at floor >
 - **Door exclusion**: stairs never overlap delivery door positions.
 - **Stair spacing**: no two stairs within Manhattan distance 1 on the same floor.
 - **Convergence guarantee**: `must_traverse` forces enough steps to reach the target by the target floor.
-
-### External sidewalk geometry (floor 0)
-
-**4 corners** — one per block corner. Each is a `facade_offset × facade_offset` region of the corner DG cell's building module, covering the square where two facade edges meet.
-
-**4 × N connectors** — one per DG cell per edge (excluding corner overlap). Each connector is a region of its own building module, so it follows the distorted grid and matches building boundaries exactly. A single flat quad per edge would deviate from the wave distortion.
-
-At the corner DG cells, connectors are **trimmed** to avoid overlapping the corner piece:
-- First cell on the edge: the along-axis start is clipped to `core_min` (the corner piece covers `[0, core_min-1]`)
-- Last cell on the edge: the along-axis end is clipped to `core_max` (the corner piece covers `[core_max+1, cols/rows-1]`)
-- Middle cells: full module width, no trimming
-
-The iteration goes low-to-high index for all edges (x=0→cols-1 or z=0→rows-1), so `is_first` always corresponds to the low-index corner and `is_last` to the high-index corner.
 
 ## Where free space is tracked
 

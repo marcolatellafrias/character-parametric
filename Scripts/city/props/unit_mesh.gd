@@ -55,6 +55,47 @@ func add_quad_facing(a: Vector3, b: Vector3, c: Vector3, d: Vector3, facing: Vec
 	add_tri_facing(a, c, d, facing, color)
 
 
+# ── ROTACIÓN ────────────────────────────────────────────────────────────────────────────────────
+
+## La mesh girada `k` cuartos de vuelta alrededor de Y, dentro del cubo. Un cuarto de vuelta lleva el lado
+## -z al lado +x, así que una pieza canónica con el exterior en -z (dirección 0) queda con el exterior en
+## la dirección `k`. Con `k = 0` devuelve la misma mesh, no una copia.
+func rotated(k: int) -> UnitMesh:
+	k = posmod(k, 4)
+	if k == 0:
+		return self
+	var out := UnitMesh.new()
+	for v: Vector3 in vertices:
+		out.vertices.append(_rot_point(v, k))
+	out.indices = indices.duplicate()
+	out.colors = colors.duplicate()
+	for f: Vector3 in facings:
+		out.facings.append(_rot_dir(f, k))
+	return out
+
+
+static func _rot_point(p: Vector3, k: int) -> Vector3:
+	var x := p.x
+	var z := p.z
+	for _i in k:
+		var nx := 1.0 - z
+		var nz := x
+		x = nx
+		z = nz
+	return Vector3(x, p.y, z)
+
+
+static func _rot_dir(d: Vector3, k: int) -> Vector3:
+	var x := d.x
+	var z := d.z
+	for _i in k:
+		var nx := -z
+		var nz := x
+		x = nx
+		z = nz
+	return Vector3(x, d.y, z)
+
+
 # ── PRIMITIVAS ──────────────────────────────────────────────────────────────────────────────────
 # Todas reciben su caja dentro del cubo unitario: `lo` y `hi` de 0 a 1 en los tres ejes.
 

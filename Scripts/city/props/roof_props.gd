@@ -41,45 +41,7 @@ static func color_for_style(style: int) -> Color:
 			return COLOR_SHED
 
 
-# ── ROTACIÓN ────────────────────────────────────────────────────────────────────────────────────
-
-## La mesh girada `k` cuartos de vuelta alrededor de Y, dentro del cubo. Un cuarto de vuelta lleva el lado
-## -z al lado +x, así que una pieza canónica con el exterior en -z (dirección 0) queda con el exterior en
-## la dirección `k`.
-static func rotated(mesh: UnitMesh, k: int) -> UnitMesh:
-	k = posmod(k, 4)
-	if k == 0:
-		return mesh
-	var out := UnitMesh.new()
-	for v: Vector3 in mesh.vertices:
-		out.vertices.append(_rot_point(v, k))
-	out.indices = mesh.indices.duplicate()
-	out.colors = mesh.colors.duplicate()
-	for f: Vector3 in mesh.facings:
-		out.facings.append(_rot_dir(f, k))
-	return out
-
-
-static func _rot_point(p: Vector3, k: int) -> Vector3:
-	var x := p.x
-	var z := p.z
-	for _i in k:
-		var nx := 1.0 - z
-		var nz := x
-		x = nx
-		z = nz
-	return Vector3(x, p.y, z)
-
-
-static func _rot_dir(d: Vector3, k: int) -> Vector3:
-	var x := d.x
-	var z := d.z
-	for _i in k:
-		var nx := -z
-		var nz := x
-		x = nx
-		z = nz
-	return Vector3(x, d.y, z)
+# Las piezas se diseñan canónicas con el exterior en -z y se giran con `UnitMesh.rotated(k)`.
 
 
 # ── FRANCÉS ─────────────────────────────────────────────────────────────────────────────────────
@@ -95,7 +57,7 @@ static func top_unit(color: Color) -> UnitMesh:
 static func skirt_unit(outward: int, color: Color) -> UnitMesh:
 	var m := UnitMesh.new()
 	m.add_quad_facing(Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 1, 1), Vector3(0, 1, 1), Vector3.UP, color)
-	return rotated(m, outward)
+	return m.rotated(outward)
 
 
 ## ESQUINA CONVEXA (lima tesa): el vértice del contorno en el origen y los dos faldones subiendo hasta la
@@ -105,7 +67,7 @@ static func corner_unit(k: int, color: Color) -> UnitMesh:
 	var m := UnitMesh.new()
 	m.add_tri_facing(Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 1, 1), Vector3.UP, color)
 	m.add_tri_facing(Vector3(0, 0, 0), Vector3(1, 1, 1), Vector3(0, 0, 1), Vector3.UP, color)
-	return rotated(m, k)
+	return m.rotated(k)
 
 
 ## RINCÓN (lima hoya): el vértice cóncavo del contorno en el origen. Los dos faldones que llegan por los
@@ -115,7 +77,7 @@ static func inner_corner_unit(k: int, color: Color) -> UnitMesh:
 	var m := UnitMesh.new()
 	m.add_tri_facing(Vector3(0, 0, 0), Vector3(1, 1, 0), Vector3(1, 1, 1), Vector3.UP, color)
 	m.add_tri_facing(Vector3(0, 0, 0), Vector3(1, 1, 1), Vector3(0, 1, 1), Vector3.UP, color)
-	return rotated(m, k)
+	return m.rotated(k)
 
 
 ## CHAFLÁN: la esquina ochavada, convexa o cóncava. El vértice recortado del contorno está en el origen y
@@ -156,7 +118,7 @@ static func chamfer_unit(k: int, p: Vector2, q: Vector2, pa: Vector2, qb: Vector
 	ring.append(top_b)
 	for i in range(1, ring.size() - 1):
 		m.add_tri_facing(ring[0], ring[i], ring[i + 1], Vector3.UP, color)
-	return rotated(m, k)
+	return m.rotated(k)
 
 
 # ── DOS AGUAS Y UN AGUA ─────────────────────────────────────────────────────────────────────────
@@ -179,7 +141,7 @@ static func slope_unit(outward: int, h_low: float, h_high: float, wall_left: boo
 	if wall_high:
 		m.add_quad_facing(Vector3(0, 0, 1), Vector3(1, 0, 1), Vector3(1, h_high, 1), Vector3(0, h_high, 1),
 			Vector3.BACK, COLOR_SIDE)
-	return rotated(m, outward)
+	return m.rotated(outward)
 
 
 # ── TANQUE ──────────────────────────────────────────────────────────────────────────────────────

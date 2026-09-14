@@ -1742,8 +1742,8 @@ func _visualize_floating_sidewalk_zones() -> void:
 	var total := 0
 	## Zonas que no entraron por solaparse con otra: las zonas se generan disjuntas, así que esto es un bug.
 	var rejected := 0
-	var slab := UnitMesh.new()
-	slab.add_box(Vector3.ZERO, Vector3.ONE, sidewalk_color)
+	# Una mesh por (pieza, orientación), armada la primera vez que hace falta.
+	var meshes := {}
 
 	for face_idx in generator.get_all_block_faces():
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
@@ -1763,9 +1763,15 @@ func _visualize_floating_sidewalk_zones() -> void:
 			# Una celda de edificio de espesor, apoyada en el arranque del piso.
 			var lo := Vector3i(int(sw["bx_min"]), floor_idx * cells_per_floor, int(sw["bz_min"]))
 			var size := Vector3i(int(sw["bx_max"]) - lo.x + 1, 1, int(sw["bz_max"]) - lo.z + 1)
+			var piece: int = sw["piece"]
+			var side: int = sw["side"]
+			var key := Vector2i(piece, side)
+			if not meshes.has(key):
+				meshes[key] = SidewalkProps.unit_for(piece, side, sidewalk_color)
+			var mesh: UnitMesh = meshes[key]
 			var placer := ModulePlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
-			if placer.place(module, lo, size, slab, CityIndex.Kind.SIDEWALK, cluster.id, floor_idx,
-					int(sw["edge"]), -1):
+			if placer.place(module, lo, size, mesh, CityIndex.Kind.SIDEWALK, cluster.id, floor_idx,
+					side, piece):
 				total += 1
 			else:
 				rejected += 1
