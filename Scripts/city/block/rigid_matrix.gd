@@ -8,7 +8,7 @@ extends RefCounted
 ## cantidad de celdas elegida para que salgan lo más cúbicas posible, de `TARGET_CELL_M` de lado. La
 ## profundidad se proyecta hacia afuera de la superficie con el mismo tamaño de celda. Nada de esto depende
 ## de los objetos: la matriz existe desde el inicio, y lo único que los objetos deformables le cambian es
-## qué celdas quedan DISPONIBLES (ver `mark_world_box`).
+## qué celdas quedan DISPONIBLES (ver `mark_world_hexahedron`).
 ##
 ## ⚠ NO HAY UMBRAL DE DISTORSIÓN. Un objeto rígido se coloca en este marco sin deformarse nunca; la
 ## distorsión de la ciudad solo achica la matriz. La superficie es un cuadrilátero sesgado y la matriz es
@@ -17,7 +17,9 @@ extends RefCounted
 ## objeto que necesita más de las que hay no entra. Ese es todo el filtro.
 ##
 ## El marco es (u, n, v): `u` a lo largo del primer lado del quad, `n` la normal, `v = u × n`. Un cubo
-## unitario cae en una celda como (x → u, y → n, z → v), conservando su mano.
+## unitario cae en una celda como (x → u, y → n, z → v), conservando su mano. O sea: LA `y` DE UNA MESH
+## RÍGIDA APUNTA HACIA AFUERA DE LA SUPERFICIE. En una azotea eso es arriba; en una fachada es hacia la
+## calle, y ahí es `z` la que sube (con el quad recorrido como lo da `BuildingModule.get_facade_quad`).
 ##
 ## ⚠ UNA AZOTEA NO ES PLANA. Sale de una bilineal sobre el relieve con cuatro alturas independientes en las
 ## esquinas: es una silla de montar, el mismo caso que un quad no plano en Blender, que se parte en
@@ -184,24 +186,74 @@ func world_to_cell(p: Vector3) -> Vector3:
 	return Vector3(d.dot(axis_u) / cell.x, d.dot(axis_n) / cell.y, d.dot(axis_v) / cell.z)
 
 
-## MARCA COMO OCUPADO todo lo que toque la caja del mundo `[lo, hi]`: la proyección conservadora de una
-## región deformable. Marca de más —una caja girada respecto del marco ocupa su envolvente—, nunca de menos.
-func mark_world_box(lo: Vector3, hi: Vector3) -> void:
-	var cmin := Vector3(INF, INF, INF)
-	var cmax := Vector3(-INF, -INF, -INF)
-	for corner in 8:
-		var p := Vector3(
-			hi.x if corner & 1 else lo.x,
-			hi.y if corner & 2 else lo.y,
-			hi.z if corner & 4 else lo.z)
-		var c := world_to_cell(p)
-		cmin = Vector3(minf(cmin.x, c.x), minf(cmin.y, c.y), minf(cmin.z, c.z))
-		cmax = Vector3(maxf(cmax.x, c.x), maxf(cmax.y, c.y), maxf(cmax.z, c.z))
-	var lo_i := Vector3i(maxi(floori(cmin.x), 0), maxi(floori(cmin.y), 0), maxi(floori(cmin.z), 0))
-	var hi_i := Vector3i(mini(ceili(cmax.x), count.x), mini(ceili(cmax.y), count.y), mini(ceili(cmax.z), count.z))
-	if hi_i.x <= lo_i.x or hi_i.y <= lo_i.y or hi_i.z <= lo_i.z:
+## Las doce aristas de un sólido de ocho esquinas en orden de bits (1 → x, 2 → y, 4 → z).
+const HEXAHEDRON_EDGES: Array[Vector2i] = [
+	Vector2i(0, 1), Vector2i(2, 3), Vector2i(4, 5), Vector2i(6, 7),
+	Vector2i(0, 2), Vector2i(1, 3), Vector2i(4, 6), Vector2i(5, 7),
+	Vector2i(0, 4), Vector2i(1, 5), Vector2i(2, 6), Vector2i(3, 7),
+]
+
+
+## MARCA COMO OCUPADO lo que cubre un sólido deformable, dado por sus ocho esquinas en el mundo (el orden de
+## `BuildingModule.occupied_world_corners`): la proyección de la matriz deformable sobre esta.
+##
+## Se hace COLUMNA POR COLUMNA A LO LARGO DE LA NORMAL, y no con la envolvente del sólido entero: para cada
+## rebanada de profundidad se recortan las doce aristas contra ella y se marca solo la extensión de lo que
+## queda. La diferencia importa: una vereda de 3 m que baja un 12 % con el terreno tiene una envolvente de
+## casi 40 cm de alto, y proyectada de una vez marcaba 40 cm de fachada; rebanada, junto a la pared marca
+## su espesor real, que es lo que una puerta tiene que pisar. Sigue siendo conservador dentro de cada
+## rebanada —la extensión de las aristas recortadas, y una región doblada por la bilineal puede sobresalir
+## milímetros de sus aristas—, nunca de menos.
+func mark_world_hexahedron(corners: PackedVector3Array) -> void:
+	if corners.size() != 8 or not is_valid():
 		return
-	_occupied.append([lo_i, hi_i])
+	var c: Array[Vector3] = []
+	var n_lo := INF
+	var n_hi := -INF
+	for p: Vector3 in corners:
+		var q := world_to_cell(p)
+		c.append(q)
+		n_lo = minf(n_lo, q.y)
+		n_hi = maxf(n_hi, q.y)
+	var k_from := maxi(floori(n_lo), 0)
+	var k_to := mini(ceili(n_hi), count.y)
+	for k in range(k_from, k_to):
+		var s0 := float(k)
+		var s1 := float(k + 1)
+		var u_min := INF
+		var u_max := -INF
+		var v_min := INF
+		var v_max := -INF
+		var any := false
+		for e: Vector2i in HEXAHEDRON_EDGES:
+			var a := c[e.x]
+			var b := c[e.y]
+			var ta := 0.0
+			var tb := 1.0
+			if is_equal_approx(a.y, b.y):
+				if a.y < s0 or a.y > s1:
+					continue
+			else:
+				var t0 := (s0 - a.y) / (b.y - a.y)
+				var t1 := (s1 - a.y) / (b.y - a.y)
+				ta = clampf(minf(t0, t1), 0.0, 1.0)
+				tb = clampf(maxf(t0, t1), 0.0, 1.0)
+				if tb <= ta:
+					continue
+			var pa := a.lerp(b, ta)
+			var pb := a.lerp(b, tb)
+			u_min = minf(u_min, minf(pa.x, pb.x))
+			u_max = maxf(u_max, maxf(pa.x, pb.x))
+			v_min = minf(v_min, minf(pa.z, pb.z))
+			v_max = maxf(v_max, maxf(pa.z, pb.z))
+			any = true
+		if not any:
+			continue
+		var lo_i := Vector3i(maxi(floori(u_min), 0), k, maxi(floori(v_min), 0))
+		var hi_i := Vector3i(mini(ceili(u_max), count.x), k + 1, mini(ceili(v_max), count.z))
+		if hi_i.x <= lo_i.x or hi_i.z <= lo_i.z:
+			continue
+		_occupied.append([lo_i, hi_i])
 
 
 ## Si la región `[lo, lo + size)` está dentro de la matriz y libre.
@@ -225,14 +277,26 @@ func occupy(lo: Vector3i, size: Vector3i) -> void:
 	_occupied.append([lo, lo + size])
 
 
-## Cuántas celdas ocupa una medida en metros, por eje del marco (ancho → u, alto → n, fondo → v). Redondea
-## hacia arriba: un objeto rígido nunca se achica para entrar.
-func cells_for(width_m: float, height_m: float, depth_m: float) -> Vector3i:
+## Cuántas celdas ocupa una medida en metros, POR EJE DEL MARCO: a lo largo de `u`, hacia afuera por `n`
+## y a lo largo de `v`. Qué es "alto" depende de la superficie: en una azotea es `n`, en una fachada es `v`.
+## Redondea hacia arriba: un objeto rígido nunca se achica para entrar.
+func cells_for(u_m: float, n_m: float, v_m: float) -> Vector3i:
 	if not is_valid():
 		return Vector3i.ZERO
-	return Vector3i(ceili(width_m / cell.x), ceili(height_m / cell.y), ceili(depth_m / cell.z))
+	return Vector3i(ceili(u_m / cell.x), ceili(n_m / cell.y), ceili(v_m / cell.z))
 
 
 ## La esquina de una región de `size` celdas centrada en la superficie y apoyada en ella.
 func centered(size: Vector3i) -> Vector3i:
 	return Vector3i((count.x - size.x) / 2, 0, (count.z - size.z) / 2)
+
+
+## LA PRIMERA FILA LIBRE A LO LARGO DE `v` desde `lo.z`, hasta `lo.z + max_rise` inclusive: la región
+## `[lo, lo + size)` corrida hacia arriba lo justo para no tocar nada. Es como un objeto de pared se APOYA
+## sobre lo que hay delante de la fachada —una puerta sobre la vereda— en vez de atravesarlo. Devuelve -1 si
+## no hay lugar dentro de ese margen: lo que estorba es demasiado alto para pisarlo.
+func first_free_along_v(lo: Vector3i, size: Vector3i, max_rise: int) -> int:
+	for rise in range(0, max_rise + 1):
+		if is_free(Vector3i(lo.x, lo.y, lo.z + rise), size):
+			return lo.z + rise
+	return -1

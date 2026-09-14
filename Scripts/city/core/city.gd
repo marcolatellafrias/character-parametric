@@ -166,6 +166,9 @@ extends Node3D
 ## Hasta qué altura sobre la azotea llega su matriz rígida (ver RigidMatrix): lo que se apoye ahí no puede
 ## ser más alto que esto.
 const ROOF_SURFACE_DEPTH_M := 10.0
+## Lo mismo para una fachada: hasta dónde sale hacia la calle la matriz de una pared. Un balcón entra; la
+## vereda entera no, y no hace falta: lo que importa de ella es la parte pegada a la pared.
+const FACADE_SURFACE_DEPTH_M := 2.0
 
 @export_group("Traversal Zones")
 @export var show_stair_zones: bool = false
@@ -398,19 +401,23 @@ func visualize_graph() -> void:
 	if show_sidewalk_matrices:
 		_visualize_sidewalk_matrices()
 
+	# EL ORDEN IMPORTA: primero todo lo DEFORMABLE, que ocupa la grilla del módulo (extremos de puente,
+	# veredas, piezas de techo); después lo RÍGIDO, que lee esa ocupación proyectada sobre su superficie
+	# (tanques, puertas). Al revés, una puerta se coloca antes de saber que la vereda está delante, que es
+	# exactamente el bug que este orden hace imposible (ver technical/city-generation.md, "Placing objects").
 	if show_bridges:
 		_visualize_bridges()
 
-	if show_delivery_doors:
-		_visualize_delivery_doors()
+	_visualize_floating_sidewalk_zones()
 
 	if show_roof_props:
 		_visualize_roof_props()
 
+	if show_delivery_doors:
+		_visualize_delivery_doors()
+
 	if show_stair_zones:
 		_visualize_stair_zones()
-
-	_visualize_floating_sidewalk_zones()
 
 	print("[Visualizer] Índice de piezas: %d identificables" % city_index.size())
 
@@ -1348,7 +1355,6 @@ func _visualize_sidewalk_matrices() -> void:
 ## desastroso para las draw calls.
 func _visualize_roof_props() -> void:
 	var container := _buildings_container("RoofProps")
-	var mat := _get_building_material()
 	var tanks := 0
 	var roofs := 0
 	var roof_bodies := 0
@@ -1446,108 +1452,157 @@ func _visualize_roof_props() -> void:
 				# quedan —azotea angosta, torcida, o tapada— no se pone, y ese es todo el filtro.
 				var roof := RigidMatrix.from_quad(tank_module.get_core_vertices(roof_index),
 					ROOF_SURFACE_DEPTH_M, Vector3.UP)
-				for box: Array in tank_module.occupied_world_boxes():
-					roof.mark_world_box(box[0], box[1])
+				for corners: PackedVector3Array in tank_module.occupied_world_corners():
+					roof.mark_world_hexahedron(corners)
 				var size := roof.cells_for(RoofProps.TANK_DIAMETER_M, RoofProps.tank_height_m(),
 					RoofProps.TANK_DIAMETER_M)
 				if placer.place_rigid(roof, roof.centered(size), size, RoofProps.water_tank_unit(),
 						CityIndex.Kind.ROOF, cluster.id, RoofPlanner.Piece.TANK, -1, -1):
 					tanks += 1
 
-		if buffer["vertices"].is_empty():
-			continue
-		var arrays := []
-		arrays.resize(Mesh.ARRAY_MAX)
-		arrays[Mesh.ARRAY_VERTEX] = buffer["vertices"]
-		arrays[Mesh.ARRAY_NORMAL] = buffer["normals"]
-		arrays[Mesh.ARRAY_COLOR]  = buffer["colors"]
-		arrays[Mesh.ARRAY_INDEX]  = buffer["indices"]
-		var array_mesh := ArrayMesh.new()
-		array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-		var mesh_instance := MeshInstance3D.new()
-		mesh_instance.mesh = array_mesh
-		mesh_instance.material_override = mat
-		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		_fade_into_fog(mesh_instance)
-		container.add_child(mesh_instance)
-		city_index.set_scope_mesh(scope, mesh_instance)
-
-		# COLLIDER DEL TECHO, con los MISMOS triángulos y en el MISMO orden que la malla. Ese orden es el
-		# contrato del que depende traducir el `face_index` del rayo a una pieza (ver CityIndex).
-		var faces := PackedVector3Array()
-		var roof_verts: PackedVector3Array = buffer["vertices"]
-		for idx: int in buffer["indices"]:
-			faces.append(roof_verts[idx])
-		if not faces.is_empty():
-			var shape := ConcavePolygonShape3D.new()
-			shape.set_faces(faces)
-			var collision_shape := CollisionShape3D.new()
-			collision_shape.shape = shape
-			var body := StaticBody3D.new()
-			body.add_child(collision_shape)
-			body.set_meta(CityIndex.SCOPE_META, scope)
-			container.add_child(body)
+		if _bake_placed(container, buffer, scope, true):
 			roof_bodies += 1
 
 	print("[Visualizer] Objetos de techo: %d edificios con techo inclinado · %d tanques · %d colliders · piezas rechazadas: %d · planos por no cerrar: %s"
 		% [roofs, tanks, roof_bodies, roof_rejected, str(roof_fallbacks)])
 
+
+## HORNEA UN BUFFER DE PIEZAS COLOCADAS (techos, veredas, puertas): una malla con el material de colores por
+## vértice y un collider de triángulos con LOS MISMOS triángulos en EL MISMO orden que la malla —el contrato
+## del que depende traducir el `face_index` del rayo a una pieza (ver CityIndex)—, estampado con el scope.
+## Devuelve false si el buffer estaba vacío y no se creó nada.
+func _bake_placed(container: Node3D, buffer: Dictionary, scope: int, shadows: bool) -> bool:
+	if buffer["vertices"].is_empty():
+		return false
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = buffer["vertices"]
+	arrays[Mesh.ARRAY_NORMAL] = buffer["normals"]
+	arrays[Mesh.ARRAY_COLOR]  = buffer["colors"]
+	arrays[Mesh.ARRAY_INDEX]  = buffer["indices"]
+	var array_mesh := ArrayMesh.new()
+	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.mesh = array_mesh
+	mesh_instance.material_override = _get_building_material()
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows \
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_fade_into_fog(mesh_instance)
+	container.add_child(mesh_instance)
+	city_index.set_scope_mesh(scope, mesh_instance)
+
+	var faces := PackedVector3Array()
+	var verts: PackedVector3Array = buffer["vertices"]
+	for idx: int in buffer["indices"]:
+		faces.append(verts[idx])
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(faces)
+	var collision_shape := CollisionShape3D.new()
+	collision_shape.shape = shape
+	var body := StaticBody3D.new()
+	body.add_child(collision_shape)
+	body.set_meta(CityIndex.SCOPE_META, scope)
+	container.add_child(body)
+	return true
+
 # ============================================
 # VISUALIZACIÓN DE DELIVERY DOORS
 # ============================================
 
+## LAS PUERTAS SON RÍGIDAS: van en la matriz de su fachada, sin deformarse, y leen lo que la matriz
+## deformable ya puso delante de esa pared. Es el caso que motivó el sistema entero: antes la puerta se
+## dibujaba desde el piso y la vereda —deformable, y dibujada después— la atravesaba. Ahora la vereda ocupa
+## primero, la matriz de la fachada la ve, y la puerta SE APOYA sobre ella (`first_free_along_v`). Si lo
+## que estorba es más alto que un escalón, la puerta no va, y se cuenta.
 func _visualize_delivery_doors() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	var total = 0
+	var container := _buildings_container("Doors")
+	var total := 0
+	## Puertas que subieron para pisar algo (la vereda): lo normal, si hay vereda.
+	var raised := 0
+	## Puertas corridas a lo largo de la cara porque su tramo caía fuera de la matriz (chaflán o sesgo).
+	var slid := 0
+	## Puertas sin lugar: fachada sin matriz, más angosta que la puerta, o algo alto delante.
+	var dropped := 0
+	var door_mesh := UnitMesh.new()
+	door_mesh.add_box(Vector3.ZERO, Vector3.ONE, delivery_door_color)
 
-	for face_idx in all_block_faces:
+	for face_idx in generator.get_all_block_faces():
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		if block == null:
+		if block == null or block.get_distorted_grid() == null:
 			continue
+		var cells_per_floor := block.get_cells_per_floor()
+		var buffer := PropGeometry.new_buffer()
+		var scope := city_index.new_scope()
+		# UNA MATRIZ POR FACHADA (módulo, lado, piso), compartida por todo lo que vaya en esa cara: dos
+		# puertas del mismo lado solo se ven entre sí si leen la misma matriz.
+		var surfaces := {}
+		var number := 0
 
-		var cells_per_floor = block.get_cells_per_floor()
-		var building_cell_height = block.get_building_cell_height()
-
-		for door in block.traversal.delivery_doors:
+		for door: Dictionary in block.traversal.delivery_doors:
 			var cell: Vector2i = door["cell"]
 			var edge_idx: int = door["edge"]
 			var floor_idx: int = door["floor"]
-
-			var module = block.get_building_module(cell.x, cell.y, 0)
-			if module == null:
+			var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
+			var cluster: BuildingCluster = block.get_cluster_for_cell(cell.x, cell.y)
+			if module == null or cluster == null:
+				continue
+			number += 1
+			var floor_base := floor_idx * cells_per_floor
+			var key := Vector4i(cell.x, cell.y, edge_idx, floor_idx)
+			if not surfaces.has(key):
+				surfaces[key] = _facade_surface(module, edge_idx, floor_base, floor_base + cells_per_floor)
+			var facade: RigidMatrix = surfaces[key]
+			if not facade.is_valid():
+				dropped += 1
 				continue
 
-			var core = module.get_core_info()
-			var height_index = floor_idx * cells_per_floor
+			# En el marco de una fachada `y` sale hacia la calle y `z` sube (ver RigidMatrix).
+			var size := facade.cells_for(TraversalGenerator.DOOR_WIDTH_M, TraversalGenerator.DOOR_DEPTH_M,
+				TraversalGenerator.DOOR_HEIGHT_M)
+			if size.x > facade.count.x:
+				dropped += 1
+				continue
+			# Dónde cae el tramo `along_min..along_max` sobre la matriz: por el mundo, la única coordenada
+			# que las dos grillas comparten. Si cae en lo que la matriz no cubre —la esquina ochavada, el
+			# sesgo del quad— se corre hasta entrar; nunca se achica.
+			var u_a := facade.world_to_cell(module.facade_point(edge_idx, int(door["along_min"]), floor_base)).x
+			var u_b := facade.world_to_cell(module.facade_point(edge_idx, int(door["along_max"]) + 1, floor_base)).x
+			var u := roundi(minf(u_a, u_b))
+			var u_in := clampi(u, 0, facade.count.x - size.x)
+			if u_in != u:
+				slid += 1
+			var lo := Vector3i(u_in, 0, 0)
+			var max_rise := ceili(TraversalGenerator.DOOR_MAX_STEP_M / facade.cell.z)
+			var row := facade.first_free_along_v(lo, size, max_rise)
+			if row < 0:
+				dropped += 1
+				continue
+			if row > 0:
+				raised += 1
+			lo.z = row
+			var placer := ModulePlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
+			if placer.place_rigid(facade, lo, size, door_mesh, CityIndex.Kind.DOOR, cluster.id, floor_idx,
+					edge_idx, number):
+				total += 1
+			else:
+				dropped += 1
 
-			# La puerta ocupa un tramo ACOTADO de la cara, no toda: `along_min/along_max` vienen del
-			# generador ya medidos en celdas (ver TraversalGenerator._door_span). Antes esto dibujaba el
-			# ancho entero del núcleo por un piso de alto, que es un paredón y no una puerta.
-			var along_min: int = door.get("along_min", core["min_x"])
-			var along_max: int = door.get("along_max", core["max_x"])
-			var door_height: float = float(door.get("height_cells", cells_per_floor)) * building_cell_height
+		_bake_placed(container, buffer, scope, true)
 
-			var bx_min: int; var bx_max: int; var bz_min: int; var bz_max: int
-			match edge_idx:
-				0:
-					bx_min = along_min; bx_max = along_max
-					bz_min = core["min_z"] - 1; bz_max = core["min_z"] - 1
-				1:
-					bx_min = core["max_x"] + 1; bx_max = core["max_x"] + 1
-					bz_min = along_min; bz_max = along_max
-				2:
-					bx_min = along_min; bx_max = along_max
-					bz_min = core["max_z"] + 1; bz_max = core["max_z"] + 1
-				3:
-					bx_min = core["min_x"] - 1; bx_max = core["min_x"] - 1
-					bz_min = along_min; bz_max = along_max
+	print("[Visualizer] Puertas de entrega: %d · apoyadas sobre la vereda: %d · corridas: %d · sin lugar: %d"
+		% [total, raised, slid, dropped])
 
-			var verts = module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, height_index)
-			if verts.size() == 4:
-				add_child(DebugUtil.create_skewed_cube(verts, door_height, delivery_door_color))
-			total += 1
 
-	print("[Visualizer] Delivery doors: %d" % total)
+## LA MATRIZ RÍGIDA DE UNA FACHADA: la cara del núcleo en ese lado y ese piso, sin las esquinas ochavadas,
+## con todo lo deformable que el módulo ya tiene colocado proyectado como ocupado.
+func _facade_surface(module: BuildingModule, edge_idx: int, index_bottom: int, index_top: int) -> RigidMatrix:
+	var quad := module.get_facade_quad(edge_idx, index_bottom, index_top)
+	if quad.size() != 4:
+		return RigidMatrix.new()
+	var facade := RigidMatrix.from_quad(quad, FACADE_SURFACE_DEPTH_M, module.get_facade_outward(edge_idx))
+	for corners: PackedVector3Array in module.occupied_world_corners():
+		facade.mark_world_hexahedron(corners)
+	return facade
 
 
 # ============================================
@@ -1698,7 +1753,6 @@ func _build_stair_pieces(module: BuildingModule, edge_idx: int, floor_idx: int, 
 # VISUALIZACIÓN DE FLOATING SIDEWALK ZONES
 # ============================================
 
-var _sidewalk_material: StandardMaterial3D = null
 var _bridge_material: StandardMaterial3D = null
 
 func _get_bridge_material() -> StandardMaterial3D:
@@ -1725,102 +1779,54 @@ func _add_box_occluder(mesh: ArrayMesh, parent: Node3D) -> void:
 func _bridge_geo_append(buf: Dictionary, geo: Dictionary, color: Color) -> void:
 	if geo.is_empty():
 		return
-	var offset: int = buf.verts.size()
-	buf.verts.append_array(geo.vertices)
-	buf.norms.append_array(geo.normals)
+	var offset: int = buf["vertices"].size()
+	buf["vertices"].append_array(geo.vertices)
+	buf["normals"].append_array(geo.normals)
 	for _i in geo.vertices.size():
-		buf.colors.append(color)
+		buf["colors"].append(color)
 	for idx: int in geo.indices:
-		buf.idxs.append(idx + offset)
+		buf["indices"].append(idx + offset)
 
-func _get_sidewalk_material() -> StandardMaterial3D:
-	if _sidewalk_material == null:
-		_sidewalk_material = StandardMaterial3D.new()
-		_sidewalk_material.albedo_color = sidewalk_color
-		_sidewalk_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-		_sidewalk_material.cull_mode = BaseMaterial3D.CULL_BACK
-	return _sidewalk_material
 
+## LAS VEREDAS SON DEFORMABLES y van por `ModulePlacer`: se estiran con la grilla, coinciden exactas con la
+## del módulo vecino, quedan en el índice y —lo que importa para todo lo demás— OCUPAN el módulo, así la
+## matriz rígida de la fachada las ve y una puerta se apoya en ellas en vez de atravesarlas.
 func _visualize_floating_sidewalk_zones() -> void:
-	var all_block_faces = generator.get_all_block_faces()
-	var total = 0
-	var mat := _get_sidewalk_material()
+	var container := _buildings_container("Sidewalks")
+	var total := 0
+	## Zonas que no entraron por solaparse con otra: las zonas se generan disjuntas, así que esto es un bug.
+	var rejected := 0
+	var slab := UnitMesh.new()
+	slab.add_box(Vector3.ZERO, Vector3.ONE, sidewalk_color)
 
-	for face_idx in all_block_faces:
+	for face_idx in generator.get_all_block_faces():
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
-		if block == null:
+		if block == null or block.get_distorted_grid() == null:
 			continue
-
 		var cells_per_floor := block.get_cells_per_floor()
-		var building_cell_height := block.get_building_cell_height()
-		var sidewalk_h := building_cell_height
-		var block_static_body := StaticBody3D.new()
-		var has_colliders := false
+		var buffer := PropGeometry.new_buffer()
+		var scope := city_index.new_scope()
 
-		var merged_verts  := PackedVector3Array()
-		var merged_norms  := PackedVector3Array()
-		var merged_idxs   := PackedInt32Array()
-
-		for sw in block.traversal.floating_sidewalk_zones:
+		for sw: Dictionary in block.traversal.floating_sidewalk_zones:
 			var cell: Vector2i = sw["cell"]
 			var floor_idx: int = sw["floor"]
-
-			var module = block.get_building_module(cell.x, cell.y, 0)
-			if module == null:
+			var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
+			var cluster: BuildingCluster = block.get_cluster_for_cell(cell.x, cell.y)
+			if module == null or cluster == null:
 				continue
+			# Una celda de edificio de espesor, apoyada en el arranque del piso.
+			var lo := Vector3i(int(sw["bx_min"]), floor_idx * cells_per_floor, int(sw["bz_min"]))
+			var size := Vector3i(int(sw["bx_max"]) - lo.x + 1, 1, int(sw["bz_max"]) - lo.z + 1)
+			var placer := ModulePlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
+			if placer.place(module, lo, size, slab, CityIndex.Kind.SIDEWALK, cluster.id, floor_idx,
+					int(sw["edge"]), -1):
+				total += 1
+			else:
+				rejected += 1
 
-			var height_index := floor_idx * cells_per_floor
-			var bx_min: int = sw["bx_min"]
-			var bx_max: int = sw["bx_max"]
-			var bz_min: int = sw["bz_min"]
-			var bz_max: int = sw["bz_max"]
+		_bake_placed(container, buffer, scope, false)
 
-			if bx_min > bx_max or bz_min > bz_max:
-				continue
-
-			var verts := module.get_region_vertices(bx_min, bx_max, bz_min, bz_max, height_index)
-			if verts.size() != 4:
-				continue
-
-			var geo := DebugUtil.get_skewed_cube_geometry(verts, sidewalk_h)
-			if not geo.is_empty():
-				var offset := merged_verts.size()
-				merged_verts.append_array(geo.vertices)
-				merged_norms.append_array(geo.normals)
-				for idx in geo.indices:
-					merged_idxs.append(idx + offset)
-
-			var collider_body := DebugUtil.create_skewed_cube_collider(verts, sidewalk_h)
-			if collider_body:
-				for child in collider_body.get_children():
-					if child is CollisionShape3D:
-						collider_body.remove_child(child)
-						block_static_body.add_child(child)
-						has_colliders = true
-				collider_body.queue_free()
-			total += 1
-
-		if not merged_verts.is_empty():
-			var arrays := []
-			arrays.resize(Mesh.ARRAY_MAX)
-			arrays[Mesh.ARRAY_VERTEX] = merged_verts
-			arrays[Mesh.ARRAY_NORMAL] = merged_norms
-			arrays[Mesh.ARRAY_INDEX]  = merged_idxs
-			var array_mesh := ArrayMesh.new()
-			array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-			var mesh_instance := MeshInstance3D.new()
-			mesh_instance.mesh = array_mesh
-			mesh_instance.material_override = mat
-			mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			# Antes de recentrar: ver el comentario en _visualize_buildings.
-			_add_box_occluder(array_mesh, self)
-			_fade_into_fog(mesh_instance)
-			add_child(mesh_instance)
-
-		if has_colliders:
-			add_child(block_static_body)
-
-	print("[Visualizer] Floating sidewalk zones: %d" % total)
+	print("[Visualizer] Veredas: %d · rechazadas por solaparse: %d" % [total, rejected])
 
 
 # ============================================
@@ -1829,25 +1835,24 @@ func _visualize_floating_sidewalk_zones() -> void:
 
 func _visualize_bridges() -> void:
 	var total := 0
+	_bridge_extremes_rejected = 0
 	for edge_key in generator.bridges:
 		for placed in generator.bridges[edge_key]:
-			var buf := {
-				verts  = PackedVector3Array(),
-				norms  = PackedVector3Array(),
-				colors = PackedColorArray(),
-				idxs   = PackedInt32Array(),
-			}
+			var buf := PropGeometry.new_buffer()
 			var scope := city_index.new_scope()
-			_draw_bridge(placed, buf)
+			var object_id := _new_object()
 			total += 1
-			if buf.verts.is_empty():
+			# Los extremos se colocan por el placer con el scope y el objeto del puente: son parte de él.
+			var placer := ModulePlacer.new(city_index, scope, object_id, buf)
+			_draw_bridge(placed, buf, placer, total)
+			if buf["vertices"].is_empty():
 				continue
 			var arrays: Array = []
 			arrays.resize(Mesh.ARRAY_MAX)
-			arrays[Mesh.ARRAY_VERTEX] = buf.verts
-			arrays[Mesh.ARRAY_NORMAL] = buf.norms
-			arrays[Mesh.ARRAY_COLOR]  = buf.colors
-			arrays[Mesh.ARRAY_INDEX]  = buf.idxs
+			arrays[Mesh.ARRAY_VERTEX] = buf["vertices"]
+			arrays[Mesh.ARRAY_NORMAL] = buf["normals"]
+			arrays[Mesh.ARRAY_COLOR]  = buf["colors"]
+			arrays[Mesh.ARRAY_INDEX]  = buf["indices"]
 			var array_mesh := ArrayMesh.new()
 			array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 			var mi := MeshInstance3D.new()
@@ -1856,20 +1861,26 @@ func _visualize_bridges() -> void:
 			_fade_into_fog(mi)
 			add_child(mi)
 
-			# Un puente entero es UNA pieza por ahora: alcanza para decir cuál es. Partirlo en base,
-			# pasarela, baranda y arcos es anotar un registro por tramo dentro de `_draw_bridge`.
-			var bridge_idxs: PackedInt32Array = buf.idxs
-			var bridge_verts: PackedVector3Array = buf.verts
+			# El conector entero es UNA pieza por ahora: alcanza para decir cuál es. Partirlo en base,
+			# pasarela, baranda y arcos es anotar un registro por tramo dentro de `_draw_bridge`. Los
+			# extremos ya son piezas propias (los anota el placer) y ganan por ser cajas más chicas.
+			var bridge_idxs: PackedInt32Array = buf["indices"]
+			var bridge_verts: PackedVector3Array = buf["vertices"]
 			city_index.set_scope_mesh(scope, mi)
-			city_index.add(scope, _new_object(), CityIndex.Kind.BRIDGE, total, int(placed["face_a"]),
+			city_index.add(scope, object_id, CityIndex.Kind.BRIDGE, total, int(placed["face_a"]),
 				int(placed["face_b"]), int(placed["floor_idx"]), 0, bridge_idxs.size(), bridge_verts)
 			var bridge_body: Object = buf.get("body")
 			if bridge_body is StaticBody3D:
 				(bridge_body as StaticBody3D).set_meta(CityIndex.SCOPE_META, scope)
-	print("[Visualizer] Puentes: %d" % total)
+	print("[Visualizer] Puentes: %d · extremos sin lugar en la fachada: %d" % [total, _bridge_extremes_rejected])
 
 
-func _draw_bridge(placed: Dictionary, buf: Dictionary) -> void:
+## Extremos de puente que el placer rechazó por caer sobre algo ya colocado. Cualquier número es un caso a
+## mirar: dos puentes en el mismo lugar de una fachada.
+var _bridge_extremes_rejected := 0
+
+
+func _draw_bridge(placed: Dictionary, buf: Dictionary, placer: ModulePlacer, number: int) -> void:
 	var bridge: Bridge     = placed["bridge"]
 	var cell_start: int    = placed["cell_start"]
 	var cell_end: int      = placed["cell_end"]
@@ -1928,7 +1939,8 @@ func _draw_bridge(placed: Dictionary, buf: Dictionary) -> void:
 
 	for side in [side_a, side_b]:
 		_draw_bridge_extremes(bridge, side, cell_start, cell_end,
-				by_base, by_base_top, by_arc_bot, static_body, buf)
+				by_base, by_base_top, by_arc_bot, static_body, buf, placer,
+				[number, int(placed["face_a"]), int(placed["face_b"]), floor_idx])
 
 	if static_body:
 		# Se devuelve por el buffer para que quien lo llamó pueda estamparlo con su scope (ver CityIndex).
@@ -1985,14 +1997,13 @@ func _add_bridge_arc_spans(block_a: BlockGenerator, block_b: BlockGenerator,
 		static_body.add_child(DebugUtil.create_collision_shape_from_planes(far_plane, plane_b))
 
 
-## EL EXTREMO SIGUE LA GRILLA, en las dos alturas.
-##
-## Se arma como un prisma entre el índice de abajo y el de arriba (ver `BuildingModule.get_region_prism`).
-## Los pisos son paralelos, así que extruir en vertical daría lo mismo; se samplean igual las dos alturas
-## para que la pieza no dependa de eso y su borde superior caiga siempre en el fin del piso.
+## EL EXTREMO ES DEFORMABLE y va por `ModulePlacer`: una región de celdas del módulo entre el índice de
+## abajo y el de arriba, y una caja unitaria. El placer lo deforma con la grilla —así su borde superior cae
+## siempre en el fin del piso, con edificios inclinados o rectos—, lo anota en el índice y OCUPA el módulo:
+## la fachada sabe que ahí hay un puente apoyado, y nada rígido se coloca a través de él.
 func _draw_bridge_extremes(bridge: Bridge, side: Dictionary, cell_start: int, cell_end: int,
 		by_base: int, by_base_top: int, by_arc_bot: int,
-		static_body: StaticBody3D, buf: Dictionary) -> void:
+		static_body: StaticBody3D, buf: Dictionary, placer: ModulePlacer, ids: Array) -> void:
 	var face_idx: int = side["face"]
 	var edge_idx: int = side["edge_idx"]
 	var facade_cells: Array = side["cells"]
@@ -2027,25 +2038,30 @@ func _draw_bridge_extremes(bridge: Bridge, side: Dictionary, cell_start: int, ce
 			continue
 
 		var bx_min: int = grid_rect["bx_min"]
-		var bx_max: int = grid_rect["bx_max"]
 		var bz_min: int = grid_rect["bz_min"]
-		var bz_max: int = grid_rect["bz_max"]
+		var footprint := Vector2i(int(grid_rect["bx_max"]) - bx_min + 1, int(grid_rect["bz_max"]) - bz_min + 1)
 
-		var base_prism := module.get_region_prism(bx_min, bx_max, bz_min, bz_max, by_base, by_base_top)
-		if base_prism.size() == 2:
-			var base_bottom: Array[Vector3] = base_prism[0]
-			var base_top: Array[Vector3] = base_prism[1]
-			_bridge_geo_append(buf,
-					DebugUtil.get_skewed_cube_from_planes_geometry(base_bottom, base_top), bridge_base_color)
-			if static_body:
-				static_body.add_child(DebugUtil.create_collision_shape_from_planes(base_bottom, base_top))
-
+		_place_bridge_extreme(placer, buf, module, Vector3i(bx_min, by_base, bz_min),
+				Vector3i(footprint.x, by_base_top - by_base, footprint.y), bridge_base_color, static_body, ids)
 		if bridge.arc_height > 0:
-			var arc_prism := module.get_region_prism(bx_min, bx_max, bz_min, bz_max, by_arc_bot, by_base)
-			if arc_prism.size() == 2:
-				var arc_bottom: Array[Vector3] = arc_prism[0]
-				var arc_top: Array[Vector3] = arc_prism[1]
-				_bridge_geo_append(buf,
-						DebugUtil.get_skewed_cube_from_planes_geometry(arc_bottom, arc_top), bridge_arc_color)
-				if static_body:
-					static_body.add_child(DebugUtil.create_collision_shape_from_planes(arc_bottom, arc_top))
+			_place_bridge_extreme(placer, buf, module, Vector3i(bx_min, by_arc_bot, bz_min),
+					Vector3i(footprint.x, by_base - by_arc_bot, footprint.y), bridge_arc_color, static_body, ids)
+
+
+## Una caja de extremo por la interfaz deformable. El collider sale de LOS MISMOS vértices que acaba de
+## escribir el placer, así malla y colisión no pueden diferir.
+func _place_bridge_extreme(placer: ModulePlacer, buf: Dictionary, module: BuildingModule,
+		lo: Vector3i, size: Vector3i, color: Color, static_body: StaticBody3D, ids: Array) -> void:
+	var box := UnitMesh.new()
+	box.add_box(Vector3.ZERO, Vector3.ONE, color)
+	var v_from: int = buf["vertices"].size()
+	if not placer.place(module, lo, size, box, CityIndex.Kind.BRIDGE, int(ids[0]), int(ids[1]),
+			int(ids[2]), int(ids[3])):
+		_bridge_extremes_rejected += 1
+		return
+	if static_body:
+		var shape := ConvexPolygonShape3D.new()
+		shape.points = buf["vertices"].slice(v_from)
+		var collision_shape := CollisionShape3D.new()
+		collision_shape.shape = shape
+		static_body.add_child(collision_shape)

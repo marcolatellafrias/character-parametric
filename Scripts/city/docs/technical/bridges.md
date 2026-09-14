@@ -46,7 +46,7 @@ A bridge has two distinct placement systems (see "Object placement — two syste
 
 2 base extremes per bridge (one per side). 2 arc extremes per bridge if the archetype has arcs. Total: 4 or 2 extremes per bridge.
 
-Each extreme extends from the buildable zone boundary inward to the building face. It occupies cells in the sidewalk 3D matrix, marking them as `UNAVAILABLE`.
+Each extreme extends from the buildable zone boundary inward to the building face. It is placed through `ModulePlacer` and so **occupies its region of the building module** — which is how the facade's rigid matrix knows a bridge rests there (see [city-generation.md](city-generation.md#placing-objects--deformable-and-rigid)). It is indexed with the bridge's own ids, so the inspector names it as its bridge.
 
 ## Bridge archetypes (`Bridge` class)
 

@@ -435,28 +435,6 @@ static func get_skewed_cube_from_planes_geometry(plane1: Array, plane2: Array) -
 	_add_quad(verts, idxs, norms, p1[1], p2[1], p2[2], p1[2], mesh_center)
 	return {vertices = verts, normals = norms, indices = idxs}
 
-static func get_skewed_cube_geometry(base_vertices: Array, height: float) -> Dictionary:
-	if base_vertices.size() != 4:
-		return {}
-	var b: Array = base_vertices
-	var t: Array = []
-	for i in range(4):
-		var bv: Vector3 = b[i]
-		t.append(bv + Vector3(0, height, 0))
-	var mesh_center := Vector3.ZERO
-	for v: Vector3 in b: mesh_center += v
-	for v: Vector3 in t: mesh_center += v
-	mesh_center /= 8.0
-	var verts := PackedVector3Array()
-	var norms := PackedVector3Array()
-	var idxs  := PackedInt32Array()
-	_add_quad(verts, idxs, norms, b[0], b[1], b[2], b[3], mesh_center)
-	_add_quad(verts, idxs, norms, t[3], t[2], t[1], t[0], mesh_center)
-	for i in range(4):
-		var ni := (i + 1) % 4
-		_add_quad(verts, idxs, norms, b[i], b[ni], t[ni], t[i], mesh_center)
-	return {vertices = verts, normals = norms, indices = idxs}
-
 static func create_skewed_cube(base_vertices: Array, height: float, color: Color, use_transparency: bool = false) -> MeshInstance3D:
 	if base_vertices.size() != 4:
 		push_error("Se requieren exactamente 4 vértices para la base")

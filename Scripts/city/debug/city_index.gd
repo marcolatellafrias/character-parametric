@@ -21,9 +21,9 @@ extends RefCounted
 ## y la búsqueda se hace solo dentro de ese scope. Así no hay que recorrer la ciudad entera, y dos piezas
 ## de edificios distintos no se pueden confundir.
 
-enum Kind { BUILDING, ROOF, BRIDGE }
+enum Kind { BUILDING, ROOF, BRIDGE, SIDEWALK, DOOR }
 
-const KIND_NAMES: Array[String] = ["edificio", "techo", "puente"]
+const KIND_NAMES: Array[String] = ["edificio", "techo", "puente", "vereda", "puerta"]
 ## El meta que lleva el StaticBody3D para decir a qué scope pertenece lo que frena el rayo.
 const SCOPE_META := "city_index_scope"
 
@@ -205,7 +205,14 @@ func describe(i: int) -> Dictionary:
 			var side := "" if _id_c[i] < 0 else " · lado %d" % _id_c[i]
 			lines.append("%s%s · edificio %d%s" % [RoofPlanner.piece_name(_id_b[i]), style, _id_a[i], side])
 		Kind.BRIDGE:
+			# Un extremo apoyado en una fachada lleva los mismos ids que su puente: es parte de él.
 			lines.append("puente %d · manzanas %d y %d · piso %d" % [_id_a[i], _id_b[i], _id_c[i], _id_d[i]])
+		Kind.SIDEWALK:
+			# a = edificio, b = piso, c = lado del módulo (0 norte, 1 este, 2 sur, 3 oeste).
+			lines.append("vereda · edificio %d · piso %d · lado %d" % [_id_a[i], _id_b[i], _id_c[i]])
+		Kind.DOOR:
+			# a = edificio, b = piso, c = lado, d = número de puerta en la manzana.
+			lines.append("puerta de entrega %d · edificio %d · piso %d · lado %d" % [_id_d[i], _id_a[i], _id_b[i], _id_c[i]])
 		_:
 			lines.append("pieza desconocida")
 	return {

@@ -343,24 +343,6 @@ func get_region_vertices(bx_min: int, bx_max: int, bz_min: int, bz_max: int, hei
 	return result
 
 
-## LA GRILLA ENTRE DOS ALTURAS, sampleada en las dos.
-##
-## Devuelve `[quad_abajo, quad_arriba]`, ambos en el orden [BL, BR, TR, TL], listos para
-## `DebugUtil.get_skewed_cube_from_planes_geometry`, que empareja vértice con vértice.
-##
-## Hoy los pisos son paralelos (ver EL RELIEVE), así que esto da lo mismo que extruir en vertical desde
-## el índice de abajo. Se samplean igual las dos alturas para no depender de esa propiedad: una pieza
-## armada así queda bien con edificios inclinados o rectos, y seguiría quedando bien si algún día el
-## relieve deja de ser una traslación pura.
-func get_region_prism(bx_min: int, bx_max: int, bz_min: int, bz_max: int,
-		index_bottom: int, index_top: int) -> Array:
-	var bottom := get_region_vertices(bx_min, bx_max, bz_min, bz_max, index_bottom)
-	var top := get_region_vertices(bx_min, bx_max, bz_min, bz_max, index_top)
-	if bottom.size() != 4 or top.size() != 4:
-		return []
-	return [bottom, top]
-
-
 func get_core_info() -> Dictionary:
 	return {
 		"min_x": core_min_x,
@@ -435,27 +417,111 @@ func occupy(lo: Vector3i, size: Vector3i) -> void:
 	_occupied.append([lo, lo + size])
 
 
-## Las regiones ocupadas como cajas del MUNDO `[[min, max], ...]`: la envolvente de las ocho esquinas de cada
-## región, ya deformadas. Es lo que se proyecta sobre la matriz rígida de una superficie para saber qué
-## celdas suyas quedaron tapadas por algo deformable.
-func occupied_world_boxes() -> Array:
-	var out: Array = []
+## Las regiones ocupadas como sólidos del MUNDO: las ocho esquinas de cada región, ya deformadas, en el
+## orden de bits (1 → x, 2 → y, 4 → z) que espera `RigidMatrix.mark_world_hexahedron`. Es lo que se proyecta
+## sobre la matriz rígida de una superficie para saber qué celdas suyas quedaron tapadas por algo deformable.
+##
+## Se dan las esquinas y NO la caja envolvente: una vereda de 3 m que baja con el terreno tiene una
+## envolvente de decenas de centímetros de alto, y proyectada así marcaba esa altura entera sobre la fachada.
+func occupied_world_corners() -> Array[PackedVector3Array]:
+	var out: Array[PackedVector3Array] = []
 	var fx := float(maxi(columns, 1))
 	var fz := float(maxi(rows, 1))
 	for box: Array in _occupied:
 		var lo: Vector3i = box[0]
 		var hi: Vector3i = box[1]
-		var wmin := Vector3(INF, INF, INF)
-		var wmax := Vector3(-INF, -INF, -INF)
+		var corners := PackedVector3Array()
 		for corner in 8:
 			var cx := hi.x if corner & 1 else lo.x
 			var cy := hi.y if corner & 2 else lo.y
 			var cz := hi.z if corner & 4 else lo.z
-			var p := point_at_f(float(cx) / fx, float(cz) / fz, float(cy))
-			wmin = Vector3(minf(wmin.x, p.x), minf(wmin.y, p.y), minf(wmin.z, p.z))
-			wmax = Vector3(maxf(wmax.x, p.x), maxf(wmax.y, p.y), maxf(wmax.z, p.z))
-		out.append([wmin, wmax])
+			corners.append(point_at_f(float(cx) / fx, float(cz) / fz, float(cy)))
+		out.append(corners)
 	return out
+
+
+# ── FACHADAS ────────────────────────────────────────────────────────────────────────────────────
+# Una FACHADA es la cara del núcleo sobre un lado del módulo, en un piso: la superficie donde viven los
+# objetos rígidos de pared (puertas, ventanas, balcones; ver RigidMatrix). Los lados son 0 norte (z mínima),
+# 1 este, 2 sur, 3 oeste, y cada uno se recorre de la esquina `e` a la `e + 1` del núcleo, en el mismo orden
+# [BL, BR, TR, TL] de `get_core_vertices`. Un chaflán acorta la cara: la esquina ochavada no tiene pared.
+
+## Coordenada (u, v) del módulo de un punto sobre la arista `edge_idx` del núcleo, a `along` celdas de
+## edificio (en x para norte y sur, en z para este y oeste).
+func _edge_uv(edge_idx: int, along: float) -> Vector2:
+	var fx := float(maxi(columns, 1))
+	var fz := float(maxi(rows, 1))
+	match edge_idx:
+		0: return Vector2(along / fx, float(core_min_z) / fz)
+		1: return Vector2(float(core_max_x + 1) / fx, along / fz)
+		2: return Vector2(along / fx, float(core_max_z + 1) / fz)
+		_: return Vector2(float(core_min_x) / fx, along / fz)
+
+
+## De dónde a dónde va la cara `edge_idx`, en celdas de edificio y en el sentido del recorrido (los lados 2
+## y 3 van decreciendo). Descuenta los chaflanes de las dos esquinas: `c2` de la esquina de arranque y `c1`
+## de la de llegada, que son los tramos de cada una sobre esta arista (ver `chamfers`). Es la ÚNICA
+## definición de "dónde hay pared" en ese lado: la usa la superficie rígida y quien sortea posiciones sobre
+## ella (ver TraversalGenerator._door_span), así una puerta no puede caer en la ochava.
+func get_facade_span(edge_idx: int) -> Vector2:
+	var at_start: Array = chamfers.get(edge_idx, [0, 0])
+	var at_end: Array = chamfers.get((edge_idx + 1) % 4, [0, 0])
+	var cut_start := float(at_start[1])
+	var cut_end := float(at_end[0])
+	match edge_idx:
+		0: return Vector2(float(core_min_x) + cut_start, float(core_max_x + 1) - cut_end)
+		1: return Vector2(float(core_min_z) + cut_start, float(core_max_z + 1) - cut_end)
+		2: return Vector2(float(core_max_x + 1) - cut_start, float(core_min_x) + cut_end)
+		_: return Vector2(float(core_max_z + 1) - cut_start, float(core_min_z) + cut_end)
+
+
+## LA CARA DE LA FACHADA entre dos índices de altura: `[inicio_abajo, fin_abajo, fin_arriba, inicio_arriba]`,
+## sin las esquinas ochavadas. Vacío si el chaflán se comió la cara entera.
+##
+## El borde de abajo se recorre EN EL SENTIDO QUE HACE QUE `recorrido × afuera` APUNTE ARRIBA: así el marco
+## de `RigidMatrix.from_quad` (u, n, v = u × n) queda con `v` hacia arriba y la fila 0 en el piso. Al revés
+## la fila 0 cae en el techo del piso y todo lo colocado cuelga de ahí —pasó, medido: 6,6 m de gap—.
+func get_facade_quad(edge_idx: int, index_bottom: int, index_top: int) -> Array[Vector3]:
+	var span := get_facade_span(edge_idx)
+	if absf(span.y - span.x) < 1.0:
+		return []
+	var uv0 := _edge_uv(edge_idx, span.x)
+	var uv1 := _edge_uv(edge_idx, span.y)
+	var p0 := point_at_f(uv0.x, uv0.y, float(index_bottom))
+	var p1 := point_at_f(uv1.x, uv1.y, float(index_bottom))
+	if (p1 - p0).cross(get_facade_outward(edge_idx)).y < 0.0:
+		var swap := p0
+		p0 = p1
+		p1 = swap
+		var swap_uv := uv0
+		uv0 = uv1
+		uv1 = swap_uv
+	return [
+		p0,
+		p1,
+		point_at_f(uv1.x, uv1.y, float(index_top)),
+		point_at_f(uv0.x, uv0.y, float(index_top)),
+	]
+
+
+## Hacia dónde mira la fachada: del centro del núcleo al medio de la cara, en el plano horizontal.
+func get_facade_outward(edge_idx: int) -> Vector3:
+	var fx := float(maxi(columns, 1))
+	var fz := float(maxi(rows, 1))
+	var centre := point_at_f(float(core_min_x + core_max_x + 1) * 0.5 / fx,
+		float(core_min_z + core_max_z + 1) * 0.5 / fz, 0.0)
+	var span := get_facade_span(edge_idx)
+	var uv := _edge_uv(edge_idx, (span.x + span.y) * 0.5)
+	var out := point_at_f(uv.x, uv.y, 0.0) - centre
+	out.y = 0.0
+	return out.normalized()
+
+
+## Un punto de la arista `edge_idx` del núcleo a `along` celdas de edificio y `height_index` de alto: dónde
+## cae, en el mundo, una posición dada sobre la fachada en celdas del módulo.
+func facade_point(edge_idx: int, along: int, height_index: int) -> Vector3:
+	var uv := _edge_uv(edge_idx, float(along))
+	return point_at_f(uv.x, uv.y, float(height_index))
 
 
 ## Cuánto levanta el terreno en ese punto: el suelo del propio módulo, interpolado entre sus cuatro

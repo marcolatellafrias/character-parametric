@@ -11,10 +11,15 @@ func _init(p_block: BlockGenerator) -> void:
 	block = p_block
 
 
-## Ancho y alto de una puerta, en metros. Se convierten a celdas de edificio con el tamaño real del
-## módulo, porque ese tamaño depende de cuánto mide la celda de la grilla distorsionada y no es fijo.
+## Las medidas de una puerta, en metros. La puerta es RÍGIDA: estas medidas son la verdad, y en la matriz de
+## la fachada ocupa las celdas que hagan falta para cubrirlas (ver City._visualize_delivery_doors). El ancho
+## se convierte además a celdas de edificio, solo para decidir DÓNDE cae a lo largo de la cara.
 const DOOR_WIDTH_M := 1.4
 const DOOR_HEIGHT_M := 2.2
+const DOOR_DEPTH_M := 0.15
+## Cuánto puede subir una puerta para apoyarse sobre lo que haya delante de la fachada (la vereda). Más que
+## eso no es un escalón sino un obstáculo, y la puerta no va.
+const DOOR_MAX_STEP_M := 0.5
 
 
 func generate(doors_per_block: int = 4) -> void:
@@ -25,12 +30,9 @@ func generate(doors_per_block: int = 4) -> void:
 	_generate_ground_doors(doors_per_block)
 
 
-## LAS PUERTAS DE PLANTA BAJA. Por ahora solo el piso 0 y solo el dato: geometría ENCIMA de la fachada,
-## sin agujerear la malla del módulo (eso viene después, cuando los edificios tengan geometría real).
-##
-## El piso 0 es a propósito, y no es solo simplicidad: es el único piso donde la malla del edificio y la
-## capa de colocación coinciden exactamente (ver "The terrain plan" en technical/city-generation.md). De
-## piso 2 para arriba difieren 1,35 m, así que una puerta ahí quedaría despegada de su pared.
+## LAS PUERTAS DE PLANTA BAJA. Por ahora solo el piso 0, y acá solo el DATO —qué celda, qué lado, qué tramo
+## de la cara—; la geometría la coloca City en la matriz rígida de esa fachada, encima de la pared, sin
+## agujerear la malla del módulo (eso viene después, cuando los edificios tengan geometría real).
 ##
 ## Un borde sirve si da a la calle (FACADE) o a un callejón. NORMAL es interior —no da a ningún lado— y
 ## BOUNDARY es el límite de la ciudad.
@@ -86,7 +88,6 @@ func _generate_ground_doors(doors_per_block: int) -> void:
 			"cluster_id": candidate["cluster_id"],
 			"along_min": span["along_min"],
 			"along_max": span["along_max"],
-			"height_cells": span["height_cells"],
 		})
 
 
@@ -100,12 +101,15 @@ func _edge_faces_outside(module: BuildingModule, edge_idx: int) -> bool:
 	return true
 
 
-## Dónde cae la puerta a lo largo de esa cara, y qué alto tiene, todo en celdas de edificio. El tamaño
-## de celda se mide del módulo mismo —dos posiciones vecinas— en vez de darlo por fijo.
+## Dónde cae la puerta a lo largo de esa cara, en celdas de edificio. Se sortea sobre la CARA REAL —el
+## tramo con pared, sin las esquinas ochavadas (`BuildingModule.get_facade_span`)— y no sobre el núcleo
+## entero. El tamaño de celda se mide del módulo mismo —dos posiciones vecinas— en vez de darlo por fijo.
 func _door_span(module: BuildingModule, edge_idx: int, rng: RandomNumberGenerator) -> Dictionary:
 	var core = module.get_core_info()
-	var along_from: int = core["min_x"] if edge_idx == 0 or edge_idx == 2 else core["min_z"]
-	var along_to: int = core["max_x"] if edge_idx == 0 or edge_idx == 2 else core["max_z"]
+	var span := module.get_facade_span(edge_idx)
+	# `span` va en el sentido del recorrido y cubre celdas [from, to); acá se quieren índices inclusivos.
+	var along_from: int = ceili(minf(span.x, span.y))
+	var along_to: int = floori(maxf(span.x, span.y)) - 1
 	if along_to < along_from:
 		return {}
 
@@ -127,7 +131,6 @@ func _door_span(module: BuildingModule, edge_idx: int, rng: RandomNumberGenerato
 	return {
 		"along_min": start,
 		"along_max": start + width_cells - 1,
-		"height_cells": maxi(1, int(round(DOOR_HEIGHT_M / module.cell_height))),
 	}
 
 

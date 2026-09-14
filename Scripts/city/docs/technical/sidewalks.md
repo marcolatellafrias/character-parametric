@@ -26,7 +26,9 @@ The alleyway offset strips (18 building cells deep) between adjacent building co
 
 ## Sidewalk instances
 
-A sidewalk instance is a physical walkable surface: a **1-cell-tall skewed cube** at a specific floor. Sidewalks are always **floor-aligned** — the bottom sits at the start of a floor.
+A sidewalk instance is a physical walkable surface: a **1-cell-tall box** at a specific floor. Sidewalks are always **floor-aligned** — the bottom sits at the start of a floor.
+
+Sidewalks are **deformable objects placed through `ModulePlacer`** (`City._visualize_floating_sidewalk_zones`; see [Placing objects](city-generation.md#placing-objects--deformable-and-rigid)): a region `(bx, bz)` × 1 cell high and a unit box, deformed by the module's grid so neighbouring strips meet exactly, indexed as `CityIndex.Kind.SIDEWALK` under the building's object, and — the part everything else depends on — **occupying the module**, so the facade's rigid matrix sees them and a door stands on the slab instead of going through it. One mesh and one trimesh collider per block (`_bake_placed`).
 
 ### Spawn rules
 
@@ -38,13 +40,15 @@ A sidewalk instance is a physical walkable surface: a **1-cell-tall skewed cube*
 
 Each block has a set of **delivery door zones** — locations where package delivery doors can spawn. A door zone is a cell-edge-floor on a specific cluster.
 
-**Data**: `TraversalGenerator.delivery_doors` — array of `{cell: Vector2i, edge: int, floor: int, cluster_id: int, along_min: int, along_max: int, height_cells: int}`. `along_min/along_max` bound the door along its face and `height_cells` its height, both in building cells; without them the visualiser drew the full core width by a full floor, which is a wall, not a door.
+**Data**: `TraversalGenerator.delivery_doors` — array of `{cell: Vector2i, edge: int, floor: int, cluster_id: int, along_min: int, along_max: int}`. `along_min/along_max` is *where* the door falls along its face, in building cells, drawn over the real wall span (`BuildingModule.get_facade_span`, which excludes the chamfered corners). The door's size is not data: it is `DOOR_WIDTH_M × DOOR_HEIGHT_M × DOOR_DEPTH_M` (1.4 × 2.2 × 0.15), because the door is rigid and metres are its truth.
 
 **Constraints**: edges must be FACADE or alleyway (not NORMAL or BOUNDARY). Cluster must have `floor_count > 0`. Up to 4 per block, drawn from the block seed so every peer generates the same city.
 
-**Ground floor only, for now.** `TraversalGenerator._generate_ground_doors` places doors at floor 0 exclusively, and that is not only simplicity: floor 0 is the one floor where the building mesh and the placement layer agree exactly. From floor 2 up they diverge by 1.35 m (see "The terrain plan" in [city-generation.md](city-generation.md)), so a door there would hang off its own wall.
+**Ground floor only, for now** — `_generate_ground_doors` places at floor 0; nothing prevents other floors any more (mesh and placement agree on every floor since the taper was removed).
 
-The door is **geometry laid over the facade** — a skewed cube one building cell deep, sitting just outside the core. Nothing is cut out of the module mesh; real openings come later, with real building geometry. Measured on the generated city: 764 doors, 1.17–1.43 m wide and 2.13 m tall.
+**The door is a rigid object on the facade's `RigidMatrix`** (`City._visualize_delivery_doors`; see [Placing objects](city-generation.md#placing-objects--deformable-and-rigid)). The facade quad of that module side and floor gets one matrix, shared by everything on that wall; every deformable region already on the module (the sidewalk in front, a bridge extreme) is projected onto it as occupied; the door's along-span is mapped to matrix cells *through world coordinates* (the one system both grids share) and slid into the matrix if it fell in the residual it does not cover; then `first_free_along_v` raises it to the first free row, so it **stands on the sidewalk** — up to `DOOR_MAX_STEP_M` (0.5 m), beyond which whatever is in front is an obstacle and the door is dropped. Generation prints placed / standing on a sidewalk / slid / dropped; dropped is expected to be 0. Measured: 764 doors, 232 on a sidewalk, 28 slid by at most one cell, 0 dropped; the standing ones float **4–4.7 cm** above the slab (rows are 0.248 m, the slab 0.21 m — the grid's granularity, see the caveat in city-generation).
+
+The door is **geometry laid over the facade**: a 0.25 m-thick slab in front of the wall, indexed as `CityIndex.Kind.DOOR` under the building's object, with a collider (one trimesh per block). Nothing is cut out of the module mesh; real openings come later, with real building geometry.
 
 ## Traversal infrastructure (stairs + floating sidewalks)
 
@@ -79,9 +83,9 @@ Doors are processed sorted by floor ascending. For each delivery door at floor >
 
 ### External sidewalk geometry (floor 0)
 
-**4 corners** — one per block corner. Each is a `facade_offset × facade_offset` skewed cube from the corner DG cell's building module, covering the square where two facade edges meet. Vertices from `get_region_vertices` on the corner module.
+**4 corners** — one per block corner. Each is a `facade_offset × facade_offset` region of the corner DG cell's building module, covering the square where two facade edges meet.
 
-**4 × N connectors** — one per DG cell per edge (excluding corner overlap). Each connector follows the distorted grid by using `get_region_vertices` from its own building module, so it matches building boundaries exactly. A single flat quad per edge would deviate from the wave distortion.
+**4 × N connectors** — one per DG cell per edge (excluding corner overlap). Each connector is a region of its own building module, so it follows the distorted grid and matches building boundaries exactly. A single flat quad per edge would deviate from the wave distortion.
 
 At the corner DG cells, connectors are **trimmed** to avoid overlapping the corner piece:
 - First cell on the edge: the along-axis start is clipped to `core_min` (the corner piece covers `[0, core_min-1]`)

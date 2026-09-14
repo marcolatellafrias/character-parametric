@@ -57,8 +57,9 @@ static func facade_to_grid_rect(edge_idx: int, is_reversed: bool,
 ## ── LA REGLA DE ORO DE LAS FACHADAS ─────────────────────────────────────────────────────────────
 ##
 ## Todo lo que se apoya en una fachada tiene que salir de la MISMA definición de "piso N" que la malla que
-## se ve: el quad del piso 0, inclinado con el terreno, trasladado en Y. Es lo que hacen `_at_height` y
-## todo lo construido sobre él (`get_region_vertices`, `get_region_prism`, `facade_span_quad`).
+## se ve: el quad del piso 0, inclinado con el terreno, trasladado en Y. Es lo que hacen `point_at_f` y
+## todo lo construido sobre él (`get_region_vertices`, `get_facade_quad`, `facade_span_quad`, y
+## `ModulePlacer`, por donde van los extremos de puente).
 ##
 ## Los pisos son paralelos, así que extruir en vertical entre dos alturas también aterriza exacto. Lo que
 ## NO se puede es sacar la posición de otra fuente —las esquinas de la manzana, una altura escalar, un
