@@ -19,7 +19,7 @@ Technical, code-level breakdown of the procedural city generator. Three subsyste
 6. **Block hearts** — Interior clusters (not on the block perimeter) have a chance of becoming "hearts": their `floor_count` is set to 0, creating paved plazas inside the block (their floor-0 modules still exist, and the sidewalk pass fills them).
 7. **Building modules** — Each cell in each cluster is a `BuildingModule` per floor. Each module knows what borders its 4 sides and shrinks its core area inward (facade/alleyway offset), forming the actual building footprint.
 8. **Sidewalk zones** — The non-core cells of each building module define sidewalk zones: external (between the buildable zone boundary and the building face) and internal (alleyway offset areas between buildings). See [sidewalks.md](sidewalks.md).
-9. **Occupancy** — There is no availability matrix. Each `BuildingModule` keeps a list of the regions placed in it; whatever needs free space asks the module (see [Placing objects](#placing-objects--deformable-and-rigid)).
+9. **Occupancy** — There is no availability matrix. Each `BuildingModule` keeps a list of the regions placed in it; whatever needs free space asks the module (see [Placing objects](#placing-objects--one-grid-two-kinds-of-cells)).
 10. **Sidewalk instances** — Physical walkable surfaces, decided per module: a strip per side covering the whole offset (alleys end up paved edge to edge), a corner wherever two sides both have one (curved where both are streets), a fill under each chamfer, and a plaza for a block heart. Higher-floor floating sidewalks are bridge-dependent (rules TBD). See [sidewalks.md](sidewalks.md).
 11. **Wall** — A closed barrier on the graph's boundary edges, the limit of the playable world. See [The wall](#the-wall).
 12. **Bridges** — Placed on graph edges. Middle parts span between opposing buildable zone boundaries. Extremes extend through external sidewalk zones to the building face. See [bridges.md](bridges.md).
@@ -41,7 +41,7 @@ The **ground mesh** (`City._visualize_ground`) triangulates each graph face in a
 
 ### What rides on it
 
-Everything placed **in-grid** does, because it all flows through one funnel: `BuildingModule.point_at_f`, and on top of it `get_region_vertices` / `get_core_vertices` / `get_facade_quad` (buildings, stairs, connector faces) and `ModulePlacer` / `RigidMatrix` (sidewalks, bridge extremes, roof pieces, tanks, doors — see [Placing objects](#placing-objects--deformable-and-rigid)). `DistortedGrid.get_cell_vertices` puts the grid's own vertices on the field too; the wave distortion stays purely horizontal.
+Everything placed **in-grid** does, because it all flows through one funnel: `BuildingModule.point_at_f`, and on top of it `get_region_vertices` / `get_core_vertices` / `get_facade_quad` (buildings, stairs, connector faces) and `GridPlacer` on any `PlacementGrid` (sidewalks, bridge extremes, roof pieces, tanks, doors, windows — see [Placing objects](#placing-objects--one-grid-two-kinds-of-cells)). `DistortedGrid.get_cell_vertices` puts the grid's own vertices on the field too; the wave distortion stays purely horizontal.
 
 **Everything follows the ground, at every height.** In the funnel each corner gets the terrain height at its own position, and the height index adds a **pure vertical offset** on top. So floor N is floor 0 raised in Y: every floor parallel, every floor tilted alike.
 
@@ -206,25 +206,40 @@ Measured on the 1 425.6 m city: top flat at 87 m, base following the terrain, tr
 
 Each `BuildingCluster` is assigned a **building archetype** + seed. A building works like a person: the archetype says what *class* of building it is, and the seed varies the individual within that class.
 
-- **Base class** `BuildingArchetype` ([building_archetype.gd](../../building/building_archetype.gd)) defines the interface (`get_color`, `get_street_corner_chamfer_value`, future `generate_geometry`) and carries the **parameters that feed the rules** — today `roof_pitch_height` and `flat_roof_chance`. The archetype holds no rules of its own: who decides a roof's shape is `RoofPlanner`, which reads these. Concrete archetypes live as **inner classes** while small; one can be promoted to its own file once its logic grows, with no caller changes.
+- **Base class** `BuildingArchetype` ([building_archetype.gd](../../building/building_archetype.gd)) defines the interface (`get_color`, `get_street_corner_chamfer_value`, future `generate_geometry`) and carries the **parameters that feed the rules** — `roof_pitch_height`, `flat_roof_chance`, and the `window_*` fields. The archetype holds no rules of its own: who decides a roof's shape is `RoofPlanner`, and who decides where windows go is `FacadePlanner`; both read these. Concrete archetypes live as **inner classes** while small; one can be promoted to its own file once its logic grows, with no caller changes.
 - **Registry** `ArchetypeDefinitions.NEIGHBORHOOD_ARCHETYPES` ([archetype_definition.gd](../../building/archetype_definition.gd)) maps each **district** to its archetypes. `get_archetype_for_cluster()` seed-picks one and instantiates it — the pick stays even with one entry per district, so adding a second changes nothing else.
 - **Color scheme**: each archetype owns a fixed `base_hue`; the seed varies saturation/value within that family, so a cluster's district is readable from its colour. (Colour is a temporary debug variable, expected to disappear once real geometry exists.)
 
-| District | Archetype |
-|---|---|
-| `POOR` | `GenericPoor` |
-| `RICH` | `GenericRich` |
-| `INDUSTRIAL` | `GenericIndustrial` |
+| District | Archetype | Windows (style trial) |
+|---|---|---|
+| `POOR` | `GenericPoor` | random, small |
+| `RICH` | `GenericRich` | stacked, tall, tight rhythm |
+| `INDUSTRIAL` | `GenericIndustrial` | stacked, wide and low, far apart |
 
-**One generic archetype per district**, and the three are identical apart from hue — deliberately. The layer exists so that changing a district's roof, windows or material is changing *data* here, not rules elsewhere.
+**One generic archetype per district**, and the three are identical apart from hue and windows — deliberately. The layer exists so that changing a district's roof, windows or material is changing *data* here, not rules elsewhere.
 
 **Superseded:** there used to be eight archetypes (`ShantyBasic`, `ShantyMakeshift`, `MixedUse`, `MansionClassic`, `MansionModern`, `OfficeTower`, `WarehouseBasic`, `FactoryModern`) that differed **only in `base_hue`** — a distinction that does not exist for the player. Named archetypes come back when there is something real to tell them apart with. There is no "Downtown" district either: density became its own axis when districts and heights were split in two (see `NeighborhoodTypes`).
 
 ---
 
+## Facades — windows and doors
+
+The same split as roofs, for walls ([facade_planner.gd](../../building/facade_planner.gd)): the **archetype** says which criterion a building uses and with what numbers; **`FacadePlanner`** has the rules and returns candidate regions in the cells of a wall's `RigidMatrix`; **`GridPlacer.place`** places, indexes, occupies and rejects whatever collides. The planner checks nothing against what is already there — the matrix does.
+
+⚠ **Primitive on purpose.** Two window criteria exist to try out a style; doors (ground floor and upper floors) are meant to become further criteria of the same planner.
+
+- **Where a wall is visible** — `has_wall(block, cluster, cell, module, side, floor)`: toward a street or alley, always; toward the world boundary, never; on an *attached* side, when the building across it has no floor at that height — a shorter neighbour (the floors that rise above it) or a block heart (walls facing a plaza are facades). Only against a cell of the same building is a side interior. The edge type alone is not enough.
+- **`STACKED`** — columns of `window_width_m` separated by `window_gap_m`, as many as fit, centred, at `window_sill_m`. They depend only on the matrix width, which is the same on every floor, so a side's windows line up vertically with nothing stored.
+- **`RANDOM`** — `window_attempts` positions drawn per facade per floor between the sill and a top margin; the ones that collide are dropped by the matrix.
+- **Pieces** are in `FacadeProps` ([facade_props.gd](../../props/facade_props.gd)). ⚠ A facade's frame is not a roof's: `x` along the wall, **`y` out toward the street**, `z` up. The `y = 0` face rests on the wall and is not drawn.
+- **One pass per block** (`City._visualize_facade_objects`): doors first (gameplay), then windows, sharing one matrix per `(module, side, floor)` so a window can only avoid a door by reading the matrix the door occupies. Randomness is seeded from the block seed, cluster, cell, side and floor.
+- **Cost, measured:** 376 621 windows on 134 341 visible facades, 3.8 M triangles, one mesh per block, **no collider and no shadow**; ~8 100 candidates rejected. The pass takes **~28 s** of a 63 s headless run. What got it there from 48 s: `point_at_f` stopped allocating two arrays per call; `place` builds each piece in local arrays and appends once, with the region's bilinear precomputed (`region_frame`) so nothing is called per vertex; a floor's facade grid is floor 0's translated (`RigidMatrix.translated`) instead of rebuilt; `CityIndex.add` appends in place instead of copying each scope's list. What remains is per-triangle work in GDScript — see the caveat below.
+- ⚠ **Windows are not individually pointable**: without a collider the inspector's ray hits the wall. They are indexed under the building's object, so highlighting the building includes them.
+- ⚠ **The residual cost is structural.** A rigid object is, by definition, its unit mesh under one affine transform — exactly what a GPU instance is. Hundreds of thousands of identical windows written triangle by triangle in GDScript are the expensive way to draw a transform. Moving rigid repeated pieces to `MultiMesh` would remove most of the pass and the triangles from the CPU side, at the price of not copying their triangles for highlighting. Not done: it is a decision, not a fix.
+
 ## Roofs — the planner decides, the props execute
 
-A roof is **a small catalogue of modular pieces placed on the building grid through `ModulePlacer`** — the same interface every deformable object uses (see [Placing objects](#placing-objects--deformable-and-rigid)). One style is chosen per building.
+A roof is **a small catalogue of modular pieces placed on the building grid through `GridPlacer`** — the same interface every placed object uses (see [Placing objects](#placing-objects--one-grid-two-kinds-of-cells)). One style is chosen per building.
 
 - `RoofPlanner` ([roof_planner.gd](../../building/roof_planner.gd)) is a **pure function** of the cluster's footprint, its edge types, its chamfers and the seed. `layout()` returns `{"style", "pieces", "fallback"}`: each piece is a module, a region of building cells, a `UnitMesh`, and which catalogue piece it is. It touches no mesh.
 - `RoofProps` ([roof_props.gd](../../props/roof_props.gd)) is the catalogue: each piece authored **once**, in the unit cube, in a canonical orientation, and rotated in quarter turns for the other three.
@@ -327,7 +342,7 @@ What each piece stores: its **kind**, four **ids** whose meaning depends on the 
 
 ### Making a new system identifiable
 
-**If the object is placed through `ModulePlacer`, steps 5 and 7 below happen inside `place()`** — the placer is built with the scope and object id and records the piece itself. What remains yours is the per-mesh part (a scope and its mesh, the object id, the collider stamp). See [Placing objects](#placing-objects--deformable-and-rigid).
+**If the object is placed through `GridPlacer`, steps 5 and 7 below happen inside `place()`** — the placer is built with the scope and object id and records the piece itself. What remains yours is the per-mesh part (a scope and its mesh, the object id, the collider stamp). See [Placing objects](#placing-objects--one-grid-two-kinds-of-cells).
 
 Everything below happens **inside the builder that bakes the geometry**. Nothing registers anywhere, and no interface is implemented — which is the point, but it also means there is no compiler error if a step is skipped. **The symptom of a missed step is the inspector saying "sin identificar" when you point at the thing.** That is the thing to check first.
 
@@ -362,7 +377,7 @@ The identity rides on the **collider** on purpose. A collider is already mandato
 
 ## Buildings on sloped terrain
 
-A building is a box whose floors are **parallel to the ground beneath it**. Each corner takes the terrain height at its own position (`BuildingModule._ground_at`), and each floor is that same quad raised by a pure vertical offset. No cluster is anchored to a single height, so none is buried on the uphill side or stilted on the downhill one: the box tilts with the hill.
+A building is a box whose floors are **parallel to the ground beneath it**. Each corner takes the terrain height at its own position (`BuildingModule.point_at_f`, one bilinear over the module's four 3D corners), and each floor is that same quad raised by a pure vertical offset. No cluster is anchored to a single height, so none is buried on the uphill side or stilted on the downhill one: the box tilts with the hill.
 
 Roofs tilt with it, which is the price. It is acceptable while the character gains slope handling, and it is the look that was approved on sight.
 
@@ -380,7 +395,7 @@ Terrain was introduced as a seven-step plan. Three steps landed, one landed inco
 
 The whole plan rests on a finding worth keeping: **everything that sits in the city passes through two places**, so terrain never had to be threaded through the whole system.
 
-- `BuildingModule.point_at_f()` — everything on a building: the module quads (`get_region_vertices`, `get_core_vertices`, `get_facade_quad`), and through them `ModulePlacer` and every `RigidMatrix` surface.
+- `BuildingModule.point_at_f()` — everything on a building: the module quads (`get_region_vertices`, `get_core_vertices`, `get_facade_quad`), and through them `GridPlacer` and every `RigidMatrix` surface.
 - `BlockGenerator.get_edge_lane_volume()` — all traffic.
 
 Bilinear interpolation (`GridHelper`) is pure 2D; Y is added afterwards. Module occupancy, door `{cell, edge, floor}` triples and the bridge grid are **logical indices in module space**, not metres, so they keep working untouched.
@@ -405,9 +420,9 @@ There were **two definitions of "where floor N is"**, and the mesh used the one 
 
 Measured on a four-storey cluster with 8 m of drop: **0.00 m at floor 0, 0.68 m at floor 1, 1.35 m from floor 2 up**, plus a mismatch in *tilt* — flat against sloped. Anything placed against a facade above floor 1 was landing on a surface that did not exist on screen. It masqueraded as a centimetre-scale alignment bug in bridges, and was chased as one for a while.
 
-**Resolved by making the relief independent of the height index**: `_ground_at(u, v)` returns the module's bilinear ground, full stop, and `_at_height` adds the vertical offset. Mesh and placement now agree on every floor, tilted or not, and the taper was deleted rather than completed.
+**Resolved by making the relief independent of the height index**: the ground became the module's bilinear ground, full stop, with the vertical offset added on top — today both live in `point_at_f`. Mesh and placement now agree on every floor, tilted or not, and the taper was deleted rather than completed.
 
-**And made structural rather than coincidental.** Agreeing was not enough on its own: the mesh still worked out its floor heights with its own arithmetic — `floor_base_y` for the base, a scalar extrusion for the top — so anything that made height depend on the index again would have desynced the two a second time. Both deductions are gone. `_visualize_buildings`, the building colliders and the roof props **ask the grid for the faces they need**, and `DebugUtil.get_skewed_cube_advanced_geometry_from_planes` builds the box between two given quads; the old base-plus-height form delegates to it, so there is exactly one chamfered-box constructor. A taper could now be reintroduced in `_ground_at` alone and the mesh would follow it on its own.
+**And made structural rather than coincidental.** Agreeing was not enough on its own: the mesh still worked out its floor heights with its own arithmetic — `floor_base_y` for the base, a scalar extrusion for the top — so anything that made height depend on the index again would have desynced the two a second time. Both deductions are gone. `_visualize_buildings`, the building colliders and the roof props **ask the grid for the faces they need**, and `DebugUtil.get_skewed_cube_advanced_geometry_from_planes` builds the box between two given quads; the old base-plus-height form delegates to it, so there is exactly one chamfered-box constructor. A taper could now be reintroduced in `point_at_f` alone and the mesh would follow it on its own.
 
 Two approximations are left on purpose, both harmless while floors stay congruent: the cell-to-metre chamfer conversion is measured on the **bottom** quad and applied to both faces, and the cap normals are still hardcoded to ±Y, so a tilted roof is shaded as if it were level.
 
@@ -418,64 +433,56 @@ Two approximations are left on purpose, both harmless while floors stay congruen
 
 ---
 
-## Placing objects — deformable and rigid
+## Placing objects — one grid, two kinds of cells
 
-Everything that goes on a building falls into one of two kinds, and the kind decides which matrix it lives in. **Both matrices exist from the start**; neither is derived from the objects in the other.
+Everything that goes on a building is placed the same way: a **mesh authored in the unit cube** goes into a **region of cells of a grid**, and the grid's cells decide its geometry. There is one grid class, `PlacementGrid` ([placement_grid.gd](../../block/placement_grid.gd)), and one call, `GridPlacer.place` ([grid_placer.gd](../../block/grid_placer.gd)). What differs between "deformable" and "rigid" is only **which grid** an object goes into, i.e. what its cells are:
 
-- **Deformable** — can be stretched without looking wrong, *and* has to line up with its neighbours across modules: roof pieces, columns, bridge extremes, pipes, and **walkways** — a building's floating sidewalk and the bridge pathway it meets are the clearest case, since the whole point of them is to join. It lives in the **building grid** of the module (80×80 cells per module, 32 per floor), which is bent by the distorted grid and tilted by the terrain. It has no distortion threshold, ever — that is what deformable means.
-- **Rigid** — must keep its proportions: windows, doors, water tanks, balconies. It lives in a **rigid matrix** projected from a flat surface, in that surface's own orthonormal frame, so it is never deformed at all. The city's distortion only changes how *many* rigid cells a surface yields.
+- **Deformable** — can be stretched without looking wrong, *and* has to line up with its neighbours across modules: roof pieces, sidewalks, bridge extremes, columns, pipes, walkways. It goes into the **building module** (`BuildingModule extends PlacementGrid`): the distorted-grid cell with its relief, `axis_n` up, 80×80 cells of ~0.14 m and no ceiling. Its cells bend with the city, so what is placed in them bends the same way, and two pieces in neighbouring modules that share an edge coincide there — on a shared edge both bilinears reduce to the same line. No distortion threshold, ever — that is what deformable means.
+- **Rigid** — should keep its proportions: windows, doors, water tanks, balconies. It goes into the **rigid grid of a surface** (`RigidMatrix extends PlacementGrid`, [rigid_matrix.gd](../../block/rigid_matrix.gd)): the surface's own quad, `axis_n` its outward normal, and cells **recomputed to be as close to cubes as possible** at `TARGET_CELL_M` (0.25 m). Because the surface is nearly flat and nearly a parallelogram, its bilinear is nearly affine, so what goes in is *barely* deformed — but it *is* the same mechanism, and that is the point.
 
-### The deformable interface: `ModulePlacer`
+### The grid
 
-One call, for roofs and for everything after them ([module_placer.gd](../../block/module_placer.gd)):
+A `PlacementGrid` is four corners in the world, an outward axis, and a cell count per axis. A point in cells `(x, y, z)` goes to the world by **the bilinear of the corners in `(x, z)` plus `y` cells along the axis** (`cell_to_world`). That is the whole mechanism, and every vertex of everything placed in the city passes through it. **A piece cannot end up tilted against its grid, even on purpose**: there is no other source of position, the way a connector only fits one way round. (`BuildingModule.point_at_f(u, v, h)` is `cell_to_world` with normalised `(u, v)`; everything that samples a module still goes through it.)
 
-```gdscript
-placer.place(module, lo, size, mesh, kind, id_a, id_b, id_c, id_d)  # -> bool
-```
+⚠ Why this matters: the first rigid grid had its own **orthonormal frame** — `u` along the floor line, `v = u × n` — and mapped meshes affinely in it. A facade is a parallelogram (floors follow the terrain), so a rectangle cannot be parallel to both its floor line and its vertical edges; windows came out **rotated within the wall by 1.5° median, 7.4° worst (6–31 cm of lean over a 2.4 m window)**, visibly misaligned against the module's edge. That frame is gone. With the surface's own bilinear, a facade's cells are parallelograms with vertical sides and a tilted floor line — the building's own shear — and a window follows both. Along with it went the inscribed-rectangle logic, the per-object saddle lift (`surface_offset`) and its planar shortcut: a tank's base now sits *exactly* on the roof's saddle because the cells do.
 
-Whoever places something thinks about two things: the **region** of building cells it occupies (`lo` and `size` in module cells; `y` is the height index) and the **mesh**, authored in the unit cube (`UnitMesh`, [unit_mesh.gd](../../props/unit_mesh.gd)): x, y, z from 0 to 1, with a colour and an outward direction per triangle. Nothing else — never silhouettes, never neighbours, never slopes. The rest happens inside `place`, and that is the part that cannot be forgotten:
+The grid also owns:
 
-- **Deformation.** Every vertex goes through `BuildingModule.point_at_f` with the *module's* coordinates (not the region's), so the bend is exactly the grid's, and two pieces in neighbouring modules that share an edge coincide there — on a shared edge both bilinears reduce to the same line. Face orientation is measured in the world after deformation, because the bend can mirror an axis.
-- **The index.** The piece is recorded in `CityIndex` with the placer's scope and object; the inspector names it with no extra work.
-- **Occupancy.** The region is marked on the module. If it was not free, `place` returns `false` and places nothing: two objects cannot overlap by oversight.
+- **Occupancy** — a list of boxes in cells, `is_free` (bounds included) and `occupy`. A list and not a 3D array: a module is 80×80 by 32 per floor, tens of millions of entries per city (the reason the old `SidewalkMatrix` never ran outside a debug view, and was deleted); objects are few.
+- **Projection of one grid onto another** — `occupied_world_corners(index_from, index_to)` gives the eight world corners of every region occupied in a grid (filtered to a height range), and `mark_world_hexahedron` marks on the other grid the cells they cover, **column by column along `n`**: for each depth slice it clips the region's twelve edges against the slice and marks only what remains. Not the world envelope: a sidewalk that drops 12 % over its 3 m has an envelope ~40 cm tall and projected in one go it marked 40 cm of facade; sliced, next to the wall it marks its real thickness, which is what a door has to stand on. Conservative inside each slice, never under. `world_to_cell` (the inverse bilinear, by Newton — one step on a parallelogram) is what makes it possible.
+- **Sizes in metres** — `cells_for(x_m, n_m, z_m)` per grid axis, rounded *up*: an object never shrinks to fit. What "height" means depends on the grid: `n` on a roof, `z` on a facade.
+- **Standing on things** — `first_free_along_z(lo, size, max_rise)` slides a region up along `z` to the first free row: how a door rests on the sidewalk instead of going through it; above `max_rise` (`DOOR_MAX_STEP_M`, 0.5 m) the obstacle is not a kerb and the object is dropped. **Residual:** rows are ~0.25 m and the sidewalk 0.21 m thick, so a door on a sidewalk floats **4–4.7 cm** above the slab — the grid's granularity; closing it would mean fractional positions, a decision not made.
 
-**Occupancy is a list of boxes, not a 3D array.** A module is 80×80 cells by 32 per floor; a cell array per module would be tens of millions of entries per city — the reason the old `SidewalkMatrix` never ran outside a debug view, and was deleted. Objects are few, so a list and a box-intersection test are enough.
-
-### The rigid matrix: `RigidMatrix`
-
-The same call, the other matrix ([rigid_matrix.gd](../../block/rigid_matrix.gd)):
+### The placer
 
 ```gdscript
-var roof := RigidMatrix.from_quad(module.get_core_vertices(roof_index), depth_m, Vector3.UP)
-for corners in module.occupied_world_corners():
-    roof.mark_world_hexahedron(corners)
-placer.place_rigid(roof, roof.centered(size), size, mesh, kind, ids…)   # -> bool
+placer.place(grid, lo, size, mesh, kind, id_a, id_b, id_c, id_d)  # -> bool
 ```
 
-- A **surface** is one flat face able to host rigid objects: the side of **one module on one floor**, the flat roof of a cell, the diagonal face of a chamfer. An object that would cross modules is, by definition, deformable. Two are in use: the **flat roof** (tank) and the **facade** (doors); the chamfer face is not.
-- Its matrix is built **from the surface alone**: a frame `(u, n, v)` — `u` along the quad's first side, `n` the average normal oriented by an outward hint, `v = u × n` — and, inside the skewed quad, the largest **aligned** rectangle that fits (per axis, from the second-smallest to the second-largest of the four projected corners, which is orientation-independent). The cell count makes cells as close to **cubes** as possible at `TARGET_CELL_M` (0.25 m); depth projects along `n` with the same cell size, up to a depth the surface type sets (`City.ROOF_SURFACE_DEPTH_M` 10 m, `FACADE_SURFACE_DEPTH_M` 2 m).
-- **A unit mesh's `y` points out of the surface.** On a roof that is up; on a facade it is toward the street, and `z` is what goes up. `cells_for(u_m, n_m, v_m)` is per frame axis for the same reason — a door is `cells_for(width, thickness, height)`.
-- **The facade surface** is `BuildingModule.get_facade_quad(edge, index_bottom, index_top)`: the core's face on that side, **shortened by the chamfers** at both ends (`get_facade_span`, the one definition of "where there is wall" on a side — `TraversalGenerator._door_span` draws door positions from it too, so a door cannot land on the ochava). Its frame follows the *tilted* floor line, so on a slope the quad is a parallelogram in `(u, v)` and the inscribed rectangle loses `floor_height × sin(slope)` at each end — residual space, the price of a frame the building's own floors agree with. ⚠ The bottom edge is walked in whichever direction makes `walk × outward` point **up**, so that row 0 is the floor; walked the other way, row 0 is the ceiling and everything hangs from it (it happened: 6.6 m of gap, measured). One matrix per `(module, side, floor)`, shared by everything on that face — two doors on the same wall only see each other if they read the same matrix.
-- **Availability** comes from the deformable matrix by projection: `BuildingModule.occupied_world_corners()` gives the eight deformed corners of every deformable region on the module, and `mark_world_hexahedron` marks the rigid cells they cover **column by column along `n`** — for each depth slice it clips the region's twelve edges against the slice and marks only what remains. Not the region's world envelope: a sidewalk that drops 12 % over its 3 m has an envelope ~40 cm tall, and projected in one go it marked 40 cm of facade; sliced, next to the wall it marks its real thickness, which is what a door has to stand on. Still conservative inside each slice (a bilinear-bent region can poke millimetres past its edges), never under.
-- **`place_rigid`** maps the unit cube into the cell box **affinely**: nothing is deformed, which is what keeps a tank round and a window rectangular. It records the piece in the index and occupies the cells, like `place`.
-- **Standing on things:** `first_free_along_v(lo, size, max_rise)` slides a region up along `v` to the first free row — how a door rests on the sidewalk instead of going through it; above `max_rise` (`DOOR_MAX_STEP_M`, 0.5 m) the obstacle is not a kerb and the object is dropped. **Residual:** rows are 0.248 m and the sidewalk is 0.21 m thick, so a door on a sidewalk sits on row 1 — **4.0–4.7 cm above the slab**, measured on 232 doors. That is the grid's granularity, not an error in any one place; closing it would mean fractional positions along `v` (occupancy kept as real extents, `place_rigid` taking a `Vector3`), which is a decision, not a fix.
-- **There is no threshold.** A narrow or skewed surface just yields a small matrix; `cells_for` rounds a metre size *up*, and an object that needs more cells than there are does not fit. That is the whole filter. Measured: 147 tanks placed deformed became **107** placed rigid — the 40 that vanished are the ones that were too stretched to look right.
-- All floors yield the same matrix, for free: each floor is floor 0 raised in Y (see [What rides on it](#what-rides-on-it)).
-- ⚠ **A roof is not planar.** It comes from a bilinear over the relief with independent heights at its four corners — a saddle, the same thing as a non-planar quad in Blender, which renders as triangles with a crease. Measured over 6 519 roofs: corners deviate from a single plane by **2.2 cm median, 6 cm at the 90th percentile, up to 17 cm**. A rigid grid is a plane by definition and cannot copy that shape, so two things keep the error out of sight: the plane is centred among the corners, and **each placed object is lifted to the real surface height under its own centre** (`RigidMatrix.surface_offset`, a bilinear inversion). The residual is then the saddle *within the object's footprint*, which grows with the square of its size. Measured at the tank's legs over 20 636 legs: **1.2 mm median, 4 mm at the 90th percentile, 2.2 cm at the worst** — and identical with or without the lift, because for a *centred* object the centred plane already achieves it; the lift is what keeps it true for objects placed anywhere else on a surface. Only an object spanning the whole roof would see the full centimetres, and that is inherent to being rigid. **Facades do not have this problem**: their top edge is the bottom edge raised, which is always a plane — measured 0.000001 m — so windows are unaffected.
+Whoever places something thinks about two things: the **region** (`lo` and `size`, in cells of that grid) and the **mesh** (`UnitMesh`, [unit_mesh.gd](../../props/unit_mesh.gd)): x, y, z from 0 to 1, a colour and an outward direction per triangle. Nothing else — never silhouettes, never neighbours, never slopes. Inside `place`: the region's bilinear is precomputed once (`PlacementGrid.region_frame`) and every vertex goes through it; face orientation is measured **in the world** with the bilinear's derivative, because a grid can mirror an axis; the piece is recorded in `CityIndex` with the placer's scope and object; the region is occupied. If it was not free or did not fit, `place` returns `false` and places nothing: two objects cannot overlap by oversight.
+
+### Surfaces
+
+A **surface** is one face able to host rigid objects: the side of **one module on one floor**, the flat roof of a cell, the diagonal face of a chamfer (not yet used). An object that would cross modules is, by definition, deformable.
+
+- `RigidMatrix.from_quad(quad, depth_m, outward)`: `x` runs c0→c1, `z` runs c0→c3, depth along the normal up to what the surface type allows (`City.ROOF_SURFACE_DEPTH_M` 10 m, `FACADE_SURFACE_DEPTH_M` 2 m). A surface shorter than half a cell on a side yields no cells.
+- **A unit mesh's `y` points out of the surface.** On a roof that is up; on a facade it is toward the street and `z` goes up (`get_facade_quad` runs bottom to top in `z`; the direction of `x` is irrelevant, faces are oriented in the world).
+- **The facade surface** is `BuildingModule.get_facade_quad(edge, index_bottom, index_top)`: the core's face on that side, **shortened by the chamfers** at both ends (`get_facade_span`, the one definition of "where there is wall" on a side — `TraversalGenerator._door_span` draws door positions from it too, so a door cannot land on the ochava). One grid per `(module, side, floor)`, shared by everything on that face — doors and windows only see each other if they read the same grid. Only floor 0's is built from the quad; every other floor's is that one translated in Y (`RigidMatrix.translated`), with the occupancy of its own height range projected.
+- **There is no threshold.** A narrow surface just yields few cells and an object that needs more does not fit. ⚠ This also means a skewed surface no longer rejects: with the old inscribed rectangle, 40 of 147 tank roofs were dropped as too skewed; now all **147** tanks are placed and follow their roof's skew, like the roof pieces around them. Whether that reads well is judged in game.
 
 ### Order of generation
 
 ```
-1. deformable structure   buildings, roof pieces, walkways, bridge extremes, pipes   → mark building-grid occupancy
-2. surfaces               facades, flat roofs, skirts                     → each builds its rigid matrix
-3. rigid objects          doors, windows, tanks, balconies                 → read projected availability
+1. deformable structure   buildings, roof pieces, sidewalks, bridge extremes, pipes   → occupy the module
+2. surfaces               facades, flat roofs, skirts                                → each builds its rigid grid
+3. rigid objects          doors, windows, tanks, balconies                            → read projected availability
 ```
 
-Deformables always go first, so occupancy flows one way — and `City.visualize_graph` runs them in that order: bridges (whose extremes occupy), sidewalks, roof props, then doors. The bug this order exists to make impossible had already happened: **doors (rigid) placed straight through floating sidewalks (deformable)**, because nothing recorded that the sidewalk was there. Now the sidewalk marks building-grid occupancy, the facade's rigid matrix reads it, and the door stands on it.
+Deformables always go first, so occupancy flows one way — and `City.visualize_graph` runs them in that order: bridges (whose extremes occupy), sidewalks, roof props, then doors and windows. The bug this order exists to make impossible had already happened: **doors (rigid) placed straight through floating sidewalks (deformable)**, because nothing recorded that the sidewalk was there. Now the sidewalk occupies the module, the facade's grid reads it, and the door stands on it.
 
 Roof windows that protrude from a mansard skirt are deliberately out of scope: a rigid object crossing an inclined surface is the hardest case of all.
 
-**Status:** steps 1–4 are done. Through `ModulePlacer`: roof pieces, the floor-0 sidewalks — strips and curved corners, `SidewalkProps` (`_visualize_floating_sidewalk_zones`) — and the bridge extremes (`_place_bridge_extreme`, collider from the very vertices the placer wrote). Through `RigidMatrix`: the tank on the roof and the delivery doors on the facade (`_visualize_delivery_doors`). Every one of them is indexed (`CityIndex.Kind.SIDEWALK`, `DOOR`; extremes carry their bridge's ids) and baked by one function, `_bake_placed`: mesh plus trimesh collider stamped with the scope. Counters printed at generation, all expected to be 0: sidewalk rejections, extremes without room, doors without room. Measured: 5 046 sidewalks, 567 bridges, 764 doors of which 232 stand on a sidewalk and 28 slid along the wall by at most a cell (rounding at the end of a span). Not done: floating sidewalks above floor 0 and the stairs (`_visualize_stair_zones` still draws its own cubes; the zones are empty anyway), windows.
+**Status:** done. Through the module: roof pieces, the floor-0 sidewalks (`SidewalkProps`, `_visualize_floating_sidewalk_zones`) and the bridge extremes (`_place_bridge_extreme`, collider from the very vertices the placer wrote). Through surfaces: the tank on the roof, the delivery doors and windows on the facade (`_visualize_facade_objects`, see [Facades](#facades--windows-and-doors)). Every one of them is indexed (`CityIndex.Kind.SIDEWALK`, `DOOR`, `WINDOW`; extremes carry their bridge's ids) and baked by one function, `_bake_placed`. Counters printed at generation, all expected to be 0: sidewalk rejections, extremes without room, doors without room. Measured: 22 397 sidewalk pieces, 567 bridges, 147 tanks, 764 doors (4 slid along the wall by at most a cell), 376 621 windows. Not done: floating sidewalks above floor 0 and the stairs (`_visualize_stair_zones` still draws its own cubes; the zones are empty anyway).
 
 ---
 
@@ -613,7 +620,7 @@ Objects that span the street between two blocks. Two facade faces (one per block
 
 ### In-grid placement (bridge extremes)
 
-The extremes are deformable objects placed through `ModulePlacer` (see [Placing objects](#placing-objects--deformable-and-rigid)): a region of building cells and a unit box.
+The extremes are deformable objects placed through `GridPlacer` (see [Placing objects](#placing-objects--one-grid-two-kinds-of-cells)): a region of building cells and a unit box.
 
 - **Cell mapping**: `FacadeHelper.facade_to_grid_rect()` converts facade-order cell indices to `(bx_min, bx_max, bz_min, bz_max)` in building grid coordinates, applying the reversal formula as needed.
 - **Multi-cell spanning**: one piece per distorted grid cell. If an object crosses DG cell boundaries, it produces one region per DG cell.

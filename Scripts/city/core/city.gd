@@ -156,6 +156,10 @@ extends Node3D
 @export var show_delivery_doors: bool = false
 @export var delivery_door_color: Color = Color(0.9, 0.9, 0.85)
 
+@export_group("Ventanas")
+@export var show_windows: bool = true
+@export var window_color: Color = Color(0.18, 0.22, 0.28)
+
 @export_group("Objetos de techo")
 @export var show_roof_props: bool = true
 ## Cada cuánto un CLUSTER de techo plano se lleva un tanque de agua. Bajo a propósito: repetido
@@ -408,8 +412,8 @@ func visualize_graph() -> void:
 	if show_roof_props:
 		_visualize_roof_props()
 
-	if show_delivery_doors:
-		_visualize_delivery_doors()
+	if show_delivery_doors or show_windows:
+		_visualize_facade_objects()
 
 	if show_stair_zones:
 		_visualize_stair_zones()
@@ -1359,9 +1363,9 @@ func _visualize_roof_props() -> void:
 				if module != null:
 					modules[cell] = module
 
-			# TODO SE COLOCA POR LA MISMA INTERFAZ que cualquier otro objeto deformable (ver ModulePlacer): el
+			# TODO SE COLOCA POR LA MISMA INTERFAZ que cualquier otro objeto (ver GridPlacer): el
 			# planner solo dice qué pieza va en qué región, y el placer deforma, anota en el índice y ocupa.
-			var placer := ModulePlacer.new(city_index, scope, object_id, buffer)
+			var placer := GridPlacer.new(city_index, scope, object_id, buffer)
 
 			if pieces.is_empty():
 				# Azotea plana, la única que acepta tanque.
@@ -1392,9 +1396,9 @@ func _visualize_roof_props() -> void:
 				# índice y la ocupación los resuelve el placer; acá solo se decide dónde y qué.
 				var tank_cell: Vector2i = flat_cells[rng.randi_range(0, flat_cells.size() - 1)]
 				var tank_module: BuildingModule = modules[tank_cell]
-				# EL TANQUE ES RÍGIDO: va en la matriz rígida de la azotea, sin deformarse (ver RigidMatrix).
-				# La azotea es el quad del núcleo a la altura del último piso; lo que ya haya colocado en el
-				# módulo se proyecta sobre esa matriz como ocupado. Si el tanque no entra en las celdas que
+				# EL TANQUE ES RÍGIDO: va en la grilla rígida de la azotea, con celdas casi cúbicas que apenas lo
+				# deforman (ver RigidMatrix). La azotea es el quad del núcleo a la altura del último piso; lo que
+				# ya haya colocado en el módulo se proyecta sobre esa grilla como ocupado. Si el tanque no entra en las celdas que
 				# quedan —azotea angosta, torcida, o tapada— no se pone, y ese es todo el filtro.
 				var roof := RigidMatrix.from_quad(tank_module.get_core_vertices(roof_index),
 					ROOF_SURFACE_DEPTH_M, Vector3.UP)
@@ -1402,7 +1406,7 @@ func _visualize_roof_props() -> void:
 					roof.mark_world_hexahedron(corners)
 				var size := roof.cells_for(RoofProps.TANK_DIAMETER_M, RoofProps.tank_height_m(),
 					RoofProps.TANK_DIAMETER_M)
-				if placer.place_rigid(roof, roof.centered(size), size, RoofProps.water_tank_unit(),
+				if placer.place(roof, roof.centered(size), size, RoofProps.water_tank_unit(),
 						CityIndex.Kind.ROOF, cluster.id, RoofPlanner.Piece.TANK, -1, -1):
 					tanks += 1
 
@@ -1413,11 +1417,11 @@ func _visualize_roof_props() -> void:
 		% [roofs, tanks, roof_bodies, roof_rejected, str(roof_fallbacks)])
 
 
-## HORNEA UN BUFFER DE PIEZAS COLOCADAS (techos, veredas, puertas): una malla con el material de colores por
-## vértice y un collider de triángulos con LOS MISMOS triángulos en EL MISMO orden que la malla —el contrato
-## del que depende traducir el `face_index` del rayo a una pieza (ver CityIndex)—, estampado con el scope.
-## Devuelve false si el buffer estaba vacío y no se creó nada.
-func _bake_placed(container: Node3D, buffer: Dictionary, scope: int, shadows: bool) -> bool:
+## HORNEA UN BUFFER DE PIEZAS COLOCADAS (techos, veredas, puertas, ventanas): una malla con el material de
+## colores por vértice y, si `collider`, un collider de triángulos con LOS MISMOS triángulos en EL MISMO orden
+## que la malla —el contrato del que depende traducir el `face_index` del rayo a una pieza (ver CityIndex)—,
+## estampado con el scope. Devuelve false si el buffer estaba vacío y no se creó nada.
+func _bake_placed(container: Node3D, buffer: Dictionary, scope: int, shadows: bool, collider: bool = true) -> bool:
 	if buffer["vertices"].is_empty():
 		return false
 	var arrays := []
@@ -1436,6 +1440,8 @@ func _bake_placed(container: Node3D, buffer: Dictionary, scope: int, shadows: bo
 	_fade_into_fog(mesh_instance)
 	container.add_child(mesh_instance)
 	city_index.set_scope_mesh(scope, mesh_instance)
+	if not collider:
+		return true
 
 	var faces := PackedVector3Array()
 	var verts: PackedVector3Array = buffer["vertices"]
@@ -1452,103 +1458,166 @@ func _bake_placed(container: Node3D, buffer: Dictionary, scope: int, shadows: bo
 	return true
 
 # ============================================
-# VISUALIZACIÓN DE DELIVERY DOORS
+# OBJETOS DE FACHADA: PUERTAS Y VENTANAS
 # ============================================
 
-## LAS PUERTAS SON RÍGIDAS: van en la matriz de su fachada, sin deformarse, y leen lo que la matriz
-## deformable ya puso delante de esa pared. Es el caso que motivó el sistema entero: antes la puerta se
-## dibujaba desde el piso y la vereda —deformable, y dibujada después— la atravesaba. Ahora la vereda ocupa
-## primero, la matriz de la fachada la ve, y la puerta SE APOYA sobre ella (`first_free_along_v`). Si lo
-## que estorba es más alto que un escalón, la puerta no va, y se cuenta.
-func _visualize_delivery_doors() -> void:
-	var container := _buildings_container("Doors")
-	var total := 0
-	## Puertas que subieron para pisar algo (la vereda): lo normal, si hay vereda.
-	var raised := 0
-	## Puertas corridas a lo largo de la cara porque su tramo caía fuera de la matriz (chaflán o sesgo).
-	var slid := 0
-	## Puertas sin lugar: fachada sin matriz, más angosta que la puerta, o algo alto delante.
-	var dropped := 0
-	var door_mesh := UnitMesh.new()
-	door_mesh.add_box(Vector3.ZERO, Vector3.ONE, delivery_door_color)
+## TODO LO RÍGIDO QUE VA EN UNA PARED, en una sola pasada por manzana y con UNA MATRIZ POR FACHADA (módulo,
+## lado, piso) compartida por todos: una ventana solo puede esquivar una puerta si lee la misma matriz donde
+## la puerta quedó ocupando.
+##
+## El orden es de prioridad: primero las puertas, que son de gameplay; después las ventanas, que rodean lo que
+## ya hay. Las dos leen además lo deformable que el módulo ya tiene delante (veredas, extremos de puente).
+func _visualize_facade_objects() -> void:
+	var started := Time.get_ticks_msec()
+	var doors := {"total": 0, "raised": 0, "slid": 0, "dropped": 0}
+	var windows := {"total": 0, "rejected": 0, "faces": 0}
+	var door_container := _buildings_container("Doors")
+	var window_container := _buildings_container("Windows")
+	var door_mesh := FacadeProps.door_unit(delivery_door_color)
+	var window_mesh := FacadeProps.window_unit(window_color)
+	var window_triangles := 0
 
 	for face_idx in generator.get_all_block_faces():
 		var block: BlockGenerator = generator.get_block_grid(face_idx)
 		if block == null or block.get_distorted_grid() == null:
 			continue
-		var cells_per_floor := block.get_cells_per_floor()
-		var buffer := PropGeometry.new_buffer()
-		var scope := city_index.new_scope()
-		# UNA MATRIZ POR FACHADA (módulo, lado, piso), compartida por todo lo que vaya en esa cara: dos
-		# puertas del mismo lado solo se ven entre sí si leen la misma matriz.
 		var surfaces := {}
-		var number := 0
+		if show_delivery_doors:
+			var door_buffer := PropGeometry.new_buffer()
+			var door_scope := city_index.new_scope()
+			_place_delivery_doors(block, surfaces, door_buffer, door_scope, door_mesh, doors)
+			_bake_placed(door_container, door_buffer, door_scope, true)
+		if show_windows:
+			var window_buffer := PropGeometry.new_buffer()
+			var window_scope := city_index.new_scope()
+			_place_windows(block, surfaces, window_buffer, window_scope, window_mesh, windows)
+			window_triangles += window_buffer["indices"].size() / 3
+			# Sin collider y sin sombra: son cientos de miles y están a centímetros de la pared.
+			_bake_placed(window_container, window_buffer, window_scope, false, false)
 
-		for door: Dictionary in block.traversal.delivery_doors:
-			var cell: Vector2i = door["cell"]
-			var edge_idx: int = door["edge"]
-			var floor_idx: int = door["floor"]
-			var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
-			var cluster: BuildingCluster = block.get_cluster_for_cell(cell.x, cell.y)
-			if module == null or cluster == null:
-				continue
-			number += 1
-			var floor_base := floor_idx * cells_per_floor
-			var key := Vector4i(cell.x, cell.y, edge_idx, floor_idx)
-			if not surfaces.has(key):
-				surfaces[key] = _facade_surface(module, edge_idx, floor_base, floor_base + cells_per_floor)
-			var facade: RigidMatrix = surfaces[key]
-			if not facade.is_valid():
-				dropped += 1
-				continue
-
-			# En el marco de una fachada `y` sale hacia la calle y `z` sube (ver RigidMatrix).
-			var size := facade.cells_for(TraversalGenerator.DOOR_WIDTH_M, TraversalGenerator.DOOR_DEPTH_M,
-				TraversalGenerator.DOOR_HEIGHT_M)
-			if size.x > facade.count.x:
-				dropped += 1
-				continue
-			# Dónde cae el tramo `along_min..along_max` sobre la matriz: por el mundo, la única coordenada
-			# que las dos grillas comparten. Si cae en lo que la matriz no cubre —la esquina ochavada, el
-			# sesgo del quad— se corre hasta entrar; nunca se achica.
-			var u_a := facade.world_to_cell(module.facade_point(edge_idx, int(door["along_min"]), floor_base)).x
-			var u_b := facade.world_to_cell(module.facade_point(edge_idx, int(door["along_max"]) + 1, floor_base)).x
-			var u := roundi(minf(u_a, u_b))
-			var u_in := clampi(u, 0, facade.count.x - size.x)
-			if u_in != u:
-				slid += 1
-			var lo := Vector3i(u_in, 0, 0)
-			var max_rise := ceili(TraversalGenerator.DOOR_MAX_STEP_M / facade.cell.z)
-			var row := facade.first_free_along_v(lo, size, max_rise)
-			if row < 0:
-				dropped += 1
-				continue
-			if row > 0:
-				raised += 1
-			lo.z = row
-			var placer := ModulePlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
-			if placer.place_rigid(facade, lo, size, door_mesh, CityIndex.Kind.DOOR, cluster.id, floor_idx,
-					edge_idx, number):
-				total += 1
-			else:
-				dropped += 1
-
-		_bake_placed(container, buffer, scope, true)
-
-	print("[Visualizer] Puertas de entrega: %d · apoyadas sobre la vereda: %d · corridas: %d · sin lugar: %d"
-		% [total, raised, slid, dropped])
+	if show_delivery_doors:
+		print("[Visualizer] Puertas de entrega: %d · apoyadas sobre la vereda: %d · corridas: %d · sin lugar: %d"
+			% [doors["total"], doors["raised"], doors["slid"], doors["dropped"]])
+	if show_windows:
+		print("[Visualizer] Ventanas: %d en %d fachadas · %d triángulos · candidatas que no entraron: %d"
+			% [windows["total"], windows["faces"], window_triangles, windows["rejected"]])
+	print("[Visualizer] Objetos de fachada en %d ms" % (Time.get_ticks_msec() - started))
 
 
-## LA MATRIZ RÍGIDA DE UNA FACHADA: la cara del núcleo en ese lado y ese piso, sin las esquinas ochavadas,
-## con todo lo deformable que el módulo ya tiene colocado proyectado como ocupado.
-func _facade_surface(module: BuildingModule, edge_idx: int, index_bottom: int, index_top: int) -> RigidMatrix:
-	var quad := module.get_facade_quad(edge_idx, index_bottom, index_top)
-	if quad.size() != 4:
-		return RigidMatrix.new()
-	var facade := RigidMatrix.from_quad(quad, FACADE_SURFACE_DEPTH_M, module.get_facade_outward(edge_idx))
-	for corners: PackedVector3Array in module.occupied_world_corners():
-		facade.mark_world_hexahedron(corners)
+## La matriz de una fachada, armada la primera vez que alguien la pide en esta manzana.
+##
+## Solo la del PISO 0 se calcula desde el quad (se guarda vacía, con la clave de piso -1); la de cualquier
+## otro piso es esa misma trasladada en Y (`RigidMatrix.translated`) con la ocupación de SU altura marcada.
+func _facade_surface_cached(surfaces: Dictionary, module: BuildingModule, cell: Vector2i, side: int,
+		floor_idx: int, cells_per_floor: int) -> RigidMatrix:
+	var key := Vector4i(cell.x, cell.y, side, floor_idx)
+	if surfaces.has(key):
+		return surfaces[key]
+	var frame_key := Vector4i(cell.x, cell.y, side, -1)
+	if not surfaces.has(frame_key):
+		var quad := module.get_facade_quad(side, 0, cells_per_floor)
+		surfaces[frame_key] = RigidMatrix.new() if quad.size() != 4 \
+				else RigidMatrix.from_quad(quad, FACADE_SURFACE_DEPTH_M, module.get_facade_outward(side))
+	var frame: RigidMatrix = surfaces[frame_key]
+	var floor_base := floor_idx * cells_per_floor
+	var facade := frame.translated(Vector3(0.0, float(floor_base) * module.cell_height, 0.0))
+	if facade.is_valid():
+		for corners: PackedVector3Array in module.occupied_world_corners(floor_base, floor_base + cells_per_floor):
+			facade.mark_world_hexahedron(corners)
+	surfaces[key] = facade
 	return facade
+
+
+## LAS PUERTAS SON RÍGIDAS: van en la matriz de su fachada, sin deformarse, y leen lo que la matriz
+## deformable ya puso delante de esa pared. Es el caso que motivó el sistema entero: antes la puerta se
+## dibujaba desde el piso y la vereda —deformable, y dibujada después— la atravesaba. Ahora la vereda ocupa
+## primero, la matriz de la fachada la ve, y la puerta SE APOYA sobre ella (`first_free_along_z`). Si lo
+## que estorba es más alto que un escalón, la puerta no va, y se cuenta.
+func _place_delivery_doors(block: BlockGenerator, surfaces: Dictionary, buffer: Dictionary, scope: int,
+		door_mesh: UnitMesh, stats: Dictionary) -> void:
+	var cells_per_floor := block.get_cells_per_floor()
+	var number := 0
+	for door: Dictionary in block.traversal.delivery_doors:
+		var cell: Vector2i = door["cell"]
+		var edge_idx: int = door["edge"]
+		var floor_idx: int = door["floor"]
+		var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
+		var cluster: BuildingCluster = block.get_cluster_for_cell(cell.x, cell.y)
+		if module == null or cluster == null:
+			continue
+		number += 1
+		var floor_base := floor_idx * cells_per_floor
+		var facade := _facade_surface_cached(surfaces, module, cell, edge_idx, floor_idx, cells_per_floor)
+		if not facade.is_valid():
+			stats["dropped"] += 1
+			continue
+
+		# En el marco de una fachada `y` sale hacia la calle y `z` sube (ver RigidMatrix).
+		var size := facade.cells_for(TraversalGenerator.DOOR_WIDTH_M, TraversalGenerator.DOOR_DEPTH_M,
+			TraversalGenerator.DOOR_HEIGHT_M)
+		if size.x > facade.count.x:
+			stats["dropped"] += 1
+			continue
+		# Dónde cae el tramo `along_min..along_max` sobre la matriz: por el mundo, la única coordenada que las
+		# dos grillas comparten. Si cae en lo que la matriz no cubre —la esquina ochavada, el sesgo del quad—
+		# se corre hasta entrar; nunca se achica.
+		var u_a := facade.world_to_cell(module.facade_point(edge_idx, int(door["along_min"]), floor_base)).x
+		var u_b := facade.world_to_cell(module.facade_point(edge_idx, int(door["along_max"]) + 1, floor_base)).x
+		var u := roundi(minf(u_a, u_b))
+		var u_in := clampi(u, 0, facade.count.x - size.x)
+		if u_in != u:
+			stats["slid"] += 1
+		var lo := Vector3i(u_in, 0, 0)
+		var max_rise := ceili(TraversalGenerator.DOOR_MAX_STEP_M / facade.cell.z)
+		var row := facade.first_free_along_z(lo, size, max_rise)
+		if row < 0:
+			stats["dropped"] += 1
+			continue
+		if row > 0:
+			stats["raised"] += 1
+		lo.z = row
+		var placer := GridPlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
+		if placer.place(facade, lo, size, door_mesh, CityIndex.Kind.DOOR, cluster.id, floor_idx,
+				edge_idx, number):
+			stats["total"] += 1
+		else:
+			stats["dropped"] += 1
+
+
+## LAS VENTANAS: cada fachada con pared a la vista de cada piso de cada edificio pide sus candidatas al
+## planner según el criterio de su arquetipo, y se colocan las que entren. Las que chocan con una puerta,
+## una vereda, un puente u otra ventana las descarta la matriz, no esta función.
+func _place_windows(block: BlockGenerator, surfaces: Dictionary, buffer: Dictionary, scope: int,
+		window_mesh: UnitMesh, stats: Dictionary) -> void:
+	var cells_per_floor := block.get_cells_per_floor()
+	for cluster in block.get_all_clusters():
+		var archetype: BuildingArchetype = cluster.archetype
+		if cluster.floor_count <= 0 or archetype == null:
+			continue
+		var placer := GridPlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
+		for cell: Vector2i in cluster.cells:
+			var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
+			if module == null:
+				continue
+			for side in 4:
+				for floor_idx in cluster.floor_count:
+					if not FacadePlanner.has_wall(block, cluster, cell, module, side, floor_idx):
+						continue
+					var facade := _facade_surface_cached(surfaces, module, cell, side, floor_idx, cells_per_floor)
+					if not facade.is_valid():
+						continue
+					stats["faces"] += 1
+					# Del seed de la manzana y de la fachada: la misma ciudad en todos los peers.
+					var rng := RandomNumberGenerator.new()
+					rng.seed = hash([block.cluster_seed, cluster.id, cell, side, floor_idx])
+					var size := FacadePlanner.window_size(archetype, facade)
+					var positions := FacadePlanner.window_positions(archetype, facade, size, rng)
+					for lo: Vector3i in positions:
+						if placer.place(facade, lo, size, window_mesh, CityIndex.Kind.WINDOW, cluster.id,
+								floor_idx, side, archetype.window_layout):
+							stats["total"] += 1
+						else:
+							stats["rejected"] += 1
 
 
 # ============================================
@@ -1734,7 +1803,7 @@ func _bridge_geo_append(buf: Dictionary, geo: Dictionary, color: Color) -> void:
 		buf["indices"].append(idx + offset)
 
 
-## LAS VEREDAS SON DEFORMABLES y van por `ModulePlacer`: se estiran con la grilla, coinciden exactas con la
+## LAS VEREDAS SON DEFORMABLES y van por `GridPlacer`: se estiran con la grilla, coinciden exactas con la
 ## del módulo vecino, quedan en el índice y —lo que importa para todo lo demás— OCUPAN el módulo, así la
 ## matriz rígida de la fachada las ve y una puerta se apoya en ellas en vez de atravesarlas.
 func _visualize_floating_sidewalk_zones() -> void:
@@ -1769,7 +1838,7 @@ func _visualize_floating_sidewalk_zones() -> void:
 			if not meshes.has(key):
 				meshes[key] = SidewalkProps.unit_for(piece, side, sidewalk_color)
 			var mesh: UnitMesh = meshes[key]
-			var placer := ModulePlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
+			var placer := GridPlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
 			if placer.place(module, lo, size, mesh, CityIndex.Kind.SIDEWALK, cluster.id, floor_idx,
 					side, piece):
 				total += 1
@@ -1795,7 +1864,7 @@ func _visualize_bridges() -> void:
 			var object_id := _new_object()
 			total += 1
 			# Los extremos se colocan por el placer con el scope y el objeto del puente: son parte de él.
-			var placer := ModulePlacer.new(city_index, scope, object_id, buf)
+			var placer := GridPlacer.new(city_index, scope, object_id, buf)
 			_draw_bridge(placed, buf, placer, total)
 			if buf["vertices"].is_empty():
 				continue
@@ -1832,7 +1901,7 @@ func _visualize_bridges() -> void:
 var _bridge_extremes_rejected := 0
 
 
-func _draw_bridge(placed: Dictionary, buf: Dictionary, placer: ModulePlacer, number: int) -> void:
+func _draw_bridge(placed: Dictionary, buf: Dictionary, placer: GridPlacer, number: int) -> void:
 	var bridge: Bridge     = placed["bridge"]
 	var cell_start: int    = placed["cell_start"]
 	var cell_end: int      = placed["cell_end"]
@@ -1949,13 +2018,13 @@ func _add_bridge_arc_spans(block_a: BlockGenerator, block_b: BlockGenerator,
 		static_body.add_child(DebugUtil.create_collision_shape_from_planes(far_plane, plane_b))
 
 
-## EL EXTREMO ES DEFORMABLE y va por `ModulePlacer`: una región de celdas del módulo entre el índice de
+## EL EXTREMO ES DEFORMABLE y va por `GridPlacer`: una región de celdas del módulo entre el índice de
 ## abajo y el de arriba, y una caja unitaria. El placer lo deforma con la grilla —así su borde superior cae
 ## siempre en el fin del piso, con edificios inclinados o rectos—, lo anota en el índice y OCUPA el módulo:
 ## la fachada sabe que ahí hay un puente apoyado, y nada rígido se coloca a través de él.
 func _draw_bridge_extremes(bridge: Bridge, side: Dictionary, cell_start: int, cell_end: int,
 		by_base: int, by_base_top: int, by_arc_bot: int,
-		static_body: StaticBody3D, buf: Dictionary, placer: ModulePlacer, ids: Array) -> void:
+		static_body: StaticBody3D, buf: Dictionary, placer: GridPlacer, ids: Array) -> void:
 	var face_idx: int = side["face"]
 	var edge_idx: int = side["edge_idx"]
 	var facade_cells: Array = side["cells"]
@@ -2002,7 +2071,7 @@ func _draw_bridge_extremes(bridge: Bridge, side: Dictionary, cell_start: int, ce
 
 ## Una caja de extremo por la interfaz deformable. El collider sale de LOS MISMOS vértices que acaba de
 ## escribir el placer, así malla y colisión no pueden diferir.
-func _place_bridge_extreme(placer: ModulePlacer, buf: Dictionary, module: BuildingModule,
+func _place_bridge_extreme(placer: GridPlacer, buf: Dictionary, module: BuildingModule,
 		lo: Vector3i, size: Vector3i, color: Color, static_body: StaticBody3D, ids: Array) -> void:
 	var box := UnitMesh.new()
 	box.add_box(Vector3.ZERO, Vector3.ONE, color)

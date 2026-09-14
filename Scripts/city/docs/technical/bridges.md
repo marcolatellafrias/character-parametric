@@ -26,7 +26,7 @@ The edge's tier is the **taller of its two blocks** (`get_height_for_edge`), and
 A bridge has two distinct placement systems (see "Object placement — two systems" in [city-generation.md](city-generation.md#object-placement--two-systems)):
 
 - **Middle part** (between-grids): spans between the two facade faces across the street. Uses `create_skewed_cube_from_planes` with both faces from `FacadeHelper.facade_span_quad()` — sampled from the building grid at the span's end cells and at **both** height indices, so the connector inherits the facade's torsion instead of imposing a horizontal plane of its own.
-- **Extremes** (in-grid): extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Placed through `ModulePlacer`, so they occupy the building module.
+- **Extremes** (in-grid): extend from the buildable zone boundary inward through the external sidewalk zone to the building face. Placed through `GridPlacer`, so they occupy the building module.
 
 ## Bridge parts — middle (from-planes)
 
@@ -46,7 +46,7 @@ A bridge has two distinct placement systems (see "Object placement — two syste
 
 2 base extremes per bridge (one per side). 2 arc extremes per bridge if the archetype has arcs. Total: 4 or 2 extremes per bridge.
 
-Each extreme extends from the buildable zone boundary inward to the building face. It is placed through `ModulePlacer` and so **occupies its region of the building module** — which is how the facade's rigid matrix knows a bridge rests there (see [city-generation.md](city-generation.md#placing-objects--deformable-and-rigid)). It is indexed with the bridge's own ids, so the inspector names it as its bridge.
+Each extreme extends from the buildable zone boundary inward to the building face. It is placed through `GridPlacer` and so **occupies its region of the building module** — which is how the facade's rigid matrix knows a bridge rests there (see [city-generation.md](city-generation.md#placing-objects--one-grid-two-kinds-of-cells)). It is indexed with the bridge's own ids, so the inspector names it as its bridge.
 
 ## Bridge archetypes (`Bridge` class)
 

@@ -1,6 +1,10 @@
-class_name BuildingModule extends RefCounted
+class_name BuildingModule extends PlacementGrid
 
-# Vértices del quad completo [BL, BR, TR, TL]
+## EL MÓDULO ES LA GRILLA DEFORMABLE: una PlacementGrid cuyo cuadrilátero es la celda de la grilla
+## distorsionada con su relieve, `axis_n` arriba y 80 × 80 celdas sin techo de altura. Todo lo que se coloca
+## en él —techos, veredas, extremos de puente— se dobla con sus celdas (ver PlacementGrid, GridPlacer).
+
+# Vértices del quad completo [BL, BR, TR, TL]. Son las `corners` de la grilla.
 var vertices: Array[Vector3]
 
 # Tipos de edges [north, east, south, west]
@@ -33,7 +37,7 @@ enum ChamferKind { STREET, ALLEY }
 var chamfer_kinds: Dictionary = {}
 
 # ── EL RELIEVE ──────────────────────────────────────────────────────────────────────────────────
-# Todas las alturas del módulo salen de acá (ver `_ground_at`), y por acá pasa TODO lo que se sitúa en la
+# Todas las alturas del módulo salen de acá (ver `point_at_f`), y por acá pasa TODO lo que se sitúa en la
 # ciudad: las veredas, las puertas, las escaleras, los extremos de puente y los conectores.
 #
 # La altura sale de las CUATRO ESQUINAS DEL PROPIO MÓDULO (`vertices`, que ya vienen con su Y de la celda
@@ -74,6 +78,7 @@ func _init(
 	columns = p_columns
 	cell_height = p_cell_height
 	alleyway_offsets = p_alleyway_offsets
+	_setup(vertices, Vector3.UP, cell_height, Vector3i(columns, UNBOUNDED, rows))
 
 	_calculate_core_area()
 	
@@ -262,7 +267,6 @@ func get_edge_type(side: String) -> int:
 
 
 func get_cell_position(grid_x: int, grid_z: int, local_floor: int = 0) -> Vector3:
-	var vertices_2d = _vertices_3d_to_2d()
 	var u = (float(grid_x) + 0.5) / max(1, columns)
 	var v = (float(grid_z) + 0.5) / max(1, rows)
 	
@@ -271,7 +275,6 @@ func get_cell_position(grid_x: int, grid_z: int, local_floor: int = 0) -> Vector
 
 func get_cell_vertices(grid_x: int, grid_z: int, local_floor: int = 0) -> Array[Vector3]:
 	var result: Array[Vector3] = []
-	var vertices_2d = _vertices_3d_to_2d()
 	
 	var u_min = float(grid_x) / max(1, columns)
 	var u_max = float(grid_x + 1) / max(1, columns)
@@ -294,7 +297,6 @@ func get_cell_vertices(grid_x: int, grid_z: int, local_floor: int = 0) -> Array[
 
 
 func get_core_vertices(local_floor: int = 0) -> Array[Vector3]:
-	var vertices_2d = _vertices_3d_to_2d()
 	var result: Array[Vector3] = []
 	
 	var u_min = float(core_min_x) / max(1, columns)
@@ -328,7 +330,6 @@ func is_cell_alleyway(grid_x: int, grid_z: int) -> bool:
 
 func get_region_vertices(bx_min: int, bx_max: int, bz_min: int, bz_max: int, height_index: int = 0) -> Array[Vector3]:
 	var result: Array[Vector3] = []
-	var vertices_2d = _vertices_3d_to_2d()
 
 	var u_min = float(bx_min) / max(1, columns)
 	var u_max = float(bx_max + 1) / max(1, columns)
@@ -380,64 +381,11 @@ func point_at(u: float, v: float, height_index: int) -> Vector3:
 
 
 ## Lo mismo con la altura en celdas FRACCIONARIA: lo que necesita una mesh deformada dentro de una región,
-## cuyos vértices caen entre dos índices.
+## cuyos vértices caen entre dos índices. Es `cell_to_world` con (u, v) normalizados: la bilineal de las
+## cuatro esquinas 3D del módulo —el XZ de la grilla y el Y del relieve salen de la misma cuenta— más el
+## desplazamiento vertical del índice.
 func point_at_f(u: float, v: float, height_cells: float) -> Vector3:
-	var flat := GridHelper.bilinear_interpolation(_vertices_3d_to_2d(), u, v)
-	return Vector3(flat.x, height_cells * cell_height + _ground_at(u, v), flat.y)
-
-
-## Cuánto mide una celda de edificio en metros, en `x` (a lo largo de `u`) y en `z` (a lo largo de `v`),
-## promediando los dos lados del módulo. Una celda no mide lo mismo en toda la ciudad.
-func cell_metres() -> Vector2:
-	var along_u := (vertices[0].distance_to(vertices[1]) + vertices[3].distance_to(vertices[2])) * 0.5
-	var along_v := (vertices[0].distance_to(vertices[3]) + vertices[1].distance_to(vertices[2])) * 0.5
-	return Vector2(along_u / float(maxi(columns, 1)), along_v / float(maxi(rows, 1)))
-
-
-# ── OCUPACIÓN ───────────────────────────────────────────────────────────────────────────────────
-# Qué regiones de la matriz ya tienen algo. Es una lista de cajas y no una matriz 3D de celdas porque un
-# módulo tiene 80×80 celdas por 32 de alto por piso: una matriz por módulo sería decenas de millones de
-# entradas por ciudad (hubo una matriz así, `SidewalkMatrix`, y por eso nunca se pudo construir). Los objetos son pocos, así
-# que una lista y una prueba de intersección alcanzan.
-var _occupied: Array[Array] = []
-
-
-## Si la región `[lo, lo + size)` no toca nada ya colocado.
-func is_free(lo: Vector3i, size: Vector3i) -> bool:
-	var hi := lo + size
-	for box: Array in _occupied:
-		var o_lo: Vector3i = box[0]
-		var o_hi: Vector3i = box[1]
-		if lo.x < o_hi.x and hi.x > o_lo.x and lo.y < o_hi.y and hi.y > o_lo.y and lo.z < o_hi.z and hi.z > o_lo.z:
-			return false
-	return true
-
-
-func occupy(lo: Vector3i, size: Vector3i) -> void:
-	_occupied.append([lo, lo + size])
-
-
-## Las regiones ocupadas como sólidos del MUNDO: las ocho esquinas de cada región, ya deformadas, en el
-## orden de bits (1 → x, 2 → y, 4 → z) que espera `RigidMatrix.mark_world_hexahedron`. Es lo que se proyecta
-## sobre la matriz rígida de una superficie para saber qué celdas suyas quedaron tapadas por algo deformable.
-##
-## Se dan las esquinas y NO la caja envolvente: una vereda de 3 m que baja con el terreno tiene una
-## envolvente de decenas de centímetros de alto, y proyectada así marcaba esa altura entera sobre la fachada.
-func occupied_world_corners() -> Array[PackedVector3Array]:
-	var out: Array[PackedVector3Array] = []
-	var fx := float(maxi(columns, 1))
-	var fz := float(maxi(rows, 1))
-	for box: Array in _occupied:
-		var lo: Vector3i = box[0]
-		var hi: Vector3i = box[1]
-		var corners := PackedVector3Array()
-		for corner in 8:
-			var cx := hi.x if corner & 1 else lo.x
-			var cy := hi.y if corner & 2 else lo.y
-			var cz := hi.z if corner & 4 else lo.z
-			corners.append(point_at_f(float(cx) / fx, float(cz) / fz, float(cy)))
-		out.append(corners)
-	return out
+	return cell_to_world(Vector3(u * float(columns), height_cells, v * float(rows)))
 
 
 # ── FACHADAS ────────────────────────────────────────────────────────────────────────────────────
@@ -478,27 +426,18 @@ func get_facade_span(edge_idx: int) -> Vector2:
 ## LA CARA DE LA FACHADA entre dos índices de altura: `[inicio_abajo, fin_abajo, fin_arriba, inicio_arriba]`,
 ## sin las esquinas ochavadas. Vacío si el chaflán se comió la cara entera.
 ##
-## El borde de abajo se recorre EN EL SENTIDO QUE HACE QUE `recorrido × afuera` APUNTE ARRIBA: así el marco
-## de `RigidMatrix.from_quad` (u, n, v = u × n) queda con `v` hacia arriba y la fila 0 en el piso. Al revés
-## la fila 0 cae en el techo del piso y todo lo colocado cuelga de ahí —pasó, medido: 6,6 m de gap—.
+## Va de abajo hacia arriba en su segundo eje: la grilla que se arme sobre él (`RigidMatrix.from_quad`) tiene
+## la fila 0 en el piso. En qué sentido se recorre el borde de abajo no importa: la grilla puede espejar `x`
+## y las piezas se orientan en el mundo.
 func get_facade_quad(edge_idx: int, index_bottom: int, index_top: int) -> Array[Vector3]:
 	var span := get_facade_span(edge_idx)
 	if absf(span.y - span.x) < 1.0:
 		return []
 	var uv0 := _edge_uv(edge_idx, span.x)
 	var uv1 := _edge_uv(edge_idx, span.y)
-	var p0 := point_at_f(uv0.x, uv0.y, float(index_bottom))
-	var p1 := point_at_f(uv1.x, uv1.y, float(index_bottom))
-	if (p1 - p0).cross(get_facade_outward(edge_idx)).y < 0.0:
-		var swap := p0
-		p0 = p1
-		p1 = swap
-		var swap_uv := uv0
-		uv0 = uv1
-		uv1 = swap_uv
 	return [
-		p0,
-		p1,
+		point_at_f(uv0.x, uv0.y, float(index_bottom)),
+		point_at_f(uv1.x, uv1.y, float(index_bottom)),
 		point_at_f(uv1.x, uv1.y, float(index_top)),
 		point_at_f(uv0.x, uv0.y, float(index_top)),
 	]
@@ -524,17 +463,5 @@ func facade_point(edge_idx: int, along: int, height_index: int) -> Vector3:
 	return point_at_f(uv.x, uv.y, float(height_index))
 
 
-## Cuánto levanta el terreno en ese punto: el suelo del propio módulo, interpolado entre sus cuatro
-## esquinas. NO depende de la altura, y esa es la definición (ver EL RELIEVE).
-func _ground_at(u: float, v: float) -> float:
-	var corners := [vertices[0].y, vertices[1].y, vertices[2].y, vertices[3].y]
-	return GridHelper.bilinear_height(corners, u, v)
-
-
-func _vertices_3d_to_2d() -> Array[Vector2]:
-	var result: Array[Vector2] = []
-	for v in vertices:
-		result.append(Vector2(v.x, v.z))
-	return result
 
 

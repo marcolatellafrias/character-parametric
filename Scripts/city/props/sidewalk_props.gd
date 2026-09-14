@@ -1,7 +1,7 @@
 class_name SidewalkProps
 extends RefCounted
 
-## LAS PIEZAS DE VEREDA, diseñadas en el cubo unitario (ver UnitMesh) y colocadas por ModulePlacer, como
+## LAS PIEZAS DE VEREDA, diseñadas en el cubo unitario (ver UnitMesh) y colocadas por GridPlacer, como
 ## las de techo: acá no hay metros ni celdas, solo proporciones. El tamaño real lo pone la región donde se
 ## coloca, así que la misma pieza sirve para cualquier ancho de vereda y de calle.
 

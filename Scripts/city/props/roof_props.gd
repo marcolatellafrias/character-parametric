@@ -4,7 +4,7 @@ extends RefCounted
 ## LAS PIEZAS DE TECHO, en el cubo unitario — más el tanque de agua.
 ##
 ## Acá NO se decide nada: qué pieza va dónde lo resuelve `RoofPlanner`, y colocarla —deformarla, anotarla,
-## ocupar— lo hace `ModulePlacer`. Esto solo sabe cómo es cada pieza dentro de un cubo de 0 a 1.
+## ocupar— lo hace `GridPlacer`. Esto solo sabe cómo es cada pieza dentro de un cubo de 0 a 1.
 ##
 ## EL CATÁLOGO ES CHICO A PROPÓSITO. Cada pieza se diseña UNA vez, en una orientación canónica —el exterior
 ## hacia -z, o el vértice del contorno en el origen— y se rota de a 90° para las otras tres. Y las piezas

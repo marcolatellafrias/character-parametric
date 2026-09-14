@@ -48,6 +48,18 @@ var roof_skirt_building_cells: float = 8.0
 ## descarte: los techos planos dan variedad al conjunto y son los únicos donde se apoya un tanque de agua.
 var flat_roof_chance: float = 0.35
 
+## LAS VENTANAS. Solo números: las reglas que los usan están en FacadePlanner.
+var window_layout: int = FacadePlanner.Layout.STACKED
+## Medidas de una ventana, en metros. Es rígida: esto es su tamaño real en cualquier edificio.
+var window_width_m: float = 1.0
+var window_height_m: float = 2.2
+## A qué altura del piso arranca la ventana. En RANDOM es la altura mínima.
+var window_sill_m: float = 1.6
+## Pared libre entre dos columnas de ventanas (STACKED). Más grande = menos ventanas.
+var window_gap_m: float = 1.4
+## Cuántas posiciones se sortean por fachada y por piso (RANDOM). Las que se pisan no entran.
+var window_attempts: int = 3
+
 ## Color de debug derivado del arquetipo + seed.
 ## Tono fijo por arquetipo; el seed varía saturación y valor.
 func get_color(color_seed: int) -> Color:
@@ -86,25 +98,44 @@ func get_street_corner_chamfer_value(vertex_seed: int) -> int:
 # ---------------------------------------------------------------------------
 # Arquetipos concretos: UNO GENÉRICO POR DISTRITO.
 #
-# Los tres son iguales salvo el tono, que se mantiene distinto para poder leer el
-# distrito de un cluster de un vistazo mientras el color siga siendo debug. Acá es
-# donde van a divergir: techo, ventanas, material, altura de pendiente.
+# El tono se mantiene distinto para poder leer el distrito de un cluster de un
+# vistazo mientras el color siga siendo debug. Acá es donde divergen: techo,
+# ventanas, material, altura de pendiente. Hoy solo divergen las VENTANAS, y los
+# números son de tanteo de estilo.
 # ---------------------------------------------------------------------------
 
+## Villa: ventanas chicas y desordenadas.
 class GenericPoor extends BuildingArchetype:
 	func _init() -> void:
 		archetype_id = "generic_poor"
 		base_hue = 0.05
 		has_chamfered_street_corners = true
+		window_layout = FacadePlanner.Layout.RANDOM
+		window_width_m = 0.8
+		window_height_m = 1.2
+		window_sill_m = 1.0
+		window_attempts = 3
 
+## Rico: ventanas altas, apiladas, con ritmo apretado.
 class GenericRich extends BuildingArchetype:
 	func _init() -> void:
 		archetype_id = "generic_rich"
 		base_hue = 0.28
 		has_chamfered_street_corners = true
+		window_layout = FacadePlanner.Layout.STACKED
+		window_width_m = 1.0
+		window_height_m = 2.4
+		window_sill_m = 1.6
+		window_gap_m = 1.4
 
+## Industrial: pocas ventanas, anchas y bajas, muy separadas.
 class GenericIndustrial extends BuildingArchetype:
 	func _init() -> void:
 		archetype_id = "generic_industrial"
 		base_hue = 0.55
 		has_chamfered_street_corners = true
+		window_layout = FacadePlanner.Layout.STACKED
+		window_width_m = 1.8
+		window_height_m = 1.4
+		window_sill_m = 3.0
+		window_gap_m = 5.0

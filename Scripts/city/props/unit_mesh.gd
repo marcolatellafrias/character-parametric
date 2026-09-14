@@ -4,7 +4,7 @@ extends RefCounted
 ## UNA MESH DISEÑADA EN EL CUBO UNITARIO — `x`, `y`, `z` de 0 a 1 — sin saber dónde va a ir.
 ##
 ## Es la mitad "qué" de la interfaz de colocación: el diseñador arma el objeto acá, en un cubo abstracto, y
-## `ModulePlacer` lo deforma para que calce en una región de celdas de un módulo. Quien diseña la mesh nunca
+## `GridPlacer` lo lleva a una región de celdas de una grilla (un módulo, o la superficie de una pared). Quien diseña la mesh nunca
 ## piensa en metros, ni en grillas, ni en terreno: solo en proporciones dentro del cubo.
 ##
 ## Cada triángulo lleva su color y hacia dónde MIRA (en el espacio del cubo). Se guarda la dirección y no

@@ -21,9 +21,9 @@ extends RefCounted
 ## y la búsqueda se hace solo dentro de ese scope. Así no hay que recorrer la ciudad entera, y dos piezas
 ## de edificios distintos no se pueden confundir.
 
-enum Kind { BUILDING, ROOF, BRIDGE, SIDEWALK, DOOR }
+enum Kind { BUILDING, ROOF, BRIDGE, SIDEWALK, DOOR, WINDOW }
 
-const KIND_NAMES: Array[String] = ["edificio", "techo", "puente", "vereda", "puerta"]
+const KIND_NAMES: Array[String] = ["edificio", "techo", "puente", "vereda", "puerta", "ventana"]
 ## El meta que lleva el StaticBody3D para decir a qué scope pertenece lo que frena el rayo.
 const SCOPE_META := "city_index_scope"
 
@@ -88,18 +88,17 @@ func add(scope: int, object: int, kind: int, id_a: int, id_b: int, id_c: int, id
 	_aabb_min.append(lo)
 	_aabb_max.append(hi)
 
+	# ⚠ SE AGREGA EN EL LUGAR, sin sacar el array a una variable. Un PackedInt32Array es copy-on-write: sacarlo a
+	# una local, agregarle y volver a guardarlo COPIA EL ARRAY ENTERO en cada alta, y con miles de ventanas por
+	# scope eso era cuadrático.
 	var position := _scope.size() - 1
 	if not _by_scope.has(scope):
 		_by_scope[scope] = PackedInt32Array()
-	var members: PackedInt32Array = _by_scope[scope]
-	members.append(position)
-	_by_scope[scope] = members
+	_by_scope[scope].append(position)
 
 	if not _by_object.has(object):
 		_by_object[object] = PackedInt32Array()
-	var siblings: PackedInt32Array = _by_object[object]
-	siblings.append(position)
-	_by_object[object] = siblings
+	_by_object[object].append(position)
 
 
 func size() -> int:
@@ -216,6 +215,11 @@ func describe(i: int) -> Dictionary:
 		Kind.DOOR:
 			# a = edificio, b = piso, c = lado, d = número de puerta en la manzana.
 			lines.append("puerta de entrega %d · edificio %d · piso %d · lado %d" % [_id_d[i], _id_a[i], _id_b[i], _id_c[i]])
+		Kind.WINDOW:
+			# a = edificio, b = piso, c = lado, d = criterio (FacadePlanner.Layout). Las ventanas no tienen
+			# collider: no se apuntan sueltas, pero aparecen al resaltar su edificio.
+			lines.append("ventana %s · edificio %d · piso %d · lado %d" % [FacadePlanner.layout_name(_id_d[i]),
+				_id_a[i], _id_b[i], _id_c[i]])
 		_:
 			lines.append("pieza desconocida")
 	return {

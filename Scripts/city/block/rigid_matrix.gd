@@ -1,302 +1,66 @@
 class_name RigidMatrix
-extends RefCounted
+extends PlacementGrid
 
-## LA MATRIZ RÍGIDA DE UNA SUPERFICIE — donde viven los objetos que NO se deforman: ventanas, puertas,
-## tanques, balcones.
+## LA GRILLA RÍGIDA DE UNA SUPERFICIE — donde viven los objetos que casi no se deforman: ventanas, puertas,
+## tanques, balcones. Es una PlacementGrid como el módulo; lo único propio es CÓMO ELIGE SUS CELDAS.
 ##
-## Se construye SOLO a partir de la superficie: un marco de tres ejes perpendiculares apoyado en ella, y una
-## cantidad de celdas elegida para que salgan lo más cúbicas posible, de `TARGET_CELL_M` de lado. La
-## profundidad se proyecta hacia afuera de la superficie con el mismo tamaño de celda. Nada de esto depende
-## de los objetos: la matriz existe desde el inicio, y lo único que los objetos deformables le cambian es
-## qué celdas quedan DISPONIBLES (ver `mark_world_hexahedron`).
+## Se construye SOLO a partir de la superficie: el cuadrilátero es la superficie misma, `axis_n` su normal
+## orientada hacia afuera, y la cantidad de celdas la que haga que midan lo más cerca posible de
+## `TARGET_CELL_M`. La profundidad se proyecta hacia afuera con el mismo tamaño de celda. Nada de esto depende
+## de los objetos: la grilla existe desde el inicio, y lo único que los objetos deformables le cambian es qué
+## celdas quedan DISPONIBLES (ver `mark_world_hexahedron`).
 ##
-## ⚠ NO HAY UMBRAL DE DISTORSIÓN. Un objeto rígido se coloca en este marco sin deformarse nunca; la
-## distorsión de la ciudad solo achica la matriz. La superficie es un cuadrilátero sesgado y la matriz es
-## el rectángulo ALINEADO más grande que le cabe adentro —los triángulos que sobran por el sesgo son
-## espacio residual, aceptado—, así que un quad muy torcido o muy angosto da pocas celdas, o ninguna, y el
-## objeto que necesita más de las que hay no entra. Ese es todo el filtro.
+## ⚠ NO HAY UMBRAL DE DISTORSIÓN. Una superficie angosta o corta da pocas celdas, o ninguna, y el objeto que
+## necesita más de las que hay no entra. Ese es todo el filtro.
 ##
-## El marco es (u, n, v): `u` a lo largo del primer lado del quad, `n` la normal, `v = u × n`. Un cubo
-## unitario cae en una celda como (x → u, y → n, z → v), conservando su mano. O sea: LA `y` DE UNA MESH
-## RÍGIDA APUNTA HACIA AFUERA DE LA SUPERFICIE. En una azotea eso es arriba; en una fachada es hacia la
-## calle, y ahí es `z` la que sube (con el quad recorrido como lo da `BuildingModule.get_facade_quad`).
+## Lo que va acá SÍ SE DEFORMA, apenas: es la bilineal de la superficie, igual que en el módulo, solo que
+## sobre un cuadrilátero casi plano y casi paralelogramo. Una fachada es un paralelogramo exacto —cada piso es
+## el de abajo subido—, así que sus celdas son paralelogramos con los lados verticales y el piso inclinado como
+## el terreno, y una ventana sale con ese mismo cizallamiento: paralela a la arista del módulo Y a la línea de
+## piso, como el edificio. Antes tenía un marco propio ortonormal y salía torcida respecto de una de las dos
+## (medido: 1,5° de mediana, 7,4° en el peor caso). Una azotea es una silla de montar de centímetros, y la
+## base de lo que se apoya la copia.
 ##
-## ⚠ UNA AZOTEA NO ES PLANA. Sale de una bilineal sobre el relieve con cuatro alturas independientes en las
-## esquinas: es una silla de montar, el mismo caso que un quad no plano en Blender, que se parte en
-## triángulos con un quiebre. Medido sobre 6.519 azoteas: las esquinas se apartan de un plano 2,2 cm de
-## mediana, 6 cm en el percentil 90 y hasta 17 cm. Las FACHADAS no tienen el problema: su borde de arriba es
-## el de abajo subido, y eso es siempre un plano (medido: 0,000001 m).
-##
-## Una cuadrícula rígida es un plano por definición, así que no puede copiar esa forma. Lo que sí hace: el
-## plano se centra entre las cuatro esquinas, y CADA OBJETO SE APOYA EN LA ALTURA REAL DE LA SUPERFICIE BAJO
-## SU CENTRO (`surface_offset`), corriéndose entero esa diferencia. Así el error no es el de la azotea sino
-## el de la silla dentro de la huella del objeto, que crece con el cuadrado de su tamaño. Medido en las
-## 20.636 patas de tanque de una ciudad: 1,2 mm de mediana, 4 mm en el percentil 90, 2,2 cm en la peor.
-## Para un objeto CENTRADO el centrado del plano ya da eso solo; el `surface_offset` es lo que lo mantiene
-## cuando el objeto va en cualquier otro lugar de la superficie. Solo un objeto que ocupe la azotea entera
-## vería los centímetros completos, y eso es inherente a ser rígido.
+## En el marco de la grilla `y` SALE DE LA SUPERFICIE: arriba en una azotea, hacia la calle en una fachada,
+## donde es `z` la que sube (el quad de `BuildingModule.get_facade_quad` va de abajo hacia arriba en `z`).
 
 const TARGET_CELL_M := 0.25
 
-var origin := Vector3.ZERO
-var axis_u := Vector3.RIGHT
-var axis_n := Vector3.UP
-var axis_v := Vector3.BACK
-## El tamaño de celda en metros, por eje del marco: (u, n, v).
-var cell := Vector3.ZERO
-## Cuántas celdas, por eje del marco: (u, n, v).
-var count := Vector3i.ZERO
-## Regiones ocupadas, como cajas `[lo, hi)` en celdas. Lista y no matriz por la misma razón que en
-## BuildingModule: los objetos son pocos.
-var _occupied: Array[Array] = []
-## El quad de la superficie, para preguntarle la altura real en un punto (ver `surface_offset`).
-var _corners: Array[Vector3] = []
 
-
-## La matriz de un quad `[c0, c1, c2, c3]` en el mundo, recorrido en orden. `depth_m` es cuánto se proyecta
-## hacia afuera; `outward` dice de qué lado está afuera, para orientar la normal.
-static func from_quad(corners: Array[Vector3], depth_m: float, outward: Vector3) -> RigidMatrix:
+## La grilla de una superficie `quad` `[c0, c1, c2, c3]` en el mundo, recorrida en orden: `x` va de c0 a c1
+## y `z` de c0 a c3. `depth_m` es cuánto se proyecta hacia afuera; `outward` dice de qué lado está afuera.
+static func from_quad(quad: Array[Vector3], depth_m: float, outward: Vector3) -> RigidMatrix:
 	var m := RigidMatrix.new()
-	if corners.size() != 4:
+	if quad.size() != 4:
 		return m
-	var c0 := corners[0]
-	var c1 := corners[1]
-	var c2 := corners[2]
-	var c3 := corners[3]
-
-	var normal := (c2 - c0).cross(c3 - c1)
+	var normal := (quad[2] - quad[0]).cross(quad[3] - quad[1])
 	if normal.length_squared() <= 0.0:
 		return m
 	normal = normal.normalized()
 	if normal.dot(outward) < 0.0:
 		normal = -normal
-	var along := (c1 - c0) - normal * (c1 - c0).dot(normal)
-	if along.length_squared() <= 0.0:
+	var along_x := (quad[0].distance_to(quad[1]) + quad[3].distance_to(quad[2])) * 0.5
+	var along_z := (quad[0].distance_to(quad[3]) + quad[1].distance_to(quad[2])) * 0.5
+	# Un lado más corto que media celda da cero, y la grilla queda vacía a propósito.
+	var n_x := roundi(along_x / TARGET_CELL_M)
+	var n_z := roundi(along_z / TARGET_CELL_M)
+	if n_x <= 0 or n_z <= 0:
 		return m
-	m.axis_u = along.normalized()
-	m.axis_n = normal
-	m.axis_v = m.axis_u.cross(m.axis_n)
-
-	# El rectángulo alineado más grande que cabe: en cada eje, del SEGUNDO valor más chico al SEGUNDO más
-	# grande de las cuatro esquinas. Para un quad convexo más o menos alineado eso es exactamente lo que
-	# queda entre sus dos lados, y no depende de en qué orden vengan las esquinas.
-	var us: Array[float] = []
-	var vs: Array[float] = []
-	for c: Vector3 in corners:
-		var f := m._flat(c, c0)
-		us.append(f.x)
-		vs.append(f.y)
-	us.sort()
-	vs.sort()
-	var u_min := us[1]
-	var u_max := us[2]
-	var v_min := vs[1]
-	var v_max := vs[2]
-	var width := u_max - u_min
-	var height := v_max - v_min
-	if width <= 0.0 or height <= 0.0:
-		return m
-
-	# Cantidad de celdas: las que hagan falta para que midan lo más cerca de `TARGET_CELL_M`. Un lado más
-	# corto que media celda da cero, y la matriz queda vacía a propósito.
-	var n_u := roundi(width / TARGET_CELL_M)
-	var n_v := roundi(height / TARGET_CELL_M)
-	if n_u <= 0 or n_v <= 0:
-		return m
-	var cell_u := width / float(n_u)
-	var cell_v := height / float(n_v)
-	var cell_n := (cell_u + cell_v) * 0.5
+	var cell_n := (along_x / float(n_x) + along_z / float(n_z)) * 0.5
 	var n_n := maxi(1, ceili(depth_m / cell_n))
-
-	# El plano se centra entre las cuatro esquinas a lo largo de la normal: por la primera esquina sola,
-	# las otras tres quedaban todas del mismo lado del plano.
-	var lift := 0.0
-	for c: Vector3 in corners:
-		lift += (c - c0).dot(normal)
-	lift *= 0.25
-	m.origin = c0 + m.axis_u * u_min + m.axis_v * v_min + normal * lift
-	m.cell = Vector3(cell_u, cell_n, cell_v)
-	m.count = Vector3i(n_u, n_n, n_v)
-	m._corners = corners.duplicate()
+	m._setup(quad.duplicate(), normal, cell_n, Vector3i(n_x, n_n, n_z))
 	return m
 
 
-## CUÁNTO HAY QUE CORRER UN OBJETO para que su base toque la superficie REAL en el punto `p_cell` (celdas,
-## se usa su `x` y `z`), como vector a lo largo de la normal. Es la diferencia entre la bilineal del quad y el
-## plano de la matriz en ese punto: cero en una fachada, unos milímetros en el medio de una azotea típica.
-##
-## Para evaluar la bilineal en un punto del mundo hay que invertirla en XZ; son un par de pasos de Newton
-## desde el centro, que sobran para un quad apenas torcido.
-func surface_offset(p_cell: Vector3) -> Vector3:
-	if _corners.size() != 4:
-		return Vector3.ZERO
-	var on_plane := cell_to_world(Vector3(p_cell.x, 0.0, p_cell.z))
-	var target := Vector2(on_plane.x, on_plane.z)
-	var c0 := _corners[0]
-	var c1 := _corners[1]
-	var c2 := _corners[2]
-	var c3 := _corners[3]
-	var s := 0.5
-	var t := 0.5
-	for _i in 6:
-		var p := _bilinear(s, t)
-		var f := Vector2(p.x, p.z) - target
-		if f.length_squared() < 0.000001:
-			break
-		var ds := (c1 - c0).lerp(c2 - c3, t)
-		var dt := (c3 - c0).lerp(c2 - c1, s)
-		var det := ds.x * dt.z - dt.x * ds.z
-		if absf(det) < 0.000000001:
-			break
-		s -= (dt.z * f.x - dt.x * f.y) / det
-		t -= (-ds.z * f.x + ds.x * f.y) / det
-	s = clampf(s, 0.0, 1.0)
-	t = clampf(t, 0.0, 1.0)
-	return axis_n * (_bilinear(s, t) - on_plane).dot(axis_n)
-
-
-func _bilinear(s: float, t: float) -> Vector3:
-	return _corners[0] * ((1.0 - s) * (1.0 - t)) + _corners[1] * (s * (1.0 - t)) \
-			+ _corners[2] * (s * t) + _corners[3] * ((1.0 - s) * t)
-
-
-func is_valid() -> bool:
-	return count.x > 0 and count.y > 0 and count.z > 0
-
-
-## Coordenadas (u, v) de un punto sobre el plano, relativas a `reference`, en metros.
-func _flat(p: Vector3, reference: Vector3) -> Vector2:
-	var d := p - reference
-	return Vector2(d.dot(axis_u), d.dot(axis_v))
-
-
-## Un punto en celdas (continuo, `x` → u, `y` → n, `z` → v) al mundo. Es afín: nada se deforma.
-func cell_to_world(p: Vector3) -> Vector3:
-	return origin + axis_u * (p.x * cell.x) + axis_n * (p.y * cell.y) + axis_v * (p.z * cell.z)
-
-
-## Una dirección del marco al mundo, para orientar caras.
-func dir_to_world(d: Vector3) -> Vector3:
-	return axis_u * d.x + axis_n * d.y + axis_v * d.z
-
-
-## Un punto del mundo en celdas (continuo).
-func world_to_cell(p: Vector3) -> Vector3:
-	var d := p - origin
-	return Vector3(d.dot(axis_u) / cell.x, d.dot(axis_n) / cell.y, d.dot(axis_v) / cell.z)
-
-
-## Las doce aristas de un sólido de ocho esquinas en orden de bits (1 → x, 2 → y, 4 → z).
-const HEXAHEDRON_EDGES: Array[Vector2i] = [
-	Vector2i(0, 1), Vector2i(2, 3), Vector2i(4, 5), Vector2i(6, 7),
-	Vector2i(0, 2), Vector2i(1, 3), Vector2i(4, 6), Vector2i(5, 7),
-	Vector2i(0, 4), Vector2i(1, 5), Vector2i(2, 6), Vector2i(3, 7),
-]
-
-
-## MARCA COMO OCUPADO lo que cubre un sólido deformable, dado por sus ocho esquinas en el mundo (el orden de
-## `BuildingModule.occupied_world_corners`): la proyección de la matriz deformable sobre esta.
-##
-## Se hace COLUMNA POR COLUMNA A LO LARGO DE LA NORMAL, y no con la envolvente del sólido entero: para cada
-## rebanada de profundidad se recortan las doce aristas contra ella y se marca solo la extensión de lo que
-## queda. La diferencia importa: una vereda de 3 m que baja un 12 % con el terreno tiene una envolvente de
-## casi 40 cm de alto, y proyectada de una vez marcaba 40 cm de fachada; rebanada, junto a la pared marca
-## su espesor real, que es lo que una puerta tiene que pisar. Sigue siendo conservador dentro de cada
-## rebanada —la extensión de las aristas recortadas, y una región doblada por la bilineal puede sobresalir
-## milímetros de sus aristas—, nunca de menos.
-func mark_world_hexahedron(corners: PackedVector3Array) -> void:
-	if corners.size() != 8 or not is_valid():
-		return
-	var c: Array[Vector3] = []
-	var n_lo := INF
-	var n_hi := -INF
-	for p: Vector3 in corners:
-		var q := world_to_cell(p)
-		c.append(q)
-		n_lo = minf(n_lo, q.y)
-		n_hi = maxf(n_hi, q.y)
-	var k_from := maxi(floori(n_lo), 0)
-	var k_to := mini(ceili(n_hi), count.y)
-	for k in range(k_from, k_to):
-		var s0 := float(k)
-		var s1 := float(k + 1)
-		var u_min := INF
-		var u_max := -INF
-		var v_min := INF
-		var v_max := -INF
-		var any := false
-		for e: Vector2i in HEXAHEDRON_EDGES:
-			var a := c[e.x]
-			var b := c[e.y]
-			var ta := 0.0
-			var tb := 1.0
-			if is_equal_approx(a.y, b.y):
-				if a.y < s0 or a.y > s1:
-					continue
-			else:
-				var t0 := (s0 - a.y) / (b.y - a.y)
-				var t1 := (s1 - a.y) / (b.y - a.y)
-				ta = clampf(minf(t0, t1), 0.0, 1.0)
-				tb = clampf(maxf(t0, t1), 0.0, 1.0)
-				if tb <= ta:
-					continue
-			var pa := a.lerp(b, ta)
-			var pb := a.lerp(b, tb)
-			u_min = minf(u_min, minf(pa.x, pb.x))
-			u_max = maxf(u_max, maxf(pa.x, pb.x))
-			v_min = minf(v_min, minf(pa.z, pb.z))
-			v_max = maxf(v_max, maxf(pa.z, pb.z))
-			any = true
-		if not any:
-			continue
-		var lo_i := Vector3i(maxi(floori(u_min), 0), k, maxi(floori(v_min), 0))
-		var hi_i := Vector3i(mini(ceili(u_max), count.x), k + 1, mini(ceili(v_max), count.z))
-		if hi_i.x <= lo_i.x or hi_i.z <= lo_i.z:
-			continue
-		_occupied.append([lo_i, hi_i])
-
-
-## Si la región `[lo, lo + size)` está dentro de la matriz y libre.
-func is_free(lo: Vector3i, size: Vector3i) -> bool:
-	if size.x <= 0 or size.y <= 0 or size.z <= 0:
-		return false
-	if lo.x < 0 or lo.y < 0 or lo.z < 0:
-		return false
-	var hi := lo + size
-	if hi.x > count.x or hi.y > count.y or hi.z > count.z:
-		return false
-	for box: Array in _occupied:
-		var o_lo: Vector3i = box[0]
-		var o_hi: Vector3i = box[1]
-		if lo.x < o_hi.x and hi.x > o_lo.x and lo.y < o_hi.y and hi.y > o_lo.y and lo.z < o_hi.z and hi.z > o_lo.z:
-			return false
-	return true
-
-
-func occupy(lo: Vector3i, size: Vector3i) -> void:
-	_occupied.append([lo, lo + size])
-
-
-## Cuántas celdas ocupa una medida en metros, POR EJE DEL MARCO: a lo largo de `u`, hacia afuera por `n`
-## y a lo largo de `v`. Qué es "alto" depende de la superficie: en una azotea es `n`, en una fachada es `v`.
-## Redondea hacia arriba: un objeto rígido nunca se achica para entrar.
-func cells_for(u_m: float, n_m: float, v_m: float) -> Vector3i:
+## LA MISMA GRILLA CORRIDA `offset` en el mundo, sin ocupación. Es cómo sale la fachada de un piso a partir de
+## la del piso 0: cada piso es el de abajo subido en Y, así que `from_quad` daría exactamente estas celdas
+## corridas. Copiar es mucho más barato que recalcular, y se hace una vez por fachada de cada piso.
+func translated(offset: Vector3) -> RigidMatrix:
+	var m := RigidMatrix.new()
 	if not is_valid():
-		return Vector3i.ZERO
-	return Vector3i(ceili(u_m / cell.x), ceili(n_m / cell.y), ceili(v_m / cell.z))
-
-
-## La esquina de una región de `size` celdas centrada en la superficie y apoyada en ella.
-func centered(size: Vector3i) -> Vector3i:
-	return Vector3i((count.x - size.x) / 2, 0, (count.z - size.z) / 2)
-
-
-## LA PRIMERA FILA LIBRE A LO LARGO DE `v` desde `lo.z`, hasta `lo.z + max_rise` inclusive: la región
-## `[lo, lo + size)` corrida hacia arriba lo justo para no tocar nada. Es como un objeto de pared se APOYA
-## sobre lo que hay delante de la fachada —una puerta sobre la vereda— en vez de atravesarlo. Devuelve -1 si
-## no hay lugar dentro de ese margen: lo que estorba es demasiado alto para pisarlo.
-func first_free_along_v(lo: Vector3i, size: Vector3i, max_rise: int) -> int:
-	for rise in range(0, max_rise + 1):
-		if is_free(Vector3i(lo.x, lo.y, lo.z + rise), size):
-			return lo.z + rise
-	return -1
+		return m
+	var moved: Array[Vector3] = []
+	for c: Vector3 in corners:
+		moved.append(c + offset)
+	m._setup(moved, axis_n, cell.y, count)
+	return m

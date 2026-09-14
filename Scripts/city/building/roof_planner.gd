@@ -5,7 +5,7 @@ extends RefCounted
 ##
 ## Es una función pura de datos —la huella del cluster, sus bordes, sus chaflanes y el seed— que no toca
 ## mallas. Devuelve una lista de piezas, cada una con su módulo, su región en celdas y su `UnitMesh`, y
-## `City` las coloca una por una con `ModulePlacer.place`. Acá vive quién decide; las piezas viven en
+## `City` las coloca una por una con `GridPlacer.place`. Acá vive quién decide; las piezas viven en
 ## `RoofProps`; deformar, anotar y ocupar lo hace el placer.
 ##
 ## ── MODULAR, EN CELDAS ENTERAS ──
@@ -592,8 +592,7 @@ static func _gable(block: BlockGenerator, cluster: BuildingCluster, rects: Array
 
 	# El lado LARGO se mide en metros, no en celdas: las celdas no son cuadradas.
 	var first: BuildingModule = rects[0]["module"]
-	var cell_m := first.cell_metres()
-	var ridge_along_x := float(box.size.x) * cell_m.x >= float(box.size.y) * cell_m.y
+	var ridge_along_x := float(box.size.x) * first.cell.x >= float(box.size.y) * first.cell.z
 
 	# Las pendientes bajan hacia los dos lados largos (dos aguas) o hacia el más expuesto de ellos (un agua).
 	var low_dir_a := 0 if ridge_along_x else 3
