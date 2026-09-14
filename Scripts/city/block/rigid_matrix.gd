@@ -20,12 +20,19 @@ extends RefCounted
 ## unitario cae en una celda como (x → u, y → n, z → v), conservando su mano.
 ##
 ## ⚠ UNA AZOTEA NO ES PLANA. Sale de una bilineal sobre el relieve con cuatro alturas independientes en las
-## esquinas: es una silla de montar. Medido sobre 6.519 azoteas: las esquinas se apartan del plano 2,2 cm de
-## mediana, 6 cm en el percentil 90 y hasta 17 cm. La matriz usa UN plano, con la normal promedio y
-## centrado entre las cuatro esquinas (así el desvío en las esquinas se parte a la mitad y en el centro es
-## casi cero), y lo que se coloque cerca de una esquina puede flotar o hundirse esos centímetros respecto de
-## la malla del techo. Las FACHADAS no tienen el problema: su borde de arriba es el de abajo subido, y eso
-## es siempre un plano (medido: 0,000001 m).
+## esquinas: es una silla de montar, el mismo caso que un quad no plano en Blender, que se parte en
+## triángulos con un quiebre. Medido sobre 6.519 azoteas: las esquinas se apartan de un plano 2,2 cm de
+## mediana, 6 cm en el percentil 90 y hasta 17 cm. Las FACHADAS no tienen el problema: su borde de arriba es
+## el de abajo subido, y eso es siempre un plano (medido: 0,000001 m).
+##
+## Una cuadrícula rígida es un plano por definición, así que no puede copiar esa forma. Lo que sí hace: el
+## plano se centra entre las cuatro esquinas, y CADA OBJETO SE APOYA EN LA ALTURA REAL DE LA SUPERFICIE BAJO
+## SU CENTRO (`surface_offset`), corriéndose entero esa diferencia. Así el error no es el de la azotea sino
+## el de la silla dentro de la huella del objeto, que crece con el cuadrado de su tamaño. Medido en las
+## 20.636 patas de tanque de una ciudad: 1,2 mm de mediana, 4 mm en el percentil 90, 2,2 cm en la peor.
+## Para un objeto CENTRADO el centrado del plano ya da eso solo; el `surface_offset` es lo que lo mantiene
+## cuando el objeto va en cualquier otro lugar de la superficie. Solo un objeto que ocupe la azotea entera
+## vería los centímetros completos, y eso es inherente a ser rígido.
 
 const TARGET_CELL_M := 0.25
 
@@ -40,6 +47,8 @@ var count := Vector3i.ZERO
 ## Regiones ocupadas, como cajas `[lo, hi)` en celdas. Lista y no matriz por la misma razón que en
 ## BuildingModule: los objetos son pocos.
 var _occupied: Array[Array] = []
+## El quad de la superficie, para preguntarle la altura real en un punto (ver `surface_offset`).
+var _corners: Array[Vector3] = []
 
 
 ## La matriz de un quad `[c0, c1, c2, c3]` en el mundo, recorrido en orden. `depth_m` es cuánto se proyecta
@@ -106,7 +115,47 @@ static func from_quad(corners: Array[Vector3], depth_m: float, outward: Vector3)
 	m.origin = c0 + m.axis_u * u_min + m.axis_v * v_min + normal * lift
 	m.cell = Vector3(cell_u, cell_n, cell_v)
 	m.count = Vector3i(n_u, n_n, n_v)
+	m._corners = corners.duplicate()
 	return m
+
+
+## CUÁNTO HAY QUE CORRER UN OBJETO para que su base toque la superficie REAL en el punto `p_cell` (celdas,
+## se usa su `x` y `z`), como vector a lo largo de la normal. Es la diferencia entre la bilineal del quad y el
+## plano de la matriz en ese punto: cero en una fachada, unos milímetros en el medio de una azotea típica.
+##
+## Para evaluar la bilineal en un punto del mundo hay que invertirla en XZ; son un par de pasos de Newton
+## desde el centro, que sobran para un quad apenas torcido.
+func surface_offset(p_cell: Vector3) -> Vector3:
+	if _corners.size() != 4:
+		return Vector3.ZERO
+	var on_plane := cell_to_world(Vector3(p_cell.x, 0.0, p_cell.z))
+	var target := Vector2(on_plane.x, on_plane.z)
+	var c0 := _corners[0]
+	var c1 := _corners[1]
+	var c2 := _corners[2]
+	var c3 := _corners[3]
+	var s := 0.5
+	var t := 0.5
+	for _i in 6:
+		var p := _bilinear(s, t)
+		var f := Vector2(p.x, p.z) - target
+		if f.length_squared() < 0.000001:
+			break
+		var ds := (c1 - c0).lerp(c2 - c3, t)
+		var dt := (c3 - c0).lerp(c2 - c1, s)
+		var det := ds.x * dt.z - dt.x * ds.z
+		if absf(det) < 0.000000001:
+			break
+		s -= (dt.z * f.x - dt.x * f.y) / det
+		t -= (-ds.z * f.x + ds.x * f.y) / det
+	s = clampf(s, 0.0, 1.0)
+	t = clampf(t, 0.0, 1.0)
+	return axis_n * (_bilinear(s, t) - on_plane).dot(axis_n)
+
+
+func _bilinear(s: float, t: float) -> Vector3:
+	return _corners[0] * ((1.0 - s) * (1.0 - t)) + _corners[1] * (s * (1.0 - t)) \
+			+ _corners[2] * (s * t) + _corners[3] * ((1.0 - s) * t)
 
 
 func is_valid() -> bool:

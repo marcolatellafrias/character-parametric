@@ -89,10 +89,13 @@ func place_rigid(matrix: RigidMatrix, lo: Vector3i, size: Vector3i, mesh: UnitMe
 	var v_from: int = _buffer["vertices"].size()
 	var flo := Vector3(lo)
 	var fsize := Vector3(size)
+	# El objeto entero se corre para que el centro de su base toque la superficie REAL, no el plano de la
+	# matriz: una azotea es una silla de montar y el plano solo la aproxima (ver RigidMatrix.surface_offset).
+	var lift := matrix.surface_offset(flo + Vector3(fsize.x * 0.5, 0.0, fsize.z * 0.5))
 	for t in mesh.triangle_count():
-		var a := matrix.cell_to_world(flo + mesh.vertices[mesh.indices[t * 3]] * fsize)
-		var b := matrix.cell_to_world(flo + mesh.vertices[mesh.indices[t * 3 + 1]] * fsize)
-		var c := matrix.cell_to_world(flo + mesh.vertices[mesh.indices[t * 3 + 2]] * fsize)
+		var a := matrix.cell_to_world(flo + mesh.vertices[mesh.indices[t * 3]] * fsize) + lift
+		var b := matrix.cell_to_world(flo + mesh.vertices[mesh.indices[t * 3 + 1]] * fsize) + lift
+		var c := matrix.cell_to_world(flo + mesh.vertices[mesh.indices[t * 3 + 2]] * fsize) + lift
 		PropGeometry.add_tri_facing(_buffer, a, b, c, matrix.dir_to_world(mesh.facings[t]), mesh.colors[t])
 
 	var idx_to: int = _buffer["indices"].size()
