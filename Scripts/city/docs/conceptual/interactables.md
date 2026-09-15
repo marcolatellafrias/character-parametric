@@ -60,9 +60,16 @@ Two placement passes run:
 1. **Preset (fixed) slots** — an optional `DashboardPreset` lists `DashboardSlot`s, each pinning a `ControlDefinition` to a grid cell. These are placed first; a slot that doesn't fit (out of bounds or overlapping) is skipped and its origin cell just marked occupied. A `null` definition marks a deliberately empty cell.
 2. **Seeded random fill** — if the preset allows it (`fill_remaining_random`), leftover cells are filled from a weighted table of control archetypes (`_DEFS`: buttons, short and long levers, joysticks, knobs and wheels, sized in cells) using a `RandomNumberGenerator` seeded with `seed_value`, so the same seed always yields the same dashboard.
 
-A `ControlDefinition` chooses the control **type** (touch / one-axis / two-axis / rotating) and its per-type parameters — sensitivity, max angle, rotation axis, auto-return, toggle, custom mesh, how much the mouse still turns the camera while it is held (30 % by default), etc. The built-in `PresetType.STEERING_WHEEL` layout, for example, lays out a wheel, a lever and six buttons on the default 32 × 24 grid.
+A `ControlDefinition` chooses the control **type** (touch / one-axis / two-axis / rotating) and its per-type parameters — sensitivity, max angle, rotation axis, auto-return, toggle, how much the mouse still turns the camera while it is held (30 % by default), etc. The built-in `PresetType.STEERING_WHEEL` layout, for example, lays out a wheel, a lever and six buttons on the default 32 × 24 grid.
 
-When `show_debug` is on, each control renders placeholder geometry (arm, joystick, wheel, or button face) plus its handle points; otherwise `build()` applies the control's `custom_mesh`.
+#### Control archetypes (`ControlArchetype`)
+
+A control's *style* — button, power button, lever, wheel, knob, two-axis stick — is a `ControlArchetype` (a `SeededArchetype`, so it has a row in the [design sandbox](../technical/design-sandbox.md)). It is two things at once:
+
+- **what the control is**: `definition_of("wheel")` returns the `ControlDefinition` for that style — type, standard size in cells, and how it is handled (a wheel is dragged sideways and stops at full lock, a knob is scrolled like a dial, a power button toggles). Every definition in the game starts from here; the ship only layers what is its own on top (how far its levers travel, where they rest, its full-lock angle). A definition carries its style in `archetype_name`; one authored without it gets the style of its type.
+- **how it looks**: two `UnitMesh`es designed in the control's unit cube — `x` along the panel, `y` up it, `z` toward the viewer, `z = 0` on the panel surface — and scaled to the control's box (cells minus margin × `CONTROL_DEPTH`), so one style dresses a 2 × 2 button and the 4 × 4 door button alike. The **base** hangs from the control's `StaticBody3D` and never moves; the **moving part** hangs from the component node, which is what the component rotates or sinks, so it moves for free — and lights up while someone holds it (`highlighted`). A rotating control that stands off the panel (`height_offset`) also gets its shaft. Anything that must be truly round (the stick's ball) is sized in metres from the box.
+
+`ProceduralDashboard._spawn` builds the handle points (`build`) and then has the archetype `dress` the control; `show_debug` only adds each control's area box and handle-point dots. Seeds change nothing yet. Headless test: `Scenes/tests/control_archetypes.tscn` builds every style and checks it is dressed and moves.
 
 ---
 

@@ -6,7 +6,8 @@ enum ControlType { TOUCH, ONE_AXIS, TWO_AXIS, ROTATING }
 @export var label:       String      = ""
 @export var type:        ControlType = ControlType.TOUCH
 @export var grid_size:   Vector2i    = Vector2i(1, 1)
-@export var custom_mesh: Mesh        = null
+## Con qué estilo se viste (ver ControlArchetype); vacío, el de su tipo.
+@export var archetype_name: String   = ""
 
 @export_group("Shared")
 @export var auto_return:   bool         = false

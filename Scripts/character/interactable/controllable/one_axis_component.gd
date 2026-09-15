@@ -39,19 +39,3 @@ func _arm_length(size: Vector3) -> float:
 
 func _setup_handle_points(size: Vector3) -> void:
 	add_handle_point_local(Vector3(0.0, _arm_length(size), 0.0))
-
-func _create_debug_meshes(size: Vector3) -> void:
-	var length := _arm_length(size)
-	var t      : float = min(size.x, size.y) * 0.15
-	var arm := _make_debug_box(
-		Vector3(t, length, t),
-		Color(0.45, 0.65, 1.0),
-		Vector3(0.0, length * 0.5, 0.0)
-	)
-	add_child(arm)
-	var tip := _make_debug_box(
-		Vector3(t * 2.0, t * 2.0, t * 2.0),
-		Color(0.95, 0.55, 0.2),
-		Vector3(0.0, length, 0.0)
-	)
-	add_child(tip)

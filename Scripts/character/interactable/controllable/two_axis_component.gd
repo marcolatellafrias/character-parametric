@@ -42,25 +42,8 @@ func _apply_visual() -> void:
 		0.0
 	)
 
+## La mano va en la punta de la palanca (ControlArchetype dibuja la bola ahí).
 func _setup_handle_points(size: Vector3) -> void:
 	var t       := size.z * 0.5
 	var stick_h : float = min(size.x, size.y) * 0.55
 	add_handle_point_local(Vector3(0.0, 0.0, t + stick_h))
-
-func _create_debug_meshes(size: Vector3) -> void:
-	var t        := size.z * 0.5
-	var stick_h  : float = min(size.x, size.y) * 0.55
-	# Flat platform sitting on the dashboard surface
-	var platform := _make_debug_box(
-		Vector3(size.x * 0.65, size.y * 0.65, t),
-		Color(0.4, 0.75, 0.55),
-		Vector3(0.0, 0.0, t * 0.5)
-	)
-	add_child(platform)
-	# Stick protruding in +Z
-	var stick := _make_debug_box(
-		Vector3(t * 0.45, t * 0.45, stick_h),
-		Color(0.85, 0.85, 0.3),
-		Vector3(0.0, 0.0, t + stick_h * 0.5)
-	)
-	add_child(stick)

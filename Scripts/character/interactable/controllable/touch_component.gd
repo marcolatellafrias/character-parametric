@@ -1,9 +1,13 @@
 class_name TouchComponent
 extends ControllableInteractable
 
+## Cuánto se hunde la parte móvil al apretarlo, como fracción de la profundidad del control.
+const PRESS_TRAVEL := 0.2
+
 @export var is_toggle: bool = false
 
 var is_pressed: bool = false
+var _travel := 0.0
 
 signal pressed()
 signal released()
@@ -23,7 +27,7 @@ func start_control() -> void:
 		is_pressed = true
 		_emit_if_changed(1.0)
 		pressed.emit()
-	_update_debug_color()
+	_apply_visual()
 
 func stop_control() -> void:
 	# Actualizamos is_pressed ANTES de super(): ahí la base transmite el estado final por red.
@@ -31,7 +35,7 @@ func stop_control() -> void:
 		is_pressed = false
 		_emit_if_changed(0.0)
 		released.emit()
-	_update_debug_color()
+	_apply_visual()
 	super()
 
 func get_sync_state() -> Variant:
@@ -44,20 +48,12 @@ func apply_sync_state(state: Variant) -> void:
 		if is_pressed: pressed.emit()
 		else:          released.emit()
 	_emit_if_changed(state)
-	_update_debug_color()
+	_apply_visual()
 
-func _create_debug_meshes(size: Vector3) -> void:
-	var face := _make_debug_box(
-		Vector3(size.x * 0.65, size.y * 0.65, size.z * 0.5),
-		Color(0.35, 0.4, 0.65)
-	)
-	add_child(face)
-	_debug_primary_mat = face.material_override as StandardMaterial3D
-
-func _update_debug_color() -> void:
-	if _debug_primary_mat == null:
-		return
-	_debug_primary_mat.albedo_color = Color(0.9, 0.5, 0.15) if is_pressed else Color(0.35, 0.4, 0.65)
+## Apretado, se hunde en su base.
+func _apply_visual() -> void:
+	position = Vector3(0.0, 0.0, -_travel if is_pressed else 0.0)
 
 func _setup_handle_points(size: Vector3) -> void:
+	_travel = size.z * PRESS_TRAVEL
 	add_handle_point_local(Vector3(0.0, 0.0, size.z * 0.25))

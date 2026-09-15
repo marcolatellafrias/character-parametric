@@ -495,17 +495,12 @@ static func _dummy_fits(taken: Dictionary, x: int, y: int, side: int) -> bool:
 	return true
 
 
-## Un control de relleno. Las perillas giran con la ruedita alrededor de la normal del tablero, como un
-## dial, apenas despegadas de él; algunos botones son de los que quedan prendidos.
+## Un control de relleno, del estilo `kind` (ver ControlArchetype); algunos botones son de los que
+## quedan prendidos.
 static func _dummy_control(kind: String, side: int, rng: RandomNumberGenerator) -> ControlDefinition:
-	var d := ControlDefinition.new()
+	var d := ControlArchetype.definition_of(kind)
 	d.grid_size = Vector2i(side, side)
-	if kind == "knob":
-		d.type = ControlDefinition.ControlType.ROTATING
-		d.rotation_axis_local = Vector3.BACK
-		d.height_offset = 0.02
-	else:
-		d.type = ControlDefinition.ControlType.TOUCH
+	if kind == "button":
 		d.is_toggle = rng.randf() < 0.3
 	return d
 
@@ -625,12 +620,10 @@ static func _empty_preset() -> DashboardPreset:
 
 
 static func _button_preset() -> DashboardPreset:
-	var d := ControlDefinition.new()
-	d.type = ControlDefinition.ControlType.TOUCH
+	# Un botón común, momentáneo y no toggle: con dos botones de toggle (adentro y afuera) cada uno tendría
+	# su propio estado y podrían contradecirse. Ver ShipDoor.connect_button.
+	var d := ControlArchetype.definition_of("button")
 	d.grid_size = DOOR_BUTTON
-	# Momentáneo y no toggle: con dos botones de toggle (adentro y afuera) cada uno tendría su propio
-	# estado y podrían contradecirse. Ver ShipDoor.connect_button.
-	d.is_toggle = false
 	var slot := DashboardSlot.new()
 	slot.cell = Vector2i(0, 0)
 	slot.definition = d

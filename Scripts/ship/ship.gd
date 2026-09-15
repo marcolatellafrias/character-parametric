@@ -230,11 +230,7 @@ func _flight_preset() -> DashboardPreset:
 
 
 func _lever(springs_back: bool, rest: float) -> ControlDefinition:
-	var d := ControlDefinition.new()
-	d.type = ControlDefinition.ControlType.ONE_AXIS
-	d.grid_size = ProceduralDashboard.LEVER
-	d.rotation_axis_local = Vector3.RIGHT
-	d.sensitivity = 0.005
+	var d := ControlArchetype.definition_of("lever")
 	d.max_angle_degrees = LEVER_TRAVEL_DEG
 	d.auto_return = springs_back
 	d.default_value = rest
@@ -245,27 +241,15 @@ func _lever(springs_back: bool, rest: float) -> ControlDefinition:
 
 
 func _wheel() -> ControlDefinition:
-	var d := ControlDefinition.new()
-	d.type = ControlDefinition.ControlType.ROTATING
-	d.grid_size = ProceduralDashboard.WHEEL
-	d.rotation_axis_local = Vector3.BACK
-	# Como el del Cybertruck: se gira arrastrando el mouse de costado y a fondo hace tope, sin dar una vuelta.
-	d.rotate_input = RotatingComponent.InputMode.MOUSE_HORIZONTAL
-	d.rotate_sensitivity = 0.0015
+	var d := ControlArchetype.definition_of("wheel")
 	# Mientras se gira, la vista acompaña la mitad que con el resto de los controles.
 	d.camera_sensitivity_factor = 0.15
 	d.rotate_max = WHEEL_FULL_LOCK
-	d.height_offset = 0.16
-	d.auto_return = true
 	return d
 
 
 func _power_button() -> ControlDefinition:
-	var d := ControlDefinition.new()
-	d.type = ControlDefinition.ControlType.TOUCH
-	d.grid_size = ProceduralDashboard.BUTTON
-	d.is_toggle = true
-	return d
+	return ControlArchetype.definition_of("power")
 
 
 static func _slot(cell: Vector2i, definition: ControlDefinition) -> DashboardSlot:

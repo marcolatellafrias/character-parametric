@@ -116,23 +116,61 @@ func add_box(lo: Vector3, hi: Vector3, color: Color) -> void:
 
 ## Un cilindro con el eje en Y, con la elipse inscrita en la caja.
 func add_cylinder(lo: Vector3, hi: Vector3, color: Color, segments: int = DEFAULT_SEGMENTS) -> void:
-	var cx := (lo.x + hi.x) * 0.5
-	var cz := (lo.z + hi.z) * 0.5
-	var rx := (hi.x - lo.x) * 0.5
-	var rz := (hi.z - lo.z) * 0.5
-	var inside := Vector3(cx, (lo.y + hi.y) * 0.5, cz)
-	var bottom_centre := Vector3(cx, lo.y, cz)
-	var top_centre := Vector3(cx, hi.y, cz)
+	_add_cylinder(lo, hi, color, segments, Vector3.AXIS_Y)
+
+
+## Un cilindro con el eje en Z: lo que sale de un tablero (ver ControlArchetype), donde +z es hacia quien
+## lo mira.
+func add_cylinder_z(lo: Vector3, hi: Vector3, color: Color, segments: int = DEFAULT_SEGMENTS) -> void:
+	_add_cylinder(lo, hi, color, segments, Vector3.AXIS_Z)
+
+
+func _add_cylinder(lo: Vector3, hi: Vector3, color: Color, segments: int, axis: int) -> void:
+	var centre := (lo + hi) * 0.5
+	var radius := (hi - lo) * 0.5
+	var u := (axis + 1) % 3
+	var v := (axis + 2) % 3
+	var bottom := centre
+	bottom[axis] = lo[axis]
+	var top := centre
+	top[axis] = hi[axis]
 	for i in segments:
 		var a1 := TAU * float(i) / float(segments)
 		var a2 := TAU * float(i + 1) / float(segments)
-		var b1 := Vector3(cx + cos(a1) * rx, lo.y, cz + sin(a1) * rz)
-		var b2 := Vector3(cx + cos(a2) * rx, lo.y, cz + sin(a2) * rz)
-		var t1 := Vector3(b1.x, hi.y, b1.z)
-		var t2 := Vector3(b2.x, hi.y, b2.z)
-		add_quad(b1, b2, t2, t1, inside, color)
-		add_tri(bottom_centre, b1, b2, inside, color)
-		add_tri(top_centre, t1, t2, inside, color)
+		var b1 := bottom
+		b1[u] += cos(a1) * radius[u]
+		b1[v] += sin(a1) * radius[v]
+		var b2 := bottom
+		b2[u] += cos(a2) * radius[u]
+		b2[v] += sin(a2) * radius[v]
+		var t1 := b1
+		t1[axis] = hi[axis]
+		var t2 := b2
+		t2[axis] = hi[axis]
+		add_quad(b1, b2, t2, t1, centre, color)
+		add_tri(bottom, b1, b2, centre, color)
+		add_tri(top, t1, t2, centre, color)
+
+
+## Un anillo con el eje en Z: la elipse inscrita en la caja, hueca hasta `thickness` de su radio.
+func add_ring_z(lo: Vector3, hi: Vector3, thickness: float, color: Color, segments: int = DEFAULT_SEGMENTS) -> void:
+	var centre := (lo + hi) * 0.5
+	var outer := Vector2(hi.x - lo.x, hi.y - lo.y) * 0.5
+	var inner := outer * (1.0 - thickness)
+	var depth := Vector3(0.0, 0.0, hi.z - lo.z)
+	for i in segments:
+		var d1 := Vector2.from_angle(TAU * float(i) / float(segments))
+		var d2 := Vector2.from_angle(TAU * float(i + 1) / float(segments))
+		var o1 := Vector3(centre.x + d1.x * outer.x, centre.y + d1.y * outer.y, lo.z)
+		var o2 := Vector3(centre.x + d2.x * outer.x, centre.y + d2.y * outer.y, lo.z)
+		var i1 := Vector3(centre.x + d1.x * inner.x, centre.y + d1.y * inner.y, lo.z)
+		var i2 := Vector3(centre.x + d2.x * inner.x, centre.y + d2.y * inner.y, lo.z)
+		# Cada cara mira desde el centro de su tramo del anillo.
+		var mid := (o1 + o2 + i1 + i2) * 0.25 + depth * 0.5
+		add_quad(o1, o2, o2 + depth, o1 + depth, mid, color)
+		add_quad(i1, i2, i2 + depth, i1 + depth, mid, color)
+		add_quad(o1, o2, i2, i1, mid, color)
+		add_quad(o1 + depth, o2 + depth, i2 + depth, i1 + depth, mid, color)
 
 
 ## Un cono con el eje en Y, apoyado en la elipse inscrita en la base de la caja y con la punta arriba.
@@ -155,19 +193,19 @@ func add_cone(lo: Vector3, hi: Vector3, color: Color, segments: int = DEFAULT_SE
 
 # ── ENTIDAD ─────────────────────────────────────────────────────────────────────────────────────
 
-## LA MESH COMO ENTIDAD: el cubo escalado a `size` metros, centrado en `x` y `z` y apoyado en `y = 0`, con
-## normales planas y el color de cada triángulo. Es lo que se instancia en un free placement (ver
-## FreePlacement): la pieza entera, sin deformar, en un transform. Indexada, así el índice de piezas la
-## copia como a cualquier otra.
-func build_mesh(size: Vector3) -> ArrayMesh:
+## LA MESH COMO ENTIDAD: el cubo escalado a `size` metros con `pivot` en el origen —por defecto centrado
+## en `x` y `z` y apoyado en `y = 0`—, con normales planas y el color de cada triángulo. Es lo que se
+## instancia en un free placement (ver FreePlacement): la pieza entera, sin deformar, en un transform.
+## Indexada, así el índice de piezas la copia como a cualquier otra.
+func build_mesh(size: Vector3, pivot := Vector3(0.5, 0.0, 0.5)) -> ArrayMesh:
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
 	for t in triangle_count():
-		var a := _scaled(vertices[indices[t * 3]], size)
-		var b := _scaled(vertices[indices[t * 3 + 1]], size)
-		var c := _scaled(vertices[indices[t * 3 + 2]], size)
+		var a := (vertices[indices[t * 3]] - pivot) * size
+		var b := (vertices[indices[t * 3 + 1]] - pivot) * size
+		var c := (vertices[indices[t * 3 + 2]] - pivot) * size
 		# ⚠ CONVENCIÓN DEL PROYECTO: para el orden (a, b, c) la cara visible tiene normal (c - a) x (b - a).
 		# La dirección diseñada en el cubo se lleva al escalado con la inversa de la escala.
 		var facing := Vector3(facings[t].x / size.x, facings[t].y / size.y, facings[t].z / size.z)
@@ -195,7 +233,3 @@ func build_mesh(size: Vector3) -> ArrayMesh:
 	if not verts.is_empty():
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
-
-
-static func _scaled(v: Vector3, size: Vector3) -> Vector3:
-	return Vector3((v.x - 0.5) * size.x, v.y * size.y, (v.z - 0.5) * size.z)

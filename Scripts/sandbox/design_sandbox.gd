@@ -1,7 +1,7 @@
 extends Node3D
 
 ## EL DESIGN SANDBOX — otro mundo, para iterar sin generar la ciudad: un plano claro y neutro con FILAS de
-## parcelas, una fila por categoría del juego (edificios, ventanas, puertas, naves, vehículos) y una
+## parcelas, una fila por categoría del juego (edificios, ventanas, puertas, naves, controles, vehículos) y una
 ## parcela por arquetipo de esa categoría (ver SeededArchetype). Sin red, sin menús de debug, sin HUD: solo
 ## el ente (SandboxEntity) caminando entre parcelas —V vuela—, y un panel a la derecha cuando está en la
 ## zona de interacción de una (ver SandboxPanel). R regenera el individuo con otra semilla y lo hace
@@ -53,6 +53,7 @@ static func _categories() -> Array[Dictionary]:
 		{"name": "Ventanas", "archetypes": WindowArchetype.catalogue()},
 		{"name": "Puertas", "archetypes": DoorArchetype.catalogue()},
 		{"name": "Naves", "archetypes": ShipArchetype.catalogue()},
+		{"name": "Controles", "archetypes": ControlArchetype.catalogue()},
 		{"name": "Vehículos", "archetypes": VehicleArchetype.catalogue()},
 	]
 

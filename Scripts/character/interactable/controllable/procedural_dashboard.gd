@@ -27,23 +27,24 @@ const WHEEL  := Vector2i(12, 12)
 @export var grid_columns: int        = 32
 @export var grid_rows:    int        = 24
 @export var seed_value:   int        = 0
-@export var show_debug:   bool       = true
+## La caja de área de cada control y sus puntos de agarre.
+@export var show_debug:   bool       = false
 @export var preset_type:  PresetType = PresetType.NONE
 ## Preset armado desde código. Si está, manda sobre `preset_type`. Existe para quien construye
 ## dashboards en tiempo de ejecución —la nave arma los suyos según su layout— sin tener que agregar
 ## cada disposición como un caso nuevo del enum.
 @export var custom_preset: DashboardPreset = null
 
-# [type_id, tamaño en celdas, peso]
+# Relleno al azar: [estilo (ver ControlArchetype), tamaño en celdas, peso]
 const _DEFS: Array = [
-	[0, BUTTON, 3.0],
-	[1, Vector2i(6, 6), 2.0],
-	[1, Vector2i(12, 6), 1.5],
-	[1, LEVER, 1.5],
-	[2, Vector2i(6, 6), 2.0],
-	[2, Vector2i(12, 12), 1.0],
-	[3, Vector2i(6, 6), 2.0],
-	[3, WHEEL, 1.2],
+	["button", BUTTON, 3.0],
+	["lever", Vector2i(6, 6), 2.0],
+	["lever", Vector2i(12, 6), 1.5],
+	["lever", LEVER, 1.5],
+	["stick", Vector2i(6, 6), 2.0],
+	["stick", Vector2i(12, 12), 1.0],
+	["knob", Vector2i(6, 6), 2.0],
+	["wheel", WHEEL, 1.2],
 ]
 
 var _grid: Array                 = []
@@ -144,26 +145,13 @@ func _preset_steering_wheel() -> DashboardPreset:
 	p.fill_remaining_random = false
 
 	# ── Volante, en las áreas (1..2, 1..2) ─────────────────────────────────────
-	var wheel_def                := ControlDefinition.new()
-	wheel_def.type                = ControlDefinition.ControlType.ROTATING
-	wheel_def.grid_size           = WHEEL
-	wheel_def.rotation_axis_local = Vector3.BACK
-	wheel_def.rotate_sensitivity  = 0.2
-	wheel_def.height_offset       = 0.16
-	wheel_def.auto_return         = true
-
 	var wheel_slot      := DashboardSlot.new()
 	wheel_slot.cell      = Vector2i(10, 10)
-	wheel_slot.definition = wheel_def
+	wheel_slot.definition = ControlArchetype.definition_of("wheel")
 
 	# ── Palanca, en las áreas (3, 1..2) ────────────────────────────────────────
-	var lever_def                := ControlDefinition.new()
-	lever_def.type                = ControlDefinition.ControlType.ONE_AXIS
-	lever_def.grid_size           = LEVER
-	lever_def.rotation_axis_local = Vector3.RIGHT
-	lever_def.sensitivity         = 0.005
-	lever_def.max_angle_degrees   = 180.0
-	lever_def.auto_return         = false
+	var lever_def              := ControlArchetype.definition_of("lever")
+	lever_def.max_angle_degrees = 180.0
 
 	var lever_slot      := DashboardSlot.new()
 	lever_slot.cell      = Vector2i(25, 10)
@@ -177,14 +165,9 @@ func _preset_steering_wheel() -> DashboardPreset:
 
 	var slots: Array[DashboardSlot] = [wheel_slot, lever_slot]
 	for cell in button_cells:
-		var btn_def      := ControlDefinition.new()
-		btn_def.type      = ControlDefinition.ControlType.TOUCH
-		btn_def.grid_size = BUTTON
-		btn_def.is_toggle = false
-
 		var btn_slot      := DashboardSlot.new()
 		btn_slot.cell      = cell
-		btn_slot.definition = btn_def
+		btn_slot.definition = ControlArchetype.definition_of("button")
 		slots.append(btn_slot)
 
 	p.fixed_slots = slots
@@ -223,7 +206,7 @@ func _occupy(cell: Vector2i, size: Vector2i) -> void:
 # ── Placement ─────────────────────────────────────────────────────────────────
 
 func _place_definition(cell: Vector2i, def: ControlDefinition) -> void:
-	_spawn(cell, def.grid_size, _make_control_from_def(def))
+	_spawn(cell, def.grid_size, _make_control_from_def(def), ControlArchetype.for_definition(def))
 
 func _place_at(cell: Vector2i) -> void:
 	var valid: Array = []
@@ -245,14 +228,15 @@ func _place_at(cell: Vector2i) -> void:
 			chosen = def
 			break
 
-	var type_id: int      = chosen[0]
-	var gs:      Vector2i = chosen[1]
-	_occupy(cell, gs)
-	_spawn(cell, gs, _make_control(type_id))
+	var definition := ControlArchetype.definition_of(chosen[0])
+	definition.grid_size = chosen[1]
+	_occupy(cell, definition.grid_size)
+	_place_definition(cell, definition)
 
 ## Coloca un control que ocupa `size` celdas desde `cell`, su esquina superior izquierda. La grilla
-## crece hacia +X y −Y, con la cara hacia +Z.
-func _spawn(cell: Vector2i, size: Vector2i, interactable: ControllableInteractable) -> void:
+## crece hacia +X y −Y, con la cara hacia +Z: el cuerpo queda con su origen en la superficie del
+## tablero, y el arquetipo lo viste de ahí hacia afuera.
+func _spawn(cell: Vector2i, size: Vector2i, interactable: ControllableInteractable, archetype: ControlArchetype) -> void:
 	var area    := Vector2(size) * CELL
 	var ctrl_sz := Vector3(area.x - 2.0 * CONTROL_MARGIN, area.y - 2.0 * CONTROL_MARGIN, CONTROL_DEPTH)
 	interactable.grid_size = size
@@ -270,27 +254,12 @@ func _spawn(cell: Vector2i, size: Vector2i, interactable: ControllableInteractab
 	add_child(body)
 	body.position = Vector3(cell.x * CELL + area.x * 0.5, -(cell.y * CELL + area.y * 0.5), 0.0)
 
+	interactable.build(ctrl_sz, show_debug)
+	archetype.dress(body, interactable, ctrl_sz)
 	if show_debug:
 		_add_area_mesh(body, ctrl_sz)
-		interactable.build_debug_visuals(ctrl_sz)
-	else:
-		interactable.build(ctrl_sz)
 
 # ── Factory ───────────────────────────────────────────────────────────────────
-
-func _make_control(type_id: int) -> ControllableInteractable:
-	match type_id:
-		0: return TouchComponent.new()
-		1:
-			var c := OneAxisComponent.new()
-			c.rotation_axis_local = Vector3.RIGHT
-			return c
-		2: return TwoAxisComponent.new()
-		3:
-			var c := RotatingComponent.new()
-			c.rotation_axis_local = Vector3.BACK
-			return c
-	return TouchComponent.new()
 
 func _make_control_from_def(def: ControlDefinition) -> ControllableInteractable:
 	var ctrl: ControllableInteractable
@@ -324,7 +293,6 @@ func _make_control_from_def(def: ControlDefinition) -> ControllableInteractable:
 	ctrl.auto_return       = def.auto_return
 	ctrl.default_value     = def.default_value
 	ctrl.positions         = def.positions.duplicate()
-	ctrl.custom_mesh       = def.custom_mesh
 	ctrl.rest_rotation_deg = def.rest_rotation_deg
 	ctrl.camera_sensitivity_factor = def.camera_sensitivity_factor
 	return ctrl

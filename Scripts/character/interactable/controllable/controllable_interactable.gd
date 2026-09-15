@@ -17,9 +17,6 @@ const DEFAULT_CAMERA_SENSITIVITY := 0.3
 # Lets you set the resting orientation of any control at instantiation time.
 @export var rest_rotation_deg: Vector3 = Vector3.ZERO
 
-# When set, replaces the debug geometry with this mesh (positioned at _get_mesh_offset).
-@export var custom_mesh: Mesh = null
-
 var grid_size:            Vector2i              = Vector2i(1, 1)
 var visual_value:         float                 = 0.0
 var _network_state:       float                 = 0.0
@@ -29,8 +26,8 @@ var _is_being_controlled: bool                  = false
 var _remote_controlled:   bool                  = false
 ## Propiedad exclusiva (un solo controlador a la vez), arbitrada por el host. Ver ExclusiveClaim.
 var _claim:               ExclusiveClaim        = null
-var _debug_meshes:        Array[MeshInstance3D] = []
-var _debug_primary_mat:   StandardMaterial3D    = null
+## Las mallas que se iluminan mientras alguien lo maneja: la parte móvil (ver ControlArchetype.dress).
+var highlighted:          Array[MeshInstance3D] = []
 
 signal state_changed(value: float)
 ## El host me quitó el control (perdí una carrera por el mismo control): el InteractionController suelta.
@@ -38,20 +35,13 @@ signal control_lost()
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
-func build(control_size: Vector3) -> void:
+## Los puntos de agarre de un control de `control_size`; la malla la pone el tablero (ver
+## ControlArchetype.dress). Con `debug`, los puntos se ven.
+func build(control_size: Vector3, debug := false) -> void:
 	_clear_handle_points()
 	_setup_handle_points(control_size)
-	_apply_custom_mesh()
-
-func build_debug_visuals(control_size: Vector3) -> void:
-	_clear_handle_points()
-	_clear_debug_meshes()
-	_setup_handle_points(control_size)
-	if is_instance_valid(custom_mesh):
-		_apply_custom_mesh()
-	else:
-		_create_debug_meshes(control_size)
-	_visualize_handle_points(control_size)
+	if debug:
+		_visualize_handle_points(control_size)
 
 # ── Physics ───────────────────────────────────────────────────────────────────
 
@@ -134,13 +124,13 @@ func get_prompt() -> String:
 
 func start_control() -> void:
 	_is_being_controlled = true
-	_set_debug_emit(true)
+	_set_highlight(true)
 	if is_instance_valid(_claim):
 		_claim.request()  # pedir el control (offline concede al toque; online arbitra el host)
 
 func stop_control() -> void:
 	_is_being_controlled = false
-	_set_debug_emit(false)
+	_set_highlight(false)
 	if not auto_return and positions.size() > 0:
 		_snap_to_nearest()
 	if is_instance_valid(_claim) and _claim.is_mine():
@@ -191,73 +181,22 @@ func _rest_rot() -> Vector3:
 		deg_to_rad(rest_rotation_deg.z)
 	)
 
-# Override in subclasses that need the mesh offset from origin (e.g. RotatingComponent).
-func _get_mesh_offset() -> Vector3:
+## Cuánto sale del tablero la parte móvil (un volante va sobre un eje: ver RotatingComponent).
+func mesh_offset() -> Vector3:
 	return Vector3.ZERO
 
-func _apply_custom_mesh() -> void:
-	if not is_instance_valid(custom_mesh):
-		return
-	var mi      := MeshInstance3D.new()
-	mi.mesh      = custom_mesh
-	mi.position  = _get_mesh_offset()
-	add_child(mi)
-
-# ── Debug ─────────────────────────────────────────────────────────────────────
-
-func _create_debug_meshes(_control_size: Vector3) -> void:
-	pass
-
-func _make_debug_box(size: Vector3, color: Color, offset: Vector3 = Vector3.ZERO) -> MeshInstance3D:
-	var mi  := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = size
-	mi.mesh  = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	if color.a < 1.0:
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mi.material_override = mat
-	mi.position = offset
-	_debug_meshes.append(mi)
-	return mi
-
-func _make_debug_cylinder(radius: float, height: float, color: Color, offset: Vector3 = Vector3.ZERO, euler_rot: Vector3 = Vector3.ZERO) -> MeshInstance3D:
-	var mi  := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius      = radius
-	cyl.bottom_radius   = radius
-	cyl.height          = height
-	cyl.radial_segments = 16
-	mi.mesh             = cyl
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	if color.a < 1.0:
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mi.material_override = mat
-	mi.position = offset
-	mi.rotation = euler_rot
-	_debug_meshes.append(mi)
-	return mi
-
-func _set_debug_emit(active: bool) -> void:
-	for m in _debug_meshes:
-		if not is_instance_valid(m):
-			continue
+## Mientras alguien lo maneja, la parte móvil se ilumina.
+func _set_highlight(active: bool) -> void:
+	for m in highlighted:
 		var mat := m.material_override as StandardMaterial3D
-		if mat == null:
+		if not is_instance_valid(m) or mat == null:
 			continue
 		mat.emission_enabled = active
 		if active:
 			mat.emission                   = Color(0.05, 0.45, 0.1)
 			mat.emission_energy_multiplier = 1.2
 
-func _clear_debug_meshes() -> void:
-	for m in _debug_meshes:
-		if is_instance_valid(m):
-			m.queue_free()
-	_debug_meshes.clear()
-	_debug_primary_mat = null
+# ── Debug ─────────────────────────────────────────────────────────────────────
 
 func _setup_handle_points(_control_size: Vector3) -> void:
 	pass

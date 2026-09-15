@@ -1,6 +1,6 @@
 # Design sandbox
 
-A second world, entered from the main menu, for iterating on one generated thing at a time without generating the city: a flat neutral plane with **rows of parcels** — one row per category (buildings, windows, doors, ships, vehicles), one parcel per archetype — and a simple entity walking between them. No session, no debug menus, no HUD. Everything in it is the game's own code pointed at one element; nothing is a copy.
+A second world, entered from the main menu, for iterating on one generated thing at a time without generating the city: a flat neutral plane with **rows of parcels** — one row per category (buildings, windows, doors, ships, controls, vehicles), one parcel per archetype — and a simple entity walking between them. No session, no debug menus, no HUD. Everything in it is the game's own code pointed at one element; nothing is a copy.
 
 Files: [design_sandbox.gd](../../../sandbox/design_sandbox.gd) (the world and the rows), [sandbox_entity.gd](../../../sandbox/sandbox_entity.gd) (the walker), [sandbox_parcel.gd](../../../sandbox/sandbox_parcel.gd) (one parcel), [sandbox_panel.gd](../../../sandbox/sandbox_panel.gd) (the info panel), [seeded_archetype.gd](../../../sandbox/seeded_archetype.gd) (what a parcel can hold), [sample_wall.gd](../../../sandbox/sample_wall.gd) (a wall to hang a facade piece on), scene `Scenes/sandbox.tscn`.
 
@@ -10,7 +10,7 @@ Files: [design_sandbox.gd](../../../sandbox/design_sandbox.gd) (the world and th
 
 ## The seeded archetype
 
-`SeededArchetype` is the contract every parcel needs and, by intention, the common ground for everything the world generates as *class + individual*: a **`display_name`** (mandatory — it forces every archetype to be nameable), **`max_footprint()`** (width × depth in metres, the most it can occupy under *any* seed), **`build(seed, parent)`** (the individual, centred on the parent's origin, standing on y = 0), **`describe(seed)`** (lines for the panel) and **`category_options()`** (the row's keys, below). Extended by `BuildingArchetype`, `WindowArchetype`, `DoorArchetype`, `ShipArchetype` and `VehicleArchetype`; as more shared criteria appear (seed derivation, sync, description) they belong here, not repeated per system.
+`SeededArchetype` is the contract every parcel needs and, by intention, the common ground for everything the world generates as *class + individual*: a **`display_name`** (mandatory — it forces every archetype to be nameable), **`max_footprint()`** (width × depth in metres, the most it can occupy under *any* seed), **`build(seed, parent)`** (the individual, centred on the parent's origin, standing on y = 0), **`describe(seed)`** (lines for the panel) and **`category_options()`** (the row's keys, below). Extended by `BuildingArchetype`, `WindowArchetype`, `DoorArchetype`, `ShipArchetype`, `ControlArchetype` and `VehicleArchetype`; as more shared criteria appear (seed derivation, sync, description) they belong here, not repeated per system.
 
 ## Parcels and zones
 
@@ -32,6 +32,7 @@ While the entity stands in an interaction zone the **panel** on the right shows 
 | **Ventanas** | every `WindowArchetype` some building archetype lists (`WindowArchetype.catalogue()`) | the piece placed on a `SampleWall`, a wall slab built as a `BuildingSkin` with the piece's **opening cut through it** — reveals, arch, the piece sunk in the wall — through the real `RigidMatrix` + `GridPlacer` + `add_opening` path. The piece itself is still the placeholder panel. |
 | **Puertas** | same, `DoorArchetype.catalogue()` | same |
 | **Naves** | one per `Ship.Shape` | the real `Ship`, **frozen** (`freeze = true`, static): its controls respond — door, levers — and the body does not move. No seed variation yet. |
+| **Controles** | one per `ControlArchetype` style (`ControlArchetype.catalogue()`) | a lectern — post and tilted plate at hand height — with a one-control `ProceduralDashboard` on it, so the control is built, dressed and handled exactly as on the ship (see [interactables.md](../conceptual/interactables.md#control-archetypes-controlarchetype)). Grab it to press, drag or turn it. No seed variation yet. |
 | **Vehículos** | one per `CarArchetypes.Type` | the same box the traffic draws for that type, on the ground at 1:1. The seed drives a car's route in the game; parked, nothing yet. |
 
 **Nothing registers with the sandbox.** Every catalogue is derived from what the game already declares — the building registry, the window and door types buildings list, the ship shape enum, the car type enum — so an archetype added to the game appears here without knowing the sandbox exists. Adding a *category* is one entry in `DesignSandbox._categories()`.
