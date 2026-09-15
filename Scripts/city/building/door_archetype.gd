@@ -13,6 +13,9 @@ var color := Color(0.9, 0.9, 0.85)
 ## La sección de arco de la abertura (ver WindowArchetype).
 var arch_height_m := 0.3
 var arch_segments := 4
+## Si la hoja SE MUEVE: no es una pieza fija en la pared sino un portón que sube, con sus botones (ver
+## Gate). Un edificio lleva uno solo.
+var moving := false
 
 
 func _init(p_name := "puerta", p_width_m := 1.4, p_height_m := 2.2) -> void:
@@ -29,6 +32,14 @@ static func gate() -> DoorArchetype:
 	var door := DoorArchetype.new("Portón", 2.4, 2.6)
 	door.arch_height_m = 0.6
 	door.arch_segments = 5
+	return door
+
+
+## El portón de una sucursal: por donde entra y sale la nave (ver ShipHull.HALF_WIDTH), sin arco.
+static func garage() -> DoorArchetype:
+	var door := DoorArchetype.new("Portón de garaje", 12.0, 6.0)
+	door.arch_height_m = 0.0
+	door.moving = true
 	return door
 
 

@@ -32,6 +32,8 @@ Every city generation has **4 branch headquarters per company**, always spaced e
 
 Each branch is one building module facing a street, split into **two rooms with no line of sight between them**:
 
+*Built so far (v1, shown in the design sandbox): the shell only — `BranchArchetype`, a hollow building of 2 × 2 modules × 2 floors (larger than the one module above; a number to revisit) with the garage door and a button on each side of it, nothing inside yet. See [city-generation.md](../technical/city-generation.md) (Hollow buildings, Gates) and [design-sandbox.md](../technical/design-sandbox.md).*
+
 - **The Lounge** — where players **spawn** at run start; the crew's **info hub** (bulletin, roster ledger, memorial, radio) with **no gameplay mechanics** — see [The Lounge](#the-lounge) below. Only ever entered at run start; once the ship first departs it is **sealed in every branch** for the rest of the run. Its separation from the garage is what lets the ship and batch (re)configure unseen while the crew is still forming.
 - **The Garage** — the working room, joined to the Lounge by a one-time **elevating door**. Holds:
   - the **ship**, the **intake zone** (marked rectangle where the shift's **total batch** spawns, served by a **pneumatic tube**), and the **ship zone** (marked rectangle where the ship must be **parked** to close a shift);

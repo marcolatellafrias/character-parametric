@@ -55,6 +55,9 @@ func _init(
 
 	# Asignar arquetipo basado en neighborhood y seed
 	archetype = ArchetypeDefinitions.get_archetype_for_cluster(neighborhood_type, p_seed + id)
+	# Salvo que el arquetipo diga cuántos pisos tiene (una sucursal), y entonces no se sortean.
+	if archetype.fixed_floors > 0:
+		floor_count = archetype.fixed_floors
 
 	color = archetype.get_color(p_seed + id)
 	debug_color = NeighborhoodTypes.debug_color(neighborhood_type, p_seed + id)

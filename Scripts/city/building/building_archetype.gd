@@ -46,6 +46,15 @@ var has_chamfered_street_corners: bool = false
 ## no de la pieza: una ventana es más fina que la pared que la rodea.
 var wall_thickness_m: float = 0.3
 
+## CÓMO OCUPA SU LUGAR, cuando lo dice el arquetipo y no el sorteo: `fixed_floors` pisos (0 = los que
+## sortee el nivel de la manzana, ver BuildingCluster) y, con `whole_section`, todas las celdas de su
+## sección (ver BlockGenerator). Y si es HUECO: una cáscara con su espesor por dentro y sin losas entre
+## pisos, para entrar (ver BuildingSkin.hollow); el collider es entonces la piel. Lo necesita una sucursal;
+## un edificio común no lo toca.
+var fixed_floors: int = 0
+var whole_section: bool = false
+var hollow: bool = false
+
 ## Cuánto levanta la pieza de techo, en metros. Es la pendiente: sobre una celda de edificio (~11 m de
 ## lado) un valor de 2 m da un techo de inclinación creíble sin volverse una carpa.
 var roof_pitch_height: float = 2.2
@@ -106,18 +115,31 @@ func max_footprint() -> Vector2:
 ## la fila tenga elegido (distorsión, vista). `load` y no `preload`: la ciudad ya depende de los
 ## arquetipos, y un preload cruzado no carga.
 func build(seed_value: int, parent: Node3D) -> Node3D:
+	return _block_sample(seed_value, parent, SAMPLE_SIDE_M, SAMPLE_SCALE, false)
+
+
+## La manzana de muestra: un City sin generar, a `scale`, centrado en la parcela, con lo que la fila tenga
+## elegido (distorsión, vista) y lo que la subclase configure (`_configure_sample`), generado como manzana
+## sola (ver City.generate_block_sample).
+func _block_sample(seed_value: int, parent: Node3D, side_m: float, scale: float, colliders: bool) -> Node3D:
 	var city: Node3D = load("res://Scripts/city/core/city.gd").new()
 	city.name = "BlockSample"
 	city.auto_generate = false
-	city.scale = Vector3.ONE * SAMPLE_SCALE
-	var half := SAMPLE_SIDE_M * SAMPLE_SCALE * 0.5
+	city.scale = Vector3.ONE * scale
+	var half := side_m * scale * 0.5
 	city.position = Vector3(-half, SandboxParcel.PLANE_LIFT * 3.0, -half)
 	for property in ["building_debug_view", "building_grid", "show_deformable_boxes", "show_rigid_boxes"]:
 		if options.has(property):
 			city.set(property, options[property])
+	_configure_sample(city)
 	parent.add_child(city)
-	city.generate_block_sample(seed_value, self, SAMPLE_SIDE_M, _distortion())
+	city.generate_block_sample(seed_value, self, side_m, _distortion(), colliders)
 	return city
+
+
+## Lo que una subclase cambia del City de su muestra antes de generarla (cuántos módulos, callejones).
+func _configure_sample(_city: Node3D) -> void:
+	pass
 
 
 ## Las teclas de la fila de edificios: la distorsión de la manzana por eje —en niveles fijos, sin azar,

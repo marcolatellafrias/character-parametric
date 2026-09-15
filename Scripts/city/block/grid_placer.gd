@@ -127,7 +127,8 @@ func place(grid: PlacementGrid, lo: Vector3i, size: Vector3i, mesh: UnitMesh,
 			normals[written + k] = normal
 			colors[written + k] = color
 		written += 3
-	if written == 0:
+	# Una pieza sin triángulos ocupa igual: es una abertura cuya hoja es un nodo aparte (ver Gate).
+	if written == 0 and tris > 0:
 		return false
 	verts.resize(written)
 	normals.resize(written)

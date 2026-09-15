@@ -44,6 +44,10 @@ const FAR := 1.0e6
 var _color: Color
 ## Cuánto entra el derrame de una abertura: el espesor de la pared, del arquetipo del edificio.
 var wall_thickness := 0.3
+## HUECO: además de lo que se ve de afuera, el lado de adentro de cada pared exterior a `wall_thickness`
+## —con las mismas aberturas, donde los derrames terminan— y el techo por debajo. Sin losas entre pisos:
+## las tapas intermedias ya se descuentan, y el piso lo pone el suelo de la manzana. Es la sucursal.
+var hollow := false
 
 ## Un plano por entrada: `{n, d, o, e, slope, front, back, openings}` — normal canónica y distancia, el
 ## marco (origen, dirección horizontal de la línea, pendiente de la línea), los rectángulos de cada lado y
@@ -137,8 +141,13 @@ func build() -> ArrayMesh:
 			else:
 				holes_back.append(opening["rect"])
 		var n: Vector3 = plane["n"]
-		_emit_rects(plane, _carve(front, back + holes_front), n)
-		_emit_rects(plane, _carve(back, front + holes_back), -n)
+		var solid_front := _carve(front, back + holes_front)
+		var solid_back := _carve(back, front + holes_back)
+		_emit_rects(plane, solid_front, n)
+		_emit_rects(plane, solid_back, -n)
+		if hollow:
+			_emit_rects(plane, solid_front, -n, n)
+			_emit_rects(plane, solid_back, n, -n)
 		for opening: Dictionary in plane["openings"]:
 			_emit_opening(plane, opening, front if opening["front"] else back)
 	for raw: Array in _raw:
@@ -339,15 +348,17 @@ static func _bounds(rects: Array[Rect2]) -> Rect2:
 	return out
 
 
-func _emit_rects(plane: Dictionary, rects: Array[Rect2], normal: Vector3) -> void:
+## Los rectángulos de un lado del plano, mirando a `normal`; con `inset_from`, un espesor de pared hacia
+## adentro de la cara de esa normal: el lado de adentro de una pared hueca.
+func _emit_rects(plane: Dictionary, rects: Array[Rect2], normal: Vector3, inset_from := Vector3.ZERO) -> void:
 	# Los vértices se comparten dentro del plano y del lado: dos rectángulos que se tocan usan los mismos.
 	var shared := {}
 	for r in rects:
 		var corners: Array[Vector3] = [
-			_point(plane, r.position.x, r.position.y),
-			_point(plane, r.end.x, r.position.y),
-			_point(plane, r.end.x, r.end.y),
-			_point(plane, r.position.x, r.end.y),
+			_point(plane, r.position.x, r.position.y, inset_from, wall_thickness),
+			_point(plane, r.end.x, r.position.y, inset_from, wall_thickness),
+			_point(plane, r.end.x, r.end.y, inset_from, wall_thickness),
+			_point(plane, r.position.x, r.end.y, inset_from, wall_thickness),
 		]
 		var keys: Array[Vector2i] = [
 			Vector2i(roundi(r.position.x / EPS), roundi(r.position.y / EPS)),
@@ -498,8 +509,12 @@ func _emit_caps(group: Dictionary) -> void:
 	var front: Array = group["front"]
 	var back: Array = group["back"]
 	_cancel_equal(front, back)
-	_emit_cap_side(module, height, _clip_all(front, back), true)
+	var up := _clip_all(front, back)
+	_emit_cap_side(module, height, up, true)
 	_emit_cap_side(module, height, _clip_all(back, front), false)
+	if hollow:
+		# Lo que da al cielo —el techo, una cornisa— visto desde adentro, a un espesor.
+		_emit_cap_side(module, height, up, false, -wall_thickness / module.cell_height)
 
 
 ## Saca de las dos listas cada par de tapas iguales: es el caso de todos los pisos intermedios, y no
@@ -583,7 +598,8 @@ static func _simple(results: Array[PackedVector2Array]) -> Array[PackedVector2Ar
 	return out
 
 
-func _emit_cap_side(module: BuildingModule, height: int, polygons: Array[PackedVector2Array], up: bool) -> void:
+func _emit_cap_side(module: BuildingModule, height: int, polygons: Array[PackedVector2Array], up: bool,
+		offset_cells := 0.0) -> void:
 	var air := Vector3.UP if up else Vector3.DOWN
 	var shared := {}
 	for polygon in polygons:
@@ -592,7 +608,7 @@ func _emit_cap_side(module: BuildingModule, height: int, polygons: Array[PackedV
 			continue
 		var world := PackedVector3Array()
 		for c in polygon:
-			world.append(module.cell_to_world(Vector3(c.x, float(height), c.y)))
+			world.append(module.cell_to_world(Vector3(c.x, float(height) + offset_cells, c.y)))
 		# Una normal plana por polígono (Newell), hacia el aire: la tapa se dibuja plana aunque tenga silla.
 		var normal := Vector3.ZERO
 		for i in world.size():

@@ -624,13 +624,7 @@ static func _button_preset() -> DashboardPreset:
 	# su propio estado y podrían contradecirse. Ver ShipDoor.connect_button.
 	var d := ControlArchetype.definition_of("button")
 	d.grid_size = DOOR_BUTTON
-	var slot := DashboardSlot.new()
-	slot.cell = Vector2i(0, 0)
-	slot.definition = d
-	var p := _empty_preset()
-	var slots: Array[DashboardSlot] = [slot]
-	p.fixed_slots = slots
-	return p
+	return DashboardPreset.single(d)
 
 
 ## Opaco, en el próximo color de la secuencia: cada pieza sale de un color distinto a su vecina.

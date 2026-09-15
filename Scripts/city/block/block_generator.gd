@@ -378,7 +378,8 @@ func _subdivide_section_into_clusters(section: Array, rng: RandomNumberGenerator
 		)
 
 		var start_cell = unassigned_cells[rng.randi_range(0, unassigned_cells.size() - 1)]
-		var target_size = rng.randi_range(1, 8)
+		# Un arquetipo que ocupa su sección entera (una sucursal) no deja lugar a vecinos.
+		var target_size: int = section.size() if cluster.archetype.whole_section else rng.randi_range(1, 8)
 		_grow_cluster(cluster, start_cell, unassigned_cells, target_size, rng)
 
 		building_clusters.append(cluster)

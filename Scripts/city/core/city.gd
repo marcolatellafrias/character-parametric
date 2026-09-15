@@ -267,6 +267,10 @@ var _deformable_boxes: MultiMeshInstance3D = null
 var _rigid_boxes: MultiMeshInstance3D = null
 ## La malla debug (semántica) de cada cluster, de donde sale su collider (ver BuildingShell).
 var _shell_mesh_by_cluster: Dictionary = {}
+## Y la piel de los HUECOS, que se pisan por dentro: ahí el collider es ella, con el hueco del portón.
+var _skin_mesh_by_cluster: Dictionary = {}
+## El portón de cada edificio que lleva uno (ver Gate): uno solo por edificio.
+var _gates: Dictionary = {}
 ## LAS ABERTURAS de cada cluster —`{quad, outward, arch, segments}` por puerta y ventana colocada—, que la
 ## piel corta al construirse. Por eso las fachadas se colocan ANTES que las cáscaras (ver `_passes`).
 var _openings: Dictionary = {}
@@ -447,7 +451,7 @@ func generate_graph() -> void:
 ## no sea la manzana (calles, afueras, carriles) queda apagado; los colliders también, porque el nodo va
 ## escalado (ver BuildingArchetype.build).
 func generate_block_sample(sample_seed: int, archetype: BuildingArchetype, side_m: float,
-		distortion: Vector2 = Vector2.ZERO) -> void:
+		distortion: Vector2 = Vector2.ZERO, colliders := false) -> void:
 	show_streets = false
 	show_outskirts = false
 	show_distorted_grid = false
@@ -460,7 +464,7 @@ func generate_block_sample(sample_seed: int, archetype: BuildingArchetype, side_
 	show_stair_zones = false
 	enable_traffic_lights = false
 	enable_ground_collider = false
-	enable_building_colliders = false
+	enable_building_colliders = colliders
 	show_buildings = true
 	show_delivery_doors = true
 	show_windows = true
@@ -535,6 +539,8 @@ func clear_visualization() -> void:
 	city_index = CityIndex.new()
 	_scope_by_cluster.clear()
 	_shell_mesh_by_cluster.clear()
+	_skin_mesh_by_cluster.clear()
+	_gates.clear()
 	_openings.clear()
 	parking_strips.clear()
 	_final_buildings = null
@@ -1288,6 +1294,8 @@ func _visualize_buildings() -> void:
 				continue
 			# Las aberturas se cortan con la piel ya armada: sus planos existen.
 			shell.skin.wall_thickness = cluster.archetype.wall_thickness_m
+			var hollow: bool = cluster.archetype.hollow
+			shell.skin.hollow = hollow
 			if _openings.has(cluster):
 				var record: Dictionary = _openings[cluster]
 				var quads: PackedVector3Array = record["quads"]
@@ -1298,17 +1306,28 @@ func _visualize_buildings() -> void:
 			# y su rango en el espacio de `Mesh.get_faces` —el del collider— empieza donde terminan las
 			# paredes. Una pieza con tapa son dos registros con los mismos ids.
 			var caps_offset := shell.wall_index_count()
-			for piece in pieces:
-				var cell: Vector2i = piece["cell"]
-				var walls: Vector2i = piece["walls"]
-				var caps: Vector2i = piece["caps"]
-				city_index.add(scope, object_id, CityIndex.Kind.BUILDING, cluster.id, cell.x, cell.y,
-					piece["floor"], walls.x, walls.y, piece["vertices"])
-				if caps.y > caps.x:
-					city_index.add(scope, object_id, CityIndex.Kind.BUILDING, cluster.id, cell.x, cell.y,
-						piece["floor"], caps_offset + caps.x, caps_offset + caps.y, piece["vertices"])
 			var shell_mesh := shell.debug_mesh()
 			_shell_mesh_by_cluster[cluster] = shell_mesh
+			var final_mesh := shell.skin.build()
+			raw_walls += shell.skin.raw_walls
+			lost_openings += shell.skin.lost_openings
+			if hollow:
+				# Un edificio hueco se pisa por dentro: su collider es la piel, y su identidad una sola pieza
+				# sobre ella —la piel no sabe de celdas ni de pisos—.
+				_skin_mesh_by_cluster[cluster] = final_mesh
+				if final_mesh.get_surface_count() > 0:
+					city_index.add(scope, object_id, CityIndex.Kind.BUILDING, cluster.id, -1, -1, -1, 0,
+						final_mesh.surface_get_array_index_len(0), final_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX])
+			else:
+				for piece in pieces:
+					var cell: Vector2i = piece["cell"]
+					var walls: Vector2i = piece["walls"]
+					var caps: Vector2i = piece["caps"]
+					city_index.add(scope, object_id, CityIndex.Kind.BUILDING, cluster.id, cell.x, cell.y,
+						piece["floor"], walls.x, walls.y, piece["vertices"])
+					if caps.y > caps.x:
+						city_index.add(scope, object_id, CityIndex.Kind.BUILDING, cluster.id, cell.x, cell.y,
+							piece["floor"], caps_offset + caps.x, caps_offset + caps.y, piece["vertices"])
 			if not show_buildings:
 				continue
 
@@ -1316,20 +1335,19 @@ func _visualize_buildings() -> void:
 			debug_instance.mesh = shell_mesh
 			debug_instance.material_override = _get_debug_material()
 			debug_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-			# El índice copia los triángulos de la malla SEMÁNTICA, se vea o no: sus rangos son los de ella.
-			city_index.set_scope_mesh(scope, debug_instance)
 			_debug_buildings.add_child(debug_instance)
 
-			var final_mesh := shell.skin.build()
-			raw_walls += shell.skin.raw_walls
-			lost_openings += shell.skin.lost_openings
 			var final_instance := MeshInstance3D.new()
 			final_instance.mesh = final_mesh
 			final_instance.material_override = _get_building_material() if _spotlit(cluster) \
 					else _get_ghost_material()
 			final_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-			_add_box_occluder(final_mesh, buildings)
+			if not hollow:  # un hueco se ve por dentro: nada que tapar con una caja
+				_add_box_occluder(final_mesh, buildings)
 			_final_buildings.add_child(final_instance)
+			# El índice copia los triángulos de la malla que dio el collider, se vea o no: sus rangos son los
+			# de ella. La semántica, salvo en los huecos, donde es la piel.
+			city_index.set_scope_mesh(scope, final_instance if hollow else debug_instance)
 
 	print("[Visualizer] Buildings: %d clusters (%d cells total) en %d bloques · paredes fuera de marco: %d · aberturas perdidas: %d · en %d ms"
 		% [total_clusters, total_cells, all_block_faces.size(), raw_walls, lost_openings, Time.get_ticks_msec() - started])
@@ -1359,8 +1377,9 @@ func _visualize_building_colliders() -> void:
 
 		for cluster in clusters:
 			# LOS MISMOS TRIÁNGULOS QUE LA MALLA SEMÁNTICA, literalmente: el collider se lee de ella, y por
-			# eso el `face_index` del rayo cae en los rangos que el índice anotó (ver BuildingShell).
-			var mesh: ArrayMesh = _shell_mesh_by_cluster.get(cluster)
+			# eso el `face_index` del rayo cae en los rangos que el índice anotó (ver BuildingShell). En un
+			# edificio hueco, de la piel: es lo que se pisa por dentro, con el hueco del portón.
+			var mesh: ArrayMesh = _skin_mesh_by_cluster.get(cluster, _shell_mesh_by_cluster.get(cluster))
 			if mesh == null:
 				continue
 			var shape := ConcavePolygonShape3D.new()
@@ -1889,6 +1908,11 @@ func _place_delivery_doors(block: BlockGenerator, surfaces: Dictionary, buffer: 
 		var cluster: BuildingCluster = block.get_cluster_for_cell(cell.x, cell.y)
 		if module == null or cluster == null or not _spotlit(cluster):
 			continue
+		# Un portón no es una pieza en la pared sino un nodo que sube (ver Gate): ocupa su abertura sin
+		# hornear nada, y hay uno solo por edificio.
+		var moving: bool = cluster.door.moving
+		if moving and _gates.has(cluster):
+			continue
 		number += 1
 		var floor_base := floor_idx * cells_per_floor
 		var facade := _wall_surface_cached(surfaces, module, cell, BuildingModule.Wall.facade(edge_idx),
@@ -1924,10 +1948,13 @@ func _place_delivery_doors(block: BlockGenerator, surfaces: Dictionary, buffer: 
 			stats["raised"] += 1
 		lo.z = row
 		var placer := GridPlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
-		if placer.place(facade, lo, size, cluster.door.unit(), CityIndex.Kind.DOOR, cluster.id, floor_idx,
-				edge_idx, number, sink):
+		if placer.place(facade, lo, size, UnitMesh.new() if moving else cluster.door.unit(), CityIndex.Kind.DOOR,
+				cluster.id, floor_idx, edge_idx, number, sink):
 			stats["total"] += 1
 			_record_opening(cluster, facade, lo, size, cluster.door.arch_height_m, cluster.door.arch_segments)
+			if moving:
+				_gates[cluster] = Gate.build(_buildings_container("Gates"), "gate_%d" % _object_for_cluster(cluster),
+					SampleWall.opening_quad(facade, lo, size), facade.axis_n, cluster.archetype.wall_thickness_m)
 		else:
 			stats["dropped"] += 1
 

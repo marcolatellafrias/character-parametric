@@ -214,18 +214,11 @@ func build(_seed_value: int, parent: Node3D) -> Node3D:
 	_box(root, Vector3(0.08, STAND_HEIGHT, 0.08), Transform3D(Basis(), Vector3(0.0, STAND_HEIGHT * 0.5, 0.0)), material)
 	_box(root, Vector3(plate_size.x, plate_size.y, 0.04), plate * Transform3D(Basis(), Vector3(0.0, 0.0, -0.02)), material)
 
-	var slot := DashboardSlot.new()
-	slot.cell = Vector2i(1, 1)
-	slot.definition = definition()
-	var preset := DashboardPreset.new()
-	preset.fill_remaining_random = false
-	var slots: Array[DashboardSlot] = [slot]
-	preset.fixed_slots = slots
 	var dash := ProceduralDashboard.new()
 	dash.name = "Dashboard"
 	dash.grid_columns = cells.x
 	dash.grid_rows = cells.y
-	dash.custom_preset = preset
+	dash.custom_preset = DashboardPreset.single(definition(), Vector2i(1, 1))
 	# La grilla arranca en su esquina superior izquierda: corrida, queda centrada en la placa.
 	dash.transform = plate * Transform3D(Basis(), Vector3(-cells.x * 0.5, cells.y * 0.5, 0.0) * ProceduralDashboard.CELL)
 	root.add_child(dash)
