@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "technical/character-blender-length-variable.md",
+                "file": "technical/sidewalks.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "character-blender-length-variable"
+              "title": "sidewalks"
             }
           }
         ]
@@ -187,6 +187,8 @@
   },
   "active": "9576508c48e6342d",
   "lastOpenFiles": [
+    "technical/city-generation.md",
+    "technical/character-blender-length-variable.md",
     "technical/N8INPg5D",
     "technical/character-appearance-system.md.tmp.16144.175147730bd8",
     "technical/character-appearance-system.md.tmp.16144.de3da83b9a36",
@@ -198,7 +200,6 @@
     "00-overview.md.tmp.16144.9a4e745c7617",
     "technical/character-appearance-system.md",
     "technical/character-appearance-system.md.tmp.16144.221e1916c680",
-    "technical/character-blender-length-variable.md.tmp.16144.8ce36a792d29",
     "00-overview.md",
     "conceptual/world.md",
     "technical/character-animation.md",
@@ -219,7 +220,6 @@
     "technical/traffic.md",
     "conceptual/controllables.md",
     "conceptual/glossary.md",
-    "technical/city-generation.md",
     "technical/bridges.md",
     "onfoot-gameplay.md",
     "controllables.md"

@@ -179,8 +179,9 @@ enum BuildingGrid { NONE, DEFORMABLE, RIGID }
 	set(value):
 		building_grid = value
 		_apply_view()
-## Con la vista debug, la región exacta que cada objeto colocado ocupa en su grilla, como caja translúcida:
-## roja para lo deformable, verde para lo rígido (ver `_visualize_placement_boxes`).
+## Con la vista debug, la región exacta que cada objeto colocado ocupa, como caja translúcida, una por
+## manera de colocar: roja la del módulo, verde la de superficie, azul la de free placement (ver
+## `_visualize_placement_boxes`).
 @export var show_deformable_boxes: bool = false:
 	set(value):
 		show_deformable_boxes = value
@@ -188,6 +189,10 @@ enum BuildingGrid { NONE, DEFORMABLE, RIGID }
 @export var show_rigid_boxes: bool = false:
 	set(value):
 		show_rigid_boxes = value
+		_apply_view()
+@export var show_free_boxes: bool = false:
+	set(value):
+		show_free_boxes = value
 		_apply_view()
 
 @export_group("Planos de Pisos")
@@ -258,13 +263,14 @@ var _building_material: StandardMaterial3D = null
 var _debug_material: ShaderMaterial = null
 const BUILDING_DEBUG_SHADER := preload("res://Shaders/building_debug.gdshader")
 const PLACEMENT_BOX_SHADER := preload("res://Shaders/placement_box.gdshader")
-const DEFORMABLE_BOX_TINT := Color(1.0, 0.15, 0.1, 0.12)
-const RIGID_BOX_TINT := Color(0.15, 1.0, 0.2, 0.12)
-## Los nodos que la vista prende y apaga (ver `_apply_view`): las dos mallas de los edificios y las cajas.
+## Un color por manera de colocar (ver CityIndex.Grid): deformable, rígida, free placement.
+const BOX_TINTS: Array[Color] = [Color(1.0, 0.15, 0.1, 0.12), Color(0.15, 1.0, 0.2, 0.12),
+	Color(0.2, 0.5, 1.0, 0.12)]
+## Los nodos que la vista prende y apaga (ver `_apply_view`): las dos mallas de los edificios y las cajas
+## de lo colocado, una por manera de colocar (ver CityIndex.Grid).
 var _final_buildings: Node3D = null
 var _debug_buildings: Node3D = null
-var _deformable_boxes: MultiMeshInstance3D = null
-var _rigid_boxes: MultiMeshInstance3D = null
+var _boxes: Array[MultiMeshInstance3D] = []
 ## La malla debug (semántica) de cada cluster, de donde sale su collider (ver BuildingShell).
 var _shell_mesh_by_cluster: Dictionary = {}
 ## Y la piel de los HUECOS, que se pisan por dentro: ahí el collider es ella, con el hueco del portón.
@@ -545,8 +551,7 @@ func clear_visualization() -> void:
 	parking_strips.clear()
 	_final_buildings = null
 	_debug_buildings = null
-	_deformable_boxes = null
-	_rigid_boxes = null
+	_boxes.clear()
 
 func visualize_graph() -> void:
 	if generator == null or generator.plain_graph == null:
@@ -699,10 +704,10 @@ func _apply_view() -> void:
 		_final_buildings.visible = not building_debug_view
 	if is_instance_valid(_debug_buildings):
 		_debug_buildings.visible = building_debug_view
-	if is_instance_valid(_deformable_boxes):
-		_deformable_boxes.visible = building_debug_view and show_deformable_boxes
-	if is_instance_valid(_rigid_boxes):
-		_rigid_boxes.visible = building_debug_view and show_rigid_boxes
+	var shown: Array[bool] = [show_deformable_boxes, show_rigid_boxes, show_free_boxes]
+	for grid in _boxes.size():
+		if is_instance_valid(_boxes[grid]):
+			_boxes[grid].visible = building_debug_view and shown[grid]
 	if _debug_material != null:
 		_debug_material.set_shader_parameter("grid_mode", building_grid)
 
@@ -2219,6 +2224,9 @@ func _place_entity(container: Node3D, unit: UnitMesh, size: Vector3, xf: Transfo
 	for v: Vector3 in arrays[Mesh.ARRAY_VERTEX]:
 		world.append(xf * v)
 	city_index.add(scope, object_id, kind, id_a, id_b, id_c, id_d, 0, arrays[Mesh.ARRAY_INDEX].size(), world)
+	# La región, para la vista de cajas. Sale de acá y no de quien la coloca, así toda entidad futura
+	# (carteles, chimeneas) aparece en la vista sin hacer nada.
+	city_index.add_entity_region(xf, size)
 
 
 # ============================================
@@ -2293,6 +2301,8 @@ func _visualize_parked_cars() -> void:
 						var car := ParkedCar.create(type, physical)
 						car.transform = strip.frame_at(footprint)
 						container.add_child(car)
+						city_index.add_entity_region(car.transform,
+							Vector3(archetype.width, archetype.height, archetype.depth))
 						if physical:
 							(container as PassiveBodies).register(car as RigidBody3D)
 						total += 1
@@ -2303,19 +2313,22 @@ func _visualize_parked_cars() -> void:
 # ============================================
 # CAJAS DE LO COLOCADO (vista debug)
 # ============================================
-## LA REGIÓN EXACTA QUE OCUPA CADA OBJETO COLOCADO, como caja translúcida: rojas las de la grilla deformable
-## (techos, veredas, extremos de puente), verdes las de las rígidas (puertas, ventanas, tanques). Una
-## MultiMesh por clase con un cubo unitario por instancia, llevado al mundo con el MISMO marco bilineal que
+## LA REGIÓN EXACTA QUE OCUPA CADA OBJETO COLOCADO, como caja translúcida, un color por MANERA DE COLOCAR
+## (ver CityIndex.Grid): rojas las de la grilla del módulo (techos, veredas, extremos de puente), verdes las
+## de superficie (puertas, ventanas) y azules las de free placement (autos estacionados, tanques). Una
+## MultiMesh por manera, con un cubo unitario por instancia llevado al mundo con el MISMO marco bilineal que
 ## el placer usó para la pieza (ver CityIndex.add_region y Shaders/placement_box.gdshader): no es una caja
 ## afín parecida, es la región, con la curvatura de su grilla. Las prende la vista (`_apply_view`).
 func _visualize_placement_boxes() -> void:
 	var parent := _buildings_container("PlacementBoxes")
 	var cube := _unit_box_mesh()
-	_deformable_boxes = _placement_boxes(parent, "Deformable", cube, city_index.deformable_regions,
-		DEFORMABLE_BOX_TINT)
-	_rigid_boxes = _placement_boxes(parent, "Rigid", cube, city_index.rigid_regions, RIGID_BOX_TINT)
-	print("[Visualizer] Cajas de lo colocado: %d deformables · %d rígidas"
-		% [_deformable_boxes.multimesh.instance_count, _rigid_boxes.multimesh.instance_count])
+	var names: Array[String] = ["Deformable", "Rigid", "Free"]
+	_boxes.clear()
+	for grid in CityIndex.Grid.size():
+		_boxes.append(_placement_boxes(parent, names[grid], cube, city_index.regions[grid], BOX_TINTS[grid]))
+	print("[Visualizer] Cajas de lo colocado: %d deformables · %d rígidas · %d de free placement"
+		% [_boxes[0].multimesh.instance_count, _boxes[1].multimesh.instance_count,
+			_boxes[2].multimesh.instance_count])
 
 
 func _placement_boxes(parent: Node3D, node_name: String, cube: Mesh, frames: PackedVector3Array,

@@ -58,12 +58,16 @@ var _by_object: Dictionary = {}
 ## edificio entero, cuyas paredes y techo están en mallas distintas.
 var _mesh_by_scope: Dictionary = {}
 
+## LAS TRES MANERAS DE COLOCAR (ver technical/city-generation.md, "Placing objects"), que son las tres
+## listas de regiones de abajo y los tres colores de la vista debug.
+enum Grid { DEFORMABLE, RIGID, FREE }
+
 ## LAS REGIONES COLOCADAS, para dibujar sus cajas en la vista debug (ver City._visualize_placement_boxes):
-## por cada pieza que pasó por el placer, el marco de su región —los cinco vectores de
-## `PlacementGrid.region_frame`— en la lista de su clase de grilla. Es la región exacta que la pieza ocupó
-## en su grilla, no la envolvente de sus triángulos: una vereda que no llena su región muestra la región.
-var deformable_regions := PackedVector3Array()
-var rigid_regions := PackedVector3Array()
+## una lista por manera de colocar, y en cada una, por pieza, el marco de su región —los cinco vectores de
+## `PlacementGrid.region_frame`—. Es la región exacta que la pieza ocupó, no la envolvente de sus
+## triángulos: una vereda que no llena su región muestra la región. En free placement, donde no hay
+## celdas, es la caja de la entidad instanciada (ver City._place_entity).
+var regions: Array[PackedVector3Array] = [PackedVector3Array(), PackedVector3Array(), PackedVector3Array()]
 
 
 ## Un scope nuevo, para estampar en el collider que va a frenar el rayo.
@@ -72,12 +76,18 @@ func new_scope() -> int:
 	return _next_scope
 
 
-## Anota la región de una pieza colocada (ver `deformable_regions`).
-func add_region(rigid: bool, frame: PackedVector3Array) -> void:
-	if rigid:
-		rigid_regions.append_array(frame)
-	else:
-		deformable_regions.append_array(frame)
+## Anota la región de una pieza colocada (ver `regions`).
+func add_region(grid: Grid, frame: PackedVector3Array) -> void:
+	regions[grid].append_array(frame)
+
+
+## LA REGIÓN DE UNA ENTIDAD de free placement: ahí no hay celdas, así que la región es su propia caja —el
+## mismo transform y el mismo tamaño con que se dibuja, centrada en `x` y `z` y apoyada en `y = 0`, la
+## convención de `UnitMesh.build_mesh`—, escrita en el formato de `PlacementGrid.region_frame`.
+func add_entity_region(xf: Transform3D, size: Vector3) -> void:
+	add_region(Grid.FREE, PackedVector3Array([
+		xf * Vector3(-size.x * 0.5, 0.0, -size.z * 0.5), xf.basis.x * size.x, xf.basis.z * size.z,
+		Vector3.ZERO, xf.basis.y * size.y]))
 
 
 ## Anota una pieza. `from_index`/`to_index` son posiciones en el array de índices de la malla fusionada.

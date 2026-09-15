@@ -130,7 +130,7 @@ func _block_sample(seed_value: int, parent: Node3D, side_m: float, scale: float,
 	city.scale = Vector3.ONE * scale
 	var half := side_m * scale * 0.5
 	city.position = Vector3(-half, SandboxParcel.PLANE_LIFT * 3.0, -half)
-	for property in ["building_debug_view", "building_grid", "show_deformable_boxes", "show_rigid_boxes"]:
+	for property in ["building_debug_view", "building_grid"] + BOX_FLAGS:
 		if options.has(property):
 			city.set(property, options[property])
 	_configure_sample(city)
@@ -148,6 +148,8 @@ func _configure_sample(_city: Node3D) -> void:
 ## para ver el rango entero— y lo que en el juego es el menú de vista (F3): la malla debug, la grilla, las
 ## cajas de lo colocado, sobre todas las manzanas de la fila a la vez.
 const DISTORTION_LEVELS: Array[float] = [0.0, 0.05, 0.1, 0.2]
+## Las cajas de lo colocado, una por manera de colocar (ver CityIndex.Grid): la tecla las prende juntas.
+const BOX_FLAGS: Array[String] = ["show_deformable_boxes", "show_rigid_boxes", "show_free_boxes"]
 
 
 func category_options() -> Array[Dictionary]:
@@ -198,11 +200,10 @@ func _cycle_grid(parcels: Array) -> void:
 
 
 func _toggle_boxes(parcels: Array) -> void:
-	var on := not bool(options.get("show_deformable_boxes", false))
-	options["show_deformable_boxes"] = on
-	options["show_rigid_boxes"] = on
-	_apply_to_samples(parcels, "show_deformable_boxes", on)
-	_apply_to_samples(parcels, "show_rigid_boxes", on)
+	var on := not bool(options.get(BOX_FLAGS[0], false))
+	for flag in BOX_FLAGS:
+		options[flag] = on
+		_apply_to_samples(parcels, flag, on)
 
 
 static func _apply_to_samples(parcels: Array, property: String, value: Variant) -> void:

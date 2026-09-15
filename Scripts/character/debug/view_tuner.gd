@@ -15,6 +15,7 @@ const LABELS := {
 	"building_grid": "Grilla",
 	"show_deformable_boxes": "Cajas de deformables",
 	"show_rigid_boxes": "Cajas de rígidos",
+	"show_free_boxes": "Cajas de free placement",
 }
 
 const HELP := {
@@ -22,6 +23,7 @@ const HELP := {
 	"building_grid": "Con la vista debug, una grilla translúcida sobre cada cara de cada módulo. DEFORMABLE: la del módulo (celdas de 0,213 m; techos, veredas, extremos de puente). RIGID: la de cada superficie (~0,25 m; puertas, ventanas, tanques). Es la misma grilla donde se coloca, vértice por vértice.",
 	"show_deformable_boxes": "Con la vista debug, la región exacta que ocupa cada objeto deformable en su grilla, como caja roja translúcida.",
 	"show_rigid_boxes": "Lo mismo para los rígidos, en verde.",
+	"show_free_boxes": "Lo mismo para las entidades de free placement —autos estacionados, tanques—, en azul. Ahí no hay celdas: la caja es la de la entidad.",
 }
 
 

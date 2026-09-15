@@ -152,5 +152,5 @@ func place(grid: PlacementGrid, lo: Vector3i, size: Vector3i, mesh: UnitMesh,
 	_buffer["indices"].append_array(indices)
 	_index.add(_scope, _object, kind, id_a, id_b, id_c, id_d, idx_from, idx_from + written, verts)
 	grid.occupy(lo, size)
-	_index.add_region(grid is RigidMatrix, frame)
+	_index.add_region(CityIndex.Grid.RIGID if grid is RigidMatrix else CityIndex.Grid.DEFORMABLE, frame)
 	return true
