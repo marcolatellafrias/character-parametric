@@ -34,7 +34,7 @@ extends RefCounted
 enum Style { FLAT, SHED, GABLE, FRENCH }
 
 ## Qué pieza del catálogo es. Es lo que el inspector nombra al apuntarle.
-enum Piece { TOP, SKIRT, CORNER, INNER_CORNER, CHAMFER, SLOPE, TANK }
+enum Piece { TOP, SKIRT, CORNER, INNER_CORNER, CHAMFER, SLOPE, TANK, CUPOLA }
 
 ## Qué hay del otro lado de un borde, EN ORDEN DE PREFERENCIA para tirarle el agua. El orden del enum es la
 ## prioridad: gana el borde de mayor valor.
@@ -69,7 +69,8 @@ const OPTIONS := {
 }
 
 const STYLE_NAMES: Array[String] = ["plano", "un agua", "dos aguas", "frances"]
-const PIECE_NAMES: Array[String] = ["tapa", "faldon", "esquina", "rincon", "chaflan", "agua", "tanque de agua"]
+const PIECE_NAMES: Array[String] = ["tapa", "faldon", "esquina", "rincon", "chaflan", "agua", "tanque de agua",
+	"cupula"]
 
 
 static func style_name(style: int) -> String:
@@ -131,6 +132,44 @@ static func layout(block: BlockGenerator, cluster: BuildingCluster, flat_chance:
 	out["style"] = style
 	out["pieces"] = pieces
 	return out
+
+
+## LA CÚPULA: sobre la ochava de un edificio de esquina —la celda con chaflán de CALLE—, a nivel del techo y
+## atravesando el que tenga (ver GridPlacer.place `over_occupied`). Devuelve `{"cell", "lo", "size", "mesh"}`
+## o `{}`. La región es el cuadrado de `RoofProps.CUPOLA_DIAMETER_M` en celdas del módulo, corrido desde el
+## vértice de la esquina lo justo para que el tambor no sobresalga de la ochava, y `CUPOLA_HEIGHT_M` de
+## alto. Es un DEFORMABLE CON LÍMITE: se dobla con el módulo, y si la celda está torcida más de
+## `PlacementGrid.LIMITED_SKEW_DEG` el placer la rechaza y el edificio queda sin cúpula.
+static func cupola(block: BlockGenerator, cluster: BuildingCluster, chance: float, roof_index: int) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = block.cluster_seed + cluster.id * 4409
+	if rng.randf() >= chance:
+		return {}
+	var columns := _columns(block, cluster)
+	for r: Dictionary in _core_rects(block, cluster):
+		var module: BuildingModule = r["module"]
+		var rect: Rect2i = r["rect"]
+		for corner in 4:
+			if int(module.get_chamfer_kinds().get(corner, -1)) != BuildingModule.ChamferKind.STREET:
+				continue
+			# El cuadrante interior de la esquina `corner` es el cuadrante `corner` (ver _quadrant_rect).
+			var size := module.cells_for(RoofProps.CUPOLA_DIAMETER_M, RoofProps.CUPOLA_HEIGHT_M,
+				RoofProps.CUPOLA_DIAMETER_M)
+			var cut := _chamfer_cut(module, corner)
+			# Corrida desde el vértice hasta que el círculo queda del lado de adentro de la diagonal del corte.
+			var off := Vector2i(maxi(ceili((cut.x - 0.293 * size.x) * 0.5), 0), maxi(ceili((cut.y - 0.293 * size.z) * 0.5), 0))
+			var v := _rect_corner(rect, corner) + Vector2i(off.x if corner % 3 == 0 else -off.x, off.y if corner < 2 else -off.y)
+			var region := _quadrant_rect(v, corner, Vector2i(size.x, size.z))
+			if not rect.encloses(region):
+				continue
+			var cell: Vector2i = r["cell"]
+			return {
+				"cell": cell,
+				"lo": Vector3i(region.position.x - cell.x * columns, roof_index, region.position.y - cell.y * columns),
+				"size": size,
+				"mesh": RoofProps.cupola_unit(),
+			}
+	return {}
 
 
 # ── LA HUELLA EN CELDAS GLOBALES ────────────────────────────────────────────────────────────────

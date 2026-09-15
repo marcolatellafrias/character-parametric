@@ -69,6 +69,8 @@ var roof_skirt_building_cells: float = 8.0
 ## Probabilidad de que el techo salga PLANO del todo, aun cuando su forma permita aguas. No es un caso de
 ## descarte: los techos planos dan variedad al conjunto y son los únicos donde se apoya un tanque de agua.
 var flat_roof_chance: float = 0.35
+## Probabilidad de que un edificio de esquina lleve CÚPULA sobre la ochava (ver RoofPlanner.cupola).
+var cupola_chance: float = 0.3
 
 ## LAS VENTANAS. Solo números: las reglas que los usan están en FacadePlanner.
 var window_layout: int = FacadePlanner.Layout.STACKED
@@ -255,6 +257,7 @@ class GenericPoor extends BuildingArchetype:
 		door_archetypes = [DoorArchetype.delivery()]
 		window_sill_m = 1.0
 		window_fill = 0.55
+		cupola_chance = 0.15
 
 ## Rico: ventanas altas, apiladas, con ritmo apretado.
 class GenericRich extends BuildingArchetype:
@@ -268,6 +271,7 @@ class GenericRich extends BuildingArchetype:
 		door_archetypes = [DoorArchetype.delivery()]
 		window_sill_m = 1.6
 		window_gap_m = 1.4
+		cupola_chance = 0.7
 
 ## Industrial: pocas ventanas, anchas y bajas, muy separadas.
 class GenericIndustrial extends BuildingArchetype:
@@ -281,3 +285,4 @@ class GenericIndustrial extends BuildingArchetype:
 		door_archetypes = [DoorArchetype.gate(), DoorArchetype.delivery()]
 		window_sill_m = 3.0
 		window_gap_m = 5.0
+		cupola_chance = 0.1

@@ -29,6 +29,12 @@ extends RefCounted
 ## Altura sin techo, para una grilla que no acota `y` (el módulo: los pisos que hagan falta).
 const UNBOUNDED := 1 << 30
 
+## DEFORMABLES CON LÍMITE: lo que va en el módulo se dobla con él, pero hay objetos —una cúpula, redonda por
+## definición— que solo se aceptan si su región está casi derecha. El límite es de ÁNGULOS y no de tamaño:
+## cuánto se aparta de 90° la esquina más torcida del cuadrilátero de la región (`region_skew_deg`). Un
+## solo valor para todos los objetos de esta clase; el placer lo aplica (ver GridPlacer.place).
+const LIMITED_SKEW_DEG := 10.0
+
 ## Las doce aristas de un sólido de ocho esquinas en orden de bits (1 → x, 2 → y, 4 → z).
 const HEXAHEDRON_EDGES: Array[Vector2i] = [
 	Vector2i(0, 1), Vector2i(2, 3), Vector2i(4, 5), Vector2i(6, 7),
@@ -99,6 +105,19 @@ func region_frame(lo: Vector3, size: Vector3) -> PackedVector3Array:
 	var dxz := e13 * (ds * dt)
 	var dy := axis_n * (size.y * cell.y)
 	return PackedVector3Array([o, dx, dz, dxz, dy])
+
+
+## Cuánto se aparta de 90° la esquina más torcida de la región `[lo, lo + size)`, en grados.
+func region_skew_deg(lo: Vector3i, size: Vector3i) -> float:
+	var frame := region_frame(Vector3(lo), Vector3(size))
+	var p: Array[Vector3] = [frame[0], frame[0] + frame[1], frame[0] + frame[1] + frame[2] + frame[3],
+		frame[0] + frame[2]]
+	var worst := 0.0
+	for i in 4:
+		var a := p[(i + 3) % 4] - p[i]
+		var b := p[(i + 1) % 4] - p[i]
+		worst = maxf(worst, absf(rad_to_deg(a.angle_to(b)) - 90.0))
+	return worst
 
 
 ## UN PUNTO DEL MUNDO EN CELDAS (continuo, sin acotar): la inversa. En el plano se invierte la bilineal por

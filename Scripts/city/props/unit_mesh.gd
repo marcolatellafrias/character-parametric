@@ -173,6 +173,42 @@ func add_ring_z(lo: Vector3, hi: Vector3, thickness: float, color: Color, segmen
 		add_quad(o1 + depth, o2 + depth, i2 + depth, i1 + depth, mid, color)
 
 
+## Media esfera (o casquete) con el eje en Y: la elipse inscrita en la base de la caja, y el alto de la caja
+## como alto, en `rings` paralelos hasta la punta. Sin base: se apoya sobre otra cosa.
+func add_dome(lo: Vector3, hi: Vector3, color: Color, segments: int = DEFAULT_SEGMENTS, rings: int = 4) -> void:
+	var centre := (lo + hi) * 0.5
+	var radius := (hi - lo) * 0.5
+	var inside := Vector3(centre.x, lo.y, centre.z)
+	var apex := Vector3(centre.x, hi.y, centre.z)
+	var previous := PackedVector3Array()
+	for j in rings + 1:
+		var phi := PI * 0.5 * float(j) / float(rings)
+		var ring := PackedVector3Array()
+		for i in segments:
+			var a := TAU * float(i) / float(segments)
+			ring.append(Vector3(centre.x + cos(a) * radius.x * cos(phi), lo.y + (hi.y - lo.y) * sin(phi),
+				centre.z + sin(a) * radius.z * cos(phi)))
+		if j > 0:
+			for i in segments:
+				var i2 := (i + 1) % segments
+				if j == rings:
+					add_tri(previous[i], previous[i2], apex, inside, color)
+				else:
+					add_quad(previous[i], previous[i2], ring[i2], ring[i], inside, color)
+		previous = ring
+
+
+## Una pirámide con la base en la de la caja, alineada a sus ejes, y la punta arriba.
+func add_pyramid(lo: Vector3, hi: Vector3, color: Color) -> void:
+	var apex := Vector3((lo.x + hi.x) * 0.5, hi.y, (lo.z + hi.z) * 0.5)
+	var inside := Vector3(apex.x, lo.y + (hi.y - lo.y) * 0.25, apex.z)
+	var base: Array[Vector3] = [Vector3(lo.x, lo.y, lo.z), Vector3(hi.x, lo.y, lo.z),
+		Vector3(hi.x, lo.y, hi.z), Vector3(lo.x, lo.y, hi.z)]
+	for i in 4:
+		add_tri(base[i], base[(i + 1) % 4], apex, inside, color)
+	add_quad(base[0], base[1], base[2], base[3], inside, color)
+
+
 ## Un cono con el eje en Y, apoyado en la elipse inscrita en la base de la caja y con la punta arriba.
 func add_cone(lo: Vector3, hi: Vector3, color: Color, segments: int = DEFAULT_SEGMENTS) -> void:
 	var cx := (lo.x + hi.x) * 0.5

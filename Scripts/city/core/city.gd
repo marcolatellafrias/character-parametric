@@ -1669,6 +1669,11 @@ func _visualize_roof_props() -> void:
 	var tanks := 0
 	var roofs := 0
 	var roof_bodies := 0
+	var cupolas := 0
+	## Cúpulas que no entraron por torsión de la celda (ver PlacementGrid.LIMITED_SKEW_DEG). En la ciudad de
+	## la Demo la torsión de las esquinas de manzana se reparte pareja de 2° a 58°: a 10° entra una de cada
+	## cuatro o cinco candidatas, unas 50 cúpulas en 191 manzanas.
+	var cupolas_skewed := 0
 	## Edificios cuyo estilo sorteado no cerró como mosaico y quedaron planos, contados por motivo (ver
 	## RoofPlanner.layout). Cualquier número acá es un caso a mirar.
 	var roof_fallbacks := {}
@@ -1706,10 +1711,12 @@ func _visualize_roof_props() -> void:
 			var pitch := 2.2
 			var flat_chance := 0.35
 			var skirt := 8.0
+			var cupola_chance := 0.0
 			if cluster.archetype != null:
 				pitch = cluster.archetype.roof_pitch_height
 				flat_chance = cluster.archetype.flat_roof_chance
 				skirt = cluster.archetype.roof_skirt_building_cells
+				cupola_chance = cluster.archetype.cupola_chance
 			var pitch_cells := maxi(1, roundi(pitch / cell_height))
 			var plan: Dictionary = RoofPlanner.layout(block, cluster, flat_chance, pitch_cells,
 				roundi(skirt), roof_index)
@@ -1751,6 +1758,17 @@ func _visualize_roof_props() -> void:
 						# El planner valida el mosaico antes; si igual algo no entra, es un bug del planner.
 						roof_rejected += 1
 
+			# LA CÚPULA: sobre la ochava de un edificio de esquina, a nivel del techo y ATRAVESÁNDOLO —no pide
+			# lugar libre, ocupa igual—, y solo si su celda está casi derecha: un deformable con límite.
+			var cupola := RoofPlanner.cupola(block, cluster, cupola_chance, roof_index)
+			if not cupola.is_empty() and modules.has(cupola["cell"]):
+				if placer.place(modules[cupola["cell"]], cupola["lo"], cupola["size"], cupola["mesh"],
+						CityIndex.Kind.ROOF, cluster.id, RoofPlanner.Piece.CUPOLA, -1, -1, 0, true,
+						PlacementGrid.LIMITED_SKEW_DEG):
+					cupolas += 1
+				else:
+					cupolas_skewed += 1
+
 			# El tanque va sobre una celda que haya quedado PLANA: sobre un techo a dos aguas no se apoya.
 			if not flat_cells.is_empty() and rng.randf() < water_tank_chance:
 				# COLOCADO POR LA INTERFAZ: una región de celdas y una mesh unitaria. La deformación, el
@@ -1777,8 +1795,8 @@ func _visualize_roof_props() -> void:
 		if _bake_placed(container, buffer, scope, true):
 			roof_bodies += 1
 
-	print("[Visualizer] Objetos de techo: %d edificios con techo inclinado · %d tanques · %d colliders · piezas rechazadas: %d · planos por no cerrar: %s"
-		% [roofs, tanks, roof_bodies, roof_rejected, str(roof_fallbacks)])
+	print("[Visualizer] Objetos de techo: %d edificios con techo inclinado · %d tanques · %d cúpulas (%d sin lugar por torsión) · %d colliders · piezas rechazadas: %d · planos por no cerrar: %s"
+		% [roofs, tanks, cupolas, cupolas_skewed, roof_bodies, roof_rejected, str(roof_fallbacks)])
 
 
 ## HORNEA UN BUFFER DE PIEZAS COLOCADAS (techos, veredas, puertas, ventanas): una malla con el material de

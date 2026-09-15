@@ -276,6 +276,7 @@ A roof is **a small catalogue of modular pieces placed on the building grid thro
 | **chamfer** | the ochava's own square | three skirts (two edges, the cut) and the remaining top |
 | **slope** | one band of a gable or shed, per module | plane from `h_low` to `h_high`, with optional walls on three sides |
 | **tank** | a flat roof | legs, cylinder, cone |
+| **cupola** | the ochava cell of a corner building, **through whatever roof it has** | drum, dome, lantern, small dome, spire |
 
 Pieces carry **numeric parameters** — heights at their edges, where a chamfer's cut falls — rather than existing in one variant per size. That is what lets a skirt that crosses three modules be placed as three skirts that meet exactly, and what keeps a gable's ridge at the same height whatever the building's width (if each band rose a fixed step, a four-cell-wide building would get a nine-metre roof). It is still a finite catalogue placed by rule; the pieces just know how to stretch.
 
@@ -322,6 +323,13 @@ A single cell never gets French. If the cell footprint is rectangular but the co
 
 **The skirt is measured in building cells** (`BuildingArchetype.roof_skirt_building_cells`, 8 by default, ~1.4 m) so it is the same size on a narrow building as on a wide one; with the 2.2 m pitch that is the steep slope of a mansard.
 
+### The cupola — through the roof, deformable with a limit
+
+A corner building (a cell with a **street** chamfer) may carry a cupola on its ochava (`BuildingArchetype.cupola_chance`, seeded per cluster). `RoofPlanner.cupola` is the decider: a square region of `RoofProps.CUPOLA_DIAMETER_M` in the module's cells, pushed in from the corner vertex just enough for the drum to stay inside the diagonal of the cut, `CUPOLA_HEIGHT_M` tall, at roof level. Two things are new in how it is placed, both in `GridPlacer.place`:
+
+- **It goes through the roof.** The roof pieces are already there; the cupola does not ask for a free region (`over_occupied`), only that it fits the grid — and it still occupies, so the tank placed after it keeps clear. This is the first of the objects that *come out of* a roof (chimneys will be another, as free placement).
+- **It is a deformable with a limit.** It rides the module grid like every roof piece — it bends with the block — but a dome is round by definition, so it is accepted only if its region is nearly square: `PlacementGrid.LIMITED_SKEW_DEG` (10°) is the most any corner of the region's quad may depart from 90°. A limit of **angles, not size**, one value for every object of this class. Buildings whose cell is more skewed simply get no cupola; the generation log counts them (`sin lugar por torsión`), and the sandbox's X / Z distortion keys show the threshold at work. Measured on the Demo city, the skew of block-corner cells is spread almost evenly from 2° to 58° — it comes from the shape of the block itself, not from the wave distortion — so at 10° roughly one candidate in four or five passes: ~50 cupolas in 191 blocks.
+
 ### Superseded — three earlier designs, each easy to reintroduce
 
 - **A piece per cell chosen from the cell's neighbourhood**: neighbouring pieces disagreed on the profile of the edge they share. *A cell cannot decide on its own.*
@@ -330,7 +338,7 @@ A single cell never gets French. If the cell footprint is rectangular but the co
 
 ### In the index
 
-One record **per piece**: ids are `a` = building, `b` = piece (`RoofPlanner.Piece`), `c` = outline side or −1, `d` = style or −1. The inspector names them — "faldon de techo frances · edificio 16 · lado 3". Colour is per style, with French set apart in slate blue-grey — the real material of a mansard — and vertical walls in the side colour.
+One record **per piece**: ids are `a` = building, `b` = piece (`RoofPlanner.Piece`, the cupola included), `c` = outline side or −1, `d` = style or −1. The inspector names them — "faldon de techo frances · edificio 16 · lado 3". Colour is per style, with French set apart in slate blue-grey — the real material of a mansard — and vertical walls in the side colour.
 
 ---
 
@@ -453,7 +461,7 @@ The grid also owns:
 placer.place(grid, lo, size, mesh, kind, id_a, id_b, id_c, id_d)  # -> bool
 ```
 
-Whoever places something thinks about two things: the **region** (`lo` and `size`, in cells of that grid) and the **mesh** (`UnitMesh`, [unit_mesh.gd](../../props/unit_mesh.gd)): x, y, z from 0 to 1, a colour and an outward direction per triangle. Nothing else — never silhouettes, never neighbours, never slopes. Inside `place`: the region's bilinear is precomputed once (`PlacementGrid.region_frame`) and every vertex goes through it; face orientation is measured **in the world** with the bilinear's derivative, because a grid can mirror an axis; the piece is recorded in `CityIndex` with the placer's scope and object; the region is occupied. If it was not free or did not fit, `place` returns `false` and places nothing: two objects cannot overlap by oversight.
+Whoever places something thinks about two things: the **region** (`lo` and `size`, in cells of that grid) and the **mesh** (`UnitMesh`, [unit_mesh.gd](../../props/unit_mesh.gd)): x, y, z from 0 to 1, a colour and an outward direction per triangle. Nothing else — never silhouettes, never neighbours, never slopes. Inside `place`: the region's bilinear is precomputed once (`PlacementGrid.region_frame`) and every vertex goes through it; face orientation is measured **in the world** with the bilinear's derivative, because a grid can mirror an axis; the piece is recorded in `CityIndex` with the placer's scope and object; the region is occupied. If it was not free or did not fit, `place` returns `false` and places nothing: two objects cannot overlap by oversight. Three optional tails: `sink_cells` (the piece starts that many cells below the surface — a window inside its reveals), `over_occupied` (no free check, only fit; still occupies — the cupola through the roof), `max_skew_deg` (reject a region whose quad is more skewed than this — see *The cupola*).
 
 ### Surfaces
 

@@ -159,6 +159,27 @@ static func tank_height_m() -> float:
 	return TANK_LEG_M + TANK_BODY_M + TANK_CAP_M
 
 
+## LA CÚPULA de un edificio de esquina, en metros: el diámetro del tambor y el alto total. Va en el módulo
+## como deformable con límite (ver RoofPlanner.cupola). Cobre oxidado sobre un tambor de piedra.
+const CUPOLA_DIAMETER_M := 6.0
+const CUPOLA_HEIGHT_M := 9.5
+const CUPOLA_DRUM_COLOR := Color(0.62, 0.57, 0.5)
+const CUPOLA_DOME_COLOR := Color(0.36, 0.52, 0.48)
+const CUPOLA_SPIRE_COLOR := Color(0.3, 0.28, 0.26)
+
+
+## CÚPULA: un tambor chato, la media esfera, la linterna, su media esfera chica y una aguja bien estirada.
+## El diámetro llena el cubo en `x` y `z`; en `y` cada parte lleva su fracción del alto.
+static func cupola_unit() -> UnitMesh:
+	var m := UnitMesh.new()
+	m.add_cylinder(Vector3(0.0, 0.0, 0.0), Vector3(1.0, 0.26, 1.0), CUPOLA_DRUM_COLOR, 20)
+	m.add_dome(Vector3(0.0, 0.26, 0.0), Vector3(1.0, 0.56, 1.0), CUPOLA_DOME_COLOR, 20, 6)
+	m.add_cylinder(Vector3(0.36, 0.54, 0.36), Vector3(0.64, 0.72, 0.64), CUPOLA_DRUM_COLOR, 12)
+	m.add_dome(Vector3(0.36, 0.72, 0.36), Vector3(0.64, 0.8, 0.64), CUPOLA_DOME_COLOR, 12, 4)
+	m.add_pyramid(Vector3(0.44, 0.79, 0.44), Vector3(0.56, 1.0, 0.56), CUPOLA_SPIRE_COLOR)
+	return m
+
+
 ## TANQUE DE AGUA estilo americano —cuatro patas, un cilindro y un cono chato de tapa— en el cubo unitario.
 ## El diámetro llena el cubo en `x` y `z`; en `y` las tres partes van en proporción a sus metros.
 static func water_tank_unit() -> UnitMesh:

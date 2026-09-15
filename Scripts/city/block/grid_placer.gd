@@ -75,8 +75,14 @@ func _init(index: CityIndex, scope: int, object: int, buffer: Dictionary) -> voi
 ## en el espesor de la pared, ver BuildingSkin.add_opening): la ocupación sigue siendo la región declarada,
 ## delante de la pared, que es lo que las piezas se disputan entre sí.
 func place(grid: PlacementGrid, lo: Vector3i, size: Vector3i, mesh: UnitMesh,
-		kind: int, id_a: int, id_b: int, id_c: int, id_d: int, sink_cells := 0) -> bool:
-	if not grid.is_free(lo, size):
+		kind: int, id_a: int, id_b: int, id_c: int, id_d: int, sink_cells := 0, over_occupied := false,
+		max_skew_deg := 0.0) -> bool:
+	# Lo que ATRAVIESA lo ya colocado (una cúpula sobre el techo que sea) no pide lugar libre, solo entrar
+	# en la grilla; ocupa igual, así lo que venga después lo ve. Y un deformable CON LÍMITE no entra si su
+	# región está torcida más de `max_skew_deg` (ver PlacementGrid.LIMITED_SKEW_DEG).
+	if not (grid.contains(lo, size) if over_occupied else grid.is_free(lo, size)):
+		return false
+	if max_skew_deg > 0.0 and grid.region_skew_deg(lo, size) > max_skew_deg:
 		return false
 
 	# La bilineal de la grilla restringida a la región, precalculada (ver PlacementGrid.region_frame), y la
