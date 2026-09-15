@@ -4,7 +4,7 @@ Walkable-surface generation: the sidewalk zones carved out of the building grid,
 
 ## Sidewalk zones
 
-The non-building-core cells of the building grid — the module's **offset** (24 cells toward a street, 18 toward an alley, 0 toward an attached neighbour or the world boundary) — are where sidewalks, bridge extremes and facade objects live.
+The non-building-core cells of the building grid — the module's **offset** (24 cells toward a street *or the world's edge*, 18 toward an alley, 0 toward an attached neighbour) — are where sidewalks, bridge extremes and facade objects live. The edge of the world gets a street's offset even though there is no roadway beyond it: it is paved by the same pass, which never learns that the side is special.
 
 **Sidewalks are decided per module, in its own offset**, by `TraversalGenerator._generate_floor_sidewalks`. There are no block-level pieces and no ownership rules between zones: every module places its own, and they meet exactly at module edges because both sides are deformed by the same grid.
 

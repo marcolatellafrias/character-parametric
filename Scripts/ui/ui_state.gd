@@ -10,9 +10,11 @@ const PAUSE := "pause"
 const MENU := "menu"
 const CONSOLE := "console"
 const DEBUG := "debug"
-## El afinador de clima (F6). Se anota acá —y no como el mapa o la lista de F5, que no se anotan—
-## porque hay que arrastrar sliders y abrir selectores de color: necesita el mouse libre.
+## Los afinadores: vista (F3), clima y nubes (F6) y terreno y afueras (F7). Se anotan acá —y no como el
+## mapa, que no se anota— porque hay que arrastrar sliders y abrir selectores: necesitan el mouse libre.
+const VIEW := "view"
 const TUNER := "tuner"
+const TERRAIN := "terrain"
 
 signal changed()
 

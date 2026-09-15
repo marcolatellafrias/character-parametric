@@ -7,8 +7,8 @@ extends Node
 ##     identidad; el CharacterNetSync maneja su cápsula. Todos se llaman char_<peer_id> para que
 ##     el RPC rutee. Ver Scripts/city/docs/conceptual/multiplayer.md (milestones 2-3).
 
-## Punto de inicio temporal, hardcodeado y global. Elevado para no clipear con el suelo.
-const SPAWN_POINT := Vector3(0.0, 3.0, 0.0)
+## Punto de inicio de respaldo, para cuando todavía no hay ciudad generada. Ver `spawn_point()`.
+const FALLBACK_SPAWN := Vector3(0.0, 3.0, 0.0)
 const PLAYER_SCENE := preload("res://Scenes/player.tscn")
 
 ## Nodo bajo el que se cuelgan los personajes.
@@ -19,6 +19,18 @@ const PLAYER_SCENE := preload("res://Scenes/player.tscn")
 var local_player: BoneInstantiator
 ## peer_id -> BoneInstantiator (proxies puppet).
 var remote_players: Dictionary = {}
+
+## DÓNDE APARECE UN PERSONAJE: un cruce de calles en el centro de la ciudad, que lo elige ella
+## (`City.start_point`). Se pregunta en el momento de usarlo y no al cargar, porque la ciudad se genera en
+## su `_ready` y no hay garantía de que ya haya corrido. Sin ciudad, el punto de respaldo.
+static func spawn_point(tree: SceneTree) -> Vector3:
+	for node in tree.get_nodes_in_group("city_generator"):
+		if node.has_method("start_point"):
+			var point: Vector3 = node.call("start_point")
+			if point != Vector3.ZERO:
+				return point
+	return FALLBACK_SPAWN
+
 
 func _ready() -> void:
 	add_to_group("character_spawner")
@@ -73,7 +85,7 @@ func respawn_local_at_start() -> void:
 		return
 	rb.linear_velocity = Vector3.ZERO
 	rb.angular_velocity = Vector3.ZERO
-	rb.global_position = SPAWN_POINT
+	rb.global_position = spawn_point(get_tree())
 
 # ── Proxies remotos ───────────────────────────────────────────────────────────
 
@@ -111,9 +123,9 @@ func _instantiate_character(is_active: bool, seed_value: int, node_name: String,
 	# La cápsula ya existe (se crea en initialize_skeleton). En proxies la posición la toma
 	# la red enseguida; igual arrancamos en el punto de inicio.
 	if is_instance_valid(inst.char_rigidbody):
-		inst.char_rigidbody.global_position = SPAWN_POINT
+		inst.char_rigidbody.global_position = spawn_point(get_tree())
 	else:
-		inst.global_position = SPAWN_POINT
+		inst.global_position = spawn_point(get_tree())
 	return inst
 
 func _attach_net_sync(character_root: BoneInstantiator, authority_peer_id: int) -> void:

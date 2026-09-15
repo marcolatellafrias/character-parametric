@@ -56,6 +56,8 @@ var _inspector_on := false
 var _inspector_toggle: CheckButton = null
 var _map_overlay: CityMapOverlay = null
 var _weather_tuner: WeatherTuner = null
+var _terrain_tuner: TerrainTuner = null
+var _view_tuner: ViewTuner = null
 
 ## Punto de entrada único cuando el BoneInstantiator (re)construye el esqueleto del jugador
 ## activo — tanto el build inicial como cada respawn. Construye lo persistente una sola vez
@@ -159,10 +161,22 @@ func _input(event: InputEvent) -> void:
 		_weather_tuner.toggle()
 		return
 
-	# F3 prende/apaga el inspector. Va antes del corte de gameplay a propósito: se usa todo el tiempo, y el
-	# inspector ya funciona sin robar el mouse.
-	if is_instance_valid(_inspector) and event is InputEventKey and event.pressed and not event.echo \
+	# F7, el afinador del terreno y las afueras. Igual que el de clima: libera el mouse.
+	if is_instance_valid(_terrain_tuner) and event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_F7:
+		_terrain_tuner.toggle()
+		return
+
+	# F3, el afinador de vista de la ciudad. Como los otros dos: libera el mouse.
+	if is_instance_valid(_view_tuner) and event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode == KEY_F3:
+		_view_tuner.toggle()
+		return
+
+	# I prende/apaga el inspector. Va antes del corte de gameplay a propósito: se usa todo el tiempo, y el
+	# inspector ya funciona sin robar el mouse. Es una letra y no una F porque se aprieta mientras se juega.
+	if is_instance_valid(_inspector) and event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_I:
 		_set_inspector(not _inspector_on)
 		if is_instance_valid(_inspector_toggle):
 			_inspector_toggle.set_pressed_no_signal(_inspector_on)
@@ -637,8 +651,7 @@ func _setup_debug_panel() -> void:
 	_debug_panel.add_action("Acciones", "Ver wireframe",             func(): CharacterDebugView.toggle_wireframe(get_tree()))
 	_debug_panel.add_action("Acciones", "Indicadores de tráfico",    func(): TrafficDebugDrawer.ENABLED = not TrafficDebugDrawer.ENABLED)
 	_debug_panel.add_action("Acciones", "Nave: paredes traslúcidas", func(): Ship.toggle_translucent_walls(get_tree()))
-	# Apaga la niebla Y el corte por distancia: sin lo segundo la ciudad se corta igual (ver CityDebugView).
-	_debug_panel.add_action("Acciones", "Neblina y corte por distancia", func(): CityDebugView.toggle_fog(get_tree()))
+	_debug_panel.add_action("Acciones", "Neblina", func(): CityDebugView.toggle_fog(get_tree()))
 
 	# Identificar lo que se apunta. Se prende acá y se USA con el panel cerrado, porque el panel libera el
 	# mouse y sin mouse capturado no se puede apuntar.
@@ -648,7 +661,7 @@ func _setup_debug_panel() -> void:
 	add_child(_inspector)
 	_inspector.setup(player_camera, char_rigidbody)
 	_inspector.set_enabled(_inspector_on)
-	_inspector_toggle = _debug_panel.add_toggle("Acciones", "Apuntar para identificar (F3 · ruedita copia)",
+	_inspector_toggle = _debug_panel.add_toggle("Acciones", "Apuntar para identificar (I · ruedita copia)",
 		_inspector_on, _set_inspector)
 
 	# ── Arquetipos ──
@@ -704,7 +717,21 @@ func _setup_debug_panel() -> void:
 		_weather_tuner.queue_free()
 	_weather_tuner = WeatherTuner.new()
 	add_child(_weather_tuner)
-	_weather_tuner.setup()
+	_weather_tuner.setup_panel()
+
+	# Y el del terreno y las afueras (F7).
+	if is_instance_valid(_terrain_tuner):
+		_terrain_tuner.queue_free()
+	_terrain_tuner = TerrainTuner.new()
+	add_child(_terrain_tuner)
+	_terrain_tuner.setup_panel()
+
+	# Y el de vista (F3).
+	if is_instance_valid(_view_tuner):
+		_view_tuner.queue_free()
+	_view_tuner = ViewTuner.new()
+	add_child(_view_tuner)
+	_view_tuner.setup_panel()
 
 	# ── Performance ──
 	PerformanceToggles.build_tab(_debug_panel, get_tree())

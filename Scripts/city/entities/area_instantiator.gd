@@ -327,7 +327,7 @@ func _is_point_hidden(point: Vector3) -> bool:
 			continue
 		var cam_pos = camera.global_position
 		var dist = Vector2(point.x - cam_pos.x, point.z - cam_pos.z).length()
-		if dist > WorldSettings.render_distance:
+		if dist > WorldSettings.fog_distance:
 			continue
 		var query = PhysicsRayQueryParameters3D.create(cam_pos, point, los_collision_mask)
 		if space_state.intersect_ray(query).is_empty():
@@ -584,7 +584,7 @@ func _create_debug_cylinders() -> void:
 		add_child(inner_mesh)
 		debug_cylinder_meshes.append(inner_mesh)
 
-		var outer_mesh = DebugUtil.create_debug_cylinder(Color(1.0, 1.0, 0.0, 0.1), WorldSettings.render_distance, height, segments)
+		var outer_mesh = DebugUtil.create_debug_cylinder(Color(1.0, 1.0, 0.0, 0.1), WorldSettings.fog_distance, height, segments)
 		outer_mesh.name = "DebugCylinder_Outer_" + str(i)
 		add_child(outer_mesh)
 		debug_cylinder_meshes.append(outer_mesh)

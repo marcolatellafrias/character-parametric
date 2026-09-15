@@ -142,7 +142,7 @@ func tick(delta: float, dist: float, frame: int) -> void:
 
 	var interval := DECISION_INTERVAL_NEAR
 	if dist >= WorldSettings.fog_start_distance:
-		var mid: float = (WorldSettings.fog_start_distance + WorldSettings.render_distance) * 0.5
+		var mid: float = (WorldSettings.fog_start_distance + WorldSettings.fog_distance) * 0.5
 		interval = DECISION_INTERVAL_MID if dist < mid else DECISION_INTERVAL_FAR
 	if (frame + _stagger) % interval == 0:
 		collision_avoidance.rebuild_corridor()

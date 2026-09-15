@@ -107,11 +107,15 @@ enum Shape { DOME, BOX, SMALL_BOX }
 @export var max_vertical_accel := 8.0
 ## Altura global mínima y máxima de la meta. La mínima en 0: la nave arranca en el piso.
 @export var min_altitude := 0.0
-## Techo de la meta, en METROS, pero el número que importa son PISOS: el piso de ciudad mide 6,69 m (la
-## muralla son 13 pisos = 87 m, ver `City._floor_height`), así que 8 pisos × 6,69 ≈ 53,5. Estaba en 90 m,
-## que son 13,4 pisos: la nave pasaba POR ENCIMA de la muralla, que es justo lo que la muralla existe para
-## impedir. Cambiarlo obliga a revisar `NeighborhoodTypes.FLOORS`, que se calibra contra este valor.
-@export var max_altitude := 53.5
+## Cuántos PISOS por debajo del límite del mundo tiene que quedar el techo de la nave. Es el número que
+## importa, no los metros: el límite son 13 pisos (`City.impassable_floors`), así que con 5 de margen la
+## nave llega a 8 y no lo pasa nunca — que es exactamente para lo que el límite existe. Antes esto era un
+## 53,5 escrito a mano que había que recalcular cada vez que se movía la muralla; una vez estuvo en 90 m
+## y la nave se escapaba por arriba. Cambiarlo obliga a revisar `NeighborhoodTypes.FLOORS`, que se
+## calibra contra el techo resultante.
+@export var ceiling_margin_floors := 5.0
+## Techo de respaldo en metros, para cuando no hay ciudad que publique el límite (ver `_max_altitude`).
+@export var fallback_max_altitude := 53.5
 
 @export_group("Avance")
 ## Velocidad hacia adelante con el acelerador a fondo, en m/s.
@@ -338,6 +342,16 @@ func _ignore_own_bodies(node: Node) -> void:
 		_ignore_own_bodies(child)
 
 
+## EL TECHO, derivado del límite del mundo y no escrito a mano: la ciudad publica su altura
+## infranqueable y cuánto mide un piso, y la nave se queda `ceiling_margin_floors` por debajo. Sin ciudad
+## —una escena de prueba, la nave suelta— cae al número de respaldo.
+func _max_altitude() -> float:
+	if WorldSettings.impassable_height <= 0.0 or WorldSettings.floor_height <= 0.0:
+		return fallback_max_altitude
+	return maxf(WorldSettings.impassable_height - ceiling_margin_floors * WorldSettings.floor_height,
+		min_altitude)
+
+
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	# Apagada, ninguna fuerza propia: la gravedad la aplica el motor, así que cae o se apoya sola.
 	if not powered:
@@ -352,7 +366,7 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if not _altitude_ready:
 		target_altitude = maxf(origin.y, min_altitude)
 		_altitude_ready = true
-	target_altitude = clampf(target_altitude + input_vertical * climb_speed * dt, min_altitude, max_altitude)
+	target_altitude = clampf(target_altitude + input_vertical * climb_speed * dt, min_altitude, _max_altitude())
 
 	# ── Traslación: altura, avance y anti-derrape ────────────────────────────────────────────────
 	# Cascada: error de altura → velocidad vertical deseada → aceleración. Es el PD de la nave vieja,

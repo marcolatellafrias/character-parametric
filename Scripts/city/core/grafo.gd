@@ -63,6 +63,8 @@ func generate_graph(
 	
 	_normalize_face_orientation(faces, true)
 	
+	_rebuild_boundary_edges()
+	
 	edges_dict.clear()
 	for face in faces:
 		for i in range(face.size()):
@@ -109,6 +111,80 @@ func _detect_boundary_nodes(faces_array: Array) -> void:
 			node_types[idx1] = 1
 			node_types[idx2] = 1
 			boundary_edges[edge_key] = true
+
+
+## RECALCULA EL BORDE desde las caras finales. Hace falta porque `_subdivide_faces` arranca de una COPIA
+## del diccionario anterior y le agrega las mitades, sin sacar la arista padre que acaba de partir: sin
+## esto quedan tramos que geométricamente ya no existen (medido: 57 entradas para 38 aristas reales, y
+## los nodos del casco original aparecían con 4 vecinos en un anillo que es de grado 2).
+##
+## La definición es la misma de siempre —borde es la arista que toca UNA sola cara—, solo que aplicada
+## después de subdividir. `node_types` no se toca: subdividir ya lo mantiene bien.
+func _rebuild_boundary_edges() -> void:
+	var edge_usage: Dictionary = {}
+	for face in faces:
+		for i in range(face.size()):
+			var key = _get_edge_key(face[i], face[(i + 1) % face.size()])
+			edge_usage[key] = int(edge_usage.get(key, 0)) + 1
+	boundary_edges.clear()
+	for key in edge_usage:
+		if edge_usage[key] == 1:
+			boundary_edges[key] = true
+
+
+## EL BORDE DE LA CIUDAD EN ORDEN, como lista de índices de nodo. Vacío si no hay borde.
+##
+## Lo usa la falda de las afueras (`City._visualize_outskirts`), que necesita recorrer el contorno para
+## empujarlo hacia afuera. Si el borde no fuera un anillo único —un nodo con más de dos vecinos de borde,
+## que en las ciudades medidas no pasa— devuelve el anillo más largo que encuentre, y el que llama puede
+## comparar su tamaño contra la cantidad de nodos de borde para saber que quedó algo afuera.
+func boundary_ring() -> PackedInt32Array:
+	var neighbours: Dictionary = {}
+	for key: String in boundary_edges:
+		var parts: PackedStringArray = key.split("_")
+		var a := int(parts[0])
+		var b := int(parts[1])
+		if not neighbours.has(a):
+			neighbours[a] = PackedInt32Array()
+		if not neighbours.has(b):
+			neighbours[b] = PackedInt32Array()
+		neighbours[a].append(b)
+		neighbours[b].append(a)
+
+	var best := PackedInt32Array()
+	var seen: Dictionary = {}
+	for start: int in neighbours:
+		if seen.has(start):
+			continue
+		var ring := PackedInt32Array([start])
+		seen[start] = true
+		var previous := -1
+		var current := start
+		while true:
+			var step := -1
+			for candidate: int in neighbours[current]:
+				if candidate != previous and not seen.has(candidate):
+					step = candidate
+					break
+			if step < 0:
+				break
+			ring.append(step)
+			seen[step] = true
+			previous = current
+			current = step
+		if ring.size() > best.size():
+			best = ring
+	return best
+
+
+## Cuántos nodos toca el borde. Contra el tamaño de `boundary_ring()` dice si quedó un anillo suelto.
+func boundary_node_count() -> int:
+	var nodes: Dictionary = {}
+	for key: String in boundary_edges:
+		var parts: PackedStringArray = key.split("_")
+		nodes[int(parts[0])] = true
+		nodes[int(parts[1])] = true
+	return nodes.size()
 
 
 func _calculate_original_inscribed_sizes() -> void:

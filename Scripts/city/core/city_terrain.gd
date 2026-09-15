@@ -41,6 +41,10 @@ var max_slope := 0.12
 var node_heights := PackedFloat32Array()
 
 var _noise := FastNoiseLite.new()
+## El estiramiento que se le aplicó al ruido crudo, guardado para poder repetirlo fuera de los nodos
+## (ver `height_at`).
+var _lowest := 0.0
+var _spread := 1.0
 
 
 func _init(terrain_seed: int, p_amplitude: float, p_feature_size: float, p_max_slope: float) -> void:
@@ -66,11 +70,12 @@ func fit_to_graph(points: Array[Vector3], edges: Array) -> void:
 		raw.append(sample)
 		lowest = minf(lowest, sample)
 		highest = maxf(highest, sample)
-	var spread := maxf(highest - lowest, 0.0001)
+	_lowest = lowest
+	_spread = maxf(highest - lowest, 0.0001)
 
 	node_heights.resize(raw.size())
 	for i in raw.size():
-		node_heights[i] = amplitude * (raw[i] - lowest) / spread
+		node_heights[i] = amplitude * (raw[i] - _lowest) / _spread
 	if amplitude <= 0.0:
 		return
 
@@ -88,6 +93,22 @@ func fit_to_graph(points: Array[Vector3], edges: Array) -> void:
 		amplitude *= fit
 		for i in node_heights.size():
 			node_heights[i] *= fit
+
+
+## LA MISMA ALTURA, EN UN PUNTO CUALQUIERA DEL PLANO. En la posición de un nodo devuelve exactamente
+## `height_of` de ese nodo —es la misma fórmula sobre el mismo ruido—, así que lo que se construya con
+## esto pega contra la ciudad sin costura y sin coordinar nada.
+##
+## Adentro de la ciudad NO reemplaza a `height_of`: entre dos nodos la ciudad interpola bilineal y esto
+## ondula, así que solo coinciden EN los nodos. Existe para lo que está AFUERA del grafo, donde no hay
+## nodos que interpolar (ver `City._visualize_outskirts`).
+##
+## Afuera del rango que tenían los nodos el ruido se sale del estiramiento, así que puede dar menos de 0
+## o más de `amplitude`. Es a propósito: el relieve de afuera no tiene por qué caber en el de la ciudad.
+func height_at(x: float, z: float) -> float:
+	if node_heights.is_empty() or amplitude <= 0.0:
+		return 0.0
+	return amplitude * (_noise.get_noise_2d(x, z) - _lowest) / _spread
 
 
 ## La altura de un nodo del grafo.

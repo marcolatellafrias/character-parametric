@@ -7,9 +7,9 @@
 extends Node3D
 class_name CarManager
 
-# Visuals are released a margin past the fog wall (where they are invisible
-# anyway) so a car oscillating on the boundary doesn't churn the pool.
-const VISUAL_RELEASE_MARGIN: float = 10.0
+# El visual vive mientras el auto este dentro del radio de spawn, que es donde existe el auto: se sueltan
+# juntos. Antes se soltaba en el corte por distancia de las mallas, que ya no existe —la ciudad se dibuja
+# entera y la niebla es lo unico que esconde—.
 
 var cars: Array[FlyingCar] = []
 
@@ -78,13 +78,8 @@ func _despawn_at(index: int) -> void:
 # VISUAL POOL
 # ============================================================================
 
-# El visual se mantiene VISIBLE hasta que se suelta al pool: de ocultarlo se encarga el rango de
-# visibilidad del propio nodo, que ademas lo funde. El margen de liberacion tiene que ser mas ancho que
-# el anillo de fundido, o el auto se soltaria a mitad del fundido y desapareceria de golpe igual.
 func _update_visual(car: FlyingCar, dist: float) -> void:
-	var release_at := WorldSettings.render_distance \
-		+ WorldSettings.fade_ring_for(WorldSettings.render_distance) + VISUAL_RELEASE_MARGIN
-	if dist < release_at:
+	if dist < WorldSettings.spawn_radius:
 		if car.visual == null:
 			car.visual = _acquire_visual(car)
 		if not car.visual.visible:
@@ -102,13 +97,6 @@ func _acquire_visual(car: FlyingCar) -> MeshInstance3D:
 		# El motor nace con el visual y se poolea con él: un auto sin visual está fuera del radio de
 		# dibujado, o sea lejos, o sea que tampoco tiene que sonar. Así no hay un solo nodo de audio de más.
 		mi.add_child(TestSounds.engine_player())
-		# Los autos entran fundiendose igual que los edificios. Antes era un flip binario de `visible` justo
-		# en `render_distance`, o sea que un auto aparecia entero de un cuadro al otro a plena vista —el
-		# mismo defecto que tiene San Andreas con los suyos, que no pasan por la ruta de fundido—.
-		var end_distance := WorldSettings.render_distance
-		mi.visibility_range_end = end_distance
-		mi.visibility_range_end_margin = WorldSettings.fade_ring_for(end_distance)
-		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		add_child(mi)
 	else:
 		mi = _visual_pool.pop_back()
