@@ -20,6 +20,7 @@ El juego está documentado en `Scripts/city/docs/`, separado en **conceptual/** 
   - HUD / barra de paciencia / espectador → `conceptual/hud.md`
   - Run, compañías, turnos, headquarters → `conceptual/run-setup.md`
   - Mundo, ciclo día/noche, seeds → `conceptual/world.md`
+  - Design sandbox, parcelas, arquetipos con semilla (`SeededArchetype`) → `technical/design-sandbox.md`
 
 Si un cambio contradice lo que dice el doc, avisá antes de proceder (puede que el doc esté desactualizado o que el cambio necesite repensarse).
 

@@ -16,6 +16,9 @@ var is_block_heart: bool = false
 # Contexto urbano y arquetipo
 var neighborhood_type: NeighborhoodTypes.District
 var archetype: BuildingArchetype
+## Qué ventana y qué puerta lleva ESTE edificio, elegidas con su semilla entre las del arquetipo.
+var window: WindowArchetype
+var door: DoorArchetype
 
 # Configuración para crear BuildingModules
 var distorted_grid: DistortedGrid
@@ -55,6 +58,8 @@ func _init(
 
 	color = archetype.get_color(p_seed + id)
 	debug_color = NeighborhoodTypes.debug_color(neighborhood_type, p_seed + id)
+	window = archetype.pick_window(p_seed + id)
+	door = archetype.pick_door(p_seed + id)
 
 
 func set_grid_config(

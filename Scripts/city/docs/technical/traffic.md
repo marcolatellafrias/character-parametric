@@ -46,16 +46,15 @@ The weighted draw happens **before** validation: only the drawn volume runs the 
 
 ## Fog and zone radii
 
-Every distance comes from `WorldSettings`, which is the point: the fog, the distance at which geometry is drawn and the radius in which cars exist are the same few numbers, so they cannot drift apart.
+Every distance comes from `WorldSettings`:
 
 | Distance | Value | Meaning |
 |---|---|---|
-| `fog_start_distance` | 50 m | Fog begins. Clear inside it. |
-| `render_distance` | 350 m | Fog is total. Geometry is gone by here. |
-| `fade_ring_for()` | 33 m at 350 | Width of the ring, just short of the cut, where pieces dissolve in. Scales with distance — see [city-generation.md](city-generation.md). |
-| `spawn_radius` | 434 m | `render_distance + spawn_buffer`. Cars exist out to here; past it they are freed. |
+| `fog_start_distance` | 0 m | Fog begins. |
+| `fog_distance` | 670 m | Fog is total. **Fog only**: geometry is drawn at any distance. |
+| `spawn_radius` | 760 m | `fog_distance + spawn_buffer`. Cars exist out to here; past it they are freed. |
 
-These are the distances of the 25/6 build, restored after trying 800 m and finding it worse rather than better: with fog this strong, what decides whether the world feels enclosed is the fog's colour, not its reach. `render_distance` is still the knob to turn first if the frame rate suffers — drawn area grows with its square.
+The fog distance and the draw distance used to be one number, on purpose, so that nothing could be cut while still visible. They were **decoupled** because the coupling had a cost the other way: bringing the fog in to make the city feel larger also cut the distant silhouettes of the buildings. Now the city is drawn whole and only the fog hides; a real distance LOD is a later, separate system. The spawn radius still follows the fog, so with a short fog a car can be born in view — accepted for now, improving spawning is its own task.
 
 A single cylindrical `Area3D` per camera at `spawn_radius` (mask = layer 4) tracks which `LaneVolume`s are in range (`all_lane_volumes`).
 
@@ -65,7 +64,7 @@ Godot's built-in depth fog, configured by `CityFog` on the `WorldEnvironment` �
 
 One consequence matters for traffic: the old shader measured **XZ** distance, a cylinder around the player, while the built-in fog measures depth from the camera, a sphere. Flying high, the ground below is now fogged too — it was not before.
 
-Cars **fade** like everything else now. Their pooled visual carries the same `visibility_range_end` and scaled ring as city geometry, and `CarManager` only returns it to the pool past `render_distance + ring + VISUAL_RELEASE_MARGIN`. Before this it flipped `visible` at exactly `render_distance`, so a car popped into existence whole in a single frame — the same flaw San Andreas has with its own vehicles, which do not go through the fading path either.
+A car's pooled visual lives exactly as long as the car is inside `spawn_radius`; the two are released together. It used to fade in over a visibility range like the buildings did — that machinery went with the draw cutoff.
 
 > **Traffic does not know about the terrain yet.** `BlockGenerator.get_edge_lane_volume` builds every lane volume from `0.0` up to one height shared by the whole city (`max_height_global`), so lane volumes are flat boxes over sloped ground. Making them ride the field, and adding a `GroundPlanner` for cars that hug it, are steps 3 and 7 of the terrain plan in [city-generation.md](city-generation.md).
 
@@ -153,6 +152,18 @@ There is **no carry, no re-plan, no per-segment profile** — the single immutab
 ## Overtaking — removed (for now)
 
 The reactive overtake layer was removed: it fought the planned bridge profile over the same axis and generated more edge cases than it was worth. Slow leaders are simply followed. If it returns it will be a *planned* lateral profile on the immutable curve (the same machinery as the vertical one), gated by the occupancy governor — not a reactive swerve.
+
+## Relief — lane volumes follow the graph
+
+A lane volume is the skewed box between two closing planes, one per node of its street edge, and each plane's base is at **its node's height** (`base_y` in `lane_planes`, from `CityTerrain.height_of` — the same height the street is drawn with). So on a sloped street the volume tilts with it, and everything measured inside the volume — a car's point at `(u, v)`, the spawn altitude band — tilts along. It is structure of the graph, not a system on top: before this the base was always `y = 0` and cars flew under the ground wherever the relief rose. If cars always flying at an angle on slopes reads badly, the alternative is a per-node vertical profile inside the volume; this one is kept because it is simple and robust.
+
+## Passive collision — parked cars today, moving cars and pedestrians next
+
+**Parked cars** (`City._visualize_parked_cars`, pass *autos estacionados*): every block side facing a street owns a **kerb strip** — `PARKING_STRIP_M` wide, from the kerb toward the street, along the facade — that is a `FreePlacement` (see [city-generation.md](city-generation.md#placing-objects--three-ways-in-passes)). It is walked with the block's seed leaving gaps, picking types with the district's traffic weights (`NeighborhoodTypes.get_car_weights`, `CarArchetypes.select_type_seeded`), never in front of a delivery door (`block_span`). Each car is a `ParkedCar` — the same box the traffic draws for that type — a `RigidBody3D` you can push (`MASS` is a tuning value: the heaviest character must move it), registered with `PassiveBodies`. In the sandbox's scaled block sample they are plain boxes.
+
+**`PassiveBodies`** ([passive_bodies.gd](../../entities/passive_bodies.gd)) is the generic mechanism: a registered body is **frozen as static** — for Jolt a still shape, like a wall — and wakes up (dynamic, gravity, pushable) when a *toucher* comes within `wake_radius`: a player capsule or a ship. When every toucher is gone and the body is at rest, it freezes again where it lies. One node walks all bodies every `CHECK_EVERY` physics frames; no script per body. Not touchers yet: grabbable objects and pedestrians (edge cases to decide together). Pushes are **not synced** over the network yet.
+
+Where this is going (agreed, not built): NPC **flying cars** keep moving programmatically along their route with no collider until a toucher is near; then they collide, react to an impact with a stabiliser like the ship's (tuned less stable so the hit reads), try to return to their lane or the nearest one, and fall with the impulse if they cannot recover; **pedestrians** the same, path-driven, physical only near players, recovery to be designed. Smarter spawning (near the player when a building fully occludes the street — "it came out of a garage"), garage doors on buildings, and **hover cars** (about a third of the traffic hovering a minimum height above the street as obstacles for players on foot, with the parking strip reserved as a fixed obstacle like a bridge) are the next items on this list.
 
 ## Online sync design note
 

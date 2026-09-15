@@ -42,9 +42,10 @@ The docs are split into **conceptual** (game design — the `conceptual/` folder
 
 | File | What's in it |
 |---|---|
-| [technical/city-generation.md](technical/city-generation.md) | Procedural city-generation breakdown: street graph, terrain, grids and offsets, districts, the wall and the weather, archetypes, roofs and facades, the placement grid every object goes through, and the identity index. |
+| [technical/city-generation.md](technical/city-generation.md) | Procedural city-generation breakdown: street graph, terrain, grids and offsets, districts, the outskirts and the weather, archetypes, roofs and facades, the placement grid every object goes through, and the identity index. |
 | [technical/sidewalks.md](technical/sidewalks.md) | Sidewalk zones & instances, delivery doors, and traversal infrastructure (stairs + floating sidewalks). |
 | [technical/bridges.md](technical/bridges.md) | Bridge ownership, count, structure, archetypes, and the placement algorithm. |
+| [technical/design-sandbox.md](technical/design-sandbox.md) | The design sandbox: a second world of parcels, one per seeded archetype (buildings, windows, doors, ships), regenerated with R — and the `SeededArchetype` contract behind it. |
 | [technical/traffic.md](technical/traffic.md) | The ambient flying-car simulation: lane volumes, movement, spawning, collision avoidance, and bridge navigation. |
 | [technical/characters.md](technical/characters.md) | The character's two layers (physics capsule vs aesthetic skeleton), the impact→fall model, the ragdoll, the grab/interaction system, the visual-height vs gameplay-height rule, and the decoupling loose ends. |
 | [technical/character-animation.md](technical/character-animation.md) | The aesthetic skeleton: seed-driven generation (sizes→bones), the per-frame procedural pose pipeline (locomotion signals, leg IK/steps, procedural animator, arm IK), the full list of pose inputs, and the multiplayer/decoupling analysis (what a proxy re-derives vs must sync, + the known remote-animation bugs). |

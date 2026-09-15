@@ -153,10 +153,13 @@ extends Node3D
 @export var show_ground: bool = true
 @export var enable_ground_collider: bool = true
 @export var ground_color: Color = Color(0.33, 0.31, 0.27)
+## Las calles van en su propia malla, para el shader de asfalto que viene (ver `_visualize_ground`).
+@export var street_color: Color = Color(0.16, 0.16, 0.17)
 
 @export_group("Buildings")
 @export var show_buildings: bool = false
 @export var enable_building_colliders: bool = true
+@export var show_parked_cars: bool = true
 
 @export_group("Vista")
 ## LA VISTA DEBUG DE EDIFICIOS: en lugar de la malla final (color del arquetipo, sin caras interiores; la
@@ -215,11 +218,15 @@ enum BuildingGrid { NONE, DEFORMABLE, RIGID }
 
 @export_group("Delivery Doors")
 @export var show_delivery_doors: bool = false
-@export var delivery_door_color: Color = Color(0.9, 0.9, 0.85)
 
 @export_group("Ventanas")
 @export var show_windows: bool = true
-@export var window_color: Color = Color(0.18, 0.22, 0.28)
+## Si las ventanas se HUNDEN en la pared con su abertura cortada y sus derrames (ver
+## BuildingSkin.add_opening), como las puertas siempre. Con cientos de miles de ventanas dibujadas vértice
+## a vértice en GDScript cuesta decenas de segundos y cientos de MB, así que la escena del juego lo apaga
+## —ventanas al ras, sin hueco— hasta que las ventanas sean instancias (MultiMesh, ver
+## technical/city-generation.md). La muestra del sandbox lo deja prendido: ahí se mira de cerca.
+@export var window_openings: bool = true
 
 @export_group("Objetos de techo")
 @export var show_roof_props: bool = true
@@ -260,6 +267,16 @@ var _deformable_boxes: MultiMeshInstance3D = null
 var _rigid_boxes: MultiMeshInstance3D = null
 ## La malla debug (semántica) de cada cluster, de donde sale su collider (ver BuildingShell).
 var _shell_mesh_by_cluster: Dictionary = {}
+## LAS ABERTURAS de cada cluster —`{quad, outward, arch, segments}` por puerta y ventana colocada—, que la
+## piel corta al construirse. Por eso las fachadas se colocan ANTES que las cáscaras (ver `_passes`).
+var _openings: Dictionary = {}
+
+## EL EDIFICIO EN FOCO, o null para todos: en la muestra del design sandbox (`generate_block_sample`) solo
+## él se dibuja completo —techo, puertas, ventanas— y el resto sale como fantasma gris translúcido, sin
+## accesorios, para que se lo vea a él.
+var spotlight: BuildingCluster = null
+const GHOST_COLOR := Color(0.6, 0.6, 0.6)
+var _ghost_material: StandardMaterial3D = null
 ## Semilla del relieve; sale de la del mundo salvo que se fuerce a mano (ver use_world_seed).
 var terrain_seed: int = 0
 
@@ -421,6 +438,92 @@ func generate_graph() -> void:
 		terrain_seed
 	)
 
+## UNA MANZANA DE MUESTRA, para el design sandbox: una sola, cuadrada, sin distorsión ni relieve, del
+## distrito del arquetipo (ver GraphCityGenerator.generate_single_block), con TODOS los edificios de ese
+## arquetipo —forzado, ver ArchetypeDefinitions— y el más grande en foco; el resto, fantasmas. Todo lo que
+## no sea la manzana (calles, afueras, carriles) queda apagado; los colliders también, porque el nodo va
+## escalado (ver BuildingArchetype.build).
+func generate_block_sample(sample_seed: int, archetype: BuildingArchetype, side_m: float,
+		distortion: Vector2 = Vector2.ZERO) -> void:
+	show_streets = false
+	show_outskirts = false
+	show_distorted_grid = false
+	show_nodes = false
+	show_bridges = false
+	show_lane_planes = false
+	show_lane_volumes = false
+	show_traffic_planes = false
+	show_floor_planes = false
+	show_stair_zones = false
+	enable_traffic_lights = false
+	enable_ground_collider = false
+	enable_building_colliders = false
+	show_buildings = true
+	show_delivery_doors = true
+	show_windows = true
+	show_roof_props = true
+
+	clear_visualization()
+	generator = GraphCityGenerator.new()
+	generator.enable_traffic_lights = false
+	ArchetypeDefinitions.forced_archetype = archetype.get_script()
+	generator.generate_single_block(side_m, sample_seed, archetype.district, NeighborhoodTypes.Height.MID,
+		block_grid_rows, block_grid_columns, block_cells_per_floor, distorted_grid_rows,
+		distorted_grid_columns, small_alleyways_count, big_alleyways_count, min_steps_before_turn,
+		building_cell_m, distortion)
+	ArchetypeDefinitions.forced_archetype = null
+	spotlight = _largest_cluster()
+	visualize_graph()
+
+
+## El edificio con más celdas que no sea el corazón de manzana: el que mejor muestra al arquetipo.
+func _largest_cluster() -> BuildingCluster:
+	var best: BuildingCluster = null
+	for face_idx in generator.get_all_block_faces():
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		if block == null:
+			continue
+		for cluster in block.get_all_clusters():
+			if cluster.is_block_heart or cluster.get_floor_count() <= 0:
+				continue
+			if best == null or cluster.cells.size() > best.cells.size():
+				best = cluster
+	return best
+
+
+## LOS PASES DE LA CIUDAD, EN ORDEN: `[nombre, función, si corre]`. Cada uno lee la ocupación que dejaron
+## los anteriores y escribe la suya, y ese orden es lo único que evita la circularidad entre lo que va en
+## la grilla del módulo, en las superficies y en free placement (ver technical/city-generation.md,
+## "Passes"). Es una tabla y no una cadena de `if` porque el orden va a cambiar seguido:
+##   · Lo deformable (puentes, veredas, techos) ocupa el módulo.
+##   · Lo rígido (puertas, ventanas) lee esa ocupación en su superficie, y deja anotadas las ABERTURAS.
+##   · Free placement (autos estacionados) lee las puertas.
+##   · Recién entonces la cáscara y la piel, que necesitan las aberturas para cortar la pared; y el collider,
+##     que sale de la cáscara.
+func _passes() -> Array[Array]:
+	return [
+		["carriles", _add_lane_volumes_to_scene, true],
+		["suelo", _visualize_ground, show_ground],
+		["afueras", _visualize_outskirts, show_outskirts],
+		["calles (debug)", _visualize_streets, show_streets],
+		["planos de piso (debug)", _visualize_floor_planes, show_floor_planes],
+		["grillas (debug)", _visualize_distorted_grids, show_distorted_grid],
+		["planos de carril (debug)", _visualize_lane_planes, show_lane_planes],
+		["volúmenes de carril (debug)", _visualize_lane_volumes, show_lane_volumes],
+		["planos de tráfico (debug)", _visualize_traffic_planes, show_traffic_planes],
+		["nodos (debug)", _visualize_nodes, show_nodes],
+		["puentes", _visualize_bridges, show_bridges],
+		["veredas", _visualize_floating_sidewalk_zones, true],
+		["techos", _visualize_roof_props, show_roof_props],
+		["fachadas", _visualize_facade_objects, show_delivery_doors or show_windows],
+		["autos estacionados", _visualize_parked_cars, show_parked_cars],
+		["edificios", _visualize_buildings, show_buildings or enable_building_colliders],
+		["colliders", _visualize_building_colliders, enable_building_colliders],
+		["escaleras (debug)", _visualize_stair_zones, show_stair_zones],
+		["cajas de lo colocado", _visualize_placement_boxes, true],
+	]
+
+
 # Libera solo los hijos visuales; el generator se reemplaza en generate_graph().
 func clear_visualization() -> void:
 	for child in get_children():
@@ -429,6 +532,7 @@ func clear_visualization() -> void:
 	city_index = CityIndex.new()
 	_scope_by_cluster.clear()
 	_shell_mesh_by_cluster.clear()
+	_openings.clear()
 	_final_buildings = null
 	_debug_buildings = null
 	_deformable_boxes = null
@@ -439,62 +543,12 @@ func visualize_graph() -> void:
 		push_error("No hay grafo generado para visualizar")
 		return
 
-	_add_lane_volumes_to_scene()
-
-	if show_ground:
-		_visualize_ground()
-
-	if show_outskirts:
-		_visualize_outskirts()
-
-	if show_streets:
-		_visualize_streets()
-
-	if show_floor_planes:
-		_visualize_floor_planes()
-
-	# Las cáscaras se arman también sin mostrarlas: el collider de cada edificio se lee de su malla.
-	if show_buildings or enable_building_colliders:
-		_visualize_buildings()
-
-	if enable_building_colliders:
-		_visualize_building_colliders()
-
-	if show_distorted_grid:
-		_visualize_distorted_grids()
-
-	if show_lane_planes:
-		_visualize_lane_planes()
-
-	if show_lane_volumes:
-		_visualize_lane_volumes()
-
-	if show_traffic_planes:
-		_visualize_traffic_planes()
-
-	if show_nodes:
-		_visualize_nodes()
-		
-	# EL ORDEN IMPORTA: primero todo lo DEFORMABLE, que ocupa la grilla del módulo (extremos de puente,
-	# veredas, piezas de techo); después lo RÍGIDO, que lee esa ocupación proyectada sobre su superficie
-	# (tanques, puertas). Al revés, una puerta se coloca antes de saber que la vereda está delante, que es
-	# exactamente el bug que este orden hace imposible (ver technical/city-generation.md, "Placing objects").
-	if show_bridges:
-		_visualize_bridges()
-
-	_visualize_floating_sidewalk_zones()
-
-	if show_roof_props:
-		_visualize_roof_props()
-
-	if show_delivery_doors or show_windows:
-		_visualize_facade_objects()
-
-	if show_stair_zones:
-		_visualize_stair_zones()
-
-	# Después de TODO lo colocado: las cajas son las regiones que el placer fue anotando.
-	_visualize_placement_boxes()
+	for pass_entry in _passes():
+		if not pass_entry[2]:
+			continue
+		var started := Time.get_ticks_msec()
+		(pass_entry[1] as Callable).call()
+		print("[Pase] %s: %d ms" % [pass_entry[0], Time.get_ticks_msec() - started])
 	_apply_view()
 
 	print("[Visualizer] Índice de piezas: %d identificables" % city_index.size())
@@ -602,6 +656,19 @@ func _get_building_material() -> StandardMaterial3D:
 		_building_material.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
 		_building_material.vertex_color_use_as_albedo = true
 	return _building_material
+
+
+func _spotlit(cluster: BuildingCluster) -> bool:
+	return spotlight == null or cluster == spotlight
+
+
+func _get_ghost_material() -> StandardMaterial3D:
+	if _ghost_material == null:
+		_ghost_material = StandardMaterial3D.new()
+		_ghost_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_ghost_material.albedo_color = Color(0.72, 0.72, 0.72, 0.35)
+		_ghost_material.cull_mode = BaseMaterial3D.CULL_BACK
+	return _ghost_material
 
 
 ## El material de la malla debug de los edificios, uno para toda la ciudad: la grilla se elige escribiendo
@@ -948,17 +1015,19 @@ func _visualize_ground() -> void:
 				var cell := grid.get_cell_vertices(x, z)
 				if cell.size() == 4:
 					_ground_quad(st, faces, cell[0], cell[1], cell[2], cell[3])
-	var streets := _ground_streets(st, faces)
 	st.generate_normals()
+	container.add_child(_ground_mesh(st, ground_color, "blocks"))
 
-	var material := StandardMaterial3D.new()
-	material.albedo_color = ground_color
-	material.roughness = 1.0
-	var view := MeshInstance3D.new()
-	view.name = "mesh"
-	view.mesh = st.commit()
-	view.material_override = material
-	container.add_child(view)
+	# LAS CALLES EN SU PROPIA MALLA, una para toda la ciudad, con UV en metros —a lo ancho desde un cordón,
+	# a lo largo desde el nodo— para el shader de asfalto que viene: la textura corre continua por la calle
+	# y no se corta por manzana. Las intersecciones, que antes quedaban como huecos, son abanicos con UV
+	# planas. Todo entra en el mismo collider que las manzanas.
+	var streets_st := SurfaceTool.new()
+	streets_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var streets := _ground_streets(streets_st, faces)
+	var crossings := _ground_intersections(streets_st, faces)
+	streets_st.generate_normals()
+	container.add_child(_ground_mesh(streets_st, street_color, "streets"))
 
 	if enable_ground_collider:
 		var shape := ConcavePolygonShape3D.new()
@@ -969,7 +1038,19 @@ func _visualize_ground() -> void:
 		body.name = "collider"
 		body.add_child(collider)
 		container.add_child(body)
-	print("[Visualizer] Suelo: %d triángulos · %d manzanas · %d calles" % [faces.size() / 3, blocks, streets])
+	print("[Visualizer] Suelo: %d triángulos · %d manzanas · %d calles · %d intersecciones"
+		% [faces.size() / 3, blocks, streets, crossings])
+
+
+func _ground_mesh(st: SurfaceTool, color: Color, node_name: String) -> MeshInstance3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 1.0
+	var view := MeshInstance3D.new()
+	view.name = node_name
+	view.mesh = st.commit()
+	view.material_override = material
+	return view
 
 # El corredor de cada calle, una vez por arista. Devuelve cuántas se dibujaron.
 func _ground_streets(st: SurfaceTool, faces: PackedVector3Array) -> int:
@@ -980,8 +1061,10 @@ func _ground_streets(st: SurfaceTool, faces: PackedVector3Array) -> int:
 		var node1: int = edge[0]
 		var node2: int = edge[1]
 		var sides: Array = graph.edge_to_faces.get(GraphGenerator._get_edge_key(node1, node2), [])
-		if sides.size() != 2:
-			continue  # el borde de la ciudad no tiene calle de este lado
+		if sides.is_empty():
+			continue
+		# Con una sola cara los puntos temporales solo existen si no es borde de ciudad: la media calle de
+		# la manzana de muestra (ver GraphCityGenerator._calculate_temporal_lane_points).
 		var block: BlockGenerator = generator.get_block_grid(sides[0])
 		if block == null:
 			continue
@@ -995,9 +1078,68 @@ func _ground_streets(st: SurfaceTool, faces: PackedVector3Array) -> int:
 		# Las dos esquinas de un extremo llevan la altura de su nodo: a lo ancho, nivelado.
 		var at_first := terrain.height_of(graph.faces[sides[0]][edge_idx])
 		var at_second := terrain.height_of(graph.faces[sides[0]][(edge_idx + 1) % graph.faces[sides[0]].size()])
-		_ground_quad(st, faces,
-			_flat_to_3d(first["point_a"], at_first), _flat_to_3d(first["point_b"], at_first),
-			_flat_to_3d(second["point_b"], at_second), _flat_to_3d(second["point_a"], at_second))
+		var p0 := _flat_to_3d(first["point_a"], at_first)
+		var p1 := _flat_to_3d(first["point_b"], at_first)
+		var p2 := _flat_to_3d(second["point_b"], at_second)
+		var p3 := _flat_to_3d(second["point_a"], at_second)
+		# UV en metros: `u` a lo ancho desde el cordón de esta manzana, `v` a lo largo desde este nodo.
+		var length := p0.distance_to(p3)
+		_ground_quad(st, faces, p0, p1, p2, p3, PackedVector2Array([Vector2(0.0, 0.0),
+			Vector2(p0.distance_to(p1), 0.0), Vector2(p3.distance_to(p2), length), Vector2(0.0, length)]))
+		drawn += 1
+	return drawn
+
+
+## LAS INTERSECCIONES: en cada nodo, el polígono que dejan alrededor las esquinas de cordón de sus manzanas
+## —lo que las calles, que van de cordón a cordón, no cubren, y era el hueco de cada cruce—, como abanico
+## desde su centro a la altura del nodo, con UV planas en metros. Donde una calle es media calle (una sola
+## cara) su extremo sobre el eje cierra el polígono; donde no hay calle (borde de ciudad), lo cierra el nodo.
+func _ground_intersections(st: SurfaceTool, faces: PackedVector3Array) -> int:
+	var graph := generator.plain_graph
+	var terrain := generator.terrain
+	var drawn := 0
+	for node_idx in graph.points.size():
+		var points := PackedVector2Array()
+		var open := false
+		for face_idx: int in graph.node_to_faces.get(node_idx, []):
+			var block: BlockGenerator = generator.get_block_grid(face_idx)
+			if block == null:
+				continue
+			var face: Array = graph.faces[face_idx]
+			var at := face.find(node_idx)
+			var corners := block.get_core_vertices()
+			if at < 0 or corners.size() != face.size():
+				continue
+			points.append(corners[at])
+			# El nodo es el arranque (local 0) de su arista y la llegada (local 1) de la anterior.
+			for local in 2:
+				var edge_idx := at if local == 0 else (at + face.size() - 1) % face.size()
+				var data: Dictionary = block.temporal_lane_points.get("%d_%d" % [edge_idx, local], {})
+				var key := GraphGenerator._get_edge_key(face[edge_idx], face[(edge_idx + 1) % face.size()])
+				if data.is_empty():
+					open = true
+				elif graph.edge_to_faces.get(key, []).size() < 2:
+					points.append(data["point_b"])
+					open = true
+		if open:
+			points.append(Vector2(graph.points[node_idx].x, graph.points[node_idx].z))
+		if points.size() < 3:
+			continue
+		var centre := Vector2.ZERO
+		for p in points:
+			centre += p
+		centre /= float(points.size())
+		var sorted: Array = Array(points)
+		sorted.sort_custom(func(p: Vector2, q: Vector2) -> bool: return (p - centre).angle() < (q - centre).angle())
+		var y := terrain.height_of(node_idx)
+		var c3 := Vector3(centre.x, y, centre.y)
+		for i in sorted.size():
+			var p: Vector2 = sorted[i]
+			var q: Vector2 = sorted[(i + 1) % sorted.size()]
+			if p.distance_to(q) < 0.01:
+				continue
+			_ground_triangle(st, faces, c3, Vector3(p.x, y, p.y), Vector3(q.x, y, q.y),
+				PackedVector2Array([centre, p, q]))
 		drawn += 1
 	return drawn
 
@@ -1016,15 +1158,28 @@ func _flat_to_3d(flat: Vector2, height: float) -> Vector3:
 # Un quad del suelo, en dos triángulos que miran para arriba. Godot toma como FRENTE el lado desde el que
 # las esquinas giran en sentido horario, y la normal de ese lado es (c − a) × (b − a): con el orden al
 # revés el suelo se culea desde arriba y desde abajo se ve negro.
-func _ground_quad(st: SurfaceTool, faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
-	_ground_triangle(st, faces, a, b, c)
-	_ground_triangle(st, faces, a, c, d)
+func _ground_quad(st: SurfaceTool, faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3,
+		uv := PackedVector2Array()) -> void:
+	if uv.size() == 4:
+		_ground_triangle(st, faces, a, b, c, PackedVector2Array([uv[0], uv[1], uv[2]]))
+		_ground_triangle(st, faces, a, c, d, PackedVector2Array([uv[0], uv[2], uv[3]]))
+	else:
+		_ground_triangle(st, faces, a, b, c)
+		_ground_triangle(st, faces, a, c, d)
 
-func _ground_triangle(st: SurfaceTool, faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3) -> void:
-	var ordered := [a, b, c] if (c - a).cross(b - a).y >= 0.0 else [a, c, b]
-	for corner: Vector3 in ordered:
-		st.add_vertex(corner)
-	faces.append_array(ordered)
+func _ground_triangle(st: SurfaceTool, faces: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3,
+		uv := PackedVector2Array()) -> void:
+	var ordered: Array[Vector3] = [a, b, c]
+	var uvs: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+	if uv.size() == 3:
+		uvs = [uv[0], uv[1], uv[2]]
+	if (c - a).cross(b - a).y < 0.0:
+		ordered = [a, c, b]
+		uvs = [uvs[0], uvs[2], uvs[1]]
+	for i in 3:
+		st.set_uv(uvs[i])
+		st.add_vertex(ordered[i])
+	faces.append_array(PackedVector3Array(ordered))
 
 # Los edificios —los meshes con sus occluders, y aparte los colliders— cuelgan de un nodo propio anotado
 # en "city_buildings", así se prenden y apagan todos juntos (lo usa el panel de performance del F1).
@@ -1040,6 +1195,7 @@ func _visualize_buildings() -> void:
 	var total_clusters = 0
 	var total_cells = 0
 	var raw_walls := 0
+	var lost_openings := 0
 	var started := Time.get_ticks_msec()
 	var buildings := _buildings_container("Buildings")
 	# LAS DOS MALLAS DE CADA EDIFICIO —la final y la debug, ver BuildingShell— cuelgan de dos nodos hermanos,
@@ -1068,7 +1224,7 @@ func _visualize_buildings() -> void:
 			var scope := city_index.new_scope()
 			_scope_by_cluster[cluster] = scope
 			var object_id := _object_for_cluster(cluster)
-			var shell := BuildingShell.new(cluster.color)
+			var shell := BuildingShell.new(cluster.color if _spotlit(cluster) else GHOST_COLOR)
 			var pieces: Array[Dictionary] = []
 
 			for floor_idx in range(cluster_floors):
@@ -1097,6 +1253,14 @@ func _visualize_buildings() -> void:
 
 			if shell.is_empty():
 				continue
+			# Las aberturas se cortan con la piel ya armada: sus planos existen.
+			shell.skin.wall_thickness = cluster.archetype.wall_thickness_m
+			if _openings.has(cluster):
+				var record: Dictionary = _openings[cluster]
+				var quads: PackedVector3Array = record["quads"]
+				for k in record["arch"].size():
+					var quad: Array[Vector3] = [quads[k * 4], quads[k * 4 + 1], quads[k * 4 + 2], quads[k * 4 + 3]]
+					shell.skin.add_opening(quad, record["outward"][k], record["arch"][k], record["segments"][k])
 			# LA IDENTIDAD SE ANOTA cuando la cáscara está completa: las tapas van en su segunda superficie,
 			# y su rango en el espacio de `Mesh.get_faces` —el del collider— empieza donde terminan las
 			# paredes. Una pieza con tapa son dos registros con los mismos ids.
@@ -1125,15 +1289,17 @@ func _visualize_buildings() -> void:
 
 			var final_mesh := shell.skin.build()
 			raw_walls += shell.skin.raw_walls
+			lost_openings += shell.skin.lost_openings
 			var final_instance := MeshInstance3D.new()
 			final_instance.mesh = final_mesh
-			final_instance.material_override = _get_building_material()
+			final_instance.material_override = _get_building_material() if _spotlit(cluster) \
+					else _get_ghost_material()
 			final_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 			_add_box_occluder(final_mesh, buildings)
 			_final_buildings.add_child(final_instance)
 
-	print("[Visualizer] Buildings: %d clusters (%d cells total) en %d bloques · paredes fuera de marco: %d · en %d ms"
-		% [total_clusters, total_cells, all_block_faces.size(), raw_walls, Time.get_ticks_msec() - started])
+	print("[Visualizer] Buildings: %d clusters (%d cells total) en %d bloques · paredes fuera de marco: %d · aberturas perdidas: %d · en %d ms"
+		% [total_clusters, total_cells, all_block_faces.size(), raw_walls, lost_openings, Time.get_ticks_msec() - started])
 
 # ============================================
 # VISUALIZACIÓN DE COLLIDERS DE BUILDINGS
@@ -1469,7 +1635,7 @@ func _visualize_roof_props() -> void:
 		var scope := city_index.new_scope()
 
 		for cluster in block.get_all_clusters():
-			if cluster.get_floor_count() <= 0 or cluster.cells.is_empty():
+			if cluster.get_floor_count() <= 0 or cluster.cells.is_empty() or not _spotlit(cluster):
 				continue
 			var rng := RandomNumberGenerator.new()
 			rng.seed = block.cluster_seed + cluster.id * 6151
@@ -1566,19 +1732,7 @@ func _visualize_roof_props() -> void:
 func _bake_placed(container: Node3D, buffer: Dictionary, scope: int, shadows: bool, collider: bool = true) -> bool:
 	if buffer["vertices"].is_empty():
 		return false
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = buffer["vertices"]
-	arrays[Mesh.ARRAY_NORMAL] = buffer["normals"]
-	arrays[Mesh.ARRAY_COLOR]  = buffer["colors"]
-	arrays[Mesh.ARRAY_INDEX]  = buffer["indices"]
-	var array_mesh := ArrayMesh.new()
-	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	var mesh_instance := MeshInstance3D.new()
-	mesh_instance.mesh = array_mesh
-	mesh_instance.material_override = _get_building_material()
-	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows \
-			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mesh_instance := GridPlacer.bake_mesh(buffer, _get_building_material(), shadows)
 	container.add_child(mesh_instance)
 	city_index.set_scope_mesh(scope, mesh_instance)
 	if not collider:
@@ -1614,8 +1768,6 @@ func _visualize_facade_objects() -> void:
 	var windows := {"total": 0, "rejected": 0, "faces": 0}
 	var door_container := _buildings_container("Doors")
 	var window_container := _buildings_container("Windows")
-	var door_mesh := FacadeProps.door_unit(delivery_door_color)
-	var window_mesh := FacadeProps.window_unit(window_color)
 	var window_triangles := 0
 
 	for face_idx in generator.get_all_block_faces():
@@ -1626,12 +1778,12 @@ func _visualize_facade_objects() -> void:
 		if show_delivery_doors:
 			var door_buffer := GridPlacer.new_buffer()
 			var door_scope := city_index.new_scope()
-			_place_delivery_doors(block, surfaces, door_buffer, door_scope, door_mesh, doors)
+			_place_delivery_doors(block, surfaces, door_buffer, door_scope, doors)
 			_bake_placed(door_container, door_buffer, door_scope, true)
 		if show_windows:
 			var window_buffer := GridPlacer.new_buffer()
 			var window_scope := city_index.new_scope()
-			_place_windows(block, surfaces, window_buffer, window_scope, window_mesh, windows)
+			_place_windows(block, surfaces, window_buffer, window_scope, windows)
 			window_triangles += window_buffer["indices"].size() / 3
 			# Sin collider y sin sombra: son cientos de miles y están a centímetros de la pared.
 			_bake_placed(window_container, window_buffer, window_scope, false, false)
@@ -1643,6 +1795,21 @@ func _visualize_facade_objects() -> void:
 		print("[Visualizer] Ventanas: %d en %d fachadas · %d triángulos · candidatas que no entraron: %d"
 			% [windows["total"], windows["faces"], window_triangles, windows["rejected"]])
 	print("[Visualizer] Objetos de fachada en %d ms" % (Time.get_ticks_msec() - started))
+
+
+## Lo que una pieza colocada deja en la pared: su cara sobre la superficie, para que la piel la corte (ver
+## BuildingSkin.add_opening y `_openings`).
+func _record_opening(cluster: BuildingCluster, facade: RigidMatrix, lo: Vector3i, size: Vector3i,
+		arch_height_m: float, arch_segments: int) -> void:
+	# Arrays empaquetados y no un diccionario por abertura: son cientos de miles.
+	if not _openings.has(cluster):
+		_openings[cluster] = {"quads": PackedVector3Array(), "outward": PackedVector3Array(),
+			"arch": PackedFloat32Array(), "segments": PackedInt32Array()}
+	var record: Dictionary = _openings[cluster]
+	record["quads"].append_array(SampleWall.opening_quad(facade, lo, size))
+	record["outward"].append(facade.axis_n)
+	record["arch"].append(arch_height_m)
+	record["segments"].append(arch_segments)
 
 
 ## La matriz de una pared —fachada o chaflán, ver BuildingModule.Wall— de un piso, armada la primera vez
@@ -1674,7 +1841,7 @@ func _wall_surface_cached(surfaces: Dictionary, module: BuildingModule, cell: Ve
 ## primero, la matriz de la fachada la ve, y la puerta SE APOYA sobre ella (`first_free_along_z`). Si lo
 ## que estorba es más alto que un escalón, la puerta no va, y se cuenta.
 func _place_delivery_doors(block: BlockGenerator, surfaces: Dictionary, buffer: Dictionary, scope: int,
-		door_mesh: UnitMesh, stats: Dictionary) -> void:
+		stats: Dictionary) -> void:
 	var cells_per_floor := block.get_cells_per_floor()
 	var number := 0
 	for door: Dictionary in block.traversal.delivery_doors:
@@ -1683,7 +1850,7 @@ func _place_delivery_doors(block: BlockGenerator, surfaces: Dictionary, buffer: 
 		var floor_idx: int = door["floor"]
 		var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
 		var cluster: BuildingCluster = block.get_cluster_for_cell(cell.x, cell.y)
-		if module == null or cluster == null:
+		if module == null or cluster == null or not _spotlit(cluster):
 			continue
 		number += 1
 		var floor_base := floor_idx * cells_per_floor
@@ -1694,8 +1861,9 @@ func _place_delivery_doors(block: BlockGenerator, surfaces: Dictionary, buffer: 
 			continue
 
 		# En el marco de una fachada `y` sale hacia la calle y `z` sube (ver RigidMatrix).
-		var size := facade.cells_for(TraversalGenerator.DOOR_WIDTH_M, TraversalGenerator.DOOR_DEPTH_M,
-			TraversalGenerator.DOOR_HEIGHT_M)
+		# La puerta de ESTE edificio (ver DoorArchetype). El tramo se sorteó para la puerta estándar
+		# (TraversalGenerator.DOOR_WIDTH_M); si esta es más ancha, abajo se corre hasta entrar.
+		var size := facade.cells_for(cluster.door.width_m, cluster.door.depth_m, cluster.door.height_m)
 		if size.x > facade.count.x:
 			stats["dropped"] += 1
 			continue
@@ -1710,6 +1878,7 @@ func _place_delivery_doors(block: BlockGenerator, surfaces: Dictionary, buffer: 
 			stats["slid"] += 1
 		var lo := Vector3i(u_in, 0, 0)
 		var max_rise := ceili(TraversalGenerator.DOOR_MAX_STEP_M / facade.cell.z)
+		var sink := floori(cluster.archetype.wall_thickness_m / facade.cell.y)
 		var row := facade.first_free_along_z(lo, size, max_rise)
 		if row < 0:
 			stats["dropped"] += 1
@@ -1718,9 +1887,10 @@ func _place_delivery_doors(block: BlockGenerator, surfaces: Dictionary, buffer: 
 			stats["raised"] += 1
 		lo.z = row
 		var placer := GridPlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
-		if placer.place(facade, lo, size, door_mesh, CityIndex.Kind.DOOR, cluster.id, floor_idx,
-				edge_idx, number):
+		if placer.place(facade, lo, size, cluster.door.unit(), CityIndex.Kind.DOOR, cluster.id, floor_idx,
+				edge_idx, number, sink):
 			stats["total"] += 1
+			_record_opening(cluster, facade, lo, size, cluster.door.arch_height_m, cluster.door.arch_segments)
 		else:
 			stats["dropped"] += 1
 
@@ -1729,11 +1899,11 @@ func _place_delivery_doors(block: BlockGenerator, surfaces: Dictionary, buffer: 
 ## planner según el criterio de su arquetipo, y se colocan las que entren. Las que chocan con una puerta,
 ## una vereda, un puente u otra ventana las descarta la matriz, no esta función.
 func _place_windows(block: BlockGenerator, surfaces: Dictionary, buffer: Dictionary, scope: int,
-		window_mesh: UnitMesh, stats: Dictionary) -> void:
+		stats: Dictionary) -> void:
 	var cells_per_floor := block.get_cells_per_floor()
 	for cluster in block.get_all_clusters():
 		var archetype: BuildingArchetype = cluster.archetype
-		if cluster.floor_count <= 0 or archetype == null:
+		if cluster.floor_count <= 0 or archetype == null or not _spotlit(cluster):
 			continue
 		var placer := GridPlacer.new(city_index, scope, _object_for_cluster(cluster), buffer)
 		for cell: Vector2i in cluster.cells:
@@ -1752,12 +1922,16 @@ func _place_windows(block: BlockGenerator, surfaces: Dictionary, buffer: Diction
 					# Del seed de la manzana y de la fachada: la misma ciudad en todos los peers.
 					var rng := RandomNumberGenerator.new()
 					rng.seed = hash([block.cluster_seed, cluster.id, cell, side, floor_idx])
-					var size := FacadePlanner.window_size(archetype, facade)
+					var size := FacadePlanner.window_size(cluster.window, facade)
 					var positions := FacadePlanner.window_positions(archetype, facade, size, rng)
+					var sink := floori(archetype.wall_thickness_m / facade.cell.y) if window_openings else 0
 					for lo: Vector3i in positions:
-						if placer.place(facade, lo, size, window_mesh, CityIndex.Kind.WINDOW, cluster.id,
-								floor_idx, side, archetype.window_layout):
+						if placer.place(facade, lo, size, cluster.window.unit(), CityIndex.Kind.WINDOW, cluster.id,
+								floor_idx, side, archetype.window_layout, sink):
 							stats["total"] += 1
+							if window_openings:
+								_record_opening(cluster, facade, lo, size, cluster.window.arch_height_m,
+									cluster.window.arch_segments)
 						else:
 							stats["rejected"] += 1
 
@@ -1933,6 +2107,81 @@ func _add_box_occluder(mesh: ArrayMesh, parent: Node3D) -> void:
 	occ_inst.occluder = box_occ
 	occ_inst.position = aabb.get_center()
 	parent.add_child(occ_inst)
+
+# ============================================
+# AUTOS ESTACIONADOS (free placement)
+# ============================================
+## LA FRANJA DE CORDÓN de cada lado de manzana que da a una calle es un free placement (ver FreePlacement):
+## del cordón hacia la calle, `PARKING_STRIP_M` de ancho, a lo largo de la fachada. Se la recorre por
+## semilla dejando huecos, con los tipos de auto del distrito (los mismos pesos que el tráfico) y sin
+## estacionar delante de una puerta de entrega. Cada auto es un cuerpo pasivo empujable (ver ParkedCar,
+## PassiveBodies). Sin colliders de ciudad —la muestra escalada del sandbox— salen como cajas.
+const PARKING_STRIP_M := 2.6
+const PARKING_FILL := 0.45
+const PARKING_GAP_M := Vector2(0.8, 3.0)
+const PARKING_MARGIN_M := 0.3
+const DOOR_CLEARANCE_M := 1.0
+
+func _visualize_parked_cars() -> void:
+	var physical := enable_building_colliders
+	var container: Node3D = PassiveBodies.new() if physical else Node3D.new()
+	container.name = "ParkedCars"
+	add_child(container)
+	var terrain := generator.terrain
+	var total := 0
+	for face_idx in generator.get_all_block_faces():
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		if block == null or terrain == null:
+			continue
+		var face: Array = generator.plain_graph.faces[face_idx]
+		var corners := block.get_core_vertices()
+		if corners.size() != 4 or face.size() != 4:
+			continue
+		var rng := RandomNumberGenerator.new()
+		rng.seed = block.cluster_seed + 9311
+		var weights := NeighborhoodTypes.get_car_weights(block.neighborhood_type)
+		var centre := (corners[0] + corners[1] + corners[2] + corners[3]) * 0.25
+		for edge_idx in 4:
+			var node_a: int = face[edge_idx]
+			var node_b: int = face[(edge_idx + 1) % 4]
+			if generator.get_street_type(node_a, node_b) == BlockGenerator.StreetType.BOUNDARY:
+				continue
+			var a2 := corners[edge_idx]
+			var b2 := corners[(edge_idx + 1) % 4]
+			var along := (b2 - a2).normalized()
+			var out2 := Vector2(-along.y, along.x)
+			if out2.dot(a2 - centre) < 0.0:
+				out2 = -out2
+			var out3 := Vector3(out2.x, 0.0, out2.y) * PARKING_STRIP_M
+			var a := Vector3(a2.x, terrain.height_of(node_a), a2.y)
+			var b := Vector3(b2.x, terrain.height_of(node_b), b2.y)
+			var strip := FreePlacement.new([a, b, b + out3, a + out3], PARKING_MARGIN_M)
+			# Delante de una puerta no estaciona nadie.
+			for door: Dictionary in block.traversal.delivery_doors:
+				if int(door["edge"]) != edge_idx:
+					continue
+				var cell: Vector2i = door["cell"]
+				var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
+				if module == null:
+					continue
+				strip.block_span(module.facade_point(edge_idx, int(door["along_min"]), 0),
+					module.facade_point(edge_idx, int(door["along_max"]) + 1, 0), DOOR_CLEARANCE_M)
+			var u := rng.randf_range(0.0, PARKING_GAP_M.y)
+			while u < strip.size.x:
+				var type := CarArchetypes.select_type_seeded(rng, weights)
+				var archetype := CarArchetypes.get_archetype(type)
+				if archetype.width <= PARKING_STRIP_M - PARKING_MARGIN_M * 2.0 and rng.randf() < PARKING_FILL:
+					var footprint := Rect2(u, (PARKING_STRIP_M - archetype.width) * 0.5, archetype.depth, archetype.width)
+					if strip.place(footprint):
+						var car := ParkedCar.create(type, physical)
+						car.transform = strip.frame_at(footprint)
+						container.add_child(car)
+						if physical:
+							(container as PassiveBodies).register(car as RigidBody3D)
+						total += 1
+				u += archetype.depth + rng.randf_range(PARKING_GAP_M.x, PARKING_GAP_M.y)
+	print("[Visualizer] Autos estacionados: %d" % total)
+
 
 # ============================================
 # CAJAS DE LO COLOCADO (vista debug)

@@ -19,11 +19,33 @@ static var NEIGHBORHOOD_ARCHETYPES = {
 	],
 }
 
+## EL ARQUETIPO FORZADO: mientras no es null, todo cluster nuevo sale de esta clase sin sortear. Lo usa el
+## design sandbox para que la manzana de muestra de un arquetipo lleve ese arquetipo (ver
+## City.generate_block_sample), que con varios por distrito el sorteo no garantiza. Se pone y se saca
+## alrededor de una sola generación.
+static var forced_archetype: GDScript = null
+
+
+## Todos los arquetipos, uno por clase y con su distrito puesto: las parcelas del design sandbox.
+static func all() -> Array[BuildingArchetype]:
+	var out: Array[BuildingArchetype] = []
+	for district: NeighborhoodTypes.District in NEIGHBORHOOD_ARCHETYPES:
+		for archetype_class: GDScript in NEIGHBORHOOD_ARCHETYPES[district]:
+			var instance: BuildingArchetype = archetype_class.new()
+			instance.district = district
+			out.append(instance)
+	return out
+
+
 # Selecciona (seed-based) uno de los archetypes del distrito y lo instancia.
 static func get_archetype_for_cluster(
 	neighborhood_type: NeighborhoodTypes.District,
 	cluster_seed: int
 ) -> BuildingArchetype:
+	if forced_archetype != null:
+		var forced: BuildingArchetype = forced_archetype.new()
+		forced.district = neighborhood_type
+		return forced
 
 	var classes = NEIGHBORHOOD_ARCHETYPES.get(neighborhood_type, [])
 
@@ -35,4 +57,6 @@ static func get_archetype_for_cluster(
 	rng.seed = cluster_seed
 
 	var selected_index = rng.randi_range(0, classes.size() - 1)
-	return classes[selected_index].new()
+	var instance: BuildingArchetype = classes[selected_index].new()
+	instance.district = neighborhood_type
+	return instance

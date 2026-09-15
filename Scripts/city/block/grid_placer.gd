@@ -39,6 +39,29 @@ static func new_buffer() -> Dictionary:
 	}
 
 
+## Un buffer como `MeshInstance3D`. Lo usan la ciudad (`City._bake_placed`, que además le pone el collider)
+## y quien coloca fuera de ella (el design sandbox, ver SampleWall). Sin `material`, uno de colores por
+## vértice propio.
+static func bake_mesh(buffer: Dictionary, material: Material = null, shadows := true) -> MeshInstance3D:
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = buffer["vertices"]
+	arrays[Mesh.ARRAY_NORMAL] = buffer["normals"]
+	arrays[Mesh.ARRAY_COLOR] = buffer["colors"]
+	arrays[Mesh.ARRAY_INDEX] = buffer["indices"]
+	var mesh := ArrayMesh.new()
+	if not buffer["vertices"].is_empty():
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	if material == null:
+		material = StandardMaterial3D.new()
+		(material as StandardMaterial3D).vertex_color_use_as_albedo = true
+	instance.material_override = material
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows 			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return instance
+
+
 func _init(index: CityIndex, scope: int, object: int, buffer: Dictionary) -> void:
 	_index = index
 	_scope = scope
@@ -48,15 +71,18 @@ func _init(index: CityIndex, scope: int, object: int, buffer: Dictionary) -> voi
 
 ## Coloca `mesh` en la región `[lo, lo + size)` de `grid`. Devuelve false, sin colocar nada, si la región no
 ## está libre o se sale de la grilla.
+## `sink_cells` hunde la pieza esa cantidad de celdas hacia adentro de la superficie (una ventana metida
+## en el espesor de la pared, ver BuildingSkin.add_opening): la ocupación sigue siendo la región declarada,
+## delante de la pared, que es lo que las piezas se disputan entre sí.
 func place(grid: PlacementGrid, lo: Vector3i, size: Vector3i, mesh: UnitMesh,
-		kind: int, id_a: int, id_b: int, id_c: int, id_d: int) -> bool:
+		kind: int, id_a: int, id_b: int, id_c: int, id_d: int, sink_cells := 0) -> bool:
 	if not grid.is_free(lo, size):
 		return false
 
 	# La bilineal de la grilla restringida a la región, precalculada (ver PlacementGrid.region_frame), y la
 	# pieza escrita en arrays propios que se vuelcan de una vez al buffer: por acá pasan cientos de miles de
 	# ventanas, y en GDScript cada llamada por vértice cuesta.
-	var frame := grid.region_frame(Vector3(lo), Vector3(size))
+	var frame := grid.region_frame(Vector3(lo.x, lo.y - sink_cells, lo.z), Vector3(size))
 	var o := frame[0]
 	var dx := frame[1]
 	var dz := frame[2]

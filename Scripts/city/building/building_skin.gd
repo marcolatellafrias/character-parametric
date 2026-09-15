@@ -8,20 +8,25 @@ extends RefCounted
 ##     una de la otra. Lo que no se superpone queda: la parte de una fachada que asoma sobre el vecino más bajo.
 ##   · Lo coplanar se une: las doce paredes de una fachada de doce pisos salen como UNA, con los vértices
 ##     compartidos. Es lo que necesita un shader de texturizado, y lo que menos triángulos cuesta.
+##   · LAS ABERTURAS se cortan de la pared (`add_opening`): el hueco de cada puerta y ventana, con el ESPESOR
+##     de la pared a la vista alrededor —los derrames: jambas, dintel y alféizar, `wall_thickness` hacia
+##     adentro— y, si la abertura lleva ARCO, las dos esquinas superiores redondeadas con los segmentos que
+##     pida. Sin derrame en el borde donde la pared termina: ahí no hay espesor que mostrar.
 ## Como no depende de qué módulo es vecino de cuál, sirve igual para un edificio escalonado por pisos: si el
 ## piso de arriba es más chico, el suelo que le sobra al de abajo queda como cornisa sin cambiar nada acá.
 ##
 ## Es SOLO lo que se ve. La identidad de las piezas (CityIndex) y el collider salen de la malla debug, que
-## conserva la forma básica módulo por módulo (ver BuildingShell): fundir doce pisos en un quad no puede
-## costarle al inspector saber en qué piso hiciste clic.
+## conserva la forma básica módulo por módulo y sin huecos (ver BuildingShell).
 ##
 ## LAS PAREDES SON RECTÁNGULOS EN EL MARCO DE SU PLANO. Cada pared es un paralelogramo vertical (ver
 ## BuildingModule.get_wall_quad) cuyas líneas de piso son paralelas a la línea de la que el plano salió; en
 ## el marco (u a lo largo de esa línea, v la altura menos la pendiente por u) es un rectángulo con los lados
-## en los ejes, y todo lo que hay en ese plano también. Entonces "unión de las de un lado menos unión de las
-## del otro" es aritmética de rectángulos: exacta, sin Clipper, sin agujeros —un rectángulo menos otro son a
-## lo sumo cuatro— y se une sola al fusionar los que comparten ancho. Si una cara no cumpliera lo del marco
-## (la línea de piso torcida respecto del plano) se emite tal cual, ni oculta ni unida, y se cuenta en
+## en los ejes, y todo lo que hay en ese plano también —las aberturas incluidas: la región de una ventana en
+## la matriz rígida es un trozo del mismo paralelogramo—. Entonces "unión de un lado, menos unión del otro,
+## menos aberturas" es aritmética de rectángulos: exacta, sin Clipper, sin agujeros —un rectángulo menos otro
+## son a lo sumo cuatro— y se une sola al fusionar los que comparten ancho. El arco es un rectángulo más
+## (la sección superior de la abertura, inscripta en ella): se resta entero y se devuelven las dos esquinas
+## como abanicos. Si una cara no cumpliera lo del marco se emite tal cual, ni oculta ni unida, y se cuenta en
 ## `raw_walls`: hoy no pasa, y cualquier número ahí es un caso a mirar.
 ##
 ## LAS TAPAS VIVEN EN EL ESPACIO DE CELDAS DE SU MÓDULO, no en un plano: tienen silla, y dos tapas a la misma
@@ -37,9 +42,12 @@ const EPS := 0.001
 const FAR := 1.0e6
 
 var _color: Color
+## Cuánto entra el derrame de una abertura: el espesor de la pared, del arquetipo del edificio.
+var wall_thickness := 0.3
 
-## Un plano por entrada: `{n, d, o, e, slope, front, back}` — normal canónica y distancia, el marco (origen,
-## dirección horizontal de la línea, pendiente de la línea) y los rectángulos de cada lado.
+## Un plano por entrada: `{n, d, o, e, slope, front, back, openings}` — normal canónica y distancia, el
+## marco (origen, dirección horizontal de la línea, pendiente de la línea), los rectángulos de cada lado y
+## las aberturas `{rect, front, arch, segments, reveals}`.
 var _planes: Array[Dictionary] = []
 ## Los planos por normal redondeada, para encontrar el de una cara sin recorrerlos todos.
 var _planes_by_normal: Dictionary = {}
@@ -48,6 +56,8 @@ var _caps: Dictionary = {}
 ## Caras que no entraron en el marco de su plano: `[quad, normal]`, se emiten tal cual.
 var _raw: Array = []
 var raw_walls := 0
+## Aberturas que no cayeron en ningún plano de pared: un caso a mirar.
+var lost_openings := 0
 
 var _vertices := PackedVector3Array()
 var _normals := PackedVector3Array()
@@ -69,16 +79,11 @@ func add_wall(quad: Array[Vector3], normal: Vector3) -> void:
 		_raw.append([quad, normal])
 		raw_walls += 1
 		return
-	var u0 := _u(plane, quad[0])
-	var u1 := _u(plane, quad[1])
-	var v0 := _v(plane, quad[0])
-	var v1 := _v(plane, quad[3])
-	# El marco vale si la línea de piso es paralela a la del plano y los lados son verticales.
-	if absf(_v(plane, quad[1]) - v0) > EPS or absf(_u(plane, quad[3]) - u0) > EPS:
+	var rect := _rect_in(plane, quad)
+	if rect == Rect2():
 		_raw.append([quad, normal])
 		raw_walls += 1
 		return
-	var rect := Rect2(minf(u0, u1), minf(v0, v1), absf(u1 - u0), absf(v1 - v0))
 	if normal.dot(canon) > 0.0:
 		plane["front"].append(rect)
 	else:
@@ -93,15 +98,49 @@ func add_cap(module: BuildingModule, contour: PackedVector2Array, height_index: 
 	_caps[key]["front" if up else "back"].append(contour)
 
 
+## UNA ABERTURA en una pared ya agregada: su quad sobre el plano de la pared `[b0, b1, t1, t0]` (la cara
+## `y = 0` de la región de la matriz rígida, ver RigidMatrix) y hacia dónde mira esa pared. `arch_height`
+## es cuánto de arriba de la abertura es la sección de arco (0 = sin arco) y `arch_segments` con cuántos
+## segmentos se redondea cada esquina. Con `reveals` se dibujan los derrames: sin ellos es solo el hueco (la
+## cara de atrás de un tabique atravesado, que ya tiene los derrames del frente).
+func add_opening(quad: Array[Vector3], outward: Vector3, arch_height: float, arch_segments: int,
+		reveals := true) -> void:
+	var normal := (quad[1] - quad[0]).cross(quad[3] - quad[0])
+	if normal.length_squared() <= 0.0:
+		lost_openings += 1
+		return
+	normal = normal.normalized()
+	var canon := normal if _is_canonical(normal) else -normal
+	var plane := _plane_for(canon, quad)
+	if plane.is_empty():
+		lost_openings += 1
+		return
+	var rect := _rect_in(plane, quad)
+	if rect == Rect2():
+		lost_openings += 1
+		return
+	plane["openings"].append({"rect": rect, "front": outward.dot(canon) > 0.0,
+		"arch": clampf(arch_height, 0.0, rect.size.y), "segments": maxi(arch_segments, 1), "reveals": reveals})
+
+
 # ── Salida ───────────────────────────────────────────────────────────────────────────────────────
 
 func build() -> ArrayMesh:
 	for plane in _planes:
 		var front := _merge(plane["front"])
 		var back := _merge(plane["back"])
+		var holes_front: Array[Rect2] = []
+		var holes_back: Array[Rect2] = []
+		for opening: Dictionary in plane["openings"]:
+			if opening["front"]:
+				holes_front.append(opening["rect"])
+			else:
+				holes_back.append(opening["rect"])
 		var n: Vector3 = plane["n"]
-		_emit_rects(plane, _merge(_subtract_all(front, back)), n)
-		_emit_rects(plane, _merge(_subtract_all(back, front)), -n)
+		_emit_rects(plane, _carve(front, back + holes_front), n)
+		_emit_rects(plane, _carve(back, front + holes_back), -n)
+		for opening: Dictionary in plane["openings"]:
+			_emit_opening(plane, opening, front if opening["front"] else back)
 	for raw: Array in _raw:
 		_emit_polygon(raw[0], raw[1])
 	for group: Dictionary in _caps.values():
@@ -157,12 +196,25 @@ func _plane_for(canon: Vector3, quad: Array[Vector3]) -> Dictionary:
 			if plane["n"].dot(canon) > 0.99999 and absf(plane["d"] - d) < EPS \
 					and absf(plane["slope"] - slope) < 0.0001:
 				return plane
-	var plane := {"n": canon, "d": d, "o": on, "e": e, "slope": slope, "front": [], "back": []}
+	var plane := {"n": canon, "d": d, "o": on, "e": e, "slope": slope, "front": [], "back": [],
+		"openings": []}
 	_planes.append(plane)
 	if not _planes_by_normal.has(key):
 		_planes_by_normal[key] = PackedInt32Array()
 	_planes_by_normal[key].append(_planes.size() - 1)
 	return plane
+
+
+## El rectángulo de un quad `[b0, b1, t1, t0]` en el marco del plano, o `Rect2()` si no es un rectángulo
+## ahí (la línea de piso no es paralela a la del plano, o los lados no son verticales).
+func _rect_in(plane: Dictionary, quad: Array[Vector3]) -> Rect2:
+	var u0 := _u(plane, quad[0])
+	var u1 := _u(plane, quad[1])
+	var v0 := _v(plane, quad[0])
+	var v1 := _v(plane, quad[3])
+	if absf(_v(plane, quad[1]) - v0) > EPS or absf(_u(plane, quad[3]) - u0) > EPS:
+		return Rect2()
+	return Rect2(minf(u0, u1), minf(v0, v1), absf(u1 - u0), absf(v1 - v0))
 
 
 func _u(plane: Dictionary, p: Vector3) -> float:
@@ -173,10 +225,11 @@ func _v(plane: Dictionary, p: Vector3) -> float:
 	return p.y - plane["o"].y - plane["slope"] * _u(plane, p)
 
 
-func _point(plane: Dictionary, u: float, v: float) -> Vector3:
+## Un punto del marco al mundo, `depth` metros hacia adentro de la cara de normal `n_side`.
+func _point(plane: Dictionary, u: float, v: float, n_side := Vector3.ZERO, depth := 0.0) -> Vector3:
 	var o: Vector3 = plane["o"]
 	var e: Vector3 = plane["e"]
-	return o + e * u + Vector3.UP * (v + plane["slope"] * u)
+	return o + e * u + Vector3.UP * (v + plane["slope"] * u) - n_side * depth
 
 
 # ── Rectángulos ──────────────────────────────────────────────────────────────────────────────────
@@ -205,31 +258,84 @@ static func _merge(rects: Array) -> Array[Rect2]:
 	return out
 
 
-static func _subtract_all(rects: Array[Rect2], cutters: Array[Rect2]) -> Array[Rect2]:
-	var out := rects
-	for c in cutters:
-		var next: Array[Rect2] = []
-		for r in out:
-			next.append_array(_subtract(r, c))
-		out = next
+## LO SÓLIDO MENOS LOS CORTES, como rectángulos: la pared menos la de enfrente y menos sus aberturas.
+##
+## Por una GRILLA y no restando rectángulo a rectángulo: todos los bordes en u y en v de todo lo que entra
+## parten el plano en celdas; cada celda es sólida si la cubre algo sólido y nada la corta (los bordes
+## están exactamente sobre las líneas, así que marcar rangos de celdas es exacto); y las celdas sólidas se
+## juntan en columnas, corridas verticales de una columna de celdas —la franja de pared entre dos columnas
+## de ventanas sale como UN rectángulo de toda la altura—. Es lineal en las aberturas; restar una por una
+## era cuadrático, y con cientos de miles de ventanas no terminaba.
+static func _carve(solid: Array[Rect2], cuts: Array[Rect2]) -> Array[Rect2]:
+	if solid.is_empty():
+		return []
+	if cuts.is_empty():
+		return solid
+	var us := _edges(solid, cuts, true)
+	var vs := _edges(solid, cuts, false)
+	var columns := us.size() - 1
+	var rows := vs.size() - 1
+	var cell := PackedByteArray()
+	cell.resize(columns * rows)
+	for r in solid:
+		_paint(cell, us, vs, r, 1)
+	for c in cuts:
+		_paint(cell, us, vs, c, 0)
+	var out: Array[Rect2] = []
+	for i in columns:
+		var j := 0
+		while j < rows:
+			if cell[i * rows + j] == 0:
+				j += 1
+				continue
+			var j0 := j
+			while j < rows and cell[i * rows + j] == 1:
+				j += 1
+			out.append(Rect2(us[i], vs[j0], us[i + 1] - us[i], vs[j] - vs[j0]))
 	return out
 
 
-## Un rectángulo menos otro: lo que queda a la izquierda y a la derecha del corte a toda altura, y lo que
-## queda abajo y arriba entre medio. A lo sumo cuatro, y ninguno de menos de un milímetro.
-static func _subtract(r: Rect2, c: Rect2) -> Array[Rect2]:
-	var cut := r.intersection(c)
-	if cut.size.x <= EPS or cut.size.y <= EPS:
-		return [r]
-	var out: Array[Rect2] = []
-	for piece: Rect2 in [
-		Rect2(r.position.x, r.position.y, cut.position.x - r.position.x, r.size.y),
-		Rect2(cut.end.x, r.position.y, r.end.x - cut.end.x, r.size.y),
-		Rect2(cut.position.x, r.position.y, cut.size.x, cut.position.y - r.position.y),
-		Rect2(cut.position.x, cut.end.y, cut.size.x, r.end.y - cut.end.y),
-	]:
-		if piece.size.x > EPS and piece.size.y > EPS:
-			out.append(piece)
+## Los bordes de todos los rectángulos en un eje, ordenados y sin repetidos (a un milímetro).
+static func _edges(solid: Array[Rect2], cuts: Array[Rect2], horizontal: bool) -> PackedFloat32Array:
+	var values := PackedFloat32Array()
+	for r in solid:
+		values.append(r.position.x if horizontal else r.position.y)
+		values.append(r.end.x if horizontal else r.end.y)
+	for c in cuts:
+		values.append(c.position.x if horizontal else c.position.y)
+		values.append(c.end.x if horizontal else c.end.y)
+	values.sort()
+	var out := PackedFloat32Array()
+	for v in values:
+		if out.is_empty() or v - out[out.size() - 1] > EPS:
+			out.append(v)
+	return out
+
+
+## Marca las celdas que cubre un rectángulo. Sus bordes están en las líneas, así que el rango de celdas
+## es el que va del índice de su inicio al de su fin.
+static func _paint(cell: PackedByteArray, us: PackedFloat32Array, vs: PackedFloat32Array, r: Rect2,
+		value: int) -> void:
+	var i0 := _index_of(us, r.position.x)
+	var i1 := _index_of(us, r.end.x)
+	var j0 := _index_of(vs, r.position.y)
+	var j1 := _index_of(vs, r.end.y)
+	var rows := vs.size() - 1
+	for i in range(i0, i1):
+		for j in range(j0, j1):
+			cell[i * rows + j] = value
+
+
+static func _index_of(edges: PackedFloat32Array, value: float) -> int:
+	var i := edges.bsearch(value - EPS)
+	return clampi(i, 0, edges.size() - 1)
+
+
+## La envolvente de una lista de rectángulos: hasta dónde llega la pared de ese lado.
+static func _bounds(rects: Array[Rect2]) -> Rect2:
+	var out := Rect2()
+	for i in rects.size():
+		out = rects[i] if i == 0 else out.merge(rects[i])
 	return out
 
 
@@ -279,6 +385,109 @@ func _emit_polygon(quad: Array[Vector3], normal: Vector3) -> void:
 		_normals.append(normal)
 		_colors.append(_color)
 	_emit_quad(ids, quad, normal)
+
+
+## Un triángulo con vértices propios, orientado hacia `normal`.
+func _emit_triangle(a: Vector3, b: Vector3, c: Vector3, normal: Vector3) -> void:
+	var base := _vertices.size()
+	for p: Vector3 in [a, b, c]:
+		_vertices.append(p)
+		_normals.append(normal)
+		_colors.append(_color)
+	if (c - a).cross(b - a).dot(normal) < 0.0:
+		_indices.append_array(PackedInt32Array([base, base + 2, base + 1]))
+	else:
+		_indices.append_array(PackedInt32Array([base, base + 1, base + 2]))
+
+
+# ── Aberturas ────────────────────────────────────────────────────────────────────────────────────
+
+## EL CONTORNO DE UNA ABERTURA en el marco del plano, antihorario (u a la derecha, v arriba): abajo de
+## izquierda a derecha, el lado derecho subiendo, el arco o dintel de derecha a izquierda, el lado
+## izquierdo bajando. Con arco, las dos esquinas de arriba son cuartos de círculo de radio `arch` (o medio
+## ancho si la abertura es más angosta que dos radios), con `segments` tramos cada uno. Cada tramo lleva
+## qué es (`side`: 0 abajo, 1 derecha, 2 arriba, 3 izquierda), para saber cuál cae en el borde de la pared.
+static func _outline(rect: Rect2, arch: float, segments: int) -> Array:
+	var u0 := rect.position.x
+	var u1 := rect.end.x
+	var v0 := rect.position.y
+	var v1 := rect.end.y
+	var r := minf(arch, rect.size.x * 0.5)
+	var points: Array = [[Vector2(u0, v0), 0], [Vector2(u1, v0), 1]]
+	if r <= EPS:
+		points.append([Vector2(u1, v1), 2])
+		points.append([Vector2(u0, v1), 3])
+	else:
+		# Esquina derecha: centro (u1 - r, v1 - r), del ángulo 0 al 90.
+		for k in range(0, segments + 1):
+			var t := PI * 0.5 * float(k) / float(segments)
+			points.append([Vector2(u1 - r + r * cos(t), v1 - r + r * sin(t)), 2 if k < segments else 2])
+		# Esquina izquierda: centro (u0 + r, v1 - r), del 90 al 180.
+		for k in range(0, segments + 1):
+			var t := PI * 0.5 + PI * 0.5 * float(k) / float(segments)
+			points.append([Vector2(u0 + r + r * cos(t), v1 - r + r * sin(t)), 3 if k == segments else 2])
+	return points
+
+
+## Los derrames y las esquinas de arco de una abertura. `side_rects` son las paredes de su lado, para saber
+## dónde termina la pared: un tramo del contorno que cae en ese borde no lleva derrame.
+func _emit_opening(plane: Dictionary, opening: Dictionary, side_rects: Array[Rect2]) -> void:
+	var rect: Rect2 = opening["rect"]
+	var arch: float = opening["arch"]
+	var n_side: Vector3 = plane["n"] if opening["front"] else -plane["n"]
+	var e: Vector3 = plane["e"]
+	var slope: float = plane["slope"]
+	var du := e + Vector3.UP * slope  # el mundo por unidad de u
+	var dv := Vector3.UP               # y por unidad de v
+
+	# Las esquinas del arco, como abanicos de pared desde la esquina del rectángulo hasta el arco.
+	var r := minf(arch, rect.size.x * 0.5)
+	if r > EPS:
+		var segments: int = opening["segments"]
+		for corner in 2:
+			var cu := rect.end.x - r if corner == 0 else rect.position.x + r
+			var tip := Vector2(rect.end.x, rect.end.y) if corner == 0 else Vector2(rect.position.x, rect.end.y)
+			var from_angle := 0.0 if corner == 0 else PI * 0.5
+			for k in segments:
+				var t0 := from_angle + PI * 0.5 * float(k) / float(segments)
+				var t1 := from_angle + PI * 0.5 * float(k + 1) / float(segments)
+				var a := Vector2(cu + r * cos(t0), rect.end.y - r + r * sin(t0))
+				var b := Vector2(cu + r * cos(t1), rect.end.y - r + r * sin(t1))
+				_emit_triangle(_point(plane, tip.x, tip.y), _point(plane, a.x, a.y), _point(plane, b.x, b.y), n_side)
+
+	if not opening["reveals"]:
+		return
+	var bounds := _bounds(side_rects)
+	var outline := _outline(rect, arch, opening["segments"])
+	for i in outline.size():
+		var a: Vector2 = outline[i][0]
+		var b: Vector2 = outline[(i + 1) % outline.size()][0]
+		var side: int = outline[i][1]
+		if a.distance_to(b) <= EPS:
+			continue
+		# En el borde de la pared no hay espesor que mostrar.
+		if side == 0 and absf(a.y - bounds.position.y) < EPS:
+			continue
+		if side == 2 and absf(a.y - bounds.end.y) < EPS and absf(b.y - bounds.end.y) < EPS:
+			continue
+		if side == 1 and absf(a.x - bounds.end.x) < EPS:
+			continue
+		if side == 3 and absf(a.x - bounds.position.x) < EPS:
+			continue
+		# La normal del derrame apunta hacia adentro de la abertura: la izquierda del tramo, en el plano.
+		var d := b - a
+		var normal := (du * -d.y + dv * d.x).normalized()
+		var corners: Array[Vector3] = [
+			_point(plane, a.x, a.y), _point(plane, b.x, b.y),
+			_point(plane, b.x, b.y, n_side, wall_thickness), _point(plane, a.x, a.y, n_side, wall_thickness),
+		]
+		var ids := PackedInt32Array()
+		for p in corners:
+			ids.append(_vertices.size())
+			_vertices.append(p)
+			_normals.append(normal)
+			_colors.append(_color)
+		_emit_quad(ids, corners, normal)
 
 
 # ── Tapas ────────────────────────────────────────────────────────────────────────────────────────

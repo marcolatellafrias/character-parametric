@@ -1,4 +1,4 @@
-class_name BuildingArchetype extends RefCounted
+class_name BuildingArchetype extends SeededArchetype
 
 # Clase base de arquetipo de edificio.
 #
@@ -25,6 +25,15 @@ class_name BuildingArchetype extends RefCounted
 # Identificador único del arquetipo
 var archetype_id: String = "default"
 
+## De qué distrito es: lo pone el registro (ArchetypeDefinitions) al instanciarlo. Es lo que dice de qué
+## manzana es muestra en el design sandbox.
+var district: NeighborhoodTypes.District = NeighborhoodTypes.District.POOR
+
+## LA MUESTRA DEL SANDBOX: una manzana entera sin distorsión ni relieve, a `SAMPLE_SCALE`, con UN edificio
+## de este arquetipo completo y el resto en gris translúcido (ver City.generate_block_sample).
+const SAMPLE_SIDE_M := 246.0
+const SAMPLE_SCALE := 1.0 / 25.0
+
 ## EL COLOR DEL EDIFICIO, la familia del arquetipo; el seed lo corre apenas (ver `get_color`). Revoque y
 ## piedra de 1900: cremas, ocres, grises cálidos. Nunca blanco puro, que con la niebla clara de fondo se
 ## pierde. (El color saturado que distingue barrios es de la vista debug: NeighborhoodTypes.debug_color.)
@@ -32,6 +41,10 @@ var base_color := Color(0.66, 0.60, 0.50)
 
 # Características arquitectónicas
 var has_chamfered_street_corners: bool = false
+
+## Cuánto espesor de pared se ve alrededor de cada abertura (ver BuildingSkin.add_opening). Es de la pared,
+## no de la pieza: una ventana es más fina que la pared que la rodea.
+var wall_thickness_m: float = 0.3
 
 ## Cuánto levanta la pieza de techo, en metros. Es la pendiente: sobre una celda de edificio (~11 m de
 ## lado) un valor de 2 m da un techo de inclinación creíble sin volverse una carpa.
@@ -50,15 +63,17 @@ var flat_roof_chance: float = 0.35
 
 ## LAS VENTANAS. Solo números: las reglas que los usan están en FacadePlanner.
 var window_layout: int = FacadePlanner.Layout.STACKED
-## Medidas de una ventana, en metros. Es rígida: esto es su tamaño real en cualquier edificio.
-var window_width_m: float = 1.0
-var window_height_m: float = 2.2
+## Qué tipos de ventana y de puerta puede llevar (ver WindowArchetype, DoorArchetype): cada edificio elige
+## uno de cada con su semilla (`pick_window`, `pick_door`), y ese es el tamaño real de sus piezas.
+var window_archetypes: Array[WindowArchetype] = [WindowArchetype.tall()]
+var door_archetypes: Array[DoorArchetype] = [DoorArchetype.delivery()]
 ## A qué altura del piso arranca la ventana. En RANDOM es la altura mínima.
 var window_sill_m: float = 1.6
 ## Pared libre entre dos columnas de ventanas (STACKED). Más grande = menos ventanas.
 var window_gap_m: float = 1.4
-## Cuántas posiciones se sortean por fachada y por piso (RANDOM). Las que se pisan no entran.
-var window_attempts: int = 3
+## Qué fracción de las columnas lleva ventana en cada piso (RANDOM): el desorden de una villa, sin que
+## ninguna ventana se corra de la grilla.
+var window_fill: float = 0.6
 
 ## El color de UN edificio: `base_color` corrido apenas por el seed en tono, saturación y valor, para que
 ## dos vecinos del mismo arquetipo no salgan idénticos sin dejar de ser de la misma familia.
@@ -71,6 +86,113 @@ func get_color(color_seed: int) -> Color:
 		clampf(base_color.v + rng.randf_range(-0.07, 0.07), 0.0, 0.85),
 		1.0
 	)
+
+func pick_window(color_seed: int) -> WindowArchetype:
+	return window_archetypes[abs(color_seed) % window_archetypes.size()]
+
+
+func pick_door(color_seed: int) -> DoorArchetype:
+	return door_archetypes[abs(color_seed) % door_archetypes.size()]
+
+
+# ── La muestra del sandbox (SeededArchetype) ─────────────────────────────────────────────────────
+
+func max_footprint() -> Vector2:
+	var side := SAMPLE_SIDE_M * SAMPLE_SCALE + 2.0
+	return Vector2(side, side)
+
+
+## Una manzana de este distrito, generada con `seed_value` y escalada, centrada en la parcela, con lo que
+## la fila tenga elegido (distorsión, vista). `load` y no `preload`: la ciudad ya depende de los
+## arquetipos, y un preload cruzado no carga.
+func build(seed_value: int, parent: Node3D) -> Node3D:
+	var city: Node3D = load("res://Scripts/city/core/city.gd").new()
+	city.name = "BlockSample"
+	city.auto_generate = false
+	city.scale = Vector3.ONE * SAMPLE_SCALE
+	var half := SAMPLE_SIDE_M * SAMPLE_SCALE * 0.5
+	city.position = Vector3(-half, SandboxParcel.PLANE_LIFT * 3.0, -half)
+	for property in ["building_debug_view", "building_grid", "show_deformable_boxes", "show_rigid_boxes"]:
+		if options.has(property):
+			city.set(property, options[property])
+	parent.add_child(city)
+	city.generate_block_sample(seed_value, self, SAMPLE_SIDE_M, _distortion())
+	return city
+
+
+## Las teclas de la fila de edificios: la distorsión de la manzana por eje —en niveles fijos, sin azar,
+## para ver el rango entero— y lo que en el juego es el menú de vista (F3): la malla debug, la grilla, las
+## cajas de lo colocado, sobre todas las manzanas de la fila a la vez.
+const DISTORTION_LEVELS: Array[float] = [0.0, 0.05, 0.1, 0.2]
+
+
+func category_options() -> Array[Dictionary]:
+	return [
+		{"key": KEY_X, "label": _distortion_label.bind("distortion_x", "X"), "apply": _cycle_distortion.bind("distortion_x")},
+		{"key": KEY_Z, "label": _distortion_label.bind("distortion_z", "Z"), "apply": _cycle_distortion.bind("distortion_z")},
+		{"key": KEY_B, "label": _flag_label.bind("building_debug_view", "B  vista debug de edificios"),
+			"apply": _toggle_view.bind("building_debug_view")},
+		{"key": KEY_G, "label": _grid_label, "apply": _cycle_grid},
+		{"key": KEY_K, "label": _flag_label.bind("show_deformable_boxes", "K  cajas de lo colocado"),
+			"apply": _toggle_boxes},
+	]
+
+
+func _distortion() -> Vector2:
+	return Vector2(DISTORTION_LEVELS[int(options.get("distortion_x", 0))],
+		DISTORTION_LEVELS[int(options.get("distortion_z", 0))])
+
+
+func _distortion_label(axis: String, key_name: String) -> String:
+	return "%s  distorsión en %s: %.2f" % [key_name, axis.substr(11), DISTORTION_LEVELS[int(options.get(axis, 0))]]
+
+
+func _flag_label(property: String, text: String) -> String:
+	return text + ("  ✓" if bool(options.get(property, false)) else "")
+
+
+func _grid_label() -> String:
+	return "G  grilla: %s" % ["ninguna", "deformable", "rígida"][int(options.get("building_grid", 0))]
+
+
+## La distorsión pide regenerar: es geometría. Mismas semillas, así solo cambia eso.
+func _cycle_distortion(parcels: Array, axis: String) -> void:
+	options[axis] = (int(options.get(axis, 0)) + 1) % DISTORTION_LEVELS.size()
+	for parcel in parcels:
+		parcel.regenerate(parcel.seed_value, false)
+
+
+## La vista no: es un `set` sobre las manzanas que ya están.
+func _toggle_view(parcels: Array, property: String) -> void:
+	options[property] = not bool(options.get(property, false))
+	_apply_to_samples(parcels, property, options[property])
+
+
+func _cycle_grid(parcels: Array) -> void:
+	options["building_grid"] = (int(options.get("building_grid", 0)) + 1) % 3
+	_apply_to_samples(parcels, "building_grid", options["building_grid"])
+
+
+func _toggle_boxes(parcels: Array) -> void:
+	var on := not bool(options.get("show_deformable_boxes", false))
+	options["show_deformable_boxes"] = on
+	options["show_rigid_boxes"] = on
+	_apply_to_samples(parcels, "show_deformable_boxes", on)
+	_apply_to_samples(parcels, "show_rigid_boxes", on)
+
+
+static func _apply_to_samples(parcels: Array, property: String, value: Variant) -> void:
+	for parcel in parcels:
+		for city in (parcel as Node).find_children("BlockSample", "", true, false):
+			city.set(property, value)
+
+
+func describe(seed_value: int) -> PackedStringArray:
+	return PackedStringArray([
+		"distrito: %s · manzana a 1:%d" % [NeighborhoodTypes.District.keys()[district], roundi(1.0 / SAMPLE_SCALE)],
+		"ventana: %s · puerta: %s" % [pick_window(seed_value).display_name, pick_door(seed_value).display_name],
+	])
+
 
 ## Determina si aplicar chamfer a una esquina de calle basado en seed.
 ## Retorna el valor de chamfer (en celdas) o 0 si no aplica.
@@ -103,23 +225,25 @@ func get_street_corner_chamfer_value(vertex_seed: int) -> int:
 class GenericPoor extends BuildingArchetype:
 	func _init() -> void:
 		archetype_id = "generic_poor"
+		display_name = "Genérico pobre"
 		base_color = Color(0.64, 0.55, 0.42)  # revoque ocre
 		has_chamfered_street_corners = true
 		window_layout = FacadePlanner.Layout.RANDOM
-		window_width_m = 0.8
-		window_height_m = 1.2
+		window_archetypes = [WindowArchetype.small()]
+		door_archetypes = [DoorArchetype.delivery()]
 		window_sill_m = 1.0
-		window_attempts = 3
+		window_fill = 0.55
 
 ## Rico: ventanas altas, apiladas, con ritmo apretado.
 class GenericRich extends BuildingArchetype:
 	func _init() -> void:
 		archetype_id = "generic_rich"
+		display_name = "Genérico rico"
 		base_color = Color(0.74, 0.69, 0.58)  # piedra crema
 		has_chamfered_street_corners = true
 		window_layout = FacadePlanner.Layout.STACKED
-		window_width_m = 1.0
-		window_height_m = 2.4
+		window_archetypes = [WindowArchetype.tall()]
+		door_archetypes = [DoorArchetype.delivery()]
 		window_sill_m = 1.6
 		window_gap_m = 1.4
 
@@ -127,10 +251,11 @@ class GenericRich extends BuildingArchetype:
 class GenericIndustrial extends BuildingArchetype:
 	func _init() -> void:
 		archetype_id = "generic_industrial"
+		display_name = "Genérico industrial"
 		base_color = Color(0.52, 0.47, 0.42)  # ladrillo gris cálido
 		has_chamfered_street_corners = true
 		window_layout = FacadePlanner.Layout.STACKED
-		window_width_m = 1.8
-		window_height_m = 1.4
+		window_archetypes = [WindowArchetype.wide()]
+		door_archetypes = [DoorArchetype.gate(), DoorArchetype.delivery()]
 		window_sill_m = 3.0
 		window_gap_m = 5.0

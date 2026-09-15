@@ -2,7 +2,7 @@ class_name InteractionDetector
 extends Node
 
 var player_camera:   Camera3D
-var char_rigidbody:  CharacterRigidBody3D
+var char_rigidbody:  CollisionObject3D
 var ray_length:      float = 10.0
 var max_reach:       float = 3.0
 var outline_color:   Color = Color(1, 1, 0, 1)
@@ -20,13 +20,13 @@ var _own_bi:           BoneInstantiator       = null
 
 signal hovered_changed(interactable: Interactable)
 
-func setup(rb: CharacterRigidBody3D, cam: Camera3D, bi: BoneInstantiator) -> void:
+func setup(rb: CollisionObject3D, cam: Camera3D, bi: BoneInstantiator) -> void:
 	char_rigidbody = rb
 	player_camera  = cam
 	_own_bi        = bi
 	_build_outline_material()
 
-func rebind(rb: CharacterRigidBody3D, cam: Camera3D, bi: BoneInstantiator) -> void:
+func rebind(rb: CollisionObject3D, cam: Camera3D, bi: BoneInstantiator) -> void:
 	char_rigidbody = rb
 	player_camera  = cam
 	_own_bi        = bi

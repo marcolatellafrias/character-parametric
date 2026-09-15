@@ -9,7 +9,9 @@ const THROW_IMPULSE_SCALE := 70.0
 ## llega a 3.5 m/s → lo voltea. Los débiles (kid/old) solo lo hacen trastabillar.
 const PUSH_SPEED_SCALE := 7.0
 
-var char_rigidbody: CharacterRigidBody3D
+## El cuerpo de quien interactúa: el del personaje o el ente del sandbox. Solo se usa para excluirlo del
+## rayo y para preguntarle a su BoneInstantiator, si lo tiene, dónde nace la interacción.
+var char_rigidbody: CollisionObject3D
 var player_camera:  Camera3D
 var arms_controller: ArmsController
 var anim_mod: AnimationModifiers
@@ -55,7 +57,7 @@ var grab_dist_min:     float = 0.0
 signal high_effort_started()
 signal high_effort_ended()
 
-func setup(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: AnimationModifiers, max_reach: float, inst: EntityInstantiation) -> void:
+func setup(rb: CollisionObject3D, cam: Camera3D, arms: ArmsController, anim: AnimationModifiers, max_reach: float, inst: EntityInstantiation) -> void:
 	char_rigidbody        = rb
 	player_camera         = cam
 	arms_controller       = arms
@@ -71,7 +73,7 @@ func setup(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: 
 
 ## Re-apunta el IC (persistente) a un esqueleto nuevo tras un respawn/switch: refs de cápsula,
 ## cámara, brazos, anim y el detector. El IC y su detector sobreviven; solo se re-vinculan.
-func rebind(rb: CharacterRigidBody3D, cam: Camera3D, arms: ArmsController, anim: AnimationModifiers, max_reach: float, inst: EntityInstantiation) -> void:
+func rebind(rb: CollisionObject3D, cam: Camera3D, arms: ArmsController, anim: AnimationModifiers, max_reach: float, inst: EntityInstantiation) -> void:
 	char_rigidbody        = rb
 	player_camera         = cam
 	arms_controller       = arms

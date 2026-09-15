@@ -4,6 +4,9 @@ extends Control
 ## escena del juego; si falla (session_failed) se queda en el menú mostrando el error.
 
 const GAME_SCENE := "res://Scenes/Demo.tscn"
+## El design sandbox: otro mundo, sin sesión, para mirar cada cosa generada por separado (ver
+## technical/design-sandbox.md).
+const SANDBOX_SCENE := "res://Scenes/sandbox.tscn"
 
 var _code_field: LineEdit
 var _status: Label
@@ -57,6 +60,7 @@ func _build() -> void:
 	join_row.add_child(_join_btn)
 	vbox.add_child(join_row)
 
+	vbox.add_child(_button("Design sandbox", _on_sandbox))
 	vbox.add_child(_button("Opciones", _on_options))
 	vbox.add_child(_button("Salir", _on_quit))
 
@@ -96,6 +100,10 @@ func _on_join() -> void:
 		return
 	_set_busy("Uniéndose a %s…" % code.to_upper())
 	SessionManager.join_by_code(code)
+
+func _on_sandbox() -> void:
+	UIState.close(UIState.MENU)  # el sandbox arranca con el mouse capturado, como el juego
+	get_tree().change_scene_to_file(SANDBOX_SCENE)
 
 func _on_options() -> void:
 	pass  # placeholder

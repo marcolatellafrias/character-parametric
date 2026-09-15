@@ -24,8 +24,6 @@ const SIDES: Array[String] = ["north", "east", "south", "west"]
 
 ## Espesor de una ventana hacia la calle.
 const WINDOW_DEPTH_M := 0.12
-## Margen libre bajo el techo del piso, en metros, para las ventanas aleatorias.
-const RANDOM_TOP_MARGIN_M := 0.4
 
 
 static func layout_name(layout: int) -> String:
@@ -54,9 +52,9 @@ static func has_wall(block: BlockGenerator, cluster: BuildingCluster, cell: Vect
 	return other.floor_count <= floor_idx
 
 
-## Cuántas celdas de la matriz ocupa una ventana del arquetipo (a lo largo, hacia afuera, hacia arriba).
-static func window_size(archetype: BuildingArchetype, facade: RigidMatrix) -> Vector3i:
-	return facade.cells_for(archetype.window_width_m, WINDOW_DEPTH_M, archetype.window_height_m)
+## Cuántas celdas de la matriz ocupa una ventana de ese tipo (a lo largo, hacia afuera, hacia arriba).
+static func window_size(window: WindowArchetype, facade: RigidMatrix) -> Vector3i:
+	return facade.cells_for(window.width_m, WINDOW_DEPTH_M, window.height_m)
 
 
 ## LAS VENTANAS CANDIDATAS DE UNA FACHADA EN UN PISO, como esquinas `lo` de regiones de `size` celdas.
@@ -75,13 +73,17 @@ static func window_positions(archetype: BuildingArchetype, facade: RigidMatrix, 
 			for u in _stacked_columns(facade.count.x, size.x, gap):
 				out.append(Vector3i(u, 0, sill))
 		Layout.RANDOM:
-			var top := facade.count.z - size.z - roundi(RANDOM_TOP_MARGIN_M / facade.cell.z)
-			var bottom := mini(roundi(archetype.window_sill_m / facade.cell.z), top)
-			if top < 0:
+			# EL DESORDEN ES POR PISO, NO POR VENTANA: las columnas son las de STACKED —la misma grilla en
+			# todos los pisos— y cada piso deja vacías al azar algunas. Una fachada de villa se lee
+			# desordenada sin que ninguna ventana quede corrida respecto de las de arriba; antes cada una
+			# caía donde caía, se pisaban y llenaban la pared de geometría.
+			var sill := roundi(archetype.window_sill_m / facade.cell.z)
+			if sill + size.z > facade.count.z:
 				return out
-			for _i in archetype.window_attempts:
-				out.append(Vector3i(rng.randi_range(0, facade.count.x - size.x), 0,
-					rng.randi_range(maxi(bottom, 0), top)))
+			var gap := maxi(1, roundi(archetype.window_gap_m / facade.cell.x))
+			for u in _stacked_columns(facade.count.x, size.x, gap):
+				if rng.randf() < archetype.window_fill:
+					out.append(Vector3i(u, 0, sill))
 	return out
 
 
