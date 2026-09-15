@@ -6,7 +6,7 @@ class_name BuildingArchetype extends RefCounted
 # edificio. Es el equivalente de los arquetipos de personaje: el arquetipo dice
 # QUÉ CLASE de edificio es, y el seed varía el individuo dentro de esa clase.
 #
-# HOY HAY UNO GENÉRICO POR DISTRITO y los tres son iguales salvo el tono de debug.
+# HOY HAY UNO GENÉRICO POR DISTRITO y los tres son iguales salvo el color y las ventanas.
 # Es a propósito: la capa de arquetipos existe para que cambiar el techo, las
 # ventanas o el material de un barrio sea cambiar DATOS acá, sin tocar las reglas.
 # Los arquetipos con nombre propio (fábrica, iglesia, conventillo) entran cuando
@@ -25,10 +25,10 @@ class_name BuildingArchetype extends RefCounted
 # Identificador único del arquetipo
 var archetype_id: String = "default"
 
-# Familia de tono (0..1) para el color de debug. El seed varía saturación/valor
-# dentro de esta familia, así que dos arquetipos distintos se distinguen a simple
-# vista.
-var base_hue: float = 0.0
+## EL COLOR DEL EDIFICIO, la familia del arquetipo; el seed lo corre apenas (ver `get_color`). Revoque y
+## piedra de 1900: cremas, ocres, grises cálidos. Nunca blanco puro, que con la niebla clara de fondo se
+## pierde. (El color saturado que distingue barrios es de la vista debug: NeighborhoodTypes.debug_color.)
+var base_color := Color(0.66, 0.60, 0.50)
 
 # Características arquitectónicas
 var has_chamfered_street_corners: bool = false
@@ -60,18 +60,15 @@ var window_gap_m: float = 1.4
 ## Cuántas posiciones se sortean por fachada y por piso (RANDOM). Las que se pisan no entran.
 var window_attempts: int = 3
 
-## Color de debug derivado del arquetipo + seed.
-## Tono fijo por arquetipo; el seed varía saturación y valor.
+## El color de UN edificio: `base_color` corrido apenas por el seed en tono, saturación y valor, para que
+## dos vecinos del mismo arquetipo no salgan idénticos sin dejar de ser de la misma familia.
 func get_color(color_seed: int) -> Color:
-	var rng = RandomNumberGenerator.new()
+	var rng := RandomNumberGenerator.new()
 	rng.seed = color_seed
-	# Saturación como siempre: el color de debug está para DISTINGUIR arquetipos de un vistazo, y lavarlo
-	# —se probó en pastel— los vuelve indistinguibles entre sí. El valor sí va un escalón por debajo del
-	# original (era 0.6–0.9): con la niebla clara de fondo, los tonos claros se le confundían encima.
 	return Color.from_hsv(
-		base_hue,
-		rng.randf_range(0.5, 0.8),
-		rng.randf_range(0.45, 0.75),
+		wrapf(base_color.h + rng.randf_range(-0.015, 0.015), 0.0, 1.0),
+		clampf(base_color.s + rng.randf_range(-0.06, 0.06), 0.0, 1.0),
+		clampf(base_color.v + rng.randf_range(-0.07, 0.07), 0.0, 0.85),
 		1.0
 	)
 
@@ -98,17 +95,15 @@ func get_street_corner_chamfer_value(vertex_seed: int) -> int:
 # ---------------------------------------------------------------------------
 # Arquetipos concretos: UNO GENÉRICO POR DISTRITO.
 #
-# El tono se mantiene distinto para poder leer el distrito de un cluster de un
-# vistazo mientras el color siga siendo debug. Acá es donde divergen: techo,
-# ventanas, material, altura de pendiente. Hoy solo divergen las VENTANAS, y los
-# números son de tanteo de estilo.
+# Acá es donde divergen: color, techo, ventanas, material, altura de pendiente.
+# Hoy divergen el COLOR y las VENTANAS, y los números son de tanteo de estilo.
 # ---------------------------------------------------------------------------
 
 ## Villa: ventanas chicas y desordenadas.
 class GenericPoor extends BuildingArchetype:
 	func _init() -> void:
 		archetype_id = "generic_poor"
-		base_hue = 0.05
+		base_color = Color(0.64, 0.55, 0.42)  # revoque ocre
 		has_chamfered_street_corners = true
 		window_layout = FacadePlanner.Layout.RANDOM
 		window_width_m = 0.8
@@ -120,7 +115,7 @@ class GenericPoor extends BuildingArchetype:
 class GenericRich extends BuildingArchetype:
 	func _init() -> void:
 		archetype_id = "generic_rich"
-		base_hue = 0.28
+		base_color = Color(0.74, 0.69, 0.58)  # piedra crema
 		has_chamfered_street_corners = true
 		window_layout = FacadePlanner.Layout.STACKED
 		window_width_m = 1.0
@@ -132,7 +127,7 @@ class GenericRich extends BuildingArchetype:
 class GenericIndustrial extends BuildingArchetype:
 	func _init() -> void:
 		archetype_id = "generic_industrial"
-		base_hue = 0.55
+		base_color = Color(0.52, 0.47, 0.42)  # ladrillo gris cálido
 		has_chamfered_street_corners = true
 		window_layout = FacadePlanner.Layout.STACKED
 		window_width_m = 1.8

@@ -58,11 +58,26 @@ var _by_object: Dictionary = {}
 ## edificio entero, cuyas paredes y techo están en mallas distintas.
 var _mesh_by_scope: Dictionary = {}
 
+## LAS REGIONES COLOCADAS, para dibujar sus cajas en la vista debug (ver City._visualize_placement_boxes):
+## por cada pieza que pasó por el placer, el marco de su región —los cinco vectores de
+## `PlacementGrid.region_frame`— en la lista de su clase de grilla. Es la región exacta que la pieza ocupó
+## en su grilla, no la envolvente de sus triángulos: una vereda que no llena su región muestra la región.
+var deformable_regions := PackedVector3Array()
+var rigid_regions := PackedVector3Array()
+
 
 ## Un scope nuevo, para estampar en el collider que va a frenar el rayo.
 func new_scope() -> int:
 	_next_scope += 1
 	return _next_scope
+
+
+## Anota la región de una pieza colocada (ver `deformable_regions`).
+func add_region(rigid: bool, frame: PackedVector3Array) -> void:
+	if rigid:
+		rigid_regions.append_array(frame)
+	else:
+		deformable_regions.append_array(frame)
 
 
 ## Anota una pieza. `from_index`/`to_index` son posiciones en el array de índices de la malla fusionada.

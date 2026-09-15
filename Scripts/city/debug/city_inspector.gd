@@ -355,12 +355,18 @@ func _collect(index: CityIndex, records: PackedInt32Array, as_edges: bool) -> Pa
 			if not is_instance_valid(source) or source.mesh == null or source.mesh.get_surface_count() == 0:
 				cache[scope] = null
 			else:
-				var arrays := source.mesh.surface_get_arrays(0)
-				cache[scope] = {
-					"verts": arrays[Mesh.ARRAY_VERTEX],
-					"idxs": arrays[Mesh.ARRAY_INDEX],
-					"xf": source.global_transform,
-				}
+				# TODAS las superficies, una detrás de otra: es el orden de `Mesh.get_faces`, con el que se
+				# arma el collider, y el espacio en el que el índice anota los rangos (la malla debug de un
+				# edificio tiene dos, paredes y tapas; ver BuildingShell).
+				var all_verts := PackedVector3Array()
+				var all_idxs := PackedInt32Array()
+				for s in source.mesh.get_surface_count():
+					var arrays := source.mesh.surface_get_arrays(s)
+					var offset := all_verts.size()
+					all_verts.append_array(arrays[Mesh.ARRAY_VERTEX])
+					for k: int in arrays[Mesh.ARRAY_INDEX]:
+						all_idxs.append(k + offset)
+				cache[scope] = {"verts": all_verts, "idxs": all_idxs, "xf": source.global_transform}
 		var entry = cache[scope]
 		if entry == null:
 			continue

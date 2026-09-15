@@ -14,7 +14,8 @@ extends RefCounted
 ##     rígida, celdas casi cúbicas que siguen la pared. La pieza no puede quedar torcida respecto de su grilla
 ##     porque no hay otra fuente de posición. Dos piezas de módulos vecinos que comparten arista coinciden
 ##     exactas, porque en la arista las dos bilineales se reducen a la misma recta.
-##   · EL ÍNDICE: la pieza queda anotada en `CityIndex` con su scope y su objeto, así el inspector la nombra.
+##   · EL ÍNDICE: la pieza queda anotada en `CityIndex` con su scope y su objeto, así el inspector la nombra;
+##     y con ella su región, que es lo que la vista debug dibuja como caja (`CityIndex.add_region`).
 ##   · LA OCUPACIÓN: la región queda marcada en la grilla. Si ya estaba ocupada o se salía, `place` devuelve
 ##     false y no pone nada: dos objetos no se pueden superponer por descuido.
 ##
@@ -118,4 +119,5 @@ func place(grid: PlacementGrid, lo: Vector3i, size: Vector3i, mesh: UnitMesh,
 	_buffer["indices"].append_array(indices)
 	_index.add(_scope, _object, kind, id_a, id_b, id_c, id_d, idx_from, idx_from + written, verts)
 	grid.occupy(lo, size)
+	_index.add_region(grid is RigidMatrix, frame)
 	return true

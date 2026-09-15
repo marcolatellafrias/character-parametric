@@ -194,3 +194,22 @@ static func get_car_weights(district: District) -> Dictionary:
 ## De dos distritos vecinos, el de más tráfico: es el que manda en la calle que comparten.
 static func get_higher_hierarchy_type(district_a: District, district_b: District) -> District:
 	return district_a if get_hierarchy(district_a) >= get_hierarchy(district_b) else district_b
+
+
+## EL COLOR DEBUG DE UN DISTRITO: tono fijo por distrito, saturado a propósito para distinguir barrios de un
+## vistazo —lavado en pastel se probó y se volvían indistinguibles—, y el seed varía saturación y valor para
+## que dos edificios pegados no se fundan. Solo lo usa la malla debug de los edificios (ver BuildingShell):
+## el color que el juego muestra es el del arquetipo (BuildingArchetype.get_color).
+const DEBUG_HUE := {
+	District.POOR: 0.05,
+	District.RICH: 0.28,
+	District.INDUSTRIAL: 0.55,
+}
+
+
+static func debug_color(district: District, color_seed: int) -> Color:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = color_seed
+	# El valor va un escalón por debajo de lo obvio: con la niebla clara de fondo, los tonos claros se le
+	# confundían encima.
+	return Color.from_hsv(DEBUG_HUE.get(district, 0.0), rng.randf_range(0.5, 0.8), rng.randf_range(0.45, 0.75), 1.0)

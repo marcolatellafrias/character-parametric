@@ -17,7 +17,7 @@ Technical, code-level breakdown of the procedural city generator. Three subsyste
 6. **Block hearts** — Interior clusters (not on the block perimeter) become "hearts" with probability `block_heart_probability` per district (30 % poor, 20 % rich and industrial): `floor_count` 0, a paved plaza inside the block. Their floor-0 module still exists, and the sidewalk pass fills it.
 7. **Building modules** — Each cell in each cluster is a `BuildingModule` per floor. Each module knows what borders its 4 sides and shrinks its core area inward (facade/alleyway offset), forming the actual building footprint. It is also the grid everything on the building is placed in; see [Placing objects](#placing-objects--one-grid-two-kinds-of-cells).
 8. **Sidewalks** — Everything at ground level that is not building, decided per module. See [sidewalks.md](sidewalks.md).
-9. **Wall** — A closed barrier on the graph's boundary edges, the limit of the playable world. See [The wall](#the-wall).
+9. **Outskirts** — A skirt of terrain pushed out from the graph's boundary ring, climbing to an impassable crest. See [The outskirts](#the-outskirts).
 10. **Bridges** — Placed on graph edges. Middle parts span between opposing buildable zone boundaries; extremes occupy the modules they rest on. See [bridges.md](bridges.md).
 11. **Roofs, doors and windows** — placed on the modules and on their surfaces, in that order. See [Roofs](#roofs--the-planner-decides-the-props-execute) and [Facades](#facades--windows-and-doors).
 
@@ -25,7 +25,11 @@ Technical, code-level breakdown of the procedural city generator. Three subsyste
 
 ## Terrain
 
-`CityTerrain` ([city_terrain.gd](../../core/city_terrain.gd)) is the city's relief: a **continuous function of the plane**, `height_at(x, z)`, not a per-node table. Two things that land on the same spot — a sidewalk and its street's lane volume, two blocks facing each other — therefore agree by construction, with no coordination and no seams.
+`CityTerrain` ([city_terrain.gd](../../core/city_terrain.gd)) is the city's relief, and it is **one height per graph node** — not a free field of the plane. From there the height **travels with the geometry**, carried by the same bilinear that already computes x and z: the block from its 4 corners, the grid cell from the block, the module from the cell. Two things that land on the same spot therefore agree by construction, with no coordination and no seams.
+
+That it is topology and not a field is what makes it come out right without special cases. **A street tilts along its run, never sideways**, because the two blocks facing it share the same two nodes, so both kerbs interpolate between the *same* pair of heights on the same axis — a free noise field gave each kerb a different value and the street came out cambered. And **nothing clips through the ground**, because the ground is built from the very quads the sidewalks and modules use.
+
+There is also a `height_at(x, z)`, the same noise with the same stretch applied, and at a node's position it returns that node's height **exactly** (measured: 4.7·10⁻⁷ m worst case over 211 nodes, which is float32 noise). It is not a substitute inside the city — between two nodes the city interpolates linearly while the noise wobbles, so they agree only *at* the nodes. It exists for what lies **outside** the graph, where there are no nodes to interpolate: see [The outskirts](#the-outskirts).
 
 It is **noise seeded from the world seed** (`WorldSeeds.derive(generation_seed, 3)`), so it is identical on every machine — the traffic system predicts routes across the network and needs the geometry to match. Two corrections are applied over the raw noise, in `fit_to_graph`, once the graph exists:
 
@@ -52,11 +56,21 @@ The relief **inside** a block does not live here: that one is discrete and stepp
 
 ## Output is merged; the modularity lives in the data
 
-The scene the city emits is **coarser than the data behind it, on purpose**. Per building (`BuildingCluster`) it emits exactly **one mesh** and **one collider**, merged from every cell of every floor — not one node per cell per floor.
+The scene the city emits is **coarser than the data behind it, on purpose**. Per building (`BuildingCluster`) it emits **two meshes** and **one collider**, merged from every cell of every floor — not one node per cell per floor. The two meshes are the same surface built for two readers (see [Two meshes per building](#two-meshes-per-building-the-semantic-one-and-the-skin)): the **debug** one keeps a piece per module per floor and is what the index and the collider describe; the **final** one is rebuilt by position — no interior faces, coplanar faces merged — and is only what the player sees.
 
-This is only the **last step**, the emission. Everything upstream stays per cell and per floor: `BuildingModule` (core area, chamfers, occupancy, the funnel every placeable position flows through). Future placeables — windows, balconies, AC units, signs, roof tanks — will ask *those* for their position, never the scene tree, so merging the output costs them nothing. Splitting it back into pieces is a change to one function (`City._visualize_building_colliders` / `_visualize_buildings`) and nothing else.
+This is only the **last step**, the emission. Everything upstream stays per cell and per floor: `BuildingModule` (core area, chamfers, occupancy, the funnel every placeable position flows through). Future placeables — windows, balconies, AC units, signs, roof tanks — will ask *those* for their position, never the scene tree, so merging the output costs them nothing. Splitting it back into pieces is a change to one function (`City._visualize_buildings`) and nothing else.
 
-**Why it matters** (measured on the 312-block city): colliders went from **145 264 collision shapes to 22 596** — the building half from 126 777 down to 4 109, one per building. Those shapes sit in Jolt's broadphase no matter where the player is, so this is a per-frame and memory win, not only a startup one. The collider is built from the **same geometry the mesh pass already computes** (`DebugUtil.get_skewed_cube_advanced_grid_geometry`), so nothing is calculated twice.
+**Why it matters** (measured on the 312-block city): colliders went from **145 264 collision shapes to 22 596** — the building half from 126 777 down to 4 109, one per building. Those shapes sit in Jolt's broadphase no matter where the player is, so this is a per-frame and memory win, not only a startup one. The collider is **the debug mesh's faces, literally** (`Mesh.get_faces` on the mesh `BuildingShell` built), so nothing is calculated twice and the ray's `face_index` lands in the ranges the index recorded.
+
+### Two meshes per building: the semantic one and the skin
+
+Both come out of one pass over the module's faces (`BuildingShell`, [building_shell.gd](../../building/building_shell.gd)), and the **F3 view** only flips which one is visible (`City._apply_view`): nothing regenerates.
+
+- **The debug mesh** is the *semantic* one: district colour (`NeighborhoodTypes.debug_color`, the saturated hues that exist to tell districts apart), floors alternately darkened and modules in a checkerboard, the basic form with no openings, one group of triangles per `(module, floor)`. `CityIndex` records its ranges and the collider is its faces, so pointing at a building names the cell and the floor whichever mesh is on screen. It has **two surfaces** — walls, then caps — and the index ranges live in `Mesh.get_faces` order (all walls, then all caps); `CityInspector._collect` concatenates surfaces the same way. Every vertex also carries its **coordinates in both placement grids** (module cells in `UV`, the surface's `RigidMatrix` cells in `UV2`, module height in `CUSTOM0`), which is what [building_debug.gdshader](../../../../Shaders/building_debug.gdshader) draws as the *deformable* or *rigid* grid: a translucent tint per cell over the colour. On walls those coordinates interpolate exactly (parallelograms); caps are general quads with a saddle, so their surface also carries the core's bilinear in XZ and the shader inverts it by Newton per fragment — the same computation as `PlacementGrid.world_to_cell`, projected vertically.
+- **The final mesh** is the *skin* (`BuildingSkin`, [building_skin.gd](../../building/building_skin.gd)): archetype colour, rebuilt **by position, knowing nothing about modules or floors**. Walls are grouped by plane (canonical normal + offset, 1 mm); in a plane's own frame — `u` along its horizontal, `v` the height minus the floor line's slope — every wall is an axis-aligned rectangle, so *union of one side minus union of the other* is rectangle arithmetic: exact, no Clipper, no holes, and stacked floors merge into one rectangle with shared vertices. Caps live in their module's cell space (they have a saddle, not a plane): equal caps cancel by comparison, unequal ones go through `Geometry2D` with holes split by a line through them. A face that does not fit its plane's frame is emitted as-is and counted (`paredes fuera de marco` in the generation log; any number is a case to look at). A stepped building — a smaller upper floor — needs nothing here: the lower floor's cap minus the upper's footprint is the cornice.
+- **Placement boxes** (`City._visualize_placement_boxes`): every region the placer occupied is recorded with its bilinear frame (`CityIndex.add_region`, five vectors of `PlacementGrid.region_frame`) and drawn on demand as a translucent box — red for deformable grids, green for rigid ones — through one `MultiMesh` per class whose [placement_box.gdshader](../../../../Shaders/placement_box.gdshader) applies the frame's cross term per instance, so the box *is* the region with its grid's curvature, not an affine approximation.
+
+Colours: the archetype's `base_color` is the building's family (cream, ochre, warm grey — never pure white against the light fog), jittered per building by seed; the district's saturated hue is debug-only.
 
 ### Modules are cached by data, not by floor
 
@@ -70,7 +84,7 @@ This is only the **last step**, the emission. Everything upstream stays per cell
 |---|---|---|
 | City | `BlockGenerator` per graph face | one per block |
 | Block | `DistortedGrid` (sinusoidal distortion) | ~6×6 cells of ~11 m |
-| Building | `BuildingModule` per cell | 80×80 cells of ~0.14 m, 32 cells (~0.21 m) per floor |
+| Building | `BuildingModule` per cell | N×N cells of a **fixed 0.213 m** (`City.building_cell_m`), N derived from the block's width — 117 today; 32 cells (6.8 m) per floor |
 
 ---
 
@@ -91,16 +105,18 @@ This is only the **last step**, the emission. Everything upstream stays per cell
 
 The street offset shrinks the block inward, creating the **buildable zone**. The space between opposing buildable zone boundaries forms the street.
 
+**The building cell is a fixed metre unit, and the module's cell count is derived from it — not the other way round.** It used to be 80 cells per module with the cell sized by whatever the block came out at, so widening blocks widened the cell, and with it every floor (32 cells), alley (18) and sidewalk (24), all counted in cells. Now `building_cell_m` is 0.213 m and `GraphCityGenerator` derives the count from the measured block width. Widening the blocks (`min_distance` 164 → 246, `region_size` scaled with it so the block count stays at ~180) therefore widened **only the buildings**, measured on one city: module 16.6 → 24.8 m, core width per module median 12.7 → **21.0 m**, cores under 10 m from 30 % to **none**; floor 6.80 m, alley 3.82 m per side and sidewalk 5.10 m unchanged. Street half-widths are in metres too (`BlockGenerator.STREET_HALF_WIDTH_M`), converted to block-grid cells per block, so they hold as well — 9.9 / 12.3 / 19.7 m against 9.9 / 13.1 / 19.7 before, the medium one losing 0.8 m to cell rounding.
+
 **Facade offset** (module level, in building cells — the module's core is inset by it):
 
 | Adjacent cell type | Cells |
 |---|---|
 | Normal (attached neighbour) | 0 |
-| Boundary (world edge) | 0 |
+| Boundary (world edge) | 24 |
 | Facade (street) | 24 |
 | Small / big alleyway | 18 |
 
-Toward a street the offset is the external sidewalk, up to the kerb; toward an alley it is the module's half of the alley, and the two modules flanking it pave it edge to edge. Building faces sit at the core boundary. Everything in the offset is decided per module (see [sidewalks.md](sidewalks.md)).
+Toward a street the offset is the external sidewalk, up to the kerb; toward an alley it is the module's half of the alley, and the two modules flanking it pave it edge to edge. **The world's edge takes a street's offset** even though no roadway lies beyond it — the city ends in a sidewalk, and the sidewalk pass never learns the side is special. A roadway there would be the expensive part, not the sidewalk: `_ground_streets` skips any edge without two adjacent faces, and lane volumes and traffic assume two. Building faces sit at the core boundary. Everything in the offset is decided per module (see [sidewalks.md](sidewalks.md)).
 
 ---
 
@@ -119,7 +135,7 @@ Two **independent axes**. They used to be one enum of four types, and that was t
 
 The ship climbs **6 floors** on cruise and **10** with the vertical thruster, which burns. The **gaps** between tiers (4→7, 11→15) are deliberate: if the bands touched, the three tiers would read as one grey continuum instead of being legible at a glance.
 
-Both axes are spread as **patches** (`_assign_patches`: seeds on random faces, all fronts growing one step per round until the city is covered), with **separate seeds and no radial rule** — so a slum can be a canyon downtown and a rich district can be low and open against the wall. Height patches get their tier by **quota**, not by independent draws: `HEIGHT_WEIGHTS` (55% tall, 25% mid, 20% low) is turned into exact counts and shuffled. Drawing each patch on its own let the realised share drift badly — 8% low against the 20% asked, because the draw is per *patch* and patches differ in size.
+Both axes are spread as **patches** (`_assign_patches`: seeds on random faces, all fronts growing one step per round until the city is covered), with **separate seeds and no radial rule** — so a slum can be a canyon downtown and a rich district can be low and open against the city's edge. Height patches get their tier by **quota**, not by independent draws: `HEIGHT_WEIGHTS` (55% tall, 25% mid, 20% low) is turned into exact counts and shuffled. Drawing each patch on its own let the realised share drift badly — 8% low against the 20% asked, because the draw is per *patch* and patches differ in size.
 
 **Cracks.** Inside a block that is *not* low, each building has a `CRACK_CHANCE` (12%) of breaking its tier and building from the **low** range instead. They are the gaps a pilot can spot and cut through between towers — player expression, so the only options aren't "straight over a breather patch" or "along the street". A building is a cluster of 1–8 cells and a cell is ~27 m, so even the smallest crack is far wider than an alleyway: it does not break the rule that the ship never flies into alleyways. The majority stays tall, so the maze holds.
 
@@ -129,15 +145,35 @@ Both axes are spread as **patches** (`_assign_patches`: seeds on random faces, a
 
 ---
 
-## The wall
+## The outskirts
 
-The limit of the playable world: a barrier that cannot be cleared, not even with the thruster. **It is currently invisible**: `City.show_wall_mesh` is off, so the mesh is built and hidden while the collider stays. That flag is separate from `show_wall` on purpose — `show_wall` drops the collider too, and the ship then leaves the map. It rides the graph's **boundary edges** — the ones with a single adjacent face, already street type `-1` with neither sidewalk nor roadway — so it needs no path of its own; the city's edge was already there.
+What lies beyond the city: a skirt of terrain climbing from the city's edge into a mountain range. It replaced a wall, and the reason is worth keeping: the wall had been **invisible** for a long time (`show_wall_mesh` off, collider kept), so what made the city feel boxed in was never the wall — it was the **void behind it**, with the player standing on a hidden 3 km collision plane that the scene carried.
 
-Its **base follows the terrain** and its **top stays at a constant altitude** (`City.wall_floors`, **13 floors ≈ 87 m**). That height is chosen against the ship, not against the buildings: its altitude target tops out at **8 floors** (53.5 m, `Ship.max_altitude`), so 13 floors stays out of reach by five without walling the city in. (The vertical thruster the design calls for does not exist in code yet — until it does, 8 floors is the whole ceiling. It previously sat at 90 m, i.e. 13.4 floors, which let the ship clear the wall outright.) The tallest buildings (11–18 floors, up to 120 m) **rise above it on purpose** — a wall taller than every tower makes the city read as a toy box. The constant top is the point: a top that followed the hills would dip in the valleys and stop being impassable exactly where the terrain already sinks the player. A square **post at each boundary node** covers the joint between two runs, which would otherwise leave a wedge of air at open corners.
+**Containing the world and shaping it are two different jobs, and they are two different objects.** An invisible vertical ribbon on the outermost strip (`enable_outskirts_barrier`, collision only, overshooting the terrain by 200 m above and below) is the only thing that actually holds anything in. That is what buys the mountains their freedom: as long as the mountain *was* the barrier, every crest had to reach the same impassable height or the world leaked out the lowest one — and a ring of identical peaks is exactly what read as bland. Raising them instead was not an option either: peaks tall enough to look varied make the city look like a model.
 
-Measured on the 1 425.6 m city: top flat at 87 m, base following the terrain, trimesh collider. Planned: circular holes where cars fly in and out, to sell that the city continues beyond where the player can follow.
+It is built by **pushing the city's edge outward along rays from the city's centre**. The edge already exists as a ring of graph nodes (`GraphGenerator.boundary_ring`), so nothing has to invent a path — the same thing that was true of the wall.
 
-Unlike everything else the wall carries **no distance range** — see [Meshes are built in world space](#meshes-are-built-in-world-space--mind-the-origin).
+**Why radial and not perpendicular to each run.** Offsetting each boundary edge along its own normal folds the mesh at concave corners. From a single centre it cannot, as long as the outline is *star-shaped* about that centre — and it is: measured over one city, **38 boundary nodes, 0 segments that go backwards in angle, largest angular gap 17°**, radii from 573 to 1 027 m. That 1.79 spread is also why the result does not read as a ring: the starting contour is already far from circular.
+
+**The seam is exact, not agreed.** The first strip uses the boundary nodes' own heights, which is what the city interpolates along that same edge. Beyond it the height comes from `CityTerrain.height_at`, the **same noise field** that shaped the relief inside — matching the node heights to 4.7·10⁻⁷ m.
+
+**Distance to the crest varies by direction**, which is what keeps the limit from feeling like a circle: it is drawn from that same field, sampled far out along the outward ray, so it is deterministic, adds no state, and stays uncorrelated with the edge's own height. In some directions the mountain starts close and in others far — but every direction reaches the crest.
+
+All of the shape is tuned live from **F7** (see [ui.md](ui.md#layer-2--debug-panel-f1-tabbed)), which is worth the wiring because the skirt rebuilds in **5 ms** while the city behind it takes half a minute.
+
+**Where the outskirts level off is signed.** `outskirts_crest_floors` is the mountains' target and it is a *different number* from `impassable_floors`: positive raises a range around the city, **negative sinks the skirt** and leaves the city on a plateau with the land falling away (measured at −8 floors: crests from −55 m, terrain down to −61 m). That freedom is the barrier's doing — while the mountain had to contain, the shape could only ever go up.
+
+**Every direction gets its own crest**, drawn from a second, much coarser noise field (`outskirts_feature_size`, over a kilometre against the city relief's 300 m). Since the field's shapes are ten times longer than a boundary run, neighbouring nodes draw similar values: the result is ridges and passes, not a comb. The draw is **stretched to the full range** the same way `CityTerrain` stretches the relief and for the same reason — raw noise does not reach its extremes, and over 38 nodes it sat between 0.53 and 0.82, so `outskirts_crest_variation` was promising a spread it never delivered.
+
+A skirt vertex is three things summed. The **profile** rises as t² to that direction's crest — gentle foothills leaving the city, steepening toward the top, the way a mountain reads — and drops back past it so the silhouette has thickness instead of a knife edge in mid-air. The **coarse relief** then cuts valleys and raises spurs *over* that profile; it is signed, so it subtracts as much as it adds, and without it the skirt is a smooth ramp. The **city's own relief** rides on top as fine detail, two scales stacked. The last two are multiplied by the climb factor, which is 0 at the edge — which is why the seam stays exact no matter how much the outskirts deform.
+
+**One number owns the limit.** `City.impassable_floors` (**13 floors ≈ 89 m**) is the ceiling every crest is a fraction of, and the height the barrier rises to; the city publishes it — with the floor height — into `WorldSettings`. `Ship` no longer carries a hand-typed ceiling: it stays `ceiling_margin_floors` (5) below the limit, which is the relation its old comment described in prose and that someone had to recompute by hand every time the wall moved (it once sat at 90 m and the ship flew straight over). The tallest buildings (15–22 floors) still rise above the crest on purpose — a limit taller than every tower makes the city read as a toy box.
+
+Measured on the 1 425.6 m city: **1 064 triangles** for 14 rings over 38 nodes, plus 76 for the barrier (against the city's 22 596 collision shapes, nothing). Crests span **40 to 89 m** and the terrain **2 to 105 m**; sampled in 36 sectors of 10°, the skyline runs from **9 m in the lowest pass to 105 m on the highest ridge**, a 12× spread. Steepest slope 32 %, which is climbable on foot — you can walk up a ridge and look back at the city, and the barrier is what stops you, not the gradient. The ship's 54.6 m ceiling clears the low passes outright, which is precisely why the barrier exists. Planned: circular holes where cars fly in and out, to sell that the city continues beyond where the player can follow.
+
+Like the old wall, the skirt carries **no distance range** — it is one mesh wrapping the whole city, so its origin is the centre and "distance to the outskirts" means nothing. What keeps its silhouette from shrinking the world is the fog. See [Meshes are built in world space](#meshes-are-built-in-world-space--mind-the-origin).
+
+**Where the player starts.** The graph is generated in the **first quadrant**, not centred — the measured city runs from (6, 46) to (1395, 1422) — so the `(0, 0, 3)` the spawner used to carry landed *outside* the boundary. With the world ending in mid-air that went unnoticed, because the hidden 3 km plane caught the player. `City.start_point()` now returns the graph node nearest the centre of the boundary ring, lifted clear of the ground, and `CharacterSpawner` asks for it **at the moment it spawns** rather than reading a constant at load — the city fills it in during its own `_ready`, so the `city` node sits before `CharacterSpawner` in the scene.
 
 ### Meshes are built in world space — mind the origin
 
@@ -145,27 +181,13 @@ Almost every city mesh is built with **world-space vertices** and added with no 
 
 It is **not** fine for anything Godot measures from the node's origin. `visibility_range_end` is exactly that: the distance it compares is *camera → node origin*, which for these meshes is *camera → corner of the city*, **the same for every building**. Move away from that corner and they all fade at once, including the ones right in front of you — and the symptom reads as a fog bug, not a culling one.
 
-So `City._fade_into_fog` first calls `_center_on_own_geometry`: vertices become relative to the mesh's own AABB centre and the node moves there. The geometry stays put in the world; the distance Godot measures becomes the one you expect. `_add_box_occluder` already did this for occluders. **Any future per-piece LOD, visibility range or distance-based logic has to do the same** — or be given a node whose origin means something.
+`_add_box_occluder` therefore centres its occluder on the mesh's own AABB. **Any future per-piece LOD, visibility range or distance-based logic has to do the same** — or be given a node whose origin means something. (`_fade_into_fog` did exactly that while pieces still had a visibility range; see below.)
 
-There is a second half to that rule: **a mesh that spans the whole city cannot use a distance range at all**. The wall is one mesh from edge to edge, so its centred origin lands in the middle of the city and "distance to the wall" is meaningless — given a 294 m range it only drew while the camera was near the city centre, i.e. almost never. The wall therefore has **no range**; what keeps its silhouette from shrinking the city is the fog.
+There is a second half to that rule: **a mesh that spans the whole city cannot use a distance range at all**. The outskirts are one mesh wrapping the city, so their centred origin lands in the middle of it and "distance to the outskirts" is meaningless — given a 294 m range the old wall in that same position only drew while the camera was near the city centre, i.e. almost never. They therefore carry **no range**; what keeps their silhouette from shrinking the city is the fog.
 
-### Pieces fade in, and the ring grows with distance
+### Superseded — the distance cutoff and the fade ring
 
-`City._fade_into_fog` gives every piece `visibility_range_end = render_distance + its AABB radius`, a `visibility_range_end_margin` of `WorldSettings.fade_ring_for(that distance)` and `VISIBILITY_RANGE_FADE_SELF`. Pieces dissolve in across that ring instead of appearing.
-
-**The ring is not a constant.** The formula is San Andreas' own (`CVisibilityPlugins::CalculateFadingAtomicAlpha`): 20 units for anything drawn within 150, and `distance / 15 + 10` past that — **63 m** at our 800 m draw distance. A fixed 20 m ring is a gentle dissolve for something arriving at 100 m and a blink for something arriving at 800; scaling it keeps the *apparent* softness the same everywhere. Cars use the same rule, and `CarManager` holds their pooled visual until `render_distance + ring + margin` so the release never interrupts a fade.
-
-For a long time there was no fade at all — hard cut — and it is worth keeping straight *why* that flipped, because the reasons changed rather than the taste:
-
-- **Fading used to be impossible.** The fog was then a fullscreen pass reading the depth buffer, and a mesh mid-fade draws dithered, is not written to that buffer properly, and got skipped by the fog: it showed up crisp and unfogged in the distance, and the instant it turned opaque the fog landed on it all at once. Godot's **built-in fog is applied per fragment inside the material shader**, so a fading mesh stays correctly fogged the whole way through. The objection died with the old fog.
-- **Fading is no longer load-bearing, and is kept anyway.** With the fog colour equal to the sky's horizon — true again today — a saturated piece at eye level is already indistinguishable from its background, so the cut would be almost invisible on its own. *Almost* is the operative word: the sky is a gradient and the fog is a single colour, so anything poking above the horizon still differs from what sits behind it. The fade absorbs that difference instead of the sky having to be bent to match, which is what the three hand-tuned colour bands of the old shader were doing.
-
-Measured across the ring with a test box, as the largest channel difference between the box and the sky beside it: **0.227 at 400 m, 0.212 at 440, 0.133 at 470, 0.082 at 490, 0.059 at 500**. It dissolves; it never steps. (Those numbers come from the warm-fog/blue-sky configuration, where fog and background were as far apart as they ever got — the worst case, and therefore the useful one.)
-
-Two things the threshold depends on:
-
-- **It must include the piece's own radius.** Godot compares the distance to the node's *origin* — its centre — while the fog is computed per pixel. Without the radius, a building whose centre sits at the threshold still has its near face tens of metres closer, under noticeably less fog.
-- **The fade is dithered**, so you see slightly through a mesh while it crosses the ring. In the last ~63 m before the cut it is under heavy fog and reads as haze, but once balconies, doors and signs are their own meshes, keep the ring where the fog is already thick. If real LOD is ever needed the tool is hierarchical `visibility_parent` — this fade is about entry, not detail.
+Until the fog was decoupled from drawing, every piece got `visibility_range_end = render_distance + its AABB radius` and dissolved in across a ring scaled with distance — San Andreas' `CVisibilityPlugins::CalculateFadingAtomicAlpha` rule, 20 units near and `distance / 15 + 10` far. It measured well (largest channel difference against the sky across the ring: 0.227 at 400 m down to 0.059 at 500 — it dissolved, never stepped) and it is in git if a distance LOD ever wants it. It went because the fog distance and the draw distance being one number meant that bringing the fog in, to make the city feel larger, cut the distant silhouettes — the one thing strong fog needs. Two lessons survive it: the threshold must include the piece's own radius, because Godot measures to the origin while fog is per pixel; and a fade that dithers shows the inside of a mesh, so once doors and balconies are their own meshes any fade must sit where the fog is already thick.
 
 ### The weather: fog, sky, ambient, screen tint and clouds are one decision
 
@@ -199,7 +221,7 @@ Each `BuildingCluster` is assigned a **building archetype** + seed. A building w
 
 - **Base class** `BuildingArchetype` ([building_archetype.gd](../../building/building_archetype.gd)) defines the interface (`get_color`, `get_street_corner_chamfer_value`, future `generate_geometry`) and carries the **parameters that feed the rules** — `roof_pitch_height`, `flat_roof_chance`, and the `window_*` fields. The archetype holds no rules of its own: who decides a roof's shape is `RoofPlanner`, and who decides where windows go is `FacadePlanner`; both read these. Concrete archetypes live as **inner classes** while small; one can be promoted to its own file once its logic grows, with no caller changes.
 - **Registry** `ArchetypeDefinitions.NEIGHBORHOOD_ARCHETYPES` ([archetype_definition.gd](../../building/archetype_definition.gd)) maps each **district** to its archetypes. `get_archetype_for_cluster()` seed-picks one and instantiates it — the pick stays even with one entry per district, so adding a second changes nothing else.
-- **Color scheme**: each archetype owns a fixed `base_hue`; the seed varies saturation/value within that family, so a cluster's district is readable from its colour. (Colour is a temporary debug variable, expected to disappear once real geometry exists.)
+- **Colour**: each archetype owns a `base_color` — plaster and stone of the 1900s, never pure white — and the seed nudges hue, saturation and value per building. The saturated hue that makes a district readable at a glance is **debug-only** (`NeighborhoodTypes.debug_color`, drawn by the debug mesh; see [Two meshes per building](#two-meshes-per-building-the-semantic-one-and-the-skin)).
 
 | District | Archetype | Windows (style trial) |
 |---|---|---|
@@ -209,7 +231,7 @@ Each `BuildingCluster` is assigned a **building archetype** + seed. A building w
 
 **One generic archetype per district**, and the three are identical apart from hue and windows — deliberately. The layer exists so that changing a district's roof, windows or material is changing *data* here, not rules elsewhere.
 
-**Superseded:** there used to be eight archetypes (`ShantyBasic`, `ShantyMakeshift`, `MixedUse`, `MansionClassic`, `MansionModern`, `OfficeTower`, `WarehouseBasic`, `FactoryModern`) that differed **only in `base_hue`** — a distinction that does not exist for the player. Named archetypes come back when there is something real to tell them apart with. There is no "Downtown" district either: density became its own axis when districts and heights were split in two (see `NeighborhoodTypes`).
+**Superseded:** there used to be eight archetypes (`ShantyBasic`, `ShantyMakeshift`, `MixedUse`, `MansionClassic`, `MansionModern`, `OfficeTower`, `WarehouseBasic`, `FactoryModern`) that differed **only in hue** — a distinction that does not exist for the player. Named archetypes come back when there is something real to tell them apart with. There is no "Downtown" district either: density became its own axis when districts and heights were split in two (see `NeighborhoodTypes`).
 
 ---
 
@@ -252,7 +274,7 @@ Pieces carry **numeric parameters** — heights at their edges, where a chamfer'
 
 ### Everything is reasoned in whole building cells
 
-The block's building grid is one integer lattice: cell `(cx, cz)` contributes its 80×80 cells from `cx·80`. Cores of two cells in one building touch on an exact shared edge (offset 0 on a `NORMAL` edge), so the footprint is a **union of integer rectangles**, and its outline always lies on cell lines. No polygons, no insets, no clipping:
+The block's building grid is one integer lattice: cell `(cx, cz)` contributes its N×N cells from `cx·N` (N is the module's `columns`, the same across the city). Cores of two cells in one building touch on an exact shared edge (offset 0 on a `NORMAL` edge), so the footprint is a **union of integer rectangles**, and its outline always lies on cell lines. No polygons, no insets, no clipping:
 
 1. **Vertices.** Every rectangle corner is classified by which of its four surrounding cells are inside the union: 1 → convex corner, 3 → reflex corner, 2 adjacent → straight, 2 diagonal → two footprints touching at a point, which is rejected.
 2. **Runs.** Each rectangle side minus the intervals covered by other rectangles across the line — plain 1-D interval subtraction — gives the outline runs. Each run is shortened at its ends by whatever the corner piece there occupies (`s`, or the chamfer square, or nothing at a reflex or straight vertex) and becomes a skirt.
@@ -366,7 +388,7 @@ What stays system-specific is only *which ids it writes down* — data, not logi
 
 A building is a box whose floors are **parallel to the ground beneath it**: each corner takes the terrain height at its own position and each floor is that quad raised by a pure vertical offset. No cluster is anchored to a single height, so none is buried uphill or stilted downhill; roofs tilt with the hill, which is the price, and the look that was approved on sight.
 
-⚠ **There must be one definition of "where floor N is", and the mesh must ask for it.** There were two once: the mesh built floor N as floor 0 raised, while placement went through a taper that straightened the module toward the cluster's mean height over the first floors — a horizontal surface from floor 2 up, 1.35 m off the visible wall, chased for a while as a centimetre-scale bridge bug. The taper is gone, and the fix was made structural: `_visualize_buildings`, the colliders and every placed object **ask the grid for the faces they need** (`point_at_f`, `get_core_vertices` at both floor indices), and `DebugUtil.get_skewed_cube_advanced_geometry_from_planes` builds the box between two given quads. If horizontal roofs are ever wanted again, change `point_at_f` and everything follows; changing the mesh or the placement alone is precisely the bug that was removed.
+⚠ **There must be one definition of "where floor N is", and the mesh must ask for it.** There were two once: the mesh built floor N as floor 0 raised, while placement went through a taper that straightened the module toward the cluster's mean height over the first floors — a horizontal surface from floor 2 up, 1.35 m off the visible wall, chased for a while as a centimetre-scale bridge bug. The taper is gone, and the fix was made structural: `_visualize_buildings`, the colliders and every placed object **ask the grid for the faces they need** (`point_at_f`, `get_core_vertices`, `get_wall_quad` at both floor indices), and `BuildingShell` builds each floor from those walls and caps. If horizontal roofs are ever wanted again, change `point_at_f` and everything follows; changing the mesh or the placement alone is precisely the bug that was removed.
 
 Two approximations are left on purpose, both harmless while floors stay congruent: the cell-to-metre chamfer conversion is measured on the **bottom** quad and applied to both faces, and the cap normals are hardcoded to ±Y.
 
@@ -403,7 +425,7 @@ A `PlacementGrid` is four corners in the world, an outward axis, and a cell coun
 
 The grid also owns:
 
-- **Occupancy** — a list of boxes in cells, `is_free` (bounds included) and `occupy`. A list and not a 3D array: a module is 80×80 by 32 per floor, tens of millions of entries per city (the reason the old `SidewalkMatrix` never ran outside a debug view, and was deleted); objects are few.
+- **Occupancy** — a list of boxes in cells, `is_free` (bounds included) and `occupy`. A list and not a 3D array: a module is N×N by 32 per floor — well over a hundred by a hundred — tens of millions of entries per city (the reason the old `SidewalkMatrix` never ran outside a debug view, and was deleted); objects are few.
 - **Projection of one grid onto another** — `occupied_world_corners(index_from, index_to)` gives the eight world corners of every region occupied in a grid (filtered to a height range), and `mark_world_hexahedron` marks on the other grid the cells they cover, **column by column along `n`**: for each depth slice it clips the region's twelve edges against the slice and marks only what remains. Not the world envelope: a sidewalk that drops 12 % over its 3 m has an envelope ~40 cm tall and projected in one go it marked 40 cm of facade; sliced, next to the wall it marks its real thickness, which is what a door has to stand on. Conservative inside each slice, never under. `world_to_cell` (the inverse bilinear, by Newton — one step on a parallelogram) is what makes it possible.
 - **Sizes in metres** — `cells_for(x_m, n_m, z_m)` per grid axis, rounded *up*: an object never shrinks to fit. What "height" means depends on the grid: `n` on a roof, `z` on a facade.
 - **Standing on things** — `first_free_along_z(lo, size, max_rise)` slides a region up along `z` to the first free row: how a door rests on the sidewalk instead of going through it; above `max_rise` (`DOOR_MAX_STEP_M`, 0.5 m) the obstacle is not a kerb and the object is dropped. **Residual:** rows are ~0.25 m and the sidewalk 0.21 m thick, so a door on a sidewalk floats **4–4.7 cm** above the slab — the grid's granularity; closing it would mean fractional positions, a decision not made.
@@ -422,7 +444,7 @@ A **surface** is one face able to host rigid objects: the side of **one module o
 
 - `RigidMatrix.from_quad(quad, depth_m, outward)`: `x` runs c0→c1, `z` runs c0→c3, depth along the normal up to what the surface type allows (`City.ROOF_SURFACE_DEPTH_M` 10 m, `FACADE_SURFACE_DEPTH_M` 2 m). A surface shorter than half a cell on a side yields no cells.
 - **A unit mesh's `y` points out of the surface.** On a roof that is up; on a facade it is toward the street and `z` goes up (`get_facade_quad` runs bottom to top in `z`; the direction of `x` is irrelevant, faces are oriented in the world).
-- **The facade surface** is `BuildingModule.get_facade_quad(edge, index_bottom, index_top)`: the core's face on that side, **shortened by the chamfers** at both ends (`get_facade_span`, the one definition of "where there is wall" on a side — `TraversalGenerator._door_span` draws door positions from it too, so a door cannot land on the ochava). One grid per `(module, side, floor)`, shared by everything on that face — doors and windows only see each other if they read the same grid. Only floor 0's is built from the quad; every other floor's is that one translated in Y (`RigidMatrix.translated`), with the occupancy of its own height range projected.
+- **The wall surfaces** are `BuildingModule.get_walls()`: the four **facades** and the **chamfers**, through the same functions (`Wall.kind` says which). A facade is the core's face on that side, **shortened by the chamfers** at both ends (`get_facade_span`, the one definition of "where there is wall" on a side — `TraversalGenerator._door_span` draws door positions from it too, so a door cannot land on the ochava). A chamfer has no geometry of its own: it runs from the end of the previous facade to the start of the next, so nothing can gap or overlap between them, and it exists iff its two ends differ. `RigidMatrix.of_wall(module, wall, cells_per_floor)` is the one place a wall's grid is built, shared by whoever places on it and by `BuildingShell`, which draws it; `RigidMatrix.of_roof` is the same for the flat roof. One grid per `(module, wall, floor)` (`City._wall_surface_cached`), shared by everything on that face — doors and windows only see each other if they read the same grid. Only floor 0's is built from the quad; every other floor's is that one translated in Y (`RigidMatrix.translated`), with the occupancy of its own height range projected. Nothing is placed on chamfers yet; their grid exists and is drawn like any other.
 - **There is no threshold.** A narrow surface just yields few cells and an object that needs more does not fit. ⚠ This also means a skewed surface no longer rejects: with the old inscribed rectangle, 40 of 147 tank roofs were dropped as too skewed; now all **147** tanks are placed and follow their roof's skew, like the roof pieces around them. Whether that reads well is judged in game.
 
 ### Order of generation
@@ -495,11 +517,10 @@ The chamfer creates a rectangular exclusion rect within the core. For vertex 0 (
 
 The building material uses `CULL_BACK`, so vertex order alone decides whether a face is visible. The convention, confirmed by rendering a single triangle against a control: for emitted order `(A, B, C)` the visible face has normal **`(C − A) × (B − A)`**. `City._ground_triangle` picks its order with that product, `GridPlacer.place` flips a triangle whose product disagrees with the direction its `UnitMesh` says it faces, and `DebugUtil._add_quad` orients each quad away from the box's centroid. Writing the cross product the other way compiles, runs, and silently inverts every face.
 
-`DebugUtil` still builds the boxes that are not placed pieces:
+Building floors are `BuildingShell` (walls from `get_wall_quad`, caps as a fan over the walls' contour). `DebugUtil` still builds the boxes that are not placed pieces:
 
 | Function | Input | Used for |
 |---|---|---|
-| `get_skewed_cube_advanced_grid_geometry_from_planes` | two quads `[BL, BR, TR, TL]` + chamfers in cells | building floors and their colliders |
 | `get_skewed_cube_from_planes_geometry` / `create_collision_shape_from_planes` | two opposing quads | bridge middles, lane volumes |
 | `create_skewed_cube` (+ `_collider`) | 4 base vertices + height | the stair-zone debug view only |
 

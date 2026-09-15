@@ -216,7 +216,7 @@ func _generate_floor_sidewalks() -> void:
 
 			# Rellenos de ochava: el cuadrado del chaflán en cada esquina del núcleo, mismo índice de vértice
 			# que `chamfers` (0 NO, 1 NE, 2 SE, 3 SO). `c1` va sobre la arista anterior y `c2` sobre la
-			# siguiente, como en el constructor de la pared (DebugUtil._grid_chamfers_to_metres).
+			# siguiente, como en la definición de la pared (BuildingModule.get_facade_span).
 			var chamfers: Dictionary = module.get_chamfers()
 			for k in 4:
 				if not chamfers.has(k):

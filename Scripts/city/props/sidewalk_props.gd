@@ -71,7 +71,7 @@ static func corner_unit(k: int, color: Color, radius: float = 1.0) -> UnitMesh:
 ## llegue hasta la pared diagonal. Canónico para la esquina NOROESTE: la región es el cuadrado del chaflán
 ## en la esquina del núcleo, el ángulo recto en (0, 0) —la esquina que el edificio ya no ocupa— y la
 ## hipotenusa de (1, 0) a (0, 1), que es exactamente la base de la pared ochavada (ver
-## DebugUtil.get_skewed_cube_advanced_geometry_from_planes). Sirve igual para el chaflán cóncavo de un
+## BuildingModule.get_wall_cells, el chaflán). Sirve igual para el chaflán cóncavo de un
 ## callejón: también es un triángulo de núcleo sin edificio.
 static func chamfer_fill_unit(k: int, color: Color) -> UnitMesh:
 	var m := UnitMesh.new()

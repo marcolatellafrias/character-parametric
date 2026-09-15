@@ -6,7 +6,10 @@ var min_x: int
 var max_x: int
 var min_z: int
 var max_z: int
+## Con qué color lo dibuja el juego (del arquetipo) y con cuál la vista debug (del distrito): ver
+## BuildingShell.
 var color: Color
+var debug_color: Color
 var floor_count: int
 var is_block_heart: bool = false
 
@@ -50,9 +53,8 @@ func _init(
 	# Asignar arquetipo basado en neighborhood y seed
 	archetype = ArchetypeDefinitions.get_archetype_for_cluster(neighborhood_type, p_seed + id)
 
-	# El color (debug) ahora proviene del arquetipo: familia de tono fija por
-	# arquetipo, el seed varía saturación/valor.
 	color = archetype.get_color(p_seed + id)
+	debug_color = NeighborhoodTypes.debug_color(neighborhood_type, p_seed + id)
 
 
 func set_grid_config(

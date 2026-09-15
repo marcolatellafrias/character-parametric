@@ -42,9 +42,14 @@ extends Resource
 ## Cuanto se aclara la niebla mirando hacia el sol.
 @export_range(0.0, 1.0, 0.01) var fog_sun_scatter := 0.13
 
+@export_group("Nubes")
+## Si las nubes volumétricas (Sunshine Clouds 2) se calculan. Apagadas por defecto: cuestan FPS y se están
+## afinando; lo demás de las nubes se afina en el recurso (ver CityFog.clouds).
+@export var clouds_enabled := false
+
 @export_group("Cielo")
 @export var sky_top := Color(0.16529846, 0.34908625, 0.61328125)
-@export var sky_horizon := Color(0.5192261, 0.5990432, 0.70703125)
+@export var sky_horizon := Color(0.3916626, 0.5430558, 0.7265625)
 @export_range(0.0, 1.0, 0.01) var sky_curve := 0.17
 
 @export_group("Luz ambiente")

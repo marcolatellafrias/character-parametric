@@ -1,8 +1,9 @@
 class_name WeatherTuner
-extends CanvasLayer
+extends TunerPanel
 
 ## EL AFINADOR DEL CLIMA (F6) — el unico menu de clima que hay. Toca en vivo el clima, el alcance de la
-## niebla, las nubes, su luz y su viento, y copia todo al portapapeles para pegarlo en el codigo.
+## niebla, las nubes, su luz y su viento. El marco, el scroll y el boton de copiar los pone `TunerPanel`;
+## aca solo esta QUE se afina.
 ##
 ## No arma un control por seccion: le pasa cada objeto a `PropertyTuner`, que lee sus `@export`s. Por eso
 ## no puede haber perillas muertas —lo que se ve es lo que el objeto aplica— ni copia desincronizada: el
@@ -15,20 +16,6 @@ extends CanvasLayer
 ## `HELP` es lo unico escrito a mano, y a proposito: las propiedades de Sunshine Clouds no estan
 ## documentadas en ningun lado, asi que cada linea sale de leer su GLSL. Si una propiedad desaparece la
 ## linea simplemente no se muestra — no puede quedar una perilla fantasma.
-##
-## A diferencia del mapa de F2, este SI se anota en `UIState`: hay que arrastrar sliders y abrir
-## selectores de color, y para eso el mouse tiene que estar libre. El juego sigue corriendo detras, asi
-## que los cambios se ven en vivo sobre la ciudad.
-##
-## OJO con el alcance: mover `render_distance` no alcanza. El corte por distancia de cada edificio se
-## calcula UNA VEZ al generar la ciudad, asi que hay que recalcularlo (`CityDebugView.refresh_ranges`) o
-## la niebla se moveria y la geometria se seguiria cortando donde estaba antes.
-##
-## Nada se guarda en disco: es para mirar y decidir, y lo que sirva se copia a mano.
-
-const MARGIN := 16.0
-const WIDTH := 520.0
-const BACKGROUND := Color(0.0, 0.0, 0.0, 0.85)
 
 ## Que hace cada perilla. Las del clima salen de `city_fog.gd`; las de las nubes, de leer
 ## `SunshineCloudsCompute.glsl` y `SunshineCloudsDriver.gd`.
@@ -45,9 +32,9 @@ const HELP := {
 	"ambient_energy": "Luz del cielo sobre todo lo demas. Bajarla sube el contraste entre lo iluminado y lo sombreado.",
 	"tint1_strength": "Capa 1 del filtro: multiplica. Un gris 0.5 no hace nada, mas claro levanta y mas oscuro apaga.",
 	"tint2_strength": "Capa 2 del filtro: lava plano hacia su color. Es la que aplana el contraste.",
+	"clouds_enabled": "Si las nubes volumetricas se calculan. Apagadas por defecto: cuestan FPS. Lo demas de las nubes se afina mas abajo, y solo se ve con esto prendido.",
 	# ── Alcance ──
-	"render_distance": "Donde la niebla tapa del todo Y donde se corta la ciudad: son el mismo numero a proposito. El area crece con el cuadrado, asi que subirlo cuesta caro.",
-	"fade_ring": "Metros de fundido con los que entra una pieza antes de su corte.",
+	"fog_distance": "Donde la niebla tapa del todo. Solo niebla: la ciudad se dibuja entera igual, asi que acercarla la hace sentir mas grande sin perder la silueta lejana. Arrastra el radio de spawn de autos.",
 	# ── Nubes ──
 	"clouds_coverage": "Umbral sobre el ruido grande: cuanto cielo ocupan. Moverlo cambia QUE nubes hay, no solo cuantas. Ademas amplifica lighting_density.",
 	"clouds_density": "Multiplica la densidad de cada muestra, y la alfa final es esa densidad acumulada hasta saturar en 1. El addon la declara hasta 20; el slider llega a 4, que a escala de ciudad ya es opacidad total y de sobra.",
@@ -87,76 +74,12 @@ const HELP := {
 	"extra_large_structures_wind_speed": "Velocidad con la que se desplaza cada escala de ruido. Distintas por escala es lo que da sensacion de profundidad.",
 }
 
-var _box: VBoxContainer = null
-var _copy_button: Button = null
-var _built := false
-
-
-func setup() -> void:
-	layer = 95  # debajo del panel de debug (100), encima del mapa (90)
-	visible = false
-	UIState.changed.connect(_on_ui_changed)
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = BACKGROUND
-	style.corner_radius_top_left = 4
-	style.corner_radius_bottom_right = 4
-	style.content_margin_left = 12
-	style.content_margin_right = 12
-	style.content_margin_top = 10
-	style.content_margin_bottom = 10
-
-	var frame := PanelContainer.new()
-	frame.anchor_left = 1.0
-	frame.anchor_right = 1.0
-	frame.anchor_bottom = 1.0
-	frame.offset_left = -(MARGIN + WIDTH)
-	frame.offset_right = -MARGIN
-	frame.offset_top = MARGIN
-	frame.offset_bottom = -MARGIN
-	frame.add_theme_stylebox_override("panel", style)
-	add_child(frame)
-
-	var column := VBoxContainer.new()
-	frame.add_child(column)
-
-	var title := Label.new()
-	title.text = "AFINAR CLIMA Y NUBES  (F6 cierra)"
-	title.add_theme_color_override("font_color", Color(0.6, 0.75, 1.0))
-	column.add_child(title)
-
-	_copy_button = Button.new()
-	_copy_button.text = "Copiar todo al portapapeles"
-	_copy_button.focus_mode = Control.FOCUS_NONE
-	_copy_button.pressed.connect(_copy)
-	column.add_child(_copy_button)
-
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	column.add_child(scroll)
-
-	_box = VBoxContainer.new()
-	_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_box)
-
-
-func toggle() -> void:
-	UIState.toggle(UIState.TUNER)
-
-
-func _on_ui_changed() -> void:
-	visible = UIState.is_open(UIState.TUNER)
-	# Se arma la primera vez que se abre, no al spawnear: los controles nacen con el valor que el mundo
-	# tiene en ese momento, y un panel que casi nunca se abre no cuesta nada.
-	if visible and not _built:
-		_built = true
-		for section in _sections():
-			_build(section)
+func setup_panel() -> void:
+	setup(UIState.TUNER, "AFINAR CLIMA Y NUBES  (F6 cierra)")
 
 
 ## Las cuatro cosas afinables, cada una con el archivo donde se pegan sus valores.
-func _sections() -> Array[Dictionary]:
+func sections() -> Array[Dictionary]:
 	var fog := CityFog.find(get_tree())
 	if fog == null:
 		return []
@@ -165,7 +88,7 @@ func _sections() -> Array[Dictionary]:
 			"target": fog.weather, "help": HELP, "on_change": fog.apply},
 		{"title": "ALCANCE DE LA NIEBLA → Scripts/world_settings.gd",
 			"target": WorldSettings, "include": PackedStringArray(["Fog"]),
-			"help": HELP, "on_change": _refresh_ranges},
+			"help": HELP},
 	]
 	var clouds := fog.clouds()
 	if clouds != null:
@@ -186,29 +109,3 @@ func _sections() -> Array[Dictionary]:
 			"target": driver, "include": PackedStringArray(["Light Controls", "Wind Controls"]),
 			"help": HELP})
 	return out
-
-
-func _build(section: Dictionary) -> void:
-	var title := Label.new()
-	title.text = str(section["title"])
-	title.add_theme_color_override("font_color", Color(0.6, 0.75, 1.0))
-	_box.add_child(title)
-	PropertyTuner.build(_box, section)
-	_box.add_child(HSeparator.new())
-
-
-## El estado entero como texto pegable, seccion por seccion, con el archivo de destino de cada una.
-func _copy() -> void:
-	var blocks := PackedStringArray()
-	for section in _sections():
-		blocks.append("# %s\n%s" % [section["title"], PropertyTuner.dump(section)])
-	DisplayServer.clipboard_set("\n\n".join(blocks))
-	_copy_button.text = "Copiado ✓"
-	await get_tree().create_timer(1.5).timeout
-	if is_instance_valid(_copy_button):
-		_copy_button.text = "Copiar todo al portapapeles"
-
-
-## Mover el alcance de la niebla obliga a recalcular el corte por distancia de lo ya generado (ver arriba).
-func _refresh_ranges() -> void:
-	CityDebugView.refresh_ranges(get_tree())

@@ -66,11 +66,17 @@ func apply() -> void:
 	# tiene color propio y la silueta la resuelve el fundido de entrada.
 	var fog_color := horizon if weather.fog_from_sky else weather.fog_color
 
+	# ── Nubes ──
+	# El efecto del Compositor se prende y apaga entero; sus perillas son del recurso (ver `clouds`).
+	var effect := clouds()
+	if effect != null:
+		effect.set("enabled", weather.clouds_enabled)
+
 	# ── Niebla ──
 	environment.fog_enabled = CityDebugView.fog_on
 	environment.fog_mode = Environment.FOG_MODE_DEPTH
 	environment.fog_depth_begin = WorldSettings.fog_start_distance
-	environment.fog_depth_end = WorldSettings.render_distance
+	environment.fog_depth_end = WorldSettings.fog_distance
 	environment.fog_depth_curve = weather.fog_curve
 	environment.fog_density = 1.0
 	environment.fog_sun_scatter = weather.fog_sun_scatter

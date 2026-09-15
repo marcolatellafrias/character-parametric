@@ -16,6 +16,9 @@ extends RefCounted
 ##   ranges     nombre de propiedad -> [min, max] que reemplaza al declarado, SOLO para el slider: el
 ##              valor guardado no se toca. Es para cuando el `@export_range` de un addon es honesto
 ##              para su escala y absurdo para la nuestra
+##   labels     nombre de propiedad -> como se lo llama en el panel; el que no esta se muestra con su
+##              nombre de codigo. Es SOLO la etiqueta: `dump()` sigue escupiendo el nombre real, que
+##              es el que se pega en el archivo
 ##   help       nombre de propiedad -> una linea de que hace, que se dibuja debajo del control
 ##   on_change  se llama despues de cada escritura; puede ser vacia si el objeto se relee solo
 ##
@@ -44,6 +47,7 @@ const TUNABLE := [TYPE_BOOL, TYPE_COLOR, TYPE_FLOAT, TYPE_INT]
 static func build(box: VBoxContainer, spec: Dictionary) -> void:
 	var target: Object = spec["target"]
 	var help: Dictionary = spec.get("help", {})
+	var labels: Dictionary = spec.get("labels", {})
 	var on_change: Callable = spec.get("on_change", Callable())
 	var group := ""
 	for prop in _properties(spec):
@@ -57,7 +61,7 @@ static func build(box: VBoxContainer, spec: Dictionary) -> void:
 
 		var prop_name := str(prop["name"])
 		var label := Label.new()
-		label.text = prop_name
+		label.text = str(labels.get(prop_name, prop_name))
 		label.custom_minimum_size = Vector2(NAME_WIDTH, 0.0)
 		var row := HBoxContainer.new()
 		row.add_child(label)
@@ -130,6 +134,7 @@ static func _control(spec: Dictionary, prop: Dictionary, label: Label) -> Contro
 	var target: Object = spec["target"]
 	var on_change: Callable = spec.get("on_change", Callable())
 	var prop_name := str(prop["name"])
+	var shown := str(spec.get("labels", {}).get(prop_name, prop_name))
 	var type := int(prop["type"])
 	if type == TYPE_BOOL:
 		var check := CheckButton.new()
@@ -145,8 +150,9 @@ static func _control(spec: Dictionary, prop: Dictionary, label: Label) -> Contro
 		return picker
 	if int(prop["hint"]) == PROPERTY_HINT_ENUM:
 		var options := OptionButton.new()
+		# Un enum tipado llega como "NOMBRE:valor,..."; se muestra el nombre.
 		for item in str(prop["hint_string"]).split(","):
-			options.add_item(item)
+			options.add_item(item.get_slice(":", 0))
 		options.selected = int(target.get(prop_name))
 		options.item_selected.connect(func(i: int) -> void: _write(target, prop_name, i, on_change))
 		return options
@@ -172,19 +178,19 @@ static func _control(spec: Dictionary, prop: Dictionary, label: Label) -> Contro
 		slider.max_value = 1.0
 		slider.step = 0.001
 		slider.value = _to_t(value, low, high)
-		label.text = "%s  %.1f" % [prop_name, value]
+		label.text = "%s  %.1f" % [shown, value]
 		slider.value_changed.connect(func(t: float) -> void:
 			var mapped := _from_t(t, low, high)
-			label.text = "%s  %.1f" % [prop_name, mapped]
+			label.text = "%s  %.1f" % [shown, mapped]
 			_write(target, prop_name, mapped, on_change))
 		return slider
 	slider.min_value = low
 	slider.max_value = high
 	slider.step = limits[2]
 	slider.value = value
-	label.text = "%s  %.3f" % [prop_name, value]
+	label.text = "%s  %.3f" % [shown, value]
 	slider.value_changed.connect(func(v: float) -> void:
-		label.text = "%s  %.3f" % [prop_name, v]
+		label.text = "%s  %.3f" % [shown, v]
 		_write(target, prop_name, v, on_change))
 	return slider
 

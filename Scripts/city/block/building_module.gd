@@ -388,29 +388,62 @@ func point_at_f(u: float, v: float, height_cells: float) -> Vector3:
 	return cell_to_world(Vector3(u * float(columns), height_cells, v * float(rows)))
 
 
-# ── FACHADAS ────────────────────────────────────────────────────────────────────────────────────
-# Una FACHADA es la cara del núcleo sobre un lado del módulo, en un piso: la superficie donde viven los
-# objetos rígidos de pared (puertas, ventanas, balcones; ver RigidMatrix). Los lados son 0 norte (z mínima),
-# 1 este, 2 sur, 3 oeste, y cada uno se recorre de la esquina `e` a la `e + 1` del núcleo, en el mismo orden
-# [BL, BR, TR, TL] de `get_core_vertices`. Un chaflán acorta la cara: la esquina ochavada no tiene pared.
+# ── PAREDES ─────────────────────────────────────────────────────────────────────────────────────
+# Una PARED es una cara vertical del núcleo en un piso: la superficie donde viven los objetos rígidos de
+# pared (puertas, ventanas, balcones; ver RigidMatrix) y lo que la malla del edificio dibuja (ver
+# BuildingShell). Hay de dos clases, y LAS DOS PASAN POR LAS MISMAS FUNCIONES: quien las recorre no puede
+# tratar distinto a una que a otra sin pedirlo (`Wall.kind`).
+#   · FACHADA: la cara del núcleo sobre un lado del módulo. Los lados son 0 norte (z mínima), 1 este, 2 sur,
+#     3 oeste, y cada uno se recorre de la esquina `e` a la `e + 1` del núcleo, en el orden [BL, BR, TR, TL]
+#     de `get_core_vertices`. Un chaflán la acorta: la esquina ochavada no tiene pared de fachada.
+#   · CHAFLÁN: la diagonal de una esquina ochavada, del final de la fachada anterior al principio de la
+#     siguiente. NO TIENE GEOMETRÍA PROPIA: sus extremos son los de las dos fachadas (`get_facade_span`),
+#     así que entre una y otra no puede quedar ni un hueco ni un solape, y lo que se coloque sobre él está
+#     exactamente donde termina la pared de al lado. Existe si sus dos extremos no coinciden, y nada más.
+# En orden de recorrido del contorno van chaflán 0, fachada 0, chaflán 1, fachada 1, ... (`get_walls`).
 
-## Coordenada (u, v) del módulo de un punto sobre la arista `edge_idx` del núcleo, a `along` celdas de
-## edificio (en x para norte y sur, en z para este y oeste).
-func _edge_uv(edge_idx: int, along: float) -> Vector2:
-	var fx := float(maxi(columns, 1))
-	var fz := float(maxi(rows, 1))
+enum WallKind { FACADE, CHAMFER }
+
+## Una pared: de qué clase y cuál. `index` es la arista (FACADE) o el vértice (CHAMFER).
+class Wall:
+	var kind: int
+	var index: int
+
+	func _init(p_kind: int, p_index: int) -> void:
+		kind = p_kind
+		index = p_index
+
+	static func facade(edge_idx: int) -> Wall:
+		return Wall.new(WallKind.FACADE, edge_idx)
+
+	static func chamfer(vertex_idx: int) -> Wall:
+		return Wall.new(WallKind.CHAMFER, vertex_idx)
+
+	## Su lugar en el recorrido del contorno, 0..7: chaflán 0, fachada 0, chaflán 1, ... Sirve de clave.
+	func slot() -> int:
+		return index * 2 + (1 if kind == WallKind.FACADE else 0)
+
+
+## Punto sobre la arista `edge_idx` del núcleo a `along` celdas de edificio (en x para norte y sur, en z
+## para este y oeste), en celdas del módulo (x, z).
+func _edge_cells(edge_idx: int, along: float) -> Vector2:
 	match edge_idx:
-		0: return Vector2(along / fx, float(core_min_z) / fz)
-		1: return Vector2(float(core_max_x + 1) / fx, along / fz)
-		2: return Vector2(along / fx, float(core_max_z + 1) / fz)
-		_: return Vector2(float(core_min_x) / fx, along / fz)
+		0: return Vector2(along, float(core_min_z))
+		1: return Vector2(float(core_max_x + 1), along)
+		2: return Vector2(along, float(core_max_z + 1))
+		_: return Vector2(float(core_min_x), along)
+
+
+## Lo mismo en (u, v) normalizados del módulo.
+func _edge_uv(edge_idx: int, along: float) -> Vector2:
+	return _edge_cells(edge_idx, along) / Vector2(float(maxi(columns, 1)), float(maxi(rows, 1)))
 
 
 ## De dónde a dónde va la cara `edge_idx`, en celdas de edificio y en el sentido del recorrido (los lados 2
 ## y 3 van decreciendo). Descuenta los chaflanes de las dos esquinas: `c2` de la esquina de arranque y `c1`
 ## de la de llegada, que son los tramos de cada una sobre esta arista (ver `chamfers`). Es la ÚNICA
-## definición de "dónde hay pared" en ese lado: la usa la superficie rígida y quien sortea posiciones sobre
-## ella (ver TraversalGenerator._door_span), así una puerta no puede caer en la ochava.
+## definición de "dónde hay pared" en ese lado: de acá salen la fachada, el chaflán que la sigue y quien
+## sortea posiciones sobre ella (ver TraversalGenerator._door_span), así una puerta no puede caer en la ochava.
 func get_facade_span(edge_idx: int) -> Vector2:
 	var at_start: Array = chamfers.get(edge_idx, [0, 0])
 	var at_end: Array = chamfers.get((edge_idx + 1) % 4, [0, 0])
@@ -423,35 +456,62 @@ func get_facade_span(edge_idx: int) -> Vector2:
 		_: return Vector2(float(core_max_z + 1) - cut_start, float(core_min_z) + cut_end)
 
 
-## LA CARA DE LA FACHADA entre dos índices de altura: `[inicio_abajo, fin_abajo, fin_arriba, inicio_arriba]`,
-## sin las esquinas ochavadas. Vacío si el chaflán se comió la cara entera.
+## LOS DOS EXTREMOS DE UNA PARED, `[inicio, fin]` en celdas del módulo (x, z), en el sentido del recorrido.
+## Una fachada va de punta a punta de su tramo con pared; un chaflán, del fin de la fachada anterior al
+## inicio de la siguiente. Es la única fuente de la geometría de las paredes: el quad, la tapa que las
+## cierra y las coordenadas de grilla que lleva cada vértice salen todos de acá.
+func get_wall_cells(wall: Wall) -> PackedVector2Array:
+	if wall.kind == WallKind.FACADE:
+		var span := get_facade_span(wall.index)
+		return PackedVector2Array([_edge_cells(wall.index, span.x), _edge_cells(wall.index, span.y)])
+	var prev := (wall.index + 3) % 4
+	return PackedVector2Array([
+		_edge_cells(prev, get_facade_span(prev).y),
+		_edge_cells(wall.index, get_facade_span(wall.index).x),
+	])
+
+
+## Las paredes que el núcleo tiene, en orden de recorrido. Sin casos especiales: una pared existe si sus
+## dos extremos no coinciden, sea el chaflán de una esquina sin ochava (sus extremos son la misma esquina)
+## o una fachada que el chaflán se comió entera.
+func get_walls() -> Array[Wall]:
+	var out: Array[Wall] = []
+	for i in 4:
+		for wall: Wall in [Wall.chamfer(i), Wall.facade(i)]:
+			var ends := get_wall_cells(wall)
+			if not ends[0].is_equal_approx(ends[1]):
+				out.append(wall)
+	return out
+
+
+## EL QUAD DE UNA PARED entre dos índices de altura: `[inicio_abajo, fin_abajo, fin_arriba, inicio_arriba]`.
+## Vacío si la pared no existe.
 ##
-## Va de abajo hacia arriba en su segundo eje: la grilla que se arme sobre él (`RigidMatrix.from_quad`) tiene
+## Va de abajo hacia arriba en su segundo eje: la grilla que se arme sobre él (`RigidMatrix.of_wall`) tiene
 ## la fila 0 en el piso. En qué sentido se recorre el borde de abajo no importa: la grilla puede espejar `x`
-## y las piezas se orientan en el mundo.
-func get_facade_quad(edge_idx: int, index_bottom: int, index_top: int) -> Array[Vector3]:
-	var span := get_facade_span(edge_idx)
-	if absf(span.y - span.x) < 1.0:
+## y las piezas se orientan en el mundo. Es un PARALELOGRAMO exacto —el borde de arriba es el de abajo
+## subido—, y de eso depende que las coordenadas de grilla se interpolen exactas sobre él (ver BuildingShell).
+func get_wall_quad(wall: Wall, index_bottom: int, index_top: int) -> Array[Vector3]:
+	var ends := get_wall_cells(wall)
+	if ends[0].is_equal_approx(ends[1]):
 		return []
-	var uv0 := _edge_uv(edge_idx, span.x)
-	var uv1 := _edge_uv(edge_idx, span.y)
 	return [
-		point_at_f(uv0.x, uv0.y, float(index_bottom)),
-		point_at_f(uv1.x, uv1.y, float(index_bottom)),
-		point_at_f(uv1.x, uv1.y, float(index_top)),
-		point_at_f(uv0.x, uv0.y, float(index_top)),
+		cell_to_world(Vector3(ends[0].x, float(index_bottom), ends[0].y)),
+		cell_to_world(Vector3(ends[1].x, float(index_bottom), ends[1].y)),
+		cell_to_world(Vector3(ends[1].x, float(index_top), ends[1].y)),
+		cell_to_world(Vector3(ends[0].x, float(index_top), ends[0].y)),
 	]
 
 
-## Hacia dónde mira la fachada: del centro del núcleo al medio de la cara, en el plano horizontal.
-func get_facade_outward(edge_idx: int) -> Vector3:
-	var fx := float(maxi(columns, 1))
-	var fz := float(maxi(rows, 1))
-	var centre := point_at_f(float(core_min_x + core_max_x + 1) * 0.5 / fx,
-		float(core_min_z + core_max_z + 1) * 0.5 / fz, 0.0)
-	var span := get_facade_span(edge_idx)
-	var uv := _edge_uv(edge_idx, (span.x + span.y) * 0.5)
-	var out := point_at_f(uv.x, uv.y, 0.0) - centre
+## Hacia dónde mira una pared: del centro del núcleo al medio de la pared, en el plano horizontal. Vale
+## igual para el chaflán de un callejón, que aunque sea el fondo de una muesca en la manzana sigue siendo
+## una esquina cortada del rectángulo del núcleo.
+func get_wall_outward(wall: Wall) -> Vector3:
+	var centre := cell_to_world(Vector3(float(core_min_x + core_max_x + 1) * 0.5, 0.0,
+		float(core_min_z + core_max_z + 1) * 0.5))
+	var ends := get_wall_cells(wall)
+	var mid := (ends[0] + ends[1]) * 0.5
+	var out := cell_to_world(Vector3(mid.x, 0.0, mid.y)) - centre
 	out.y = 0.0
 	return out.normalized()
 

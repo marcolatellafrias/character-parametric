@@ -22,9 +22,30 @@ extends PlacementGrid
 ## base de lo que se apoya la copia.
 ##
 ## En el marco de la grilla `y` SALE DE LA SUPERFICIE: arriba en una azotea, hacia la calle en una fachada,
-## donde es `z` la que sube (el quad de `BuildingModule.get_facade_quad` va de abajo hacia arriba en `z`).
+## donde es `z` la que sube (el quad de `BuildingModule.get_wall_quad` va de abajo hacia arriba en `z`).
 
 const TARGET_CELL_M := 0.25
+## Hasta qué altura sobre la azotea llega su matriz: lo que se apoye ahí no puede ser más alto que esto.
+const ROOF_DEPTH_M := 10.0
+## Lo mismo para una pared: hasta dónde sale hacia la calle la matriz de una fachada o un chaflán. Un balcón
+## entra; la vereda entera no, y no hace falta: lo que importa de ella es la parte pegada a la pared.
+const WALL_DEPTH_M := 2.0
+
+
+## LA MATRIZ DE UNA PARED en el piso 0 —fachada o chaflán, da igual—. Es la única definición, y por eso la
+## comparten quien coloca sobre ella (puertas, ventanas) y quien la dibuja (BuildingShell): la grilla que se
+## ve no puede ser otra que la grilla donde se coloca. Vacía si la pared no existe.
+static func of_wall(module: BuildingModule, wall: BuildingModule.Wall, cells_per_floor: int) -> RigidMatrix:
+	var quad := module.get_wall_quad(wall, 0, cells_per_floor)
+	if quad.size() != 4:
+		return RigidMatrix.new()
+	return from_quad(quad, WALL_DEPTH_M, module.get_wall_outward(wall))
+
+
+## LA MATRIZ DE UNA AZOTEA: el quad del núcleo a la altura `roof_index`, con la normal hacia arriba. La
+## comparten el tanque que se apoya en ella y la tapa que la dibuja, por lo mismo que `of_wall`.
+static func of_roof(module: BuildingModule, roof_index: int) -> RigidMatrix:
+	return from_quad(module.get_core_vertices(roof_index), ROOF_DEPTH_M, Vector3.UP)
 
 
 ## La grilla de una superficie `quad` `[c0, c1, c2, c3]` en el mundo, recorrida en orden: `x` va de c0 a c1
