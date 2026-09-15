@@ -78,7 +78,9 @@ static func plan_route(pc: PathController) -> PackedVector2Array:
 static func point_blocked(generator, face_idx: int, edge_idx: int,
 		point: Vector3, v_margin: float, xz_margin: float = 0.0) -> bool:
 	for placed in generator.get_bridges_for_lane(face_idx, edge_idx):
-		var geo := _bridge_geometry(placed)
+		var geo := _bridge_geometry(placed, generator)
+		if geo.is_empty():
+			continue
 		var band := blocked_band(geo, point, v_margin, xz_margin)
 		if band != Vector2.INF and point.y >= band.x and point.y <= band.y:
 			return true
@@ -112,12 +114,22 @@ static func blocked_band(geo: Dictionary, point: Vector3, v_margin: float,
 	var m_t: float = xz_margin / maxf(geo["t_len"], 0.1)
 	if t < geo["t_start"] - m_t or t > geo["t_end"] + m_t or s < 0.0 or s > 1.0:
 		return Vector2.INF
-	var low: float = geo["h_bot"]
+	# Heights come per corner (the bridge follows both facades' relief and twist): interpolate them
+	# at (t, s), the same bilinear the slab is drawn with.
+	var tc := clampf(t, 0.0, 1.0)
+	var sc := clampf(s, 0.0, 1.0)
+	var arc_bot := _corner_lerp(geo["arc_bot"], tc, sc)
+	var top := _corner_lerp(geo["top"], tc, sc)
+	var low: float = arc_bot + geo["slab_lift"]
 	if geo["arc_frac"] > 0.0:
 		var m_s: float = xz_margin / maxf(geo["span"], 0.1)
 		if s < geo["arc_frac"] + m_s or s > 1.0 - geo["arc_frac"] - m_s:
-			low = geo["h_arc_bot"]
-	return Vector2(low - v_margin, geo["h_top"] + v_margin)
+			low = arc_bot
+	return Vector2(low - v_margin, top + v_margin)
+
+## Bilinear over four corner heights `[a_start, a_end, b_start, b_end]`: `t` along the facade, `s` across.
+static func _corner_lerp(h: PackedFloat32Array, t: float, s: float) -> float:
+	return lerpf(lerpf(h[0], h[1], t), lerpf(h[2], h[3], t), s)
 
 # ============================================================================
 # GEOMETRY (exact skewed-box data, mirroring the renderer)
@@ -147,7 +159,9 @@ static func _collect_geos(pc: PathController, car) -> Array:
 		var seg_len := seg_vec.length()
 		var dir := seg_vec / seg_len if seg_len > 1e-6 else Vector2(1.0, 0.0)
 		for placed in car.generator.get_bridges_for_lane(vol["face_idx"], vol["edge_idx"]):
-			var geo := _bridge_geometry(placed)
+			var geo := _bridge_geometry(placed, car.generator)
+			if geo.is_empty():
+				continue
 			# EXACT along-path footprint span: project the four footprint corners
 			# onto the drive direction and take the extent. This replaces a
 			# 0.75×t_len fudge that under-covered skewed crossings, so the ramp
@@ -172,16 +186,28 @@ static func _collect_geos(pc: PathController, car) -> Array:
 			geos.append(geo)
 	return geos
 
-# Corners are facade-line lerps, heights are building-cell counts times cell
-# height — the same math as city.gd _draw_bridge.
-static func _bridge_geometry(placed: Dictionary) -> Dictionary:
+# THE BRIDGE'S WORLD BOX, FROM THE SAME FACES THE RENDERER BUILDS IT FROM (FacadeHelper.bridge_faces): the
+# facade quads sampled from the grid, relief and twist included. Heights are kept per corner and
+# interpolated in `blocked_band`; the planning band (`_collect_geos`) takes the conservative extremes.
+# Empty if the faces cannot be built.
+static func _bridge_geometry(placed: Dictionary, generator) -> Dictionary:
 	var bridge = placed["bridge"]
 	var cell_height: float = placed["cell_height"]
 	var cells: int = placed["facade_building_cells"]
-	var h_bot: float = (placed["floor_idx"] * placed["cells_per_floor"]
-		- bridge.base_height) * cell_height
-	var h_top: float = h_bot + (bridge.base_height + bridge.pathway_height
-		+ bridge.railing_height) * cell_height
+	var by_base: int = placed["floor_idx"] * placed["cells_per_floor"] - bridge.base_height
+	var by_arc_bot: int = by_base - bridge.arc_height
+	var by_top: int = by_base + bridge.base_height + bridge.pathway_height + bridge.railing_height
+	var faces: Array = FacadeHelper.bridge_faces(generator, placed, by_arc_bot, by_top)
+	if faces.is_empty():
+		return {}
+	var a: Array = faces[0]
+	var b: Array = faces[1]
+	# Per corner, `[a_start, a_end, b_start, b_end]`: the bottom of the arc legs and the top of the rail.
+	# The slab bottom is the arc bottom lifted by the arc height, a pure vertical offset (floors are
+	# parallel: floor N is floor 0 raised).
+	var arc_bot := PackedFloat32Array([a[0].y, a[1].y, b[0].y, b[1].y])
+	var top := PackedFloat32Array([a[3].y, a[2].y, b[3].y, b[2].y])
+	var slab_lift: float = bridge.arc_height * cell_height
 
 	var a_mid: Vector2 = placed["c_a1"].lerp(placed["c_a2"], 0.5)
 	var b_mid: Vector2 = placed["c_b1"].lerp(placed["c_b2"], 0.5)
@@ -191,18 +217,22 @@ static func _bridge_geometry(placed: Dictionary) -> Dictionary:
 	# Footprint centre in XZ — projected onto the route segment to find the
 	# crossing arc analytically (no per-sample scan).
 	var center: Vector2 = (placed["c_a1"] + placed["c_a2"] + placed["c_b1"] + placed["c_b2"]) * 0.25
+	var lowest := INF
+	var highest := -INF
+	for k in 4:
+		lowest = minf(lowest, arc_bot[k])
+		highest = maxf(highest, top[k])
 	var geo := {
 		"c_a1": placed["c_a1"], "c_a2": placed["c_a2"],
 		"c_b1": placed["c_b1"], "c_b2": placed["c_b2"],
 		"t_start": float(placed["cell_start"]) / cells,
 		"t_end": float(placed["cell_end"] + 1) / cells,
-		"h_bot": h_bot, "h_top": h_top,
-		"h_arc_bot": h_bot, "arc_frac": 0.0,
+		"arc_bot": arc_bot, "top": top, "slab_lift": slab_lift,
+		"h_arc_bot": lowest, "h_bot": lowest + slab_lift, "h_top": highest, "arc_frac": 0.0,
 		"span": span, "t_len": t_len,
 		"center": center,  # footprint centre, projected onto the segment line
 	}
 	if bridge.arc_height > 0 and bridge.arc_length > 0:
-		geo["h_arc_bot"] = h_bot - bridge.arc_height * cell_height
 		geo["arc_frac"] = clampf(bridge.arc_length * cell_height / span, 0.0, 0.45) \
 			if span > 0.0 else 0.0
 	return geo

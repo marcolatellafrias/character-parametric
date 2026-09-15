@@ -151,3 +151,51 @@ func add_cone(lo: Vector3, hi: Vector3, color: Color, segments: int = DEFAULT_SE
 		var b2 := Vector3(cx + cos(a2) * rx, lo.y, cz + sin(a2) * rz)
 		add_tri(b1, b2, apex, inside, color)
 		add_tri(base_centre, b1, b2, inside, color)
+
+
+# ── ENTIDAD ─────────────────────────────────────────────────────────────────────────────────────
+
+## LA MESH COMO ENTIDAD: el cubo escalado a `size` metros, centrado en `x` y `z` y apoyado en `y = 0`, con
+## normales planas y el color de cada triángulo. Es lo que se instancia en un free placement (ver
+## FreePlacement): la pieza entera, sin deformar, en un transform. Indexada, así el índice de piezas la
+## copia como a cualquier otra.
+func build_mesh(size: Vector3) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	for t in triangle_count():
+		var a := _scaled(vertices[indices[t * 3]], size)
+		var b := _scaled(vertices[indices[t * 3 + 1]], size)
+		var c := _scaled(vertices[indices[t * 3 + 2]], size)
+		# ⚠ CONVENCIÓN DEL PROYECTO: para el orden (a, b, c) la cara visible tiene normal (c - a) x (b - a).
+		# La dirección diseñada en el cubo se lleva al escalado con la inversa de la escala.
+		var facing := Vector3(facings[t].x / size.x, facings[t].y / size.y, facings[t].z / size.z)
+		var normal := (c - a).cross(b - a)
+		if normal.dot(facing) < 0.0:
+			var swap := b
+			b = c
+			c = swap
+			normal = -normal
+		normal = normal.normalized()
+		var base := verts.size()
+		for p: Vector3 in [a, b, c]:
+			verts.append(p)
+			normals.append(normal)
+			cols.append(colors[t])
+			idx.append(base)
+			base += 1
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	if not verts.is_empty():
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+static func _scaled(v: Vector3, size: Vector3) -> Vector3:
+	return Vector3((v.x - 0.5) * size.x, v.y * size.y, (v.z - 0.5) * size.z)

@@ -58,6 +58,9 @@ var global_position: Vector3:
 var visual: MeshInstance3D = null
 ## Set by path end; CarManager frees the car after the tick.
 var pending_despawn: bool = false
+## Mientras su cuerpo se recupera de un golpe el simulado no avanza: lo espera, parado, sin rayo —los
+## demás lo tratan como un auto detenido— (ver CarManager._update_body).
+var recovering: bool = false
 
 var path_controller: PathController
 var collision_avoidance: CollisionAvoidance
@@ -83,14 +86,6 @@ const DECISION_INTERVAL_NEAR: int = 2
 const DECISION_INTERVAL_MID: int = 4
 const DECISION_INTERVAL_FAR: int = 8
 var _stagger: int = 0
-# Unstuck watchdog (see tick): motionless this long, not at a light and not
-# tailing a same-direction leader → wedged; drive straight through the blocker.
-const UNSTUCK_AFTER: float = 4.0        # seconds motionless before we force through
-const UNSTUCK_CLIP_TIME: float = 1.5    # force through the blocker for this long once triggered
-const UNSTUCK_MOVE_EPS: float = 0.3     # movement under this still counts as motionless
-var _still_time: float = 0.0
-var _clip_time: float = 0.0
-var _unstuck_pos: Vector3 = Vector3.ZERO
 var _body_claims: Array = []
 var _broadcast_claims: Array = []
 var _body_points: PackedVector3Array = PackedVector3Array([Vector3.ZERO, Vector3.ZERO])
@@ -148,51 +143,22 @@ func tick(delta: float, dist: float, frame: int) -> void:
 		collision_avoidance.rebuild_corridor()
 		collision_avoidance.update_target()
 
-	var should_move = collision_avoidance.integrate_speed(move_delta)
-	var step_speed := collision_avoidance.current_speed
+	if recovering:
+		collision_avoidance.current_speed = 0.0
+		collision_avoidance.held_time = 0.0
+		sim_transform = path_controller.get_current_transform()
+		_publish_claims()
+		return
 
-	# Unstuck watchdog (deliberately simple). If a car sits still too long and it is
-	# NOT held by a red light and NOT merely tailing a same-direction leader (i.e. a
-	# normal draining queue), it is wedged — an oncoming/crossing deadlock or the
-	# keep-the-box-clear hold (the cases in stuck_report.md). Break it by driving
-	# straight THROUGH whatever blocks it for a moment: a brief accepted clip beats a
-	# permanent stall. Red lights and queue-tailing are exempt, so we never run a
-	# light or ram the car we are legitimately following.
-	if _clip_time > 0.0 and not is_blocked_by_traffic_plane:
-		_clip_time -= move_delta
-		step_speed = maxf(step_speed, collision_avoidance.base_speed)
-		should_move = true
-	else:
-		_clip_time = 0.0   # a red light came up → stop forcing, defer to the governor
-		if not is_blocked_by_traffic_plane and not _is_tailing() \
-				and sim_transform.origin.distance_to(_unstuck_pos) <= UNSTUCK_MOVE_EPS:
-			_still_time += move_delta
-			if _still_time >= UNSTUCK_AFTER:
-				_clip_time = UNSTUCK_CLIP_TIME
-				_still_time = 0.0
-		else:
-			_unstuck_pos = sim_transform.origin
-			_still_time = 0.0
-
-	if should_move:
-		var step := step_speed * move_delta
+	# El gobernador decide la velocidad —y con ella el lockout, ver CollisionAvoidance— y acá solo se avanza.
+	if collision_avoidance.integrate_speed(move_delta):
+		var step := collision_avoidance.current_speed * move_delta
 		if step > 0.0:
 			path_controller.advance_distance(step)
 
 	sim_transform = path_controller.get_current_transform()
 
 	_publish_claims()
-
-# Tailing = the car blocking me is another car ahead heading roughly my way — a
-# normal follow/queue, which the unstuck watchdog must never clip through. A null
-# blocker (box-hold) or an oncoming/crossing blocker is NOT tailing, so those wedge
-# cases stay eligible to be forced through.
-func _is_tailing() -> bool:
-	var ref: WeakRef = collision_avoidance.blocking_car_ref
-	var b = ref.get_ref() if ref != null else null
-	if not (b is FlyingCar):
-		return false
-	return path_controller.get_heading().dot(b.path_controller.get_heading()) > 0.5
 
 func _publish_claims() -> void:
 	if claim_registry == null:
@@ -226,6 +192,10 @@ func get_debug_info() -> String:
 	var ca = collision_avoidance
 	var text = "%s  %s" % [car_id.substr(car_id.length() - 6), CarArchetypes.Type.keys()[car_archetype]]
 	text += "\n%s  v %.1f > %.1f" % [CollisionAvoidance.State.keys()[ca.state], ca.current_speed, ca.target_speed]
+	if ca.lockout_time > 0.0:
+		text += "  LOCKOUT"
+	if ca.lockouts > 0:
+		text += "  (destrabado x%d)" % ca.lockouts
 	if ca.blocking_car_id != "":
 		var short_id = ca.blocking_car_id.substr(ca.blocking_car_id.length() - 6)
 		text += "\nblocked: %s%s" % [short_id, " (claim)" if ca.is_blocked_by_broadcast else ""]

@@ -13,9 +13,17 @@ class_name CarManager
 
 var cars: Array[FlyingCar] = []
 
+## A cuánto de un jugador o una nave un auto tiene cuerpo (ver CarBody). Más que el de los quietos
+## (PassiveBodies): estos se mueven rápido, y el cuerpo tiene que existir antes del encuentro.
+const BODY_RADIUS := 25.0
+
 var _frame: int = 0
 var _camera_xz: PackedVector2Array = PackedVector2Array()
 var _visual_pool: Array[MeshInstance3D] = []
+## Los cuerpos de los autos cercanos, por auto, y de dónde venía cada uno (para su velocidad).
+var _bodies: Dictionary = {}
+var _previous_origin: Dictionary = {}
+var _touchers := PackedVector3Array()
 
 func _ready() -> void:
 	add_to_group("car_manager")
@@ -29,6 +37,7 @@ func _process(delta: float) -> void:
 
 	_frame += 1
 	_gather_camera_positions()
+	_touchers = PassiveBodies.toucher_positions(get_tree())
 
 	var i := 0
 	while i < cars.size():
@@ -40,6 +49,7 @@ func _process(delta: float) -> void:
 			continue
 
 		car.tick(effective_delta, dist, _frame)
+		_update_body(car, effective_delta)
 		if car.pending_despawn:
 			_despawn_at(i)
 			continue
@@ -71,14 +81,85 @@ func _despawn_at(index: int) -> void:
 	if car.visual:
 		_set_engine(car.visual, false)
 		_visual_pool.append(car.detach_visual())
+	var body: CarBody = _bodies.get(car)
+	if body != null:
+		_bodies.erase(car)
+		_previous_origin.erase(car)
+		# La chatarra se queda hasta descansar; un cuerpo sano se va con su auto.
+		if body.phase != CarBody.Phase.FALLEN:
+			body.queue_free()
 	car.dispose()
 	car.free()
+
+
+## LA COLISIÓN PASIVA DE LOS AUTOS QUE SE MUEVEN (ver CarBody): un cuerpo mientras alguien está a
+## `BODY_RADIUS`; ninguno cuando no hay nadie. Cinemático, va donde va el simulado. Recuperándose de un
+## golpe, EL SIMULADO LO ESPERA: su progreso es la proyección del cuerpo sobre la ruta y el cuerpo es
+## tirado hacia un punto un poco más adelante en ella; de vuelta sobre la ruta, cinemático otra vez y el
+## simulado sigue. Caído, el simulado se despide del tráfico y la chatarra queda donde cayó.
+func _update_body(car: FlyingCar, delta: float) -> void:
+	var origin := car.sim_transform.origin
+	var body: CarBody = _bodies.get(car)
+	if body != null and body.phase == CarBody.Phase.FALLEN:
+		_bodies.erase(car)
+		_previous_origin.erase(car)
+		car.recovering = false
+		car.pending_despawn = true
+		return
+	var near := false
+	for t in _touchers:
+		if origin.distance_squared_to(t) < BODY_RADIUS * BODY_RADIUS:
+			near = true
+			break
+	if near and body == null:
+		body = CarBody.create(car)
+		add_child(body)
+		body.global_transform = car.sim_transform
+		_bodies[car] = body
+		_previous_origin[car] = origin
+	elif not near and body != null and body.phase == CarBody.Phase.KINEMATIC:
+		_bodies.erase(car)
+		_previous_origin.erase(car)
+		body.queue_free()
+		return
+	if body == null:
+		return
+	var previous: Vector3 = _previous_origin.get(car, origin)
+	var sim_velocity := (origin - previous) / maxf(delta, 0.0001)
+	_previous_origin[car] = origin
+	match body.phase:
+		CarBody.Phase.KINEMATIC:
+			car.recovering = false
+			body.drive(car.sim_transform, sim_velocity)
+		CarBody.Phase.RECOVERING:
+			car.recovering = true
+			# Adentro de un puente no se recupera nadie: el golpe lo metió ahí, y de ahí sale como chatarra. Un
+			# cuerpo tirado con fuerzas contra la losa la terminaría atravesando.
+			if car.generator != null and BridgePlanner.point_blocked(car.generator, int(car.current_volume.get("face_idx", -1)),
+					int(car.current_volume.get("edge_idx", -1)), body.global_position, car.height * 0.5):
+				body.wreck()
+				return
+			var arc := car.path_controller.snap_to(body.global_position)
+			car.sim_transform = car.path_controller.get_current_transform()
+			var lead_arc := minf(arc + CarBody.LEAD_M, car.path_controller.get_curve_length())
+			var lead := Transform3D(car.sim_transform.basis, car.path_controller.sample_profiled(lead_arc))
+			body.follow(lead, car.path_controller.get_heading() * car.collision_avoidance.base_speed)
+			if body.global_position.distance_to(car.sim_transform.origin) < CarBody.RESUME_DISTANCE \
+					and body.global_transform.basis.y.angle_to(Vector3.UP) < CarBody.RESUME_TILT:
+				body.resume()
+				car.recovering = false
 
 # ============================================================================
 # VISUAL POOL
 # ============================================================================
 
 func _update_visual(car: FlyingCar, dist: float) -> void:
+	# Con cuerpo, el que se ve es el cuerpo (trae su propia malla): el visual del pool vuelve al pool.
+	if _bodies.has(car):
+		if car.visual:
+			_set_engine(car.visual, false)
+			_visual_pool.append(car.detach_visual())
+		return
 	if dist < WorldSettings.spawn_radius:
 		if car.visual == null:
 			car.visual = _acquire_visual(car)

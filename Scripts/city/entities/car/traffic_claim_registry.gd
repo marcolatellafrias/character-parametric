@@ -94,6 +94,16 @@ func publish_capsule(pair: Array, points: PackedVector3Array, radius: float) -> 
 	claim.radius = radius
 	_insert(_write_cells, claim, _capsule_aabb(claim.points, radius), false)
 
+## UN OBSTÁCULO FIJO: una cápsula que ningún auto atraviesa nunca —ni al spawnear ni al esquivar—. Hoy, la
+## franja de estacionamiento de cada lado de manzana (ver AreaInstantiator._register_parking_strips).
+func register_obstacle(points: PackedVector3Array, radius: float) -> Claim:
+	var claim := Claim.new()
+	claim.type = ClaimType.OBSTACLE
+	claim.points = points.duplicate()
+	claim.radius = radius
+	_insert(_static_cells, claim, _capsule_aabb(claim.points, radius), true)
+	return claim
+
 func register_traffic_light(plane: TrafficPlane) -> void:
 	var count: int = _light_refs.get(plane, 0)
 	_light_refs[plane] = count + 1

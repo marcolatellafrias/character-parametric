@@ -67,6 +67,21 @@ static func corner_unit(k: int, color: Color, radius: float = 1.0) -> UnitMesh:
 	return m.rotated(k)
 
 
+## LO QUE LA ESQUINA CURVA DEJA COMO CALLE, como polígono en el cuadrado unitario de su región: la esquina
+## exterior y el arco del cordón de `corner_unit`, con los mismos puntos —es su complemento exacto—, girado
+## `k` como ella. La malla de calles lo rellena (ver City._ground_aprons).
+static func curb_outside(k: int, radius: float = 1.0) -> PackedVector2Array:
+	var centre := Vector2(1.0, 1.0)
+	var out := PackedVector2Array([Vector2(0.0, 0.0)])
+	for i in CORNER_SEGMENTS + 1:
+		var a := PI * 0.5 * float(i) / float(CORNER_SEGMENTS)
+		out.append(centre + Vector2(-sin(a), -cos(a)) * radius)
+	for i in out.size():
+		var p := UnitMesh._rot_point(Vector3(out[i].x, 0.0, out[i].y), k)
+		out[i] = Vector2(p.x, p.z)
+	return out
+
+
 ## EL RELLENO DE OCHAVA: el triángulo del núcleo que el chaflán le quitó al edificio, para que la vereda
 ## llegue hasta la pared diagonal. Canónico para la esquina NOROESTE: la región es el cuadrado del chaflán
 ## en la esquina del núcleo, el ángulo recto en (0, 0) —la esquina que el edificio ya no ocupa— y la

@@ -35,6 +35,10 @@ class_name AreaInstantiator
 @export var bootstrap_batch_size: int = 30
 @export_range(0.0, 1.0) var far_density_fraction: float = 0.1
 @export_range(1.0, 8.0) var spawn_height_bias: float = 2.5
+## LOS RAZANTES: qué fracción de los autos vuela a `hover_height_m` sobre la calle, por el medio —lejos de la
+## franja de estacionamiento— como obstáculo para el que la cruza a pie. Los grandes no (`min_spawn_v`).
+@export_range(0.0, 1.0) var hover_fraction: float = 0.33
+@export var hover_height_m: float = 2.5
 @export_flags_3d_physics var los_collision_mask: int = 1
 @export_group("Traffic Debug")
 @export var show_traffic_debug: bool = false
@@ -116,11 +120,26 @@ func _setup_claim_registry() -> void:
 	claim_registry = TrafficClaimRegistry.new()
 	claim_registry.name = "TrafficClaimRegistry"
 	add_child(claim_registry)
+	_register_parking_strips(get_tree().get_first_node_in_group("city_generator"))
 
 	var drawer = TrafficDebugDrawer.new()
 	drawer.name = "TrafficDebugDrawer"
 	drawer.registry = claim_registry
 	claim_registry.add_child(drawer)
+
+
+## LA FRANJA DE ESTACIONAMIENTO ES UN OBSTÁCULO FIJO para el tráfico, como un puente: una cápsula sobre cada
+## cordón con calle, a la altura de los razantes y angosta en vertical —el tráfico a ras del suelo pasa por
+## debajo, el de altura por arriba—, que ni el spawn ni la evasión atraviesan (ver City.parking_strips,
+## ParkedCar.STRIP_M). Una sola vez, con el registro: los demás instanciadores lo comparten.
+func _register_parking_strips(city: Node) -> void:
+	if city == null or not ("parking_strips" in city):
+		return
+	for strip: PackedVector3Array in city.parking_strips:
+		var lifted := PackedVector3Array()
+		for point in strip:
+			lifted.append(point + Vector3.UP * hover_height_m)
+		claim_registry.register_obstacle(lifted, hover_height_m * 0.6)
 
 # Like the registry, one manager is shared by every instantiator: it ticks the
 # whole car fleet in a single loop and owns the pooled visuals.
@@ -416,6 +435,9 @@ func _try_spawn_in_volume(vol: LaneVolume, check_visibility: bool) -> bool:
 	# check reserves the same side padding.
 	var body_radius = Vector2(archetype.width, archetype.height).length() * 0.5 + FlyingCar.SIDE_PADDING
 
+	# Un razante o uno de altura, decidido una vez por auto.
+	var hover: bool = archetype.min_spawn_v <= 0.0 and randf() < hover_fraction
+
 	# along_t is re-rolled per attempt so a partially visible street can
 	# still spawn in its hidden sections.
 	for attempt in range(5):
@@ -423,6 +445,12 @@ func _try_spawn_in_volume(vol: LaneVolume, check_visibility: bool) -> bool:
 		# pow-shaped draw biases altitude toward the street: bias 1 = uniform,
 		# higher = more ground traffic. min_spawn_v still holds for big vehicles.
 		var random_v = v_min + pow(randf(), spawn_height_bias) * (v_max - v_min) if v_max > v_min else v_max
+		if hover and vol.volume_height > 0.0:
+			random_v = clampf(hover_height_m / vol.volume_height, 0.0, v_max)
+			# Del cordón (u = 0) al eje (u = 1): la franja de estacionamiento y medio auto quedan afuera.
+			var half_width: float = BlockGenerator.STREET_HALF_WIDTH_M.get(vol.street_type, 9.9)
+			var u_min: float = (ParkedCar.STRIP_M + archetype.width * 0.5 + FlyingCar.SIDE_PADDING) / half_width
+			random_u = randf_range(minf(u_min, 1.0), 1.0)
 		var along_t = randf()
 
 		var start_pos = vol.get_point_at_grid(random_u, random_v, true)

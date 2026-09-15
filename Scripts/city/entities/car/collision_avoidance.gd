@@ -22,6 +22,11 @@
 # yielder back. The asymmetry feeds itself. The one unresolved case is a
 # perfectly symmetric arrival, which may briefly CLIP rather than deadlock — the
 # deliberate trade: a transient overlap, never a permanent stall.
+#
+# Plus ONE escape valve, the LOCKOUT (see below): a car held at zero for a few
+# seconds by anything that is not a leader driving its way drives through for a
+# moment. Rings of cars each waiting before a box, or a lane walled by an
+# obstacle, cannot stall forever. Deliberately simple.
 extends RefCounted
 class_name CollisionAvoidance
 
@@ -55,6 +60,18 @@ var current_speed: float = 10.0
 var target_speed: float = 10.0
 var state: int = State.CRUISING
 var car_radius: float = 1.0
+
+# ── LOCKOUT ──────────────────────────────────────────────────────────────────
+# Un auto que lleva `LOCKOUT_AFTER` segundos parado por algo que NO es un auto delante suyo yendo para el
+# mismo lado —un cruce trabado, la espera antes de un cruce ocupado, un obstáculo fijo, una luz— sigue de
+# largo `LOCKOUT_FOR` segundos ignorando todo. Un clip breve antes que un embotellamiento eterno. Al que hace
+# cola detrás de otro no le corre: el de adelante se destraba solo y la cola drena desde el frente.
+const LOCKOUT_AFTER: float = 4.0
+const LOCKOUT_FOR: float = 1.5
+var held_time: float = 0.0
+var lockout_time: float = 0.0
+## Cuántas veces se destrabó este auto: lo muestra el panel de debug.
+var lockouts: int = 0
 
 # Current constraint (debug + drawer)
 var blocking_car_id: String = ""
@@ -147,7 +164,7 @@ func update_target() -> void:
 	blocking_car_ref = null
 	car_owner.is_blocked_by_traffic_plane = false
 
-	if not enabled or registry == null or corridor_points.size() < 2:
+	if not enabled or registry == null or corridor_points.size() < 2 or lockout_time > 0.0:
 		target_speed = base_speed
 		state = State.CRUISING
 		return
@@ -272,7 +289,29 @@ func integrate_speed(delta: float) -> bool:
 	if current_speed <= STOPPED_EPSILON and target_speed <= STOPPED_EPSILON:
 		current_speed = 0.0
 		state = State.STOPPED
+
+	# El lockout: contar cuánto llevo parado por algo que no es mi cola, y soltarme.
+	if lockout_time > 0.0:
+		lockout_time = maxf(lockout_time - delta, 0.0)
+		current_speed = maxf(current_speed, base_speed)
+	elif state == State.STOPPED and not _queued_behind_leader() and not car_owner.is_blocked_by_traffic_plane:
+		held_time += delta
+		if held_time >= LOCKOUT_AFTER:
+			lockout_time = LOCKOUT_FOR
+			held_time = 0.0
+			lockouts += 1
+	else:
+		held_time = 0.0
 	return current_speed > 0.0
+
+
+## En cola = lo que me frena es otro auto, delante mío, yendo más o menos para donde voy yo. Eso no es
+## un trabe: es esperar. El resto (un cruce, un obstáculo, uno de frente o cruzando) sí lo es.
+func _queued_behind_leader() -> bool:
+	var leader = blocking_car_ref.get_ref() if blocking_car_ref != null else null
+	if not (leader is FlyingCar):
+		return false
+	return path_controller.get_heading().dot(leader.path_controller.get_heading()) > 0.5
 
 func get_current_speed() -> float:
 	return current_speed

@@ -108,6 +108,44 @@ static func facade_span_quad(block: BlockGenerator, edge_idx: int, is_reversed: 
 	return [start_pair[0], end_pair[0], end_pair[1], start_pair[1]]
 
 
+## LAS DOS CARAS REALES DE UN PUENTE entre dos alturas, una por fachada: `[cara_a, cara_b]`, cada una
+## `[inicio_abajo, fin_abajo, fin_arriba, inicio_arriba]`, o vacío si alguna no existe. Es LA ÚNICA FUENTE
+## de dónde está un puente en el mundo: la usa el dibujo (`City._add_bridge_span`) y la usa el planificador
+## de altura de los autos (BridgePlanner), así lo que un auto esquiva es exactamente lo que se ve —con el
+## relieve y con la torsión de la fachada—. Cuando el planificador calculaba las alturas por su cuenta
+## (piso × celdas desde y = 0), en las lomas los autos atravesaban los puentes.
+static func span_faces(block_a: BlockGenerator, block_b: BlockGenerator, side_a: Dictionary,
+		side_b: Dictionary, cell_start: int, cell_end: int, index_bottom: int, index_top: int) -> Array:
+	var plane_a := facade_span_quad(block_a, side_a["edge_idx"], side_a["reversed"], side_a["cells"],
+			cell_start, cell_end, index_bottom, index_top)
+	var plane_b := facade_span_quad(block_b, side_b["edge_idx"], side_b["reversed"], side_b["cells"],
+			cell_start, cell_end, index_bottom, index_top)
+	if plane_a.size() != 4 or plane_b.size() != 4:
+		return []
+	return [plane_a, plane_b]
+
+
+## Los dos lados de un puente colocado (ver GraphCityGenerator._create_bridges), como los quiere `span_faces`.
+static func bridge_sides(placed: Dictionary) -> Array[Dictionary]:
+	return [
+		{"face": placed["face_a"], "edge_idx": placed["edge_idx_a"], "cells": placed["cells_a"],
+			"reversed": placed["reversed_a"]},
+		{"face": placed["face_b"], "edge_idx": placed["edge_idx_b"], "cells": placed["cells_b"],
+			"reversed": placed["reversed_b"]},
+	]
+
+
+## Las caras de un puente colocado, desde el generador: para quien no tiene los bloques a mano.
+static func bridge_faces(generator, placed: Dictionary, index_bottom: int, index_top: int) -> Array:
+	var sides := bridge_sides(placed)
+	var block_a: BlockGenerator = generator.get_block_grid(sides[0]["face"])
+	var block_b: BlockGenerator = generator.get_block_grid(sides[1]["face"])
+	if block_a == null or block_b == null:
+		return []
+	return span_faces(block_a, block_b, sides[0], sides[1], placed["cell_start"], placed["cell_end"],
+			index_bottom, index_top)
+
+
 ## Un punto del borde de la calle, a las dos alturas. `at_span_start` elige cuál de las dos esquinas de la
 ## celda se usa: la del arranque del tramo o la del final.
 static func _facade_edge_point(block: BlockGenerator, edge_idx: int, is_reversed: bool,

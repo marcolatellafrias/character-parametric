@@ -270,6 +270,9 @@ var _shell_mesh_by_cluster: Dictionary = {}
 ## LAS ABERTURAS de cada cluster —`{quad, outward, arch, segments}` por puerta y ventana colocada—, que la
 ## piel corta al construirse. Por eso las fachadas se colocan ANTES que las cáscaras (ver `_passes`).
 var _openings: Dictionary = {}
+## LAS FRANJAS DE ESTACIONAMIENTO, `[a, b]` de cada cordón con calle: el tráfico las reserva como obstáculo
+## (ver AreaInstantiator._register_parking_strips).
+var parking_strips: Array[PackedVector3Array] = []
 
 ## EL EDIFICIO EN FOCO, o null para todos: en la muestra del design sandbox (`generate_block_sample`) solo
 ## él se dibuja completo —techo, puertas, ventanas— y el resto sale como fantasma gris translúcido, sin
@@ -533,6 +536,7 @@ func clear_visualization() -> void:
 	_scope_by_cluster.clear()
 	_shell_mesh_by_cluster.clear()
 	_openings.clear()
+	parking_strips.clear()
 	_final_buildings = null
 	_debug_buildings = null
 	_deformable_boxes = null
@@ -1018,14 +1022,12 @@ func _visualize_ground() -> void:
 	st.generate_normals()
 	container.add_child(_ground_mesh(st, ground_color, "blocks"))
 
-	# LAS CALLES EN SU PROPIA MALLA, una para toda la ciudad, con UV en metros —a lo ancho desde un cordón,
-	# a lo largo desde el nodo— para el shader de asfalto que viene: la textura corre continua por la calle
-	# y no se corta por manzana. Las intersecciones, que antes quedaban como huecos, son abanicos con UV
-	# planas. Todo entra en el mismo collider que las manzanas.
+	# LAS CALLES EN SU PROPIA MALLA, una para toda la ciudad, con UV en metros para el shader de asfalto que
+	# viene: media calle por manzana, del cordón al eje (ver `_ground_aprons`). Todo entra en el mismo
+	# collider que las manzanas.
 	var streets_st := SurfaceTool.new()
 	streets_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var streets := _ground_streets(streets_st, faces)
-	var crossings := _ground_intersections(streets_st, faces)
+	var streets := _ground_aprons(streets_st, faces)
 	streets_st.generate_normals()
 	container.add_child(_ground_mesh(streets_st, street_color, "streets"))
 
@@ -1038,8 +1040,7 @@ func _visualize_ground() -> void:
 		body.name = "collider"
 		body.add_child(collider)
 		container.add_child(body)
-	print("[Visualizer] Suelo: %d triángulos · %d manzanas · %d calles · %d intersecciones"
-		% [faces.size() / 3, blocks, streets, crossings])
+	print("[Visualizer] Suelo: %d triángulos · %d manzanas · %d medias calles" % [faces.size() / 3, blocks, streets])
 
 
 func _ground_mesh(st: SurfaceTool, color: Color, node_name: String) -> MeshInstance3D:
@@ -1052,108 +1053,140 @@ func _ground_mesh(st: SurfaceTool, color: Color, node_name: String) -> MeshInsta
 	view.material_override = material
 	return view
 
-# El corredor de cada calle, una vez por arista. Devuelve cuántas se dibujaron.
-func _ground_streets(st: SurfaceTool, faces: PackedVector3Array) -> int:
+## LA CALLE, MEDIA POR MANZANA: cada manzana pavimenta el anillo entre su CORDÓN —el borde de su grilla, a
+## la altura de la grilla, así sigue sin costura al suelo y a la vereda— y el EJE de cada calle —la arista
+## del grafo, a la altura de sus nodos—: un trapecio por lado y un parche por esquina, del cordón al nodo.
+## Las dos mitades de una calle se encuentran en el eje con la misma altura, así que no hay costura entre
+## manzanas; y como no depende de la manzana de enfrente ni de los puntos de carril, la muestra del sandbox
+## tiene su media calle sola, una calle de borde (offset 0) no tiene nada, y cambiar el ancho de veredas o
+## calles no toca esto. Los huecos de las esquinas —lo que quedaba entre corredores de cordón a cordón—
+## no existen: el parche de esquina va del cordón al nodo.
+##
+## UV en metros: `u` desde el cordón, `v` a lo largo de la arista en su sentido canónico (del nodo menor al
+## mayor), igual en las dos mitades, así el asfalto corre continuo. En las esquinas, planas (x, z).
+func _ground_aprons(st: SurfaceTool, faces: PackedVector3Array) -> int:
 	var graph := generator.plain_graph
-	var terrain := generator.terrain
 	var drawn := 0
-	for edge: Array in graph.edges:
-		var node1: int = edge[0]
-		var node2: int = edge[1]
-		var sides: Array = graph.edge_to_faces.get(GraphGenerator._get_edge_key(node1, node2), [])
-		if sides.is_empty():
+	for face_idx in generator.get_all_block_faces():
+		var block: BlockGenerator = generator.get_block_grid(face_idx)
+		var grid := block.get_distorted_grid() if block != null else null
+		var face: Array = graph.faces[face_idx]
+		if grid == null or face.size() != 4:
 			continue
-		# Con una sola cara los puntos temporales solo existen si no es borde de ciudad: la media calle de
-		# la manzana de muestra (ver GraphCityGenerator._calculate_temporal_lane_points).
-		var block: BlockGenerator = generator.get_block_grid(sides[0])
-		if block == null:
+		var kerb := _kerb_corners(block, grid)
+		if kerb.size() != 4:
 			continue
-		var edge_idx := _edge_index_in_face(graph.faces[sides[0]], node1, node2)
-		if edge_idx < 0:
-			continue
-		var first: Dictionary = block.temporal_lane_points.get("%d_%d" % [edge_idx, 0], {})
-		var second: Dictionary = block.temporal_lane_points.get("%d_%d" % [edge_idx, 1], {})
-		if first.is_empty() or second.is_empty():
-			continue
-		# Las dos esquinas de un extremo llevan la altura de su nodo: a lo ancho, nivelado.
-		var at_first := terrain.height_of(graph.faces[sides[0]][edge_idx])
-		var at_second := terrain.height_of(graph.faces[sides[0]][(edge_idx + 1) % graph.faces[sides[0]].size()])
-		var p0 := _flat_to_3d(first["point_a"], at_first)
-		var p1 := _flat_to_3d(first["point_b"], at_first)
-		var p2 := _flat_to_3d(second["point_b"], at_second)
-		var p3 := _flat_to_3d(second["point_a"], at_second)
-		# UV en metros: `u` a lo ancho desde el cordón de esta manzana, `v` a lo largo desde este nodo.
-		var length := p0.distance_to(p3)
-		_ground_quad(st, faces, p0, p1, p2, p3, PackedVector2Array([Vector2(0.0, 0.0),
-			Vector2(p0.distance_to(p1), 0.0), Vector2(p3.distance_to(p2), length), Vector2(0.0, length)]))
-		drawn += 1
+		var is_street: Array[bool] = []
+		for i in 4:
+			is_street.append(generator.get_street_type(face[i], face[(i + 1) % 4]) != BlockGenerator.StreetType.BOUNDARY)
+		# Un trapecio por lado: del cordón al eje.
+		for i in 4:
+			if not is_street[i]:
+				continue
+			var n1: int = face[i]
+			var n2: int = face[(i + 1) % 4]
+			var k0 := kerb[i]
+			var k1 := kerb[(i + 1) % 4]
+			var p0 := _on_edge(n1, n2, k0)
+			var p1 := _on_edge(n1, n2, k1)
+			var uv := PackedVector2Array([Vector2(0.0, _along_edge(n1, n2, k0)),
+				Vector2(k0.distance_to(p0), _along_edge(n1, n2, p0)),
+				Vector2(k1.distance_to(p1), _along_edge(n1, n2, p1)),
+				Vector2(0.0, _along_edge(n1, n2, k1))])
+			_ground_quad(st, faces, k0, p0, p1, k1, uv)
+			drawn += 1
+		# Un parche por esquina: del cordón al nodo, entre las dos calles que lo tocan. Si una de las dos es
+		# borde de ciudad, el cordón ya está sobre su eje y el parche es un triángulo.
+		for i in 4:
+			var prev := (i + 3) % 4
+			if not is_street[i] and not is_street[prev]:
+				continue
+			var node: int = face[i]
+			var n := Vector3(graph.points[node].x, generator.terrain.height_of(node), graph.points[node].z)
+			var k := kerb[i]
+			var pa := _on_edge(face[prev], node, k)
+			var pb := _on_edge(node, face[(i + 1) % 4], k)
+			_ground_quad(st, faces, k, pa, n, pb, PackedVector2Array([Vector2(k.x, k.z), Vector2(pa.x, pa.z),
+				Vector2(n.x, n.z), Vector2(pb.x, pb.z)]))
+		# Y lo que la esquina curva de la vereda deja como calle ADENTRO de la manzana: el cuadrado de la
+		# esquina menos el cuarto de disco del cordón (ver SidewalkProps.corner_unit), llevado al mundo con la
+		# MISMA bilineal con que se colocó la vereda, así los dos coinciden en el arco. Apenas levantado
+		# sobre el suelo de la manzana, que sigue debajo.
+		for zone: Dictionary in block.traversal.floating_sidewalk_zones:
+			if int(zone["piece"]) != SidewalkProps.Piece.CURVED_CORNER or int(zone["floor"]) != 0:
+				continue
+			var cell: Vector2i = zone["cell"]
+			var module: BuildingModule = block.get_building_module(cell.x, cell.y, 0)
+			if module == null:
+				continue
+			var lo := Vector2(float(zone["bx_min"]), float(zone["bz_min"]))
+			var size := Vector2(float(zone["bx_max"]) - lo.x + 1.0, float(zone["bz_max"]) - lo.y + 1.0)
+			var world := PackedVector3Array()
+			var uv := PackedVector2Array()
+			for p in SidewalkProps.curb_outside(int(zone["side"])):
+				var w := module.cell_to_world(Vector3(lo.x + p.x * size.x, 0.0, lo.y + p.y * size.y)) \
+						+ Vector3.UP * STREET_LIFT
+				world.append(w)
+				uv.append(Vector2(w.x, w.z))
+			# En abanico desde la esquina exterior: la región se ve entera desde ahí.
+			for j in range(1, world.size() - 1):
+				_ground_triangle(st, faces, world[0], world[j], world[j + 1],
+					PackedVector2Array([uv[0], uv[j], uv[j + 1]]))
 	return drawn
 
 
-## LAS INTERSECCIONES: en cada nodo, el polígono que dejan alrededor las esquinas de cordón de sus manzanas
-## —lo que las calles, que van de cordón a cordón, no cubren, y era el hueco de cada cruce—, como abanico
-## desde su centro a la altura del nodo, con UV planas en metros. Donde una calle es media calle (una sola
-## cara) su extremo sobre el eje cierra el polígono; donde no hay calle (borde de ciudad), lo cierra el nodo.
-func _ground_intersections(st: SurfaceTool, faces: PackedVector3Array) -> int:
+## Cuánto se levanta la calle donde pisa el suelo de la manzana (la esquina curva), para no pelear con él.
+const STREET_LIFT := 0.01
+
+## Las cuatro esquinas del cordón de una manzana, en el orden de sus nodos y a la altura de la grilla: de
+## las cuatro esquinas de la grilla, la más cercana a cada vértice del núcleo.
+func _kerb_corners(block: BlockGenerator, grid: DistortedGrid) -> Array[Vector3]:
+	var candidates: Array[Vector3] = []
+	for cell: Vector2i in [Vector2i(0, 0), Vector2i(grid.columns - 1, 0),
+			Vector2i(grid.columns - 1, grid.rows - 1), Vector2i(0, grid.rows - 1)]:
+		var vertices: Array = grid.get_cell_vertices(cell.x, cell.y)
+		if vertices.size() != 4:
+			return []
+		for v in vertices:
+			candidates.append(v)
+	var out: Array[Vector3] = []
+	for core: Vector2 in block.get_core_vertices():
+		var best := candidates[0]
+		var best_distance := INF
+		for c in candidates:
+			var d := Vector2(c.x, c.z).distance_squared_to(core)
+			if d < best_distance:
+				best_distance = d
+				best = c
+		out.append(best)
+	return out
+
+
+## La proyección de un punto sobre el eje de la calle `n1`→`n2`, a la altura interpolada entre sus nodos.
+func _on_edge(n1: int, n2: int, p: Vector3) -> Vector3:
 	var graph := generator.plain_graph
+	var a := graph.points[n1]
+	var b := graph.points[n2]
+	var d := Vector2(b.x - a.x, b.z - a.z)
+	var t := 0.0
+	if d.length_squared() > 0.0:
+		t = clampf(Vector2(p.x - a.x, p.z - a.z).dot(d) / d.length_squared(), 0.0, 1.0)
 	var terrain := generator.terrain
-	var drawn := 0
-	for node_idx in graph.points.size():
-		var points := PackedVector2Array()
-		var open := false
-		for face_idx: int in graph.node_to_faces.get(node_idx, []):
-			var block: BlockGenerator = generator.get_block_grid(face_idx)
-			if block == null:
-				continue
-			var face: Array = graph.faces[face_idx]
-			var at := face.find(node_idx)
-			var corners := block.get_core_vertices()
-			if at < 0 or corners.size() != face.size():
-				continue
-			points.append(corners[at])
-			# El nodo es el arranque (local 0) de su arista y la llegada (local 1) de la anterior.
-			for local in 2:
-				var edge_idx := at if local == 0 else (at + face.size() - 1) % face.size()
-				var data: Dictionary = block.temporal_lane_points.get("%d_%d" % [edge_idx, local], {})
-				var key := GraphGenerator._get_edge_key(face[edge_idx], face[(edge_idx + 1) % face.size()])
-				if data.is_empty():
-					open = true
-				elif graph.edge_to_faces.get(key, []).size() < 2:
-					points.append(data["point_b"])
-					open = true
-		if open:
-			points.append(Vector2(graph.points[node_idx].x, graph.points[node_idx].z))
-		if points.size() < 3:
-			continue
-		var centre := Vector2.ZERO
-		for p in points:
-			centre += p
-		centre /= float(points.size())
-		var sorted: Array = Array(points)
-		sorted.sort_custom(func(p: Vector2, q: Vector2) -> bool: return (p - centre).angle() < (q - centre).angle())
-		var y := terrain.height_of(node_idx)
-		var c3 := Vector3(centre.x, y, centre.y)
-		for i in sorted.size():
-			var p: Vector2 = sorted[i]
-			var q: Vector2 = sorted[(i + 1) % sorted.size()]
-			if p.distance_to(q) < 0.01:
-				continue
-			_ground_triangle(st, faces, c3, Vector3(p.x, y, p.y), Vector3(q.x, y, q.y),
-				PackedVector2Array([centre, p, q]))
-		drawn += 1
-	return drawn
+	return Vector3(a.x + d.x * t, lerpf(terrain.height_of(n1), terrain.height_of(n2), t), a.z + d.y * t)
 
-# En qué lado de la cara está esa arista, o -1 si no está.
-func _edge_index_in_face(face: Array, node1: int, node2: int) -> int:
-	for i in face.size():
-		var a: int = face[i]
-		var b: int = face[(i + 1) % face.size()]
-		if (a == node1 and b == node2) or (a == node2 and b == node1):
-			return i
-	return -1
 
-func _flat_to_3d(flat: Vector2, height: float) -> Vector3:
-	return Vector3(flat.x, height, flat.y)
+## Metros a lo largo de la arista desde su nodo menor: la misma `v` para las dos mitades de la calle.
+func _along_edge(n1: int, n2: int, p: Vector3) -> float:
+	var graph := generator.plain_graph
+	var lo: int = mini(n1, n2)
+	var hi: int = maxi(n1, n2)
+	var a := graph.points[lo]
+	var d := Vector2(graph.points[hi].x - a.x, graph.points[hi].z - a.z)
+	if d.length_squared() <= 0.0:
+		return 0.0
+	return Vector2(p.x - a.x, p.z - a.z).dot(d.normalized())
+
+
 
 # Un quad del suelo, en dos triángulos que miran para arriba. Godot toma como FRENTE el lado desde el que
 # las esquinas giran en sentido horario, y la normal de ese lado es (c − a) × (b − a): con el orden al
@@ -1705,17 +1738,21 @@ func _visualize_roof_props() -> void:
 				# índice y la ocupación los resuelve el placer; acá solo se decide dónde y qué.
 				var tank_cell: Vector2i = flat_cells[rng.randi_range(0, flat_cells.size() - 1)]
 				var tank_module: BuildingModule = modules[tank_cell]
-				# EL TANQUE ES RÍGIDO: va en la grilla rígida de la azotea, con celdas casi cúbicas que apenas lo
-				# deforman (ver RigidMatrix). La azotea es el quad del núcleo a la altura del último piso; lo que
-				# ya haya colocado en el módulo se proyecta sobre esa grilla como ocupado. Si el tanque no entra en las celdas que
-				# quedan —azotea angosta, torcida, o tapada— no se pone, y ese es todo el filtro.
-				var roof := RigidMatrix.of_roof(tank_module, roof_index)
-				for corners: PackedVector3Array in tank_module.occupied_world_corners():
-					roof.mark_world_hexahedron(corners)
-				var size := roof.cells_for(RoofProps.TANK_DIAMETER_M, RoofProps.tank_height_m(),
-					RoofProps.TANK_DIAMETER_M)
-				if placer.place(roof, roof.centered(size), size, RoofProps.water_tank_unit(),
-						CityIndex.Kind.ROOF, cluster.id, RoofPlanner.Piece.TANK, -1, -1):
+				# EL TANQUE ES UNA ENTIDAD: free placement sobre el quad de la azotea (ver FreePlacement), sin
+				# deformarse —en la matriz rígida se torcía con la silla del techo—. Lo que el módulo ya tiene
+				# ocupado a la altura de la azotea se proyecta como huella; si el tanque no entra con su margen
+				# —azotea angosta o tapada— no se pone, y ese es todo el filtro.
+				var roof := FreePlacement.new(tank_module.get_core_vertices(roof_index), TANK_MARGIN_M)
+				for corners: PackedVector3Array in tank_module.occupied_world_corners(roof_index - 1,
+						roof_index + cells_per_floor * 4):
+					roof.block_points(corners)
+				var diameter := RoofProps.TANK_DIAMETER_M
+				var footprint := Rect2((roof.size.x - diameter) * 0.5, (roof.size.y - diameter) * 0.5,
+					diameter, diameter)
+				if roof.place(footprint):
+					_place_entity(container, RoofProps.water_tank_unit(),
+						Vector3(diameter, RoofProps.tank_height_m(), diameter), roof.frame_at(footprint),
+						object_id, CityIndex.Kind.ROOF, cluster.id, RoofPlanner.Piece.TANK, -1, -1)
 					tanks += 1
 
 		if _bake_placed(container, buffer, scope, true):
@@ -2108,19 +2145,51 @@ func _add_box_occluder(mesh: ArrayMesh, parent: Node3D) -> void:
 	occ_inst.position = aabb.get_center()
 	parent.add_child(occ_inst)
 
+## Margen del tanque al borde de la azotea y a lo que ya haya en ella.
+const TANK_MARGIN_M := 0.4
+
+## UNA ENTIDAD COLOCADA: la pieza entera en un transform (ver FreePlacement), con su collider y anotada en el
+## índice con scope propio, así el inspector la nombra como a cualquier pieza.
+func _place_entity(container: Node3D, unit: UnitMesh, size: Vector3, xf: Transform3D, object_id: int,
+		kind: int, id_a: int, id_b: int, id_c: int, id_d: int) -> void:
+	var mesh := unit.build_mesh(size)
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	instance.material_override = _get_building_material()
+	instance.transform = xf
+	container.add_child(instance)
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	shape.shape = box
+	shape.position = Vector3(0.0, size.y * 0.5, 0.0)
+	body.add_child(shape)
+	instance.add_child(body)
+	var scope := city_index.new_scope()
+	body.set_meta(CityIndex.SCOPE_META, scope)
+	city_index.set_scope_mesh(scope, instance)
+	var arrays := mesh.surface_get_arrays(0)
+	var world := PackedVector3Array()
+	for v: Vector3 in arrays[Mesh.ARRAY_VERTEX]:
+		world.append(xf * v)
+	city_index.add(scope, object_id, kind, id_a, id_b, id_c, id_d, 0, arrays[Mesh.ARRAY_INDEX].size(), world)
+
+
 # ============================================
 # AUTOS ESTACIONADOS (free placement)
 # ============================================
 ## LA FRANJA DE CORDÓN de cada lado de manzana que da a una calle es un free placement (ver FreePlacement):
-## del cordón hacia la calle, `PARKING_STRIP_M` de ancho, a lo largo de la fachada. Se la recorre por
+## del cordón hacia la calle, `ParkedCar.STRIP_M` de ancho, a lo largo de la fachada. Se la recorre por
 ## semilla dejando huecos, con los tipos de auto del distrito (los mismos pesos que el tráfico) y sin
 ## estacionar delante de una puerta de entrega. Cada auto es un cuerpo pasivo empujable (ver ParkedCar,
 ## PassiveBodies). Sin colliders de ciudad —la muestra escalada del sandbox— salen como cajas.
-const PARKING_STRIP_M := 2.6
 const PARKING_FILL := 0.45
 const PARKING_GAP_M := Vector2(0.8, 3.0)
 const PARKING_MARGIN_M := 0.3
 const DOOR_CLEARANCE_M := 1.0
+## Cuánto queda libre en cada esquina de la manzana: nadie estaciona sobre la ochava.
+const CORNER_CLEARANCE_M := 6.0
 
 func _visualize_parked_cars() -> void:
 	var physical := enable_building_colliders
@@ -2152,10 +2221,11 @@ func _visualize_parked_cars() -> void:
 			var out2 := Vector2(-along.y, along.x)
 			if out2.dot(a2 - centre) < 0.0:
 				out2 = -out2
-			var out3 := Vector3(out2.x, 0.0, out2.y) * PARKING_STRIP_M
+			var out3 := Vector3(out2.x, 0.0, out2.y) * ParkedCar.STRIP_M
 			var a := Vector3(a2.x, terrain.height_of(node_a), a2.y)
 			var b := Vector3(b2.x, terrain.height_of(node_b), b2.y)
 			var strip := FreePlacement.new([a, b, b + out3, a + out3], PARKING_MARGIN_M)
+			parking_strips.append(PackedVector3Array([a, b]))
 			# Delante de una puerta no estaciona nadie.
 			for door: Dictionary in block.traversal.delivery_doors:
 				if int(door["edge"]) != edge_idx:
@@ -2166,12 +2236,14 @@ func _visualize_parked_cars() -> void:
 					continue
 				strip.block_span(module.facade_point(edge_idx, int(door["along_min"]), 0),
 					module.facade_point(edge_idx, int(door["along_max"]) + 1, 0), DOOR_CLEARANCE_M)
-			var u := rng.randf_range(0.0, PARKING_GAP_M.y)
-			while u < strip.size.x:
+			var u := CORNER_CLEARANCE_M + rng.randf_range(0.0, PARKING_GAP_M.y)
+			while u < strip.size.x - CORNER_CLEARANCE_M:
 				var type := CarArchetypes.select_type_seeded(rng, weights)
 				var archetype := CarArchetypes.get_archetype(type)
-				if archetype.width <= PARKING_STRIP_M - PARKING_MARGIN_M * 2.0 and rng.randf() < PARKING_FILL:
-					var footprint := Rect2(u, (PARKING_STRIP_M - archetype.width) * 0.5, archetype.depth, archetype.width)
+				if u + archetype.depth > strip.size.x - CORNER_CLEARANCE_M:
+					break
+				if archetype.width <= ParkedCar.STRIP_M - PARKING_MARGIN_M * 2.0 and rng.randf() < PARKING_FILL:
+					var footprint := Rect2(u, (ParkedCar.STRIP_M - archetype.width) * 0.5, archetype.depth, archetype.width)
 					if strip.place(footprint):
 						var car := ParkedCar.create(type, physical)
 						car.transform = strip.frame_at(footprint)
@@ -2380,14 +2452,9 @@ func _draw_bridge(placed: Dictionary, buf: Dictionary, placer: GridPlacer, numbe
 	var by_base_top: int = floor_idx * cells_per_floor
 	var by_arc_bot: int = by_base - bridge.arc_height
 
-	var side_a = {
-		"face": placed["face_a"], "edge_idx": placed["edge_idx_a"],
-		"cells": placed["cells_a"], "reversed": placed["reversed_a"],
-	}
-	var side_b = {
-		"face": placed["face_b"], "edge_idx": placed["edge_idx_b"],
-		"cells": placed["cells_b"], "reversed": placed["reversed_b"],
-	}
+	var sides := FacadeHelper.bridge_sides(placed)
+	var side_a: Dictionary = sides[0]
+	var side_b: Dictionary = sides[1]
 
 	# LOS EXTREMOS DECIDEN, EL MEDIO LOS UNE — y ahora literalmente.
 	#
@@ -2445,12 +2512,13 @@ func _add_bridge_span(block_a: BlockGenerator, block_b: BlockGenerator,
 		side_a: Dictionary, side_b: Dictionary, cell_start: int, cell_end: int,
 		index_bottom: int, index_top: int,
 		color: Color, static_body: StaticBody3D, buf: Dictionary) -> void:
-	var plane_a := FacadeHelper.facade_span_quad(block_a, side_a["edge_idx"], side_a["reversed"],
-			side_a["cells"], cell_start, cell_end, index_bottom, index_top)
-	var plane_b := FacadeHelper.facade_span_quad(block_b, side_b["edge_idx"], side_b["reversed"],
-			side_b["cells"], cell_start, cell_end, index_bottom, index_top)
-	if plane_a.size() != 4 or plane_b.size() != 4:
+	# Las mismas caras que lee el planificador de altura de los autos (ver FacadeHelper.span_faces).
+	var faces := FacadeHelper.span_faces(block_a, block_b, side_a, side_b, cell_start, cell_end,
+			index_bottom, index_top)
+	if faces.is_empty():
 		return
+	var plane_a: Array[Vector3] = faces[0]
+	var plane_b: Array[Vector3] = faces[1]
 	_bridge_geo_append(buf, DebugUtil.get_skewed_cube_from_planes_geometry(plane_a, plane_b), color)
 	if static_body:
 		static_body.add_child(DebugUtil.create_collision_shape_from_planes(plane_a, plane_b))
@@ -2461,12 +2529,12 @@ func _add_bridge_arc_spans(block_a: BlockGenerator, block_b: BlockGenerator,
 		side_a: Dictionary, side_b: Dictionary, cell_start: int, cell_end: int,
 		index_bottom: int, index_top: int,
 		arc_world_depth: float, static_body: StaticBody3D, buf: Dictionary) -> void:
-	var plane_a := FacadeHelper.facade_span_quad(block_a, side_a["edge_idx"], side_a["reversed"],
-			side_a["cells"], cell_start, cell_end, index_bottom, index_top)
-	var plane_b := FacadeHelper.facade_span_quad(block_b, side_b["edge_idx"], side_b["reversed"],
-			side_b["cells"], cell_start, cell_end, index_bottom, index_top)
-	if plane_a.size() != 4 or plane_b.size() != 4:
+	var faces := FacadeHelper.span_faces(block_a, block_b, side_a, side_b, cell_start, cell_end,
+			index_bottom, index_top)
+	if faces.is_empty():
 		return
+	var plane_a: Array[Vector3] = faces[0]
+	var plane_b: Array[Vector3] = faces[1]
 
 	var bridge_depth = plane_a[0].distance_to(plane_b[0])
 	var arc_frac = clampf(arc_world_depth / bridge_depth, 0.0, 0.45) if bridge_depth > 0.0 else 0.0

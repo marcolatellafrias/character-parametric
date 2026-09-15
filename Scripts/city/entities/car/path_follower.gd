@@ -217,6 +217,22 @@ func advance_distance(dist: float) -> void:
 			_ended = true
 			path_ended.emit()
 
+## LLEVA EL PROGRESO ADONDE ESTÁ EL CUERPO: la proyección de `position` sobre la ruta, para que el simulado
+## espere al cuerpo mientras se recupera de un golpe (ver CarBody). Nunca más de `BACK_TOLERANCE` hacia
+## atrás por llamada —el punto cercano de una ruta que vuelve sobre sí misma no cuenta— y hacia adelante
+## pasa por `advance_distance`, que lleva la contabilidad de tramos. Devuelve el progreso resultante.
+const BACK_TOLERANCE: float = 3.0
+
+func snap_to(position: Vector3) -> float:
+	if not curve:
+		return progress
+	var arc := clampf(curve.get_closest_offset(position), maxf(progress - BACK_TOLERANCE, 0.0), _length)
+	if arc > progress:
+		advance_distance(arc - progress)
+	else:
+		progress = arc
+	return progress
+
 func get_progress() -> float:
 	return progress
 

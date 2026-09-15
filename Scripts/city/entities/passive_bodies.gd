@@ -29,7 +29,7 @@ func register(body: RigidBody3D) -> void:
 func _physics_process(_delta: float) -> void:
 	if Engine.get_physics_frames() % CHECK_EVERY != 0:
 		return
-	var touchers := _toucher_positions()
+	var touchers := toucher_positions(get_tree())
 	var radius_squared := wake_radius * wake_radius
 	for body in _bodies:
 		if not is_instance_valid(body):
@@ -46,10 +46,10 @@ func _physics_process(_delta: float) -> void:
 			body.freeze = true
 
 
-## Quiénes pueden tocar: las cápsulas de los jugadores y las naves.
-func _toucher_positions() -> PackedVector3Array:
+## Quiénes pueden tocar: las cápsulas de los jugadores y las naves. Lo usan también los autos que se mueven
+## (ver CarManager._update_body).
+static func toucher_positions(tree: SceneTree) -> PackedVector3Array:
 	var out := PackedVector3Array()
-	var tree := get_tree()
 	for node in tree.get_nodes_in_group(CharacterRigidBody3D.CHARACTER_GROUP):
 		out.append((node as Node3D).global_position)
 	for node in tree.get_nodes_in_group(Ship.GROUP):

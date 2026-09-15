@@ -7,6 +7,10 @@ extends RigidBody3D
 ## existe para la física cuando alguien está cerca (ver PassiveBodies).
 
 const MASS := 350.0
+## Ancho de la franja de cordón donde se estaciona, del cordón hacia la calle: entra cualquier auto de
+## hasta ~2,2 m de ancho con margen. Lo lee también el tráfico, que la reserva como obstáculo fijo (ver
+## AreaInstantiator._register_parking_strips).
+const STRIP_M := 2.6
 
 var type: CarArchetypes.Type = CarArchetypes.Type.TAXI
 
